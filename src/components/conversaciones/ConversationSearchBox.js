@@ -5,7 +5,6 @@ import {
   InputAdornment,
   IconButton,
   Button,
-  CircularProgress,
   Tooltip,
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
@@ -16,6 +15,7 @@ const ConversationSearchBox = memo(function ConversationSearchBox({
   initialSearch = "",
   onSearchSubmit,
   loading,
+  searchLoading = false,
   onRefreshConversations,
   onForceRefresh,
 }) {
@@ -58,7 +58,7 @@ const ConversationSearchBox = memo(function ConversationSearchBox({
         sx={{ minWidth: "auto", px: 2 }}
         disabled={loading}
       >
-        {loading ? <CircularProgress size={20} color="inherit" /> : "Buscar"}
+        {searchLoading ? "Buscando..." : loading ? "Cargando..." : "Buscar"}
       </Button>
       <IconButton
         onClick={onRefreshConversations}

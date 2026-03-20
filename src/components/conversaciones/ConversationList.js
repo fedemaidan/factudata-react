@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   Box,
+  Button,
   Divider,
   List,
   ListItemButton,
@@ -10,6 +11,7 @@ import {
   Typography,
   CircularProgress,
   Chip,
+  Stack,
 } from "@mui/material";
 import ConversacionesFilter from "./ConversacionesFilter";
 import ConversationSearchBox from "./ConversationSearchBox";
@@ -38,12 +40,14 @@ export default function ConversationList({ onSelect, onMessageSelect }) {
     loading
   } = useConversationsContext();
 
-  const [searchInMessages, setSearchInMessages] = useState(false);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [lastSubmittedQuery, setLastSubmittedQuery] = useState("");
+  const [messagesSearchIncluded, setMessagesSearchIncluded] = useState(false);
   const [error, setError] = useState("");
   const [alert, setAlert] = useState({ open: false, message: "", severity: "info" });
   const [searchCount, setSearchCount] = useState(0);
   const [dates, setDates] = useState({
-    start: format(subDays(new Date(), 7), "yyyy-MM-dd"),
+    start: format(subDays(new Date(), 5), "yyyy-MM-dd"),
     end: format(new Date(), "yyyy-MM-dd"),
   });
 
@@ -57,6 +61,7 @@ export default function ConversationList({ onSelect, onMessageSelect }) {
     if (searchCount === 0) return;
     const hasNoResults =
       cacheSearchActive &&
+      messagesSearchIncluded &&
       !(searchConversations?.length || messageResults?.length);
     if (hasNoResults) {
       setAlert({
@@ -66,41 +71,57 @@ export default function ConversationList({ onSelect, onMessageSelect }) {
         autoHideDuration: 3000,
       });
     }
-  }, [searchCount, cacheSearchActive, searchConversations?.length, messageResults?.length]);
+  }, [searchCount, cacheSearchActive, messagesSearchIncluded, searchConversations?.length, messageResults?.length]);
 
   const handleAlertClose = useCallback(() => {
     setAlert((prev) => ({ ...prev, open: false }));
     setError("");
   }, []);
 
-  const handleSearchSubmit = useCallback(
-    (query) => {
-      setError("");
-      if (searchInMessages) {
-        if (!dates.start || !dates.end) {
-          setError("Debes seleccionar un rango de fechas para buscar en mensajes.");
-          return;
-        }
-        const start = parseISO(dates.start);
-        const end = parseISO(dates.end);
-        const diff = differenceInDays(end, start);
-        if (diff > 7) {
-          setError("El rango máximo para buscar en mensajes es de 7 días.");
-          return;
-        }
-        if (diff < 0) {
-          setError("La fecha de fin debe ser posterior a la de inicio.");
-          return;
-        }
-      }
-      setSearchCount((c) => c + 1);
-      onSearchCache?.(query, {
-        searchInMessages,
+  const handleSearchInMessages = useCallback(async () => {
+    setError("");
+    if (!dates.start || !dates.end) {
+      setError("Debes seleccionar un rango de fechas para buscar en mensajes.");
+      return;
+    }
+    const start = parseISO(dates.start);
+    const end = parseISO(dates.end);
+    const diff = differenceInDays(end, start);
+    if (diff > 5) {
+      setError("El rango máximo para buscar en mensajes es de 5 días.");
+      return;
+    }
+    if (diff < 0) {
+      setError("La fecha de fin debe ser posterior a la de inicio.");
+      return;
+    }
+    setSearchLoading(true);
+    try {
+      await onSearchCache?.(lastSubmittedQuery, {
+        includeMessages: true,
         fechaDesde: dates.start,
         fechaHasta: dates.end,
       });
+    } finally {
+      setSearchLoading(false);
+      setMessagesSearchIncluded(true);
+    }
+  }, [dates, lastSubmittedQuery, onSearchCache]);
+
+  const handleSearchSubmit = useCallback(
+    async (query) => {
+      setError("");
+      setMessagesSearchIncluded(false);
+      setLastSubmittedQuery(query || "");
+      setSearchCount((c) => c + 1);
+      setSearchLoading(true);
+      try {
+        await onSearchCache?.(query, { includeMessages: false });
+      } finally {
+        setSearchLoading(false);
+      }
     },
-    [searchInMessages, dates, onSearchCache]
+    [onSearchCache]
   );
 
   const selectedId = selected?.ultimoMensaje?.id_conversacion;
@@ -110,10 +131,9 @@ export default function ConversationList({ onSelect, onMessageSelect }) {
     return text?.length > 80 ? `${text.slice(0, 80)}…` : text;
   }, []);
 
-  const displayConversations =
-    cacheSearchActive && searchConversations?.length
-      ? searchConversations
-      : conversations;
+  const displayConversations = cacheSearchActive
+    ? (searchConversations ?? [])
+    : conversations;
   const hasConversationResults = displayConversations.length > 0;
   const hasMessageResults = messageResults.length > 0;
 
@@ -133,7 +153,8 @@ export default function ConversationList({ onSelect, onMessageSelect }) {
         <ConversationSearchBox
           initialSearch={search}
           onSearchSubmit={handleSearchSubmit}
-          loading={loading}
+          loading={loading || searchLoading}
+          searchLoading={searchLoading}
           onRefreshConversations={onRefreshConversations}
           onForceRefresh={onForceRefresh}
         />
@@ -195,21 +216,28 @@ export default function ConversationList({ onSelect, onMessageSelect }) {
             { value: 'cliente_activo', label: 'Activos', color: 'success' },
             { value: 'dado_de_baja', label: 'Bajas', color: 'default' },
             { value: 'no_cliente', label: 'Nuevos', color: 'info' },
-          ].map((option) => (
-            <Chip
-              key={option.value}
-              label={option.label}
-              size="small"
-              color={filters?.estadoCliente === option.value || (!filters?.estadoCliente && option.value === 'todos') ? option.color : 'default'}
-              variant={filters?.estadoCliente === option.value || (!filters?.estadoCliente && option.value === 'todos') ? 'filled' : 'outlined'}
-              onClick={() => onFiltersChange?.({ ...filters, estadoCliente: option.value, empresaId: '' })}
-              sx={{ 
-                cursor: 'pointer',
-                fontSize: '0.7rem',
-                height: 24,
-              }}
-            />
-          ))}
+          ].map((option) => {
+            const isSelected = filters?.estadoCliente === option.value || (!filters?.estadoCliente && option.value === 'todos');
+            return (
+              <Chip
+                key={option.value}
+                label={option.label}
+                size="small"
+                color={isSelected ? (option.value === 'todos' ? 'primary' : option.color) : 'default'}
+                variant={isSelected ? 'filled' : 'outlined'}
+                onClick={() => onFiltersChange?.({ ...filters, estadoCliente: option.value, empresaId: '' })}
+                sx={{ 
+                  cursor: 'pointer',
+                  fontSize: '0.7rem',
+                  height: 24,
+                  ...(isSelected && {
+                    fontWeight: 600,
+                    boxShadow: 1,
+                  }),
+                }}
+              />
+            );
+          })}
         </Box>
       </Box>
 
@@ -250,6 +278,22 @@ export default function ConversationList({ onSelect, onMessageSelect }) {
             </Box>
           )}
         </List>
+
+        {cacheSearchActive && lastSubmittedQuery.trim() && !messagesSearchIncluded && (
+          <Box px={2} py={1.5}>
+            <Stack spacing={0.5} alignItems="center">
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={handleSearchInMessages}
+                disabled={searchLoading}
+                sx={{ textTransform: "none" }}
+              >
+                {searchLoading ? "Buscando..." : "Buscar también en mensajes"}
+              </Button>
+            </Stack>
+          </Box>
+        )}
 
         {hasMessageResults && (
           <>

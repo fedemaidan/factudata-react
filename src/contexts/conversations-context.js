@@ -4,7 +4,7 @@ import { useConversationsFetch } from "src/hooks/useConversationsFetch";
 import { useMessagesFetch } from "src/hooks/useMessagesFetch";
 import { useMessageScroll } from "src/hooks/useMessageScroll";
 import { useInsightNavigation } from "src/hooks/useErrorNavigation";
-import { addNoteToMessage, fetchRecentMessages, fetchRecentConversations, fetchConversations } from "src/services/conversacionService";
+import { addNoteToMessage, fetchRecentMessages, fetchRecentConversations, fetchConversations, searchMessages as searchMessagesApi } from "src/services/conversacionService";
 import {
   cacheConversations,
   cacheConversation,
@@ -16,7 +16,6 @@ import {
   getSyncIntervalMs,
   getMessageWindowCutoff,
   searchCachedConversations,
-  searchCachedMessages,
   updateCachedMessageById,
   clearAllCache,
 } from "src/db/indexed-db";
@@ -454,31 +453,40 @@ export function ConversationsProvider({ children }) {
         return;
       }
 
-      const targetMessageId = result?.matchMessage?.id || result?.matchMessage?._id;
+      const msg = result?.matchMessage;
+      const rawId = msg?.id ?? msg?._id;
+      const targetMessageId = typeof rawId === "object" && rawId?.$oid
+        ? rawId.$oid
+        : rawId
+          ? String(rawId)
+          : null;
       if (!targetMessageId) {
         return;
       }
 
+      const conversation = result.conversation
+        ? { ...result.conversation, id: result.conversation.id || result.conversation._id }
+        : null;
+      const conversationId = result.conversationId
+        ? String(result.conversationId)
+        : conversation?.ultimoMensaje?.id_conversacion || conversation?.id;
+
       try {
-        // Marcar como selección manual para evitar que el useEffect se dispare
         isManualSelectionRef.current = true;
-        
         skipDefaultLoadRef.current = true;
-        dispatch({ type: ACTIONS.SET_SELECTED, payload: result.conversation });
+        dispatch({ type: ACTIONS.SET_SELECTED, payload: conversation });
         dispatch({ type: ACTIONS.SET_SCROLL_TO_MESSAGE_ID, payload: targetMessageId });
         dispatch({ type: ACTIONS.SET_HIGHLIGHTED_MESSAGE_ID, payload: targetMessageId });
 
-        const conversationId = result.conversationId;
-        if (result.conversation) {
-          cacheConversation(result.conversation).catch(() => {});
+        if (conversation) {
+          cacheConversation(conversation).catch(() => {});
         }
         if (conversationId) {
           const newQuery = { ...router.query, conversationId };
-          // Usamos push para mantener el historial de navegación
           router.push({ pathname: router.pathname, query: newQuery }, undefined, { shallow: true });
         }
 
-        await loadMessageById(result.conversationId, targetMessageId, result.conversation);
+        await loadMessageById(conversationId, targetMessageId, conversation);
       } catch (error) {
         console.error("Error al cargar el mensaje buscado:", error);
       }
@@ -602,13 +610,9 @@ export function ConversationsProvider({ children }) {
         limit: 100,
       });
 
-      const localMessages =
-        options.searchInMessages || options.fechaDesde || options.fechaHasta
-          ? await searchCachedMessages(queryValue, {
-              filters: normalizedFilters,
-              limit: 100,
-            })
-          : [];
+      const localMessages = options.includeMessages
+        ? await searchMessagesApi(queryValue, normalizedFilters, 100)
+        : [];
 
       dispatch({
         type: ACTIONS.SET_SEARCH_CONVERSATIONS,
@@ -704,6 +708,11 @@ export function ConversationsProvider({ children }) {
         newQuery.empresaId = normalizedFilters.empresaId;
       } else {
         delete newQuery.empresaId;
+      }
+      if (normalizedFilters.estadoCliente && normalizedFilters.estadoCliente !== "todos") {
+        newQuery.estadoCliente = normalizedFilters.estadoCliente;
+      } else {
+        delete newQuery.estadoCliente;
       }
       if (normalizedFilters.tipoContacto && normalizedFilters.tipoContacto !== "todos") {
         newQuery.tipoContacto = normalizedFilters.tipoContacto;
