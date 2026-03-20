@@ -19,6 +19,7 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  Alert,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import { Block as BlockIcon } from "@mui/icons-material";
@@ -90,6 +91,9 @@ const ProyeccionesV2Page = () => {
   const [isDeleteNotaDialogOpen, setIsDeleteNotaDialogOpen] = useState(false);
   const [notaParaEliminar, setNotaParaEliminar] = useState(null); // { producto, notaId, texto }
   const [isDeletingNota, setIsDeletingNota] = useState(false);
+  const [isConfirmarIgnorarOpen, setIsConfirmarIgnorarOpen] = useState(false);
+  const [isAgregandoIgnorar, setIsAgregandoIgnorar] = useState(false);
+  const [ignorarError, setIgnorarError] = useState("");
 
   const {
     data: productosResponse,
@@ -265,6 +269,46 @@ const ProyeccionesV2Page = () => {
       setIsDeletingNota(false);
     }
   }, [notaParaEliminar, refetchProductos]);
+
+  const handleOpenConfirmarIgnorar = useCallback(() => {
+    setIgnorarError("");
+    setIsConfirmarIgnorarOpen(true);
+  }, []);
+
+  const handleCloseConfirmarIgnorar = useCallback(() => {
+    if (isAgregandoIgnorar) return;
+    setIsConfirmarIgnorarOpen(false);
+    setIgnorarError("");
+  }, [isAgregandoIgnorar]);
+
+  const handleConfirmarAgregarIgnorar = useCallback(async () => {
+    const codigos = selectedProducts
+      .map((p) => p?.codigo)
+      .filter(Boolean);
+    if (codigos.length === 0) return;
+
+    setIgnorarError("");
+    setIsAgregandoIgnorar(true);
+    try {
+      const result = await productoService.ignorarProductos({ codigos });
+      if (!result?.success) {
+        throw new Error(result?.error || "No se pudo agregar a productos ignorados.");
+      }
+      setIsConfirmarIgnorarOpen(false);
+      setSelectedProductsMap(new Map());
+      await refetchProductos();
+    } catch (e) {
+      const msg =
+        typeof e?.response?.data?.error === "string"
+          ? e.response.data.error
+          : typeof e?.message === "string"
+          ? e.message
+          : "No se pudo agregar a productos ignorados.";
+      setIgnorarError(msg);
+    } finally {
+      setIsAgregandoIgnorar(false);
+    }
+  }, [selectedProducts, refetchProductos]);
 
   const handleProyeccionCreada = useCallback((payload) => {
     const id =
@@ -644,6 +688,16 @@ const ProyeccionesV2Page = () => {
               >
                 Agregar Pedido
               </Button>
+              <Button
+                {...actionButtonProps}
+                variant="outlined"
+                color="secondary"
+                startIcon={<BlockIcon />}
+                onClick={handleOpenConfirmarIgnorar}
+                disabled={selectedProducts.length === 0}
+              >
+                Agregar a ignorar productos
+              </Button>
             </Stack>
 
             <Stack
@@ -898,6 +952,45 @@ const ProyeccionesV2Page = () => {
               startIcon={isDeletingNota ? <CircularProgress size={16} color="inherit" /> : null}
             >
               Borrar
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        <Dialog open={isConfirmarIgnorarOpen} onClose={handleCloseConfirmarIgnorar} maxWidth="xs" fullWidth>
+          <DialogTitle>Agregar a ignorar productos</DialogTitle>
+          <DialogContent>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              ¿Agregar {selectedProducts.length} producto{selectedProducts.length !== 1 ? "s" : ""} seleccionado
+              {selectedProducts.length !== 1 ? "s" : ""} a la lista de productos ignorados?
+            </Typography>
+            {selectedProducts.length > 0 && selectedProducts.length <= 10 && (
+              <Typography variant="caption" component="div" color="text.secondary" sx={{ mb: 1 }}>
+                Códigos: {selectedProducts.map((p) => p?.codigo).filter(Boolean).join(", ")}
+              </Typography>
+            )}
+            {selectedProducts.length > 10 && (
+              <Typography variant="caption" component="div" color="text.secondary" sx={{ mb: 1 }}>
+                Códigos: {selectedProducts.slice(0, 10).map((p) => p?.codigo).filter(Boolean).join(", ")}…
+              </Typography>
+            )}
+            {ignorarError && (
+              <Alert severity="error" sx={{ mt: 1 }}>
+                {ignorarError}
+              </Alert>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleCloseConfirmarIgnorar} disabled={isAgregandoIgnorar}>
+              Cancelar
+            </Button>
+            <Button
+              variant="contained"
+              color="secondary"
+              onClick={handleConfirmarAgregarIgnorar}
+              disabled={isAgregandoIgnorar}
+              startIcon={isAgregandoIgnorar ? <CircularProgress size={16} color="inherit" /> : <BlockIcon />}
+            >
+              {isAgregandoIgnorar ? "Agregando…" : "Confirmar"}
             </Button>
           </DialogActions>
         </Dialog>
