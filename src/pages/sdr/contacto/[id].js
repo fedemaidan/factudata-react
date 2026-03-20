@@ -2312,12 +2312,12 @@ const ContactoSDRDetailPage = () => {
                                                     <PhoneIcon fontSize="small" />
                                                 </Button>
                                             </Tooltip>
-                                            <Tooltip title="Atendiĺó y Cortó">
+                                            <Tooltip title="Atendió y Cortó">
                                                 <Button size="small" variant="outlined" color="warning"
                                                     onClick={async () => {
                                                         try {
                                                             await SDRService.registrarIntento(contacto._id, { tipo: 'llamada_atendio_y_corto', canal: 'llamada', resultado: 'atendio_y_corto', empresaId });
-                                                            mostrarSnackbar('Atendiĺó y cortó registrado');
+                                                            mostrarSnackbar('Atendió y cortó registrado');
                                                             cargarContacto();
                                                         } catch (err) {
                                                             mostrarSnackbar(err.response?.data?.error || 'Error', 'error');

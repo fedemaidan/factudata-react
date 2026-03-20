@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, Fragment } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import NextLink from 'next/link';
@@ -10,7 +10,7 @@ import {
     Card, CardContent, CardActions, Divider, useTheme, useMediaQuery,
     Avatar, Badge, Fab, Dialog, DialogTitle, DialogContent, DialogActions,
     Checkbox, Tooltip, Tabs, Tab, Collapse,
-    Popover, FormControlLabel, FormGroup
+    Popover, FormControlLabel
 } from '@mui/material';
 import {
     Search as SearchIcon,
@@ -66,7 +66,7 @@ import NavigateNextIcon from '@mui/icons-material/NavigateNext';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import LinkIcon from '@mui/icons-material/Link';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
-import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
+
 import { PRECALIFICACION_BOT, PLANES_SORBY } from 'src/constant/sdrConstants';
 
 const ITEMS_PER_PAGE = 50;
@@ -3096,7 +3096,7 @@ const ContactosSDRPage = () => {
                         { key: 'transcripcion', icon: '📝', label: 'Prompt para transcripción de reuniones', desc: 'Instrucciones que recibe la IA al analizar transcripciones de reuniones. Los datos del contacto y la transcripción se agregan automáticamente. Dejá vacío para usar el prompt por defecto.' },
                         { key: 'resumen', icon: '📊', label: 'Prompt para resumen ejecutivo del contacto', desc: 'Instrucciones para generar el resumen IA del contacto (tab "Resumen IA"). Los datos del contacto, historial y reuniones se agregan automáticamente. Dejá vacío para usar el prompt por defecto.' }
                     ].map(({ key, icon, label, desc }, idx) => (
-                        <React.Fragment key={key}>
+                        <Fragment key={key}>
                             {idx > 0 && <Divider sx={{ my: 2 }} />}
                             <Typography variant="subtitle2" sx={{ mb: 1, mt: idx === 0 ? 1 : 0 }}>
                                 {icon} {label}
@@ -3122,7 +3122,7 @@ const ContactosSDRPage = () => {
                                     Restaurar prompt por defecto
                                 </Button>
                             )}
-                        </React.Fragment>
+                        </Fragment>
                     ))}
                 </DialogContent>
                 <DialogActions>

@@ -76,7 +76,6 @@ const ModalPromptIA = ({ open, onClose, empresaId, tipo = 'audio', onConfirm, lo
             ? 'Prompt IA — Transcripción de Reunión'
             : 'Prompt IA — Resumen Contacto';
 
-    const esCustom = promptGuardado && prompt !== promptDefault;
 
     return (
         <Dialog open={open} onClose={loading ? undefined : onClose} maxWidth="md" fullWidth>
