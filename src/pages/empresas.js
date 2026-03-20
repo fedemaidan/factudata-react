@@ -25,6 +25,8 @@ import {
   TablePagination
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
+import FormControlLabel from '@mui/material/FormControlLabel';
+import Switch from '@mui/material/Switch';
 import Head from 'next/head';
 import Link from 'next/link';
 import { getAllEmpresas, deleteEmpresa, getInfoToDeleteEmpresa } from 'src/services/empresaService';
@@ -45,6 +47,8 @@ const EmpresasListPage = () => {
     message: '',
     severity: 'info',
   });
+
+  const [soloClientes, setSoloClientes] = useState(true);
 
   const [filters, setFilters] = useState({
     nombre: '',
@@ -147,13 +151,16 @@ const EmpresasListPage = () => {
       const matchesProyectos = filters.proyectos
         ? empresa?.proyectosIds?.length === parseInt(filters.proyectos, 10)
         : true;
+      const matchesCliente = soloClientes
+        ? empresa?.tipo?.toLowerCase() === 'cliente'
+        : true;
 
-      return matchesNombre && matchesTipo && matchesProyectos;
+      return matchesNombre && matchesTipo && matchesProyectos && matchesCliente;
     });
 
     setFilteredEmpresas(filtered);
     setPage(0); // reset de página cuando cambian filtros/dataset
-  }, [filters, empresas]);
+  }, [filters, empresas, soloClientes]);
 
   // Clamp de página si queda fuera de rango al cambiar filtros o rowsPerPage
   useEffect(() => {
@@ -172,6 +179,19 @@ const EmpresasListPage = () => {
           <Typography variant="h4" sx={{ mb: 3 }}>
             Listado de Empresas ({filteredEmpresas.length})
           </Typography>
+
+          <Box sx={{ mb: 2, display: 'flex', alignItems: 'center' }}>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={soloClientes}
+                  onChange={(e) => setSoloClientes(e.target.checked)}
+                  color="primary"
+                />
+              }
+              label={soloClientes ? 'Solo clientes' : 'Todas las empresas'}
+            />
+          </Box>
 
           <Box sx={{ mb: 3, display: 'flex', gap: 2 }}>
             <TextField

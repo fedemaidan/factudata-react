@@ -84,7 +84,7 @@ const handlers = {
   },
   [HANDLERS.UPDATE_USER]: (state, action) => {
     const user = action.payload?.user || action.payload;
-    const originalUser = action.payload?.originalUser || state.originalUser;
+    const originalUser = action.payload?.originalUser || state.originalUser || user;
     const newState = {
       ...state,
       isAuthenticated: true,
@@ -296,7 +296,7 @@ export const AuthProvider = (props) => {
 
     dispatch({
       type: HANDLERS.UPDATE_USER,
-      payload: newUser,
+      payload: { user: newUser, originalUser: newUser },
     });
   };
 
@@ -325,7 +325,7 @@ export const AuthProvider = (props) => {
 
       dispatch({
         type: HANDLERS.UPDATE_USER,
-        payload: payload,
+        payload: { user: payload, originalUser: payload },
       });
     } catch (error) {
       console.error('Error in signUpWithCode:', error);
@@ -473,7 +473,11 @@ export const AuthProvider = (props) => {
   };
 
   const isSpying = () => {
-    return !!state.user && !!state.originalUser && state.user.email !== state.originalUser.email;
+    if (!state.user?.email || !state.originalUser?.email) {
+      return false;
+    }
+
+    return state.user.email !== state.originalUser.email;
   };
 
   return (
