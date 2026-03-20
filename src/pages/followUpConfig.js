@@ -11,6 +11,7 @@ import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import SearchIcon from '@mui/icons-material/Search';
+import RemoveCircleOutlineIcon from '@mui/icons-material/RemoveCircleOutline';
 import InputAdornment from '@mui/material/InputAdornment';
 
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
@@ -27,6 +28,7 @@ const emptyForm = {
   respetar_horario: false,
   templateId: '',
   parameterValues: {},
+  buttons: [],
 };
 
 const FollowUpConfig = () => {
@@ -111,6 +113,7 @@ const FollowUpConfig = () => {
       respetar_horario: Boolean(row.respetar_horario),
       templateId: row.templateId ?? '',
       parameterValues: (row.parameterValues && typeof row.parameterValues === 'object') ? { ...row.parameterValues } : {},
+      buttons: Array.isArray(row.buttons) ? row.buttons.map(b => ({ body: b.body ?? '', id: b.id ?? '' })) : [],
     });
     setOpenForm(true);
   };
@@ -138,7 +141,25 @@ const FollowUpConfig = () => {
       return 'Indicá un mensaje de texto o seleccioná un template de Meta.';
     }
     if (Number.isNaN(Number(form.tiempo))) return '"tiempo" debe ser numérico.';
+    if (form.buttons?.length > 3) return 'Máximo 3 botones.';
+    const invalidBtn = form.buttons?.find(b => !b.body?.trim() || !b.id?.trim());
+    if (invalidBtn) return 'Cada botón debe tener texto e ID.';
     return null;
+  };
+
+  const addButton = () => {
+    if ((form.buttons?.length ?? 0) >= 3) return;
+    setForm({ ...form, buttons: [...(form.buttons || []), { body: '', id: '' }] });
+  };
+
+  const removeButton = (idx) => {
+    setForm({ ...form, buttons: form.buttons.filter((_, i) => i !== idx) });
+  };
+
+  const updateButton = (idx, field, value) => {
+    const next = [...(form.buttons || [])];
+    next[idx] = { ...next[idx], [field]: value };
+    setForm({ ...form, buttons: next });
   };
 
   const handleSelectTemplate = (e) => {
@@ -166,6 +187,7 @@ const FollowUpConfig = () => {
       return;
     }
     try {
+      const validButtons = (form.buttons || []).filter(b => b.body?.trim() && b.id?.trim()).slice(0, 3);
       const payload = {
         mensaje: form.mensaje || '',
         proxEvent: form.proxEvent || '',
@@ -175,6 +197,7 @@ const FollowUpConfig = () => {
         respetar_horario: Boolean(form.respetar_horario),
         templateId: form.templateId || '',
         parameterValues: form.templateId ? (form.parameterValues || {}) : {},
+        buttons: validButtons.map(b => ({ body: b.body.trim().substring(0, 20), id: b.id.trim() })),
       };
       if (isEdit) {
         await FollowUpConfigService.actualizar(form.id, payload);
@@ -251,6 +274,7 @@ const FollowUpConfig = () => {
                     <TableCell>IA Promt</TableCell>
                     <TableCell>Resp. horario</TableCell>
                     <TableCell>Template</TableCell>
+                    <TableCell>Botones</TableCell>
                     <TableCell align="right">Acciones</TableCell>
                   </TableRow>
                 </TableHead>
@@ -292,6 +316,11 @@ const FollowUpConfig = () => {
                             })()
                           : <em>—</em>}
                       </TableCell>
+                      <TableCell>
+                        {row.buttons?.length >= 1 && row.buttons?.length <= 3
+                          ? <Chip size="small" label={`${row.buttons.length} botón${row.buttons.length > 1 ? 'es' : ''}`} variant="outlined" />
+                          : <em>—</em>}
+                      </TableCell>
                       <TableCell align="right">
                         <IconButton color="primary" onClick={() => handleOpenEdit(row)} aria-label="Editar">
                           <EditIcon />
@@ -304,7 +333,7 @@ const FollowUpConfig = () => {
                   ))}
                   {!loading && filtered.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={9}>
+                      <TableCell colSpan={10}>
                         <Typography variant="body2">Sin resultados.</Typography>
                       </TableCell>
                     </TableRow>
@@ -362,6 +391,42 @@ const FollowUpConfig = () => {
                   Templates aprobados por Meta. Pueden incluir botones.
                 </Typography>
               </FormControl>
+
+              {!form.templateId && (
+                <Box>
+                  <Typography variant="subtitle2" sx={{ mb: 1 }}>Botones (opcional, máx. 3)</Typography>
+                  <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
+                    Solo para mensaje de texto. Máx. 20 caracteres por botón.
+                  </Typography>
+                  {(form.buttons || []).map((btn, idx) => (
+                    <Stack key={idx} direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+                      <TextField
+                        size="small"
+                        label="Texto"
+                        value={btn.body}
+                        onChange={(e) => updateButton(idx, 'body', e.target.value)}
+                        placeholder="Ej: Agendar demo"
+                        inputProps={{ maxLength: 20 }}
+                        sx={{ flex: 1 }}
+                      />
+                      <TextField
+                        size="small"
+                        label="ID"
+                        value={btn.id}
+                        onChange={(e) => updateButton(idx, 'id', e.target.value)}
+                        placeholder="Ej: agendar_demo"
+                        sx={{ flex: 1 }}
+                      />
+                      <IconButton size="small" color="error" onClick={() => removeButton(idx)} aria-label="Quitar botón">
+                        <RemoveCircleOutlineIcon />
+                      </IconButton>
+                    </Stack>
+                  ))}
+                  <Button size="small" startIcon={<AddIcon />} onClick={addButton} disabled={(form.buttons?.length ?? 0) >= 3}>
+                    Agregar botón
+                  </Button>
+                </Box>
+              )}
 
               {selectedTemplate && allParameters.length > 0 && (
                 <Box>
