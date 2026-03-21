@@ -2,8 +2,10 @@ import { useState, useEffect } from 'react';
 import {
     Dialog, DialogTitle, DialogContent, DialogActions,
     Button, TextField, Stack, FormControl, InputLabel, Select, MenuItem,
-    CircularProgress
+    CircularProgress, FormControlLabel, Switch, Alert, InputAdornment, IconButton
 } from '@mui/material';
+import SearchIcon from '@mui/icons-material/Search';
+import SDRService from 'src/services/sdrService';
 
 const TAMANOS_EMPRESA = ['1-10', '11-50', '51-200', '200+'];
 
@@ -26,8 +28,11 @@ const ModalCrearReunion = ({ open, onClose, contacto, onSubmit, loading }) => {
         rolContacto: '',
         puntosDeDolor: '',
         modulosPotenciales: '',
-        linkAgenda: ''
+        linkAgenda: '',
+        origen: 'manual'
     });
+    const [buscando, setBuscando] = useState(false);
+    const [linkMsg, setLinkMsg] = useState(null);
 
     useEffect(() => {
         if (contacto && open) {
@@ -39,10 +44,46 @@ const ModalCrearReunion = ({ open, onClose, contacto, onSubmit, loading }) => {
                 rolContacto: contacto.cargo || '',
                 puntosDeDolor: '',
                 modulosPotenciales: '',
-                linkAgenda: ''
+                linkAgenda: '',
+                origen: 'manual'
             });
+            setLinkMsg(null);
         }
     }, [contacto, open]);
+
+    const buscarDatosDelLink = async () => {
+        const link = form.linkAgenda.trim();
+        if (!link) return;
+        setBuscando(true);
+        setLinkMsg(null);
+        try {
+            const data = await SDRService.buscarCalendarPorLink(link);
+            if (data && data.titulo) {
+                const fecha = data.fechaInicio ? new Date(data.fechaInicio) : null;
+                const fechaLocal = fecha
+                    ? fecha.getFullYear() + '-' +
+                      String(fecha.getMonth() + 1).padStart(2, '0') + '-' +
+                      String(fecha.getDate()).padStart(2, '0') + 'T' +
+                      String(fecha.getHours()).padStart(2, '0') + ':' +
+                      String(fecha.getMinutes()).padStart(2, '0')
+                    : form.fechaHora;
+                setForm(prev => ({
+                    ...prev,
+                    fechaHora: fechaLocal || prev.fechaHora,
+                    contactoPrincipal: data.nombreInvitado || prev.contactoPrincipal,
+                    linkAgenda: data.linkMeet || prev.linkAgenda,
+                    origen: 'auto_calendar'
+                }));
+                setLinkMsg({ severity: 'success', text: `Datos extraídos: "${data.titulo}" - ${data.nombreInvitado || data.emailInvitado || ''}` });
+            } else {
+                setLinkMsg({ severity: 'info', text: 'No se encontró un evento con ese link. Sincronizá Calendar primero.' });
+            }
+        } catch {
+            setLinkMsg({ severity: 'error', text: 'Error buscando datos del link' });
+        } finally {
+            setBuscando(false);
+        }
+    };
 
     const handleSubmit = () => {
         // Agregar timezone offset del navegador al datetime-local para evitar desfase UTC
@@ -126,7 +167,36 @@ const ModalCrearReunion = ({ open, onClose, contacto, onSubmit, loading }) => {
                         value={form.linkAgenda}
                         onChange={(e) => setForm({ ...form, linkAgenda: e.target.value })}
                         fullWidth
-                        placeholder="Google Meet, Zoom, etc."
+                        placeholder="Pegá el link de Google Meet, Zoom, etc."
+                        InputProps={{
+                            endAdornment: (
+                                <InputAdornment position="end">
+                                    <IconButton
+                                        onClick={buscarDatosDelLink}
+                                        disabled={!form.linkAgenda.trim() || buscando}
+                                        size="small"
+                                        title="Extraer datos del evento"
+                                    >
+                                        {buscando ? <CircularProgress size={20} /> : <SearchIcon />}
+                                    </IconButton>
+                                </InputAdornment>
+                            )
+                        }}
+                    />
+                    {linkMsg && (
+                        <Alert severity={linkMsg.severity} onClose={() => setLinkMsg(null)} sx={{ py: 0 }}>
+                            {linkMsg.text}
+                        </Alert>
+                    )}
+                    <FormControlLabel
+                        control={
+                            <Switch
+                                checked={form.origen === 'auto_calendar'}
+                                onChange={(e) => setForm({ ...form, origen: e.target.checked ? 'auto_calendar' : 'manual' })}
+                                size="small"
+                            />
+                        }
+                        label="🤖 Agendada por el bot"
                     />
                 </Stack>
             </DialogContent>

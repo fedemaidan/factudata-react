@@ -344,6 +344,15 @@ export const SideNav = (props) => {
             </SvgIcon>
           ),
         });
+        baseItems.push({
+          title: "Admin SDR",
+          path: "/sdr/admin",
+          icon: (
+            <SvgIcon fontSize="small">
+              <SettingsIcon />
+            </SvgIcon>
+          ),
+        });
       }
 
       if (user?.admin) {

@@ -31,6 +31,8 @@ import { useAuthContext } from 'src/contexts/auth-context';
 import SDRService from 'src/services/sdrService';
 import ModalCrearReunion from 'src/components/sdr/ModalCrearReunion';
 import ModalResultadoReunion from 'src/components/sdr/ModalResultadoReunion';
+import CalendarSyncPendientes from 'src/components/sdr/CalendarSyncPendientes';
+import SyncIcon from '@mui/icons-material/Sync';
 
 // ==================== HELPERS ====================
 
@@ -151,6 +153,9 @@ const ReunionCard = ({ reunion, variant = 'hoy', onMarcarRealizada, onMarcarNoSh
                                 const chip = getCalificacionChip(reunion.calificacionRapida);
                                 return chip ? <Chip label={chip.label} size="small" color={chip.color} /> : null;
                             })()}
+                            {reunion.origen === 'auto_calendar' && (
+                                <Chip label="🤖 Bot" size="small" color="secondary" variant="outlined" />
+                            )}
                         </Stack>
 
                         <Typography variant="body1" fontWeight={500}>
@@ -300,7 +305,8 @@ const TABS = [
     { key: 'sin_registrar', label: 'Sin registrar', icon: <EditCalendarIcon fontSize="small" /> },
     { key: 'realizadas', label: 'Realizadas', icon: <CheckCircleIcon fontSize="small" /> },
     { key: 'no_show', label: 'No show', icon: <PersonOffIcon fontSize="small" /> },
-    { key: 'propuestas', label: 'Propuestas', icon: <DescriptionIcon fontSize="small" /> }
+    { key: 'propuestas', label: 'Propuestas', icon: <DescriptionIcon fontSize="small" /> },
+    { key: 'calendar_sync', label: 'Calendar', icon: <SyncIcon fontSize="small" /> }
 ];
 
 // ==================== PÁGINA PRINCIPAL ====================
@@ -605,7 +611,7 @@ const ReunionesSDRPage = () => {
 
     // ==================== RENDER ====================
 
-    const tabCounts = [hoy.length, proximas.length, sinRegistrar.length, realizadas.length, noShow.length, propuestas.length];
+    const tabCounts = [hoy.length, proximas.length, sinRegistrar.length, realizadas.length, noShow.length, propuestas.length, 0];
 
     return (
         <>
@@ -703,6 +709,7 @@ const ReunionesSDRPage = () => {
                             {tab === 3 && renderReuniones(realizadas, 'realizada')}
                             {tab === 4 && renderReuniones(noShow, 'no_show')}
                             {tab === 5 && renderReuniones(propuestas, 'propuestas')}
+                            {tab === 6 && <CalendarSyncPendientes empresaId={empresaId} onVinculado={cargarReuniones} />}
                         </Box>
                     )}
                 </Container>
