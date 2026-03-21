@@ -14,7 +14,7 @@ import SDRService from 'src/services/sdrService';
 const formatearFecha = (fecha) => {
     if (!fecha) return '';
     const d = new Date(fecha);
-    return d.toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+    return d.toLocaleString('es-AR', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 };
 
 const CalendarSyncPendientes = ({ empresaId, onVinculado }) => {

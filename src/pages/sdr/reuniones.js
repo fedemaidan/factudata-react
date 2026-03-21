@@ -306,7 +306,7 @@ const TABS = [
     { key: 'realizadas', label: 'Realizadas', icon: <CheckCircleIcon fontSize="small" /> },
     { key: 'no_show', label: 'No show', icon: <PersonOffIcon fontSize="small" /> },
     { key: 'propuestas', label: 'Propuestas', icon: <DescriptionIcon fontSize="small" /> },
-    { key: 'calendar_sync', label: 'Calendar', icon: <SyncIcon fontSize="small" /> }
+    { key: 'calendar_sync', label: 'Calendario', icon: <SyncIcon fontSize="small" /> }
 ];
 
 // ==================== PÁGINA PRINCIPAL ====================

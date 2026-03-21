@@ -2,8 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import Head from 'next/head';
 import {
     Box, Container, Stack, Typography, Button, Chip, Grid,
-    CircularProgress, Paper, IconButton, Card, CardContent,
-    Snackbar, Alert, TextField, Switch, FormControlLabel,
+    CircularProgress, Paper, IconButton,
+    Snackbar, Alert, TextField,
     Accordion, AccordionSummary, AccordionDetails,
     List, ListItem, ListItemText, ListItemSecondaryAction,
     Dialog, DialogTitle, DialogContent, DialogActions,
@@ -11,7 +11,6 @@ import {
     Tooltip, Divider, MenuItem, FormControl, InputLabel, Select
 } from '@mui/material';
 import {
-    Refresh as RefreshIcon,
     ExpandMore as ExpandMoreIcon,
     Add as AddIcon,
     Delete as DeleteIcon,
@@ -43,7 +42,7 @@ const SeccionCalendarios = ({ snack }) => {
     const [editandoUrl, setEditandoUrl] = useState(null); // _id del cal que se está editando
     const [urlTmp, setUrlTmp] = useState('');
 
-    const cargar = useCallback(async () => {
+    const handleCargar = useCallback(async () => {
         try {
             setLoading(true);
             const data = await SDRService.adminListarCalendarios();
@@ -55,16 +54,16 @@ const SeccionCalendarios = ({ snack }) => {
         }
     }, [snack]);
 
-    const cargarEquipo = useCallback(async () => {
+    const handleCargarEquipo = useCallback(async () => {
         try {
             const data = await SDRService.adminObtenerEquipoSDR();
             setEquipo(data);
         } catch (e) { /* ignore */ }
     }, []);
 
-    useEffect(() => { cargar(); cargarEquipo(); }, [cargar, cargarEquipo]);
+    useEffect(() => { handleCargar(); handleCargarEquipo(); }, [handleCargar, handleCargarEquipo]);
 
-    const agregar = async () => {
+    const handleAgregar = async () => {
         if (!nuevoCalendar.calendarId || !nuevoCalendar.sdrId) return;
         try {
             setGuardando(true);
@@ -72,8 +71,8 @@ const SeccionCalendarios = ({ snack }) => {
             snack('Calendario agregado', 'success');
             setDialogOpen(false);
             setNuevoCalendar({ calendarId: '', sdrId: '', sdrNombre: '', calendarUrl: '' });
-            cargar();
-            cargarEquipo();
+            handleCargar();
+            handleCargarEquipo();
         } catch (e) {
             snack(e.response?.data?.error || e.message, 'error');
         } finally {
@@ -81,39 +80,39 @@ const SeccionCalendarios = ({ snack }) => {
         }
     };
 
-    const toggle = async (id, activo) => {
+    const handleToggle = async (id, activo) => {
         try {
             await SDRService.adminToggleCalendario(id, !activo);
             snack(activo ? 'Calendario desactivado' : 'Calendario activado', 'success');
-            cargar();
+            handleCargar();
         } catch (e) {
             snack('Error: ' + e.message, 'error');
         }
     };
 
-    const eliminar = async (id) => {
+    const handleEliminar = async (id) => {
         if (!confirm('¿Eliminar este calendario?')) return;
         try {
             await SDRService.adminEliminarCalendario(id);
             snack('Calendario eliminado', 'success');
-            cargar();
+            handleCargar();
         } catch (e) {
             snack('Error: ' + e.message, 'error');
         }
     };
 
-    const guardarUrl = async (calId) => {
+    const handleGuardarUrl = async (calId) => {
         try {
             await SDRService.adminActualizarCalendarUrl(calId, urlTmp.trim());
             snack('URL de agendamiento actualizada', 'success');
             setEditandoUrl(null);
-            cargar();
+            handleCargar();
         } catch (e) {
             snack('Error guardando URL: ' + e.message, 'error');
         }
     };
 
-    const verificar = async (calendarId) => {
+    const handleVerificar = async (calendarId) => {
         try {
             setVerificando(calendarId);
             const res = await SDRService.adminVerificarCalendario(calendarId);
@@ -181,9 +180,9 @@ const SeccionCalendarios = ({ snack }) => {
                                                             placeholder="https://calendar.app.google/..."
                                                             value={urlTmp}
                                                             onChange={(e) => setUrlTmp(e.target.value)}
-                                                            onBlur={() => guardarUrl(cal._id)}
+                                                            onBlur={() => handleGuardarUrl(cal._id)}
                                                             onKeyDown={(e) => {
-                                                                if (e.key === 'Enter') guardarUrl(cal._id);
+                                                                if (e.key === 'Enter') handleGuardarUrl(cal._id);
                                                                 if (e.key === 'Escape') setEditandoUrl(null);
                                                             }}
                                                             InputProps={{ sx: { fontSize: '0.875rem' } }}
@@ -208,19 +207,19 @@ const SeccionCalendarios = ({ snack }) => {
                                                 <TableCell align="right">
                                                     <Stack direction="row" spacing={0.5} justifyContent="flex-end">
                                                         <Tooltip title="Verificar acceso">
-                                                            <IconButton size="small" onClick={() => verificar(cal.calendarId)}
+                                                            <IconButton size="small" onClick={() => handleVerificar(cal.calendarId)}
                                                                 disabled={verificando === cal.calendarId}>
                                                                 {verificando === cal.calendarId ?
                                                                     <CircularProgress size={16} /> : <VerifiedIcon fontSize="small" />}
                                                             </IconButton>
                                                         </Tooltip>
                                                         <Tooltip title={cal.activo ? 'Desactivar' : 'Activar'}>
-                                                            <IconButton size="small" onClick={() => toggle(cal._id, cal.activo)}>
+                                                            <IconButton size="small" onClick={() => handleToggle(cal._id, cal.activo)}>
                                                                 <PowerIcon fontSize="small" color={cal.activo ? 'success' : 'disabled'} />
                                                             </IconButton>
                                                         </Tooltip>
                                                         <Tooltip title="Eliminar">
-                                                            <IconButton size="small" color="error" onClick={() => eliminar(cal._id)}>
+                                                            <IconButton size="small" color="error" onClick={() => handleEliminar(cal._id)}>
                                                                 <DeleteIcon fontSize="small" />
                                                             </IconButton>
                                                         </Tooltip>
@@ -279,7 +278,7 @@ const SeccionCalendarios = ({ snack }) => {
                 </DialogContent>
                 <DialogActions>
                     <Button onClick={() => setDialogOpen(false)}>Cancelar</Button>
-                    <Button onClick={agregar} variant="contained" disabled={guardando || !nuevoCalendar.calendarId || !nuevoCalendar.sdrId}>
+                    <Button onClick={handleAgregar} variant="contained" disabled={guardando || !nuevoCalendar.calendarId || !nuevoCalendar.sdrId}>
                         {guardando ? <CircularProgress size={20} /> : 'Agregar'}
                     </Button>
                 </DialogActions>
@@ -296,7 +295,7 @@ const SeccionEmailsInternos = ({ snack }) => {
     const [nuevoEmail, setNuevoEmail] = useState('');
     const [guardando, setGuardando] = useState(false);
 
-    const cargar = useCallback(async () => {
+    const handleCargar = useCallback(async () => {
         try {
             setLoading(true);
             const data = await SDRService.adminObtenerEmailsInternos();
@@ -308,9 +307,9 @@ const SeccionEmailsInternos = ({ snack }) => {
         }
     }, [snack]);
 
-    useEffect(() => { cargar(); }, [cargar]);
+    useEffect(() => { handleCargar(); }, [handleCargar]);
 
-    const agregar = async () => {
+    const handleAgregar = async () => {
         const email = nuevoEmail.trim().toLowerCase();
         if (!email || !email.includes('@')) return;
         if (emails.includes(email)) {
@@ -322,7 +321,7 @@ const SeccionEmailsInternos = ({ snack }) => {
             await SDRService.adminActualizarEmailsInternos([...emails, email]);
             snack('Email agregado', 'success');
             setNuevoEmail('');
-            cargar();
+            handleCargar();
         } catch (e) {
             snack('Error: ' + e.message, 'error');
         } finally {
@@ -330,11 +329,11 @@ const SeccionEmailsInternos = ({ snack }) => {
         }
     };
 
-    const eliminar = async (emailToRemove) => {
+    const handleEliminar = async (emailToRemove) => {
         try {
             await SDRService.adminActualizarEmailsInternos(emails.filter(e => e !== emailToRemove));
             snack('Email eliminado', 'success');
-            cargar();
+            handleCargar();
         } catch (e) {
             snack('Error: ' + e.message, 'error');
         }
@@ -361,10 +360,10 @@ const SeccionEmailsInternos = ({ snack }) => {
                             placeholder="vendedor@empresa.com"
                             value={nuevoEmail}
                             onChange={(e) => setNuevoEmail(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && agregar()}
+                            onKeyDown={(e) => e.key === 'Enter' && handleAgregar()}
                             sx={{ flex: 1 }}
                         />
-                        <Button variant="contained" size="small" onClick={agregar}
+                        <Button variant="contained" size="small" onClick={handleAgregar}
                             disabled={guardando || !nuevoEmail.trim()}>
                             Agregar
                         </Button>
@@ -382,7 +381,7 @@ const SeccionEmailsInternos = ({ snack }) => {
                                     <ListItemText primary={email} />
                                     <ListItemSecondaryAction>
                                         <IconButton edge="end" size="small" color="error"
-                                            onClick={() => eliminar(email)}>
+                                            onClick={() => handleEliminar(email)}>
                                             <DeleteIcon fontSize="small" />
                                         </IconButton>
                                     </ListItemSecondaryAction>
@@ -403,7 +402,7 @@ const SeccionSyncStatus = ({ snack }) => {
     const [loading, setLoading] = useState(true);
     const [sincronizando, setSincronizando] = useState(false);
 
-    const cargar = useCallback(async () => {
+    const handleCargar = useCallback(async () => {
         try {
             setLoading(true);
             const data = await SDRService.adminObtenerSyncStatus();
@@ -415,14 +414,14 @@ const SeccionSyncStatus = ({ snack }) => {
         }
     }, [snack]);
 
-    useEffect(() => { cargar(); }, [cargar]);
+    useEffect(() => { handleCargar(); }, [handleCargar]);
 
-    const forzarSync = async () => {
+    const handleForzarSync = async () => {
         try {
             setSincronizando(true);
             await SDRService.forzarCalendarSync();
             snack('Sincronización ejecutada', 'success');
-            cargar();
+            handleCargar();
         } catch (e) {
             snack('Error: ' + e.message, 'error');
         } finally {
@@ -499,7 +498,7 @@ const SeccionSyncStatus = ({ snack }) => {
                             <Button
                                 variant="outlined"
                                 startIcon={sincronizando ? <CircularProgress size={16} /> : <SyncIcon />}
-                                onClick={forzarSync}
+                                onClick={handleForzarSync}
                                 disabled={sincronizando}
                             >
                                 Sincronizar ahora
@@ -518,7 +517,7 @@ const SeccionEquipo = ({ snack }) => {
     const [equipo, setEquipo] = useState([]);
     const [loading, setLoading] = useState(true);
 
-    const cargar = useCallback(async () => {
+    const handleCargar = useCallback(async () => {
         try {
             setLoading(true);
             const data = await SDRService.adminObtenerEquipoSDR();
@@ -530,7 +529,7 @@ const SeccionEquipo = ({ snack }) => {
         }
     }, [snack]);
 
-    useEffect(() => { cargar(); }, [cargar]);
+    useEffect(() => { handleCargar(); }, [handleCargar]);
 
     return (
         <Accordion>
@@ -591,7 +590,7 @@ const SeccionEquipo = ({ snack }) => {
 // ==================== PÁGINA PRINCIPAL ====================
 
 const AdminSDRPage = () => {
-    const { user } = useAuthContext();
+    useAuthContext();
     const [snackState, setSnackState] = useState({ open: false, message: '', severity: 'info' });
 
     const snack = useCallback((message, severity = 'info') => {
