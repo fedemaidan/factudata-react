@@ -879,6 +879,89 @@ const SDRService = {
     actualizarConfig: async (data) => {
         const res = await api.put('/sdr/config', data);
         return res.data;
+    },
+
+    // ==================== DISTRIBUCIÓN AUTOMÁTICA ====================
+
+    /**
+     * Obtener configuración de distribución de leads
+     */
+    obtenerDistribucion: async () => {
+        const res = await api.get('/sdr/distribucion');
+        return res.data;
+    },
+
+    /**
+     * Actualizar configuración de distribución de leads
+     */
+    actualizarDistribucion: async (data) => {
+        const res = await api.put('/sdr/distribucion', data);
+        return res.data;
+    },
+
+    // ==================== CALENDAR SYNC ====================
+
+    listarCalendarPendientes: async (params = {}) => {
+        const res = await api.get('/sdr/calendar-sync/pendientes', { params });
+        return res.data;
+    },
+    vincularCalendarEvento: async (syncEventId, contactoId) => {
+        const res = await api.post('/sdr/calendar-sync/vincular', { syncEventId, contactoId });
+        return res.data;
+    },
+    ignorarCalendarEvento: async (syncEventId) => {
+        const res = await api.post('/sdr/calendar-sync/ignorar', { syncEventId });
+        return res.data;
+    },
+    forzarCalendarSync: async () => {
+        const res = await api.post('/sdr/calendar-sync/forzar');
+        return res.data;
+    },
+    buscarCalendarPorLink: async (link) => {
+        const res = await api.get('/sdr/calendar-sync/buscar-por-link', { params: { link } });
+        return res.data;
+    },
+
+    // ==================== ADMIN ====================
+    adminListarCalendarios: async () => {
+        const res = await api.get('/sdr/admin/calendarios');
+        return res.data;
+    },
+    adminAgregarCalendario: async (data) => {
+        const res = await api.post('/sdr/admin/calendarios', data);
+        return res.data;
+    },
+    adminToggleCalendario: async (id, activo) => {
+        const res = await api.put(`/sdr/admin/calendarios/${id}/toggle`, { activo });
+        return res.data;
+    },
+    adminActualizarCalendarUrl: async (id, calendarUrl) => {
+        const res = await api.put(`/sdr/admin/calendarios/${id}/url`, { calendarUrl });
+        return res.data;
+    },
+    adminEliminarCalendario: async (id) => {
+        const res = await api.delete(`/sdr/admin/calendarios/${id}`);
+        return res.data;
+    },
+    adminVerificarCalendario: async (calendarId) => {
+        const res = await api.post('/sdr/admin/calendarios/verificar', { calendarId });
+        return res.data;
+    },
+    adminObtenerEmailsInternos: async () => {
+        const res = await api.get('/sdr/admin/emails-internos');
+        return res.data;
+    },
+    adminActualizarEmailsInternos: async (emails) => {
+        const res = await api.put('/sdr/admin/emails-internos', { emails });
+        return res.data;
+    },
+    adminObtenerSyncStatus: async () => {
+        const res = await api.get('/sdr/admin/sync-status');
+        return res.data;
+    },
+    adminObtenerEquipoSDR: async () => {
+        const res = await api.get('/sdr/admin/equipo');
+        return res.data;
     }
 };
 
