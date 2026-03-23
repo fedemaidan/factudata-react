@@ -2398,6 +2398,11 @@ const ContactoSDRDetailPage = () => {
                                     }
                                 />
                             </Typography>
+                            {contacto?.followUpAuto?.configActivoNombre && (
+                                <Typography variant="body2" color="text.secondary">
+                                    Config: <strong>{contacto.followUpAuto.configActivoNombre}</strong>
+                                </Typography>
+                            )}
                             {contacto?.followUpAuto?.intentosEnConfig > 0 && (
                                 <Typography variant="body2" color="text.secondary">
                                     Intentos en config actual: {contacto.followUpAuto.intentosEnConfig}
@@ -2407,6 +2412,30 @@ const ContactoSDRDetailPage = () => {
                                 <Typography variant="body2" color="text.secondary">
                                     Último envío: {new Date(contacto.followUpAuto.ultimoEnvioAt).toLocaleString('es-AR')}
                                 </Typography>
+                            )}
+                            {contacto?.followUpAuto?.proximoEnvioAt && (
+                                <Stack direction="row" alignItems="center" spacing={1}>
+                                    <Typography variant="body2" color="text.secondary">
+                                        Próximo envío:
+                                    </Typography>
+                                    <TextField
+                                        type="datetime-local"
+                                        size="small"
+                                        variant="standard"
+                                        defaultValue={new Date(new Date(contacto.followUpAuto.proximoEnvioAt).getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)}
+                                        onBlur={async (e) => {
+                                            if (!e.target.value) return;
+                                            try {
+                                                const updated = await FollowUpAutoService.actualizarFollowUpAuto(contacto._id, { proximoEnvioAt: new Date(e.target.value).toISOString() });
+                                                setContacto(updated);
+                                            } catch (err) {
+                                                console.error('Error updating próximo envío:', err);
+                                            }
+                                        }}
+                                        sx={{ width: 200 }}
+                                        InputProps={{ sx: { fontSize: '0.875rem' } }}
+                                    />
+                                </Stack>
                             )}
                         </Stack>
                     </Paper>

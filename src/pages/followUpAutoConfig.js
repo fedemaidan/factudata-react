@@ -38,8 +38,8 @@ const EMPTY_CONFIG = {
   activo: true,
   intervalosMin: '10, 60, 1440',
   fechaReferenciaBase: 'ultimo_mensaje',
-  soloInbound: false,
-  excluirClientes: true,
+  segmentoFiltro: 'todos',
+  clienteFiltro: 'excluir_clientes',
   requiereReunion: '',
   estadoReunion: '',
   calificacionReunion: '',
@@ -77,8 +77,8 @@ const Page = () => {
         activo: config.activo !== false,
         intervalosMin: (config.intervalosMin || []).join(', '),
         fechaReferenciaBase: config.fechaReferenciaBase || 'ultimo_mensaje',
-        soloInbound: config.soloInbound || false,
-        excluirClientes: config.excluirClientes !== false,
+        segmentoFiltro: config.segmentoFiltro || 'todos',
+        clienteFiltro: config.clienteFiltro || 'excluir_clientes',
         requiereReunion: config.requiereReunion == null ? '' : String(config.requiereReunion),
         estadoReunion: config.estadoReunion || '',
         calificacionReunion: config.calificacionReunion || '',
@@ -114,8 +114,8 @@ const Page = () => {
         activo: form.activo,
         intervalosMin: intervalosArr,
         fechaReferenciaBase: form.fechaReferenciaBase,
-        soloInbound: form.soloInbound,
-        excluirClientes: form.excluirClientes,
+        segmentoFiltro: form.segmentoFiltro,
+        clienteFiltro: form.clienteFiltro,
         requiereReunion: form.requiereReunion === '' ? null : form.requiereReunion === 'true',
         estadoReunion: form.estadoReunion || null,
         calificacionReunion: form.calificacionReunion || null,
@@ -239,14 +239,30 @@ const Page = () => {
             </FormControl>
 
             <Stack direction="row" spacing={2}>
-              <FormControlLabel
-                control={<Switch checked={form.soloInbound} onChange={e => setForm({ ...form, soloInbound: e.target.checked })} />}
-                label="Solo inbound"
-              />
-              <FormControlLabel
-                control={<Switch checked={form.excluirClientes} onChange={e => setForm({ ...form, excluirClientes: e.target.checked })} />}
-                label="Excluir clientes"
-              />
+              <FormControl sx={{ minWidth: 160 }}>
+                <InputLabel>Segmento</InputLabel>
+                <Select
+                  label="Segmento"
+                  value={form.segmentoFiltro}
+                  onChange={e => setForm({ ...form, segmentoFiltro: e.target.value })}
+                >
+                  <MenuItem value="todos">Todos</MenuItem>
+                  <MenuItem value="inbound">Solo inbound</MenuItem>
+                  <MenuItem value="outbound">Solo outbound</MenuItem>
+                </Select>
+              </FormControl>
+              <FormControl sx={{ minWidth: 180 }}>
+                <InputLabel>Clientes</InputLabel>
+                <Select
+                  label="Clientes"
+                  value={form.clienteFiltro}
+                  onChange={e => setForm({ ...form, clienteFiltro: e.target.value })}
+                >
+                  <MenuItem value="todos">Todos</MenuItem>
+                  <MenuItem value="excluir_clientes">Excluir clientes</MenuItem>
+                  <MenuItem value="solo_clientes">Solo clientes</MenuItem>
+                </Select>
+              </FormControl>
               <FormControlLabel
                 control={<Switch checked={form.activo} onChange={e => setForm({ ...form, activo: e.target.checked })} />}
                 label="Activo"
