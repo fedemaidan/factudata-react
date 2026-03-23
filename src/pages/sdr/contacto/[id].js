@@ -66,6 +66,7 @@ import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useAuthContext } from 'src/contexts/auth-context';
 import SDRService from 'src/services/sdrService';
+import FollowUpAutoService from 'src/services/followUpAutoService';
 import { EstadoChip, EstadoChipEditable, ModalEditarContacto } from 'src/components/sdr/DrawerDetalleContactoSDR';
 import ModalRegistrarAccion from 'src/components/sdr/ModalRegistrarAccion';
 import ModalSelectorTemplate, { replaceVariables } from 'src/components/sdr/ModalSelectorTemplate';
@@ -2365,6 +2366,50 @@ const ContactoSDRDetailPage = () => {
                         </Grid>
 
                     </Grid>
+
+                    {/* ==================== FOLLOW-UP AUTOMÁTICO ==================== */}
+                    <Paper variant="outlined" sx={{ p: 2, mb: 3 }}>
+                        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+                            <Typography variant="subtitle2" color="text.secondary">
+                                🤖 Follow-Up Automático
+                            </Typography>
+                            <Switch
+                                size="small"
+                                checked={contacto?.followUpAuto?.activo !== false}
+                                onChange={async (e) => {
+                                    try {
+                                        const updated = await FollowUpAutoService.actualizarFollowUpAuto(contacto._id, { activo: e.target.checked });
+                                        setContacto(updated);
+                                    } catch (err) {
+                                        console.error('Error toggling follow-up auto:', err);
+                                    }
+                                }}
+                            />
+                        </Stack>
+                        <Stack spacing={0.5}>
+                            <Typography variant="body2">
+                                Estado: <Chip
+                                    size="small"
+                                    label={contacto?.followUpAuto?.estado || 'activo'}
+                                    color={
+                                        contacto?.followUpAuto?.estado === 'sin_respuesta' ? 'warning'
+                                        : contacto?.followUpAuto?.estado === 'pausado' ? 'default'
+                                        : 'success'
+                                    }
+                                />
+                            </Typography>
+                            {contacto?.followUpAuto?.intentosEnConfig > 0 && (
+                                <Typography variant="body2" color="text.secondary">
+                                    Intentos en config actual: {contacto.followUpAuto.intentosEnConfig}
+                                </Typography>
+                            )}
+                            {contacto?.followUpAuto?.ultimoEnvioAt && (
+                                <Typography variant="body2" color="text.secondary">
+                                    Último envío: {new Date(contacto.followUpAuto.ultimoEnvioAt).toLocaleString('es-AR')}
+                                </Typography>
+                            )}
+                        </Stack>
+                    </Paper>
 
                     {/* ==================== REUNIONES (si existen) ==================== */}
                     {reuniones.length > 0 && (
