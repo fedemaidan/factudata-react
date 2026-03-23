@@ -48,6 +48,8 @@ import AssessmentIcon from "@mui/icons-material/Assessment";
 import FilterListIcon from "@mui/icons-material/FilterList";
 import WhatsAppIcon from "@mui/icons-material/WhatsApp";
 import ConstructionIcon from "@mui/icons-material/Construction";
+import HistoryIcon from "@mui/icons-material/History";
+import AutorenewIcon from "@mui/icons-material/Autorenew";
 
 export const SideNav = (props) => {
   const { open, onClose, collapsed = false, onToggleCollapsed, width = 280 } = props;
@@ -353,6 +355,15 @@ export const SideNav = (props) => {
             </SvgIcon>
           ),
         });
+        baseItems.push({
+          title: "Follow-Up Auto",
+          path: "/followUpAutoConfig",
+          icon: (
+            <SvgIcon fontSize="small">
+              <AutorenewIcon />
+            </SvgIcon>
+          ),
+        });
       }
 
       if (user?.admin) {
@@ -386,6 +397,15 @@ export const SideNav = (props) => {
           icon: (
             <SvgIcon fontSize="small">
               <WhatsAppIcon />
+            </SvgIcon>
+          ),
+        });
+        baseItems.push({
+          title: "Eventos",
+          path: "/eventos",
+          icon: (
+            <SvgIcon fontSize="small">
+              <HistoryIcon />
             </SvgIcon>
           ),
         });
