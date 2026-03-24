@@ -34,7 +34,7 @@ import * as XLSX from 'xlsx';
 import AcopioService from 'src/services/acopioService';
 import { useRouter } from 'next/router';
 
-const RemitosTable = ({ remitos, remitoMovimientos, expanded, setExpanded, router, acopioId, remitosDuplicados, setDialogoEliminarAbierto, setRemitoAEliminar }) => {
+const RemitosTable = ({ remitos, remitoMovimientos, setRemitoMovimientos, expanded, setExpanded, router, acopioId, remitosDuplicados, setDialogoEliminarAbierto, setRemitoAEliminar }) => {
   const [anchorEl, setAnchorEl] = useState(null);
   const [selectedRemito, setSelectedRemito] = useState(null);
   const [selectedUrl, setSelectedUrl] = useState("");
@@ -153,7 +153,7 @@ const RemitosTable = ({ remitos, remitoMovimientos, expanded, setExpanded, route
                     setExpanded(remito.id);
                     if (!remitoMovimientos[remito.id]) {
                       const movimientos = await AcopioService.obtenerMovimientosDeRemito(acopioId, remito.id);
-                      remitoMovimientos[remito.id] = movimientos;
+                      setRemitoMovimientos(prev => ({ ...prev, [remito.id]: movimientos }));
                     }
                   }
                 }}

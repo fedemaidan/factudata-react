@@ -917,6 +917,7 @@ const MovimientosAcopioPage = () => {
             <RemitosTable
               remitos={remitos}
               remitoMovimientos={remitoMovimientos}
+              setRemitoMovimientos={setRemitoMovimientos}
               expanded={expanded}
               setExpanded={setExpanded}
               router={router}
