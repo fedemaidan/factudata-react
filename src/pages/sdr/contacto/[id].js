@@ -1812,6 +1812,18 @@ const ContactoSDRDetailPage = () => {
                                             onEstadoCambiado={cargarContacto}
                                             mostrarSnackbar={mostrarSnackbar}
                                         />
+                                        {contacto.optOutWhatsApp && (
+                                            <Tooltip title="Este contacto pidió no recibir más mensajes por WhatsApp">
+                                                <Chip
+                                                    size="small"
+                                                    icon={<DoNotDisturbIcon sx={{ fontSize: 14 }} />}
+                                                    label="Opt-out WA"
+                                                    color="error"
+                                                    variant="filled"
+                                                    sx={{ fontWeight: 700 }}
+                                                />
+                                            </Tooltip>
+                                        )}
                                         {contacto.segmento && (
                                             <Typography variant="caption" color="text.secondary">
                                                 · {contacto.segmento === 'inbound' ? '🟢 Inbound' : '🟠 Outbound'}
@@ -2369,6 +2381,32 @@ const ContactoSDRDetailPage = () => {
 
                     {/* ==================== FOLLOW-UP AUTOMÁTICO ==================== */}
                     <Paper variant="outlined" sx={{ p: 2, mb: 3 }}>
+                        {contacto.optOutWhatsApp && (
+                            <Alert
+                                severity="warning"
+                                sx={{ mb: 1.5 }}
+                                action={
+                                    <Button
+                                        color="inherit"
+                                        size="small"
+                                        onClick={async () => {
+                                            try {
+                                                const updated = await SDRService.revertirOptOut(contacto._id);
+                                                setContacto(updated);
+                                                mostrarSnackbar('Opt-out revertido. El contacto volverá a recibir mensajes.', 'success');
+                                            } catch (err) {
+                                                console.error('Error revirtiendo opt-out:', err);
+                                                mostrarSnackbar('Error al revertir opt-out', 'error');
+                                            }
+                                        }}
+                                    >
+                                        Revertir
+                                    </Button>
+                                }
+                            >
+                                🔇 Este contacto pidió no recibir más mensajes por WhatsApp
+                            </Alert>
+                        )}
                         <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
                             <Typography variant="subtitle2" color="text.secondary">
                                 🤖 Follow-Up Automático

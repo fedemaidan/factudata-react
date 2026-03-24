@@ -133,6 +133,7 @@ const ContactosSDRPage = () => {
     const [filtroProximaTarea, setFiltroProximaTarea] = useState(''); // '' | 'llamada' | 'whatsapp' | 'email' | 'recordatorio' | 'sin_tarea'
     const [filtroExcluirConReunion, setFiltroExcluirConReunion] = useState(false); // true = excluir contactos con reunión
     const [filtroSoloCompromisos, setFiltroSoloCompromisos] = useState(false); // true = solo contactos con proximaTarea.estricto
+    const [filtroOptOut, setFiltroOptOut] = useState(''); // '' | 'si' | 'no'
     const [ordenarPor, setOrdenarPor] = useState(''); // vacío = el backend elige según bandeja
     const [ordenDir, setOrdenDir] = useState('asc'); // 'asc' | 'desc'
     const [columnasVisibles, setColumnasVisibles] = useState(DEFAULT_COLUMNAS);
@@ -235,6 +236,7 @@ const ContactosSDRPage = () => {
             if (busqueda) params.busqueda = busqueda;
             if (filtroSegmento) params.segmento = filtroSegmento;
             if (filtroExcluirConReunion) params.excluirConReunion = 'true';
+            if (filtroOptOut) params.optOut = filtroOptOut;
             
             // Mapear ordenamiento al formato del backend
             if (ordenarPor) {
@@ -357,6 +359,7 @@ const ContactosSDRPage = () => {
         setFiltroProximoContacto(src.proximoContacto || '');
         setFiltroExcluirConReunion(src.excluirConReunion === 'true');
         setFiltroSoloCompromisos(src.soloCompromisos === 'true');
+        setFiltroOptOut(src.optOut || '');
         setOrdenarPor(src.ordenarPor || '');
         setOrdenDir(src.ordenDir || 'asc');
         setBusqueda(src.busqueda || '');
@@ -418,6 +421,7 @@ const ContactosSDRPage = () => {
         if (filtroProximoContacto) params.proximoContacto = filtroProximoContacto;
         if (filtroExcluirConReunion) params.excluirConReunion = 'true';
         if (filtroSoloCompromisos) params.soloCompromisos = 'true';
+        if (filtroOptOut) params.optOut = filtroOptOut;
         if (ordenarPor) params.ordenarPor = ordenarPor;
         if (ordenDir && ordenDir !== 'asc') params.ordenDir = ordenDir;
         if (busqueda) params.busqueda = busqueda;
@@ -433,7 +437,7 @@ const ContactosSDRPage = () => {
             if (qs) sessionStorage.setItem('sdr_lista_query', qs);
             else sessionStorage.removeItem('sdr_lista_query');
         } catch { /* ignore */ }
-    }, [bandejaActiva, filtroEstado, filtroSegmento, filtroActividad, filtroCalificadoBot, filtroQuiereReunion, filtroProximaTarea, filtroProximoContacto, filtroExcluirConReunion, filtroSoloCompromisos, ordenarPor, ordenDir, busqueda, page]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [bandejaActiva, filtroEstado, filtroSegmento, filtroActividad, filtroCalificadoBot, filtroQuiereReunion, filtroProximaTarea, filtroProximoContacto, filtroExcluirConReunion, filtroSoloCompromisos, filtroOptOut, ordenarPor, ordenDir, busqueda, page]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Abrir contacto desde query param si existe
     useEffect(() => {
@@ -1444,6 +1448,7 @@ const ContactosSDRPage = () => {
                 if (filtroActividad) filtrosActivos.push({ label: filtroActividad.replace(/_/g, ' ').replace('con ', '').replace('sin ', 'Sin '), onDelete: () => setFiltroActividad('') });
                 if (filtroExcluirConReunion) filtrosActivos.push({ label: '🚫 Sin reunión', onDelete: () => setFiltroExcluirConReunion(false) });
                 if (filtroSoloCompromisos) filtrosActivos.push({ label: '🔔 Compromisos', onDelete: () => setFiltroSoloCompromisos(false) });
+                if (filtroOptOut) filtrosActivos.push({ label: filtroOptOut === 'si' ? '🔇 Opt-out' : '✅ Sin opt-out', onDelete: () => setFiltroOptOut('') });
                 if (ordenarPor) filtrosActivos.push({ label: `Orden: ${ordenarPor === 'proximo_contacto' ? 'Próximo' : ordenarPor === 'fecha_creacion' ? 'Más nuevo' : ordenarPor}`, onDelete: () => setOrdenarPor('') });
 
                 return (
@@ -1466,7 +1471,7 @@ const ContactosSDRPage = () => {
                                     <Chip label="Limpiar" size="small" variant="outlined" onClick={() => {
                                         setFiltroProximoContacto(''); setFiltroSegmento(''); setFiltroCalificadoBot('');
                                         setFiltroQuiereReunion(''); setFiltroProximaTarea(''); setFiltroActividad('');
-                                        setFiltroExcluirConReunion(false); setFiltroSoloCompromisos(false); setOrdenarPor('');
+                                        setFiltroExcluirConReunion(false); setFiltroSoloCompromisos(false); setFiltroOptOut(''); setOrdenarPor('');
                                     }} sx={{ fontSize: '0.75rem', color: 'text.secondary' }} />
                                 )}
                             </Stack>
@@ -1712,6 +1717,20 @@ const ContactosSDRPage = () => {
                         variant={filtroSoloCompromisos ? 'filled' : 'outlined'}
                         onClick={() => setFiltroSoloCompromisos(!filtroSoloCompromisos)}
                     />
+                    <Chip 
+                        label="🔇 Solo opt-out"
+                        size="small"
+                        color={filtroOptOut === 'si' ? 'error' : 'default'}
+                        variant={filtroOptOut === 'si' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroOptOut(filtroOptOut === 'si' ? '' : 'si')}
+                    />
+                    <Chip 
+                        label="✅ Sin opt-out"
+                        size="small"
+                        color={filtroOptOut === 'no' ? 'success' : 'default'}
+                        variant={filtroOptOut === 'no' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroOptOut(filtroOptOut === 'no' ? '' : 'no')}
+                    />
                 </Stack>
             </Box>
 
@@ -1879,6 +1898,11 @@ const ContactosSDRPage = () => {
                                         <Stack direction="row" spacing={1} alignItems="center">
                                             <Typography variant="subtitle1" fontWeight={600} noWrap>
                                                 {contacto.nombre}
+                                                {contacto.optOutWhatsApp && (
+                                                    <Tooltip title="Opt-out: pidió no recibir más mensajes">
+                                                        <span style={{ fontSize: '0.85rem', marginLeft: 4, cursor: 'default' }}>🔇</span>
+                                                    </Tooltip>
+                                                )}
                                             </Typography>
                                             <EstadoChip estado={contacto.estado} quiereReunion={contacto.quiereReunion} />
                                         </Stack>
@@ -2444,6 +2468,18 @@ const ContactosSDRPage = () => {
                         variant={filtroSoloCompromisos ? 'filled' : 'outlined'}
                         onClick={() => setFiltroSoloCompromisos(!filtroSoloCompromisos)}
                     />
+                    <Chip 
+                        label="🔇 Solo opt-out"
+                        color={filtroOptOut === 'si' ? 'error' : 'default'}
+                        variant={filtroOptOut === 'si' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroOptOut(filtroOptOut === 'si' ? '' : 'si')}
+                    />
+                    <Chip 
+                        label="✅ Sin opt-out"
+                        color={filtroOptOut === 'no' ? 'success' : 'default'}
+                        variant={filtroOptOut === 'no' ? 'filled' : 'outlined'}
+                        onClick={() => setFiltroOptOut(filtroOptOut === 'no' ? '' : 'no')}
+                    />
                     {filtroActividad && (
                         <Chip 
                             label="Limpiar"
@@ -2849,6 +2885,11 @@ const ContactosSDRPage = () => {
                                                     <Typography variant="body2" fontWeight={contacto.estado === 'nuevo' ? 600 : 400}>
                                                         {contacto.nombre}
                                                     </Typography>
+                                                    {contacto.optOutWhatsApp && (
+                                                        <Tooltip title="Opt-out: pidió no recibir más mensajes">
+                                                            <span style={{ fontSize: '0.85rem', cursor: 'default' }}>🔇</span>
+                                                        </Tooltip>
+                                                    )}
                                                     {contacto.segmento && (
                                                         <Chip 
                                                             size="small" 

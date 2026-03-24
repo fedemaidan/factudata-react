@@ -962,6 +962,14 @@ const SDRService = {
     adminObtenerEquipoSDR: async () => {
         const res = await api.get('/sdr/admin/equipo');
         return res.data;
+    },
+
+    /**
+     * Revertir opt-out WhatsApp de un contacto
+     */
+    revertirOptOut: async (contactoId) => {
+        const res = await api.patch(`/sdr/contactos/${contactoId}/revertir-optout`);
+        return res.data;
     }
 };
 
