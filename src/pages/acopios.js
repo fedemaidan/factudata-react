@@ -14,6 +14,7 @@ import {
   TableCell,
   TableHead,
   TableRow,
+  TableSortLabel,
   useMediaQuery,
   Fab,
   Dialog,
@@ -65,6 +66,8 @@ const AcopiosPage = () => {
   const [descripcionEdit, setDescripcionEdit] = useState('');
   const [acopioEditando, setAcopioEditando] = useState(null);
   const [guardandoDescripcion, setGuardandoDescripcion] = useState(false);
+  const [orderBy, setOrderBy] = useState('fecha');
+  const [orderDir, setOrderDir] = useState('desc');
 
   // Setear breadcrumbs
   useEffect(() => {
@@ -130,7 +133,9 @@ const AcopiosPage = () => {
       Descripción: a.descripcion || '',
       Proveedor: a.proveedor,
       Proyecto: a.proyecto_nombre,
-      Total: a.totalValor || 0
+      Acopiado: a.valor_acopio || 0,
+      Desacopiado: a.valor_desacopio || 0,
+      Disponible: a.totalValor || 0
     }));
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
@@ -197,6 +202,52 @@ const AcopiosPage = () => {
     a.descripcion?.toLowerCase().includes(filtroTexto.toLowerCase())
   );
 
+  const handleSort = (column) => {
+    if (orderBy === column) {
+      setOrderDir(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setOrderBy(column);
+      setOrderDir('asc');
+    }
+  };
+
+  const acopiosOrdenados = [...acopiosFiltrados].sort((a, b) => {
+    let valA, valB;
+    switch (orderBy) {
+      case 'fecha':
+        valA = new Date(a.fecha).getTime() || 0;
+        valB = new Date(b.fecha).getTime() || 0;
+        break;
+      case 'codigo':
+        valA = (a.codigo || '').toLowerCase();
+        valB = (b.codigo || '').toLowerCase();
+        return orderDir === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+      case 'proveedor':
+        valA = (a.proveedor || '').toLowerCase();
+        valB = (b.proveedor || '').toLowerCase();
+        return orderDir === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+      case 'proyecto':
+        valA = (a.proyecto_nombre || '').toLowerCase();
+        valB = (b.proyecto_nombre || '').toLowerCase();
+        return orderDir === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+      case 'valor_acopio':
+        valA = a.valor_acopio || 0;
+        valB = b.valor_acopio || 0;
+        break;
+      case 'valor_desacopio':
+        valA = a.valor_desacopio || 0;
+        valB = b.valor_desacopio || 0;
+        break;
+      case 'totalValor':
+        valA = a.totalValor || 0;
+        valB = b.totalValor || 0;
+        break;
+      default:
+        return 0;
+    }
+    return orderDir === 'asc' ? valA - valB : valB - valA;
+  });
+
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '70vh' }}>
@@ -245,18 +296,34 @@ const AcopiosPage = () => {
         <Table>
           <TableHead>
             <TableRow>
-              <TableCell>Fecha</TableCell>
-              <TableCell>Código</TableCell>
-              <TableCell>Proveedor</TableCell>
-              <TableCell>Proyecto</TableCell>
+              <TableCell sortDirection={orderBy === 'fecha' ? orderDir : false}>
+                <TableSortLabel active={orderBy === 'fecha'} direction={orderBy === 'fecha' ? orderDir : 'asc'} onClick={() => handleSort('fecha')}>Fecha</TableSortLabel>
+              </TableCell>
+              <TableCell sortDirection={orderBy === 'codigo' ? orderDir : false}>
+                <TableSortLabel active={orderBy === 'codigo'} direction={orderBy === 'codigo' ? orderDir : 'asc'} onClick={() => handleSort('codigo')}>Código</TableSortLabel>
+              </TableCell>
+              <TableCell sortDirection={orderBy === 'proveedor' ? orderDir : false}>
+                <TableSortLabel active={orderBy === 'proveedor'} direction={orderBy === 'proveedor' ? orderDir : 'asc'} onClick={() => handleSort('proveedor')}>Proveedor</TableSortLabel>
+              </TableCell>
+              <TableCell sortDirection={orderBy === 'proyecto' ? orderDir : false}>
+                <TableSortLabel active={orderBy === 'proyecto'} direction={orderBy === 'proyecto' ? orderDir : 'asc'} onClick={() => handleSort('proyecto')}>Proyecto</TableSortLabel>
+              </TableCell>
               <TableCell>Tipo</TableCell>
               <TableCell>Estado</TableCell>
-              <TableCell>Total disponible</TableCell>
+              <TableCell sortDirection={orderBy === 'valor_acopio' ? orderDir : false}>
+                <TableSortLabel active={orderBy === 'valor_acopio'} direction={orderBy === 'valor_acopio' ? orderDir : 'asc'} onClick={() => handleSort('valor_acopio')}>Acopiado</TableSortLabel>
+              </TableCell>
+              <TableCell sortDirection={orderBy === 'valor_desacopio' ? orderDir : false}>
+                <TableSortLabel active={orderBy === 'valor_desacopio'} direction={orderBy === 'valor_desacopio' ? orderDir : 'asc'} onClick={() => handleSort('valor_desacopio')}>Desacopiado</TableSortLabel>
+              </TableCell>
+              <TableCell sortDirection={orderBy === 'totalValor' ? orderDir : false}>
+                <TableSortLabel active={orderBy === 'totalValor'} direction={orderBy === 'totalValor' ? orderDir : 'asc'} onClick={() => handleSort('totalValor')}>Disponible</TableSortLabel>
+              </TableCell>
               <TableCell align="center">Acciones</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
-            {acopiosFiltrados.map((acopio) => (
+            {acopiosOrdenados.map((acopio) => (
               <TableRow key={acopio.id}>
                 <TableCell>{new Date(acopio.fecha).toLocaleDateString()}</TableCell>
                 <TableCell>
@@ -296,6 +363,8 @@ const AcopiosPage = () => {
                 <TableCell>
                 <Chip label={acopio.estado} color={acopio.estado == 'inactivo' ? 'error': 'success' } size="small" />
                   </TableCell>
+                <TableCell>{formatCurrency(acopio.valor_acopio)}</TableCell>
+                <TableCell>{formatCurrency(acopio.valor_desacopio)}</TableCell>
                 <TableCell>{formatCurrency(acopio.totalValor)}</TableCell>
                 <TableCell align="center">
                   <Tooltip title="Más opciones">
