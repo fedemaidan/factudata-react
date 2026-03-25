@@ -36,7 +36,7 @@ const PanelValidacionFiltersBar = ({
   nombre_user,
   setNombre_user,
   estado,
-  setEstado,
+  onEstadoAplicar,
   onFiltrar,
   onRestablecer,
 }) => {
@@ -122,7 +122,10 @@ const PanelValidacionFiltersBar = ({
                 size="small"
                 value={estado}
                 label="Estado"
-                onChange={(e) => setEstado(e.target.value)}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (onEstadoAplicar) onEstadoAplicar(v);
+                }}
               >
                 {ESTADOS_OPCIONES.map((opt) => (
                   <MenuItem key={opt.value} value={opt.value}>
