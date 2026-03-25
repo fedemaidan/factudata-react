@@ -135,6 +135,15 @@ const PanelValidacionPage = () => {
     }
   }, [empresaId, buildApiFilters]);
 
+  const aplicarFiltroEstado = useCallback(
+    (nuevoEstado) => {
+      const next = { ...filtrosRef.current, estado: nuevoEstado };
+      setFiltros(next);
+      fetchBorradores(next);
+    },
+    [fetchBorradores]
+  );
+
   const handleActualizar = useCallback(() => {
     fetchBorradores();
   }, [fetchBorradores]);
@@ -390,6 +399,26 @@ const PanelValidacionPage = () => {
     );
   }, [editDrawer.form, drawerCatalogos.comprobanteInfo, drawerCatalogos.ingresoInfo, savingEdit]);
 
+  const filterChips = useMemo(() => {
+    const chips = [];
+    const estadoLabels = {
+      '': 'Todos',
+      completado: 'Listo',
+      error: 'Error',
+      confirmado: 'Confirmado',
+    };
+    const t = filtros.texto?.trim();
+    if (t) chips.push(`Buscar: ${t}`);
+    if (filtros.fechaDesde) chips.push(`Desde: ${filtros.fechaDesde}`);
+    if (filtros.fechaHasta) chips.push(`Hasta: ${filtros.fechaHasta}`);
+    if (filtros.proveedor?.trim()) chips.push(`Proveedor: ${filtros.proveedor.trim()}`);
+    if (filtros.nombre_user?.trim()) chips.push(`Usuario: ${filtros.nombre_user.trim()}`);
+    if (filtros.estado) {
+      chips.push(`Estado: ${estadoLabels[filtros.estado] ?? filtros.estado}`);
+    }
+    return chips;
+  }, [filtros]);
+
   const openImg = (url) => setImgPreview({ open: true, url });
   const closeImg = () => setImgPreview({ open: false, url: null });
 
@@ -417,54 +446,55 @@ const PanelValidacionPage = () => {
       <Box component="main" sx={{ flexGrow: 1, pt: 2, pb: 8 }}>
         <Container maxWidth="xl">
           <Stack spacing={3}>
-            <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap" useFlexGap>
-              <PanelValidacionFiltersBar
-                texto={filtros.texto}
-                setTexto={(v) => setFiltros((f) => ({ ...f, texto: v }))}
-                fechaDesde={filtros.fechaDesde}
-                setFechaDesde={(v) => setFiltros((f) => ({ ...f, fechaDesde: v }))}
-                fechaHasta={filtros.fechaHasta}
-                setFechaHasta={(v) => setFiltros((f) => ({ ...f, fechaHasta: v }))}
-                proveedor={filtros.proveedor}
-                setProveedor={(v) => setFiltros((f) => ({ ...f, proveedor: v }))}
-                nombre_user={filtros.nombre_user}
-                setNombre_user={(v) => setFiltros((f) => ({ ...f, nombre_user: v }))}
-                estado={filtros.estado}
-                setEstado={(v) => setFiltros((f) => ({ ...f, estado: v }))}
-                onFiltrar={() => fetchBorradores(filtros)}
-                onRestablecer={() => {
-                  const defaultFiltros = {
-                    fechaDesde: '',
-                    fechaHasta: '',
-                    proveedor: '',
-                    nombre_user: '',
-                    texto: '',
-                    estado: 'completado',
-                  };
-                  setFiltros(defaultFiltros);
-                  filtrosRef.current = defaultFiltros;
-                  fetchBorradores(defaultFiltros);
-                }}
-              />
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                <Tooltip title="Actualizar lista">
-                  <IconButton
-                    size="small"
-                    aria-label="Actualizar borradores"
-                    onClick={handleActualizar}
-                    disabled={isLoading || !empresaId}
-                    sx={{
-                      borderRadius: 2,
-                      border: '1px solid',
-                      borderColor: 'divider',
-                      boxShadow: 1,
-                      '&:hover': { boxShadow: 2 },
-                      p: 0.75,
-                    }}
-                  >
-                    <RefreshIcon sx={{ fontSize: 18 }} />
-                  </IconButton>
-                </Tooltip>
+            <Stack spacing={1}>
+              <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap" useFlexGap>
+                <PanelValidacionFiltersBar
+                  texto={filtros.texto}
+                  setTexto={(v) => setFiltros((f) => ({ ...f, texto: v }))}
+                  fechaDesde={filtros.fechaDesde}
+                  setFechaDesde={(v) => setFiltros((f) => ({ ...f, fechaDesde: v }))}
+                  fechaHasta={filtros.fechaHasta}
+                  setFechaHasta={(v) => setFiltros((f) => ({ ...f, fechaHasta: v }))}
+                  proveedor={filtros.proveedor}
+                  setProveedor={(v) => setFiltros((f) => ({ ...f, proveedor: v }))}
+                  nombre_user={filtros.nombre_user}
+                  setNombre_user={(v) => setFiltros((f) => ({ ...f, nombre_user: v }))}
+                  estado={filtros.estado}
+                  onEstadoAplicar={aplicarFiltroEstado}
+                  onFiltrar={() => fetchBorradores()}
+                  onRestablecer={() => {
+                    const defaultFiltros = {
+                      fechaDesde: '',
+                      fechaHasta: '',
+                      proveedor: '',
+                      nombre_user: '',
+                      texto: '',
+                      estado: 'completado',
+                    };
+                    setFiltros(defaultFiltros);
+                    filtrosRef.current = defaultFiltros;
+                    fetchBorradores(defaultFiltros);
+                  }}
+                />
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <Tooltip title="Actualizar lista">
+                    <IconButton
+                      size="small"
+                      aria-label="Actualizar borradores"
+                      onClick={handleActualizar}
+                      disabled={isLoading || !empresaId}
+                      sx={{
+                        borderRadius: 2,
+                        border: '1px solid',
+                        borderColor: 'divider',
+                        boxShadow: 1,
+                        '&:hover': { boxShadow: 2 },
+                        p: 0.75,
+                      }}
+                    >
+                      <RefreshIcon sx={{ fontSize: 18 }} />
+                    </IconButton>
+                  </Tooltip>
                   <Button
                     size="small"
                     variant="outlined"
@@ -481,10 +511,31 @@ const PanelValidacionPage = () => {
                   >
                     Corrección asistida
                   </Button>
-              </Box>
-              <Typography variant="body2">
-                Total: {total} borradores
-              </Typography>
+                </Box>
+                <Typography variant="body2">
+                  Total: {total} borradores
+                </Typography>
+              </Stack>
+              {filterChips.length > 0 && (
+                <Stack
+                  direction="row"
+                  spacing={0.5}
+                  alignItems="center"
+                  flexWrap="wrap"
+                  useFlexGap
+                  sx={{ mt: -0.5 }}
+                >
+                  {filterChips.map((label, idx) => (
+                    <Chip
+                      key={`filter-chip-${idx}`}
+                      label={label}
+                      size="small"
+                      variant="outlined"
+                      sx={{ height: 22, fontSize: 11 }}
+                    />
+                  ))}
+                </Stack>
+              )}
             </Stack>
 
             {isLoading ? (
