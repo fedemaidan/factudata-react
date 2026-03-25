@@ -683,12 +683,12 @@ moverRemitoAotroAcopio: async (remitoId, origenAcopioId, destinoAcopioId) => {
 /**
  * Edita los datos básicos de un acopio (NO toca productos)
  * @param {string} acopioId - ID del acopio a editar
- * @param {Object} datos - { proveedor, proyecto_id, codigo, descripcion }
+ * @param {Object} datos - { proveedor, proyecto_id, codigo, descripcion, instrucciones_extraccion }
  * @returns {Promise<boolean>}
  */
-editarAcopio: async (acopioId, { proveedor, proyecto_id, codigo, descripcion }) => {
+editarAcopio: async (acopioId, { proveedor, proyecto_id, codigo, descripcion, instrucciones_extraccion }) => {
   try {
-    const response = await api.put(`/acopio/${acopioId}`, { proveedor, proyecto_id, codigo, descripcion });
+    const response = await api.put(`/acopio/${acopioId}`, { proveedor, proyecto_id, codigo, descripcion, instrucciones_extraccion });
     if (response.status === 200) {
       console.log('✅ Acopio actualizado con éxito');
       return true;

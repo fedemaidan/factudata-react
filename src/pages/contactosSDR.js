@@ -1949,7 +1949,7 @@ const ContactosSDRPage = () => {
                                                 />
                                             )}
                                             {contacto.datosBot?.agendarClickeado && (
-                                                <Tooltip title="Tocó el link de agendar demo">
+                                                <Tooltip title="Tocó el link de agendar reunión">
                                                     <Chip
                                                         size="small"
                                                         label="📅 Agendar"
@@ -2909,7 +2909,7 @@ const ContactosSDRPage = () => {
                                                         />
                                                     )}
                                                     {contacto.datosBot?.agendarClickeado && (
-                                                        <Tooltip title="Tocó el link de agendar demo">
+                                                        <Tooltip title="Tocó el link de agendar reunión">
                                                             <Chip
                                                                 size="small"
                                                                 label="📅"

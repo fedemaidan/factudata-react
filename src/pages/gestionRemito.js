@@ -267,6 +267,20 @@ const GestionRemitoPage = () => {
         }
 
         setItems(mats);
+
+        // Autocompletar fecha y número de remito si vinieron de la extracción
+        if (data.numero_remito && !numeroRemito) {
+          setNumeroRemito(data.numero_remito);
+        }
+        if (data.fecha && !remitoId) {
+          // Convertir DD/MM/YYYY a YYYY-MM-DD para el input date
+          const partes = data.fecha.split('/');
+          if (partes.length === 3) {
+            const fechaISO = `${partes[2]}-${partes[1].padStart(2, '0')}-${partes[0].padStart(2, '0')}`;
+            if (!isNaN(Date.parse(fechaISO))) setFecha(fechaISO);
+          }
+        }
+
         setAlert({ open: true, message: `Datos extraídos: ${mats.length} materiales encontrados.`, severity: 'success' });
       } else {
         setAlert({ open: true, message: 'No se detectaron materiales.', severity: 'warning' });

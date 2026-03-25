@@ -108,6 +108,8 @@ const AcopiosPage = () => {
         proveedor: acopioEditando.proveedor,
         proyecto_id: acopioEditando.proyecto_id || acopioEditando.proyectoId || '',
         codigo: acopioEditando.codigo,
+        descripcion: descripcionEdit,
+        instrucciones_extraccion: acopioEditando.instrucciones_extraccion,
         descripcion: descripcionEdit
       });
       if (ok) {

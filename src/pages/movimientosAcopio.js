@@ -74,6 +74,9 @@ const MovimientosAcopioPage = () => {
   const [descripcionDialogOpen, setDescripcionDialogOpen] = useState(false);
   const [descripcionEdit, setDescripcionEdit] = useState('');
   const [guardandoDescripcion, setGuardandoDescripcion] = useState(false);
+  const [instruccionesDialogOpen, setInstruccionesDialogOpen] = useState(false);
+  const [instruccionesEdit, setInstruccionesEdit] = useState('');
+  const [guardandoInstrucciones, setGuardandoInstrucciones] = useState(false);
   
   // Conteo para badges en tabs
   const [remitosCount, setRemitosCount] = useState(null); // null = no cargado, 0+ = cargado
@@ -255,7 +258,8 @@ const MovimientosAcopioPage = () => {
         proveedor: acopio.proveedor,
         proyecto_id: acopio.proyecto_id || acopio.proyectoId || '',
         codigo: acopio.codigo,
-        descripcion: descripcionEdit
+        descripcion: descripcionEdit,
+        instrucciones_extraccion: acopio.instrucciones_extraccion,
       });
       if (ok) {
         setAcopio((prev) => ({ ...prev, descripcion: descripcionEdit }));
@@ -268,6 +272,41 @@ const MovimientosAcopioPage = () => {
       setAlert({ open: true, message: 'Error al actualizar la descripción', severity: 'error' });
     } finally {
       setGuardandoDescripcion(false);
+    }
+  };
+
+  const openInstruccionesDialog = () => {
+    setInstruccionesEdit(acopio?.instrucciones_extraccion || '');
+    setInstruccionesDialogOpen(true);
+  };
+
+  const closeInstruccionesDialog = () => {
+    setInstruccionesDialogOpen(false);
+    setInstruccionesEdit('');
+  };
+
+  const handleGuardarInstrucciones = async () => {
+    if (!acopio) return;
+    setGuardandoInstrucciones(true);
+    try {
+      const ok = await AcopioService.editarAcopio(acopioId, {
+        proveedor: acopio.proveedor,
+        proyecto_id: acopio.proyecto_id || acopio.proyectoId || '',
+        codigo: acopio.codigo,
+        descripcion: acopio.descripcion || '',
+        instrucciones_extraccion: instruccionesEdit,
+      });
+      if (ok) {
+        setAcopio((prev) => ({ ...prev, instrucciones_extraccion: instruccionesEdit }));
+        setAlert({ open: true, message: 'Aclaraciones actualizadas', severity: 'success' });
+        closeInstruccionesDialog();
+      } else {
+        setAlert({ open: true, message: 'No se pudo actualizar las aclaraciones', severity: 'error' });
+      }
+    } catch (error) {
+      setAlert({ open: true, message: 'Error al actualizar las aclaraciones', severity: 'error' });
+    } finally {
+      setGuardandoInstrucciones(false);
     }
   };
 
@@ -984,6 +1023,37 @@ const MovimientosAcopioPage = () => {
                   )}
                 </Box>
 
+                {/* Aclaraciones para extracción */}
+                <Box sx={{ mb: 3 }}>
+                  {acopio.instrucciones_extraccion ? (
+                    <Stack direction="row" spacing={1} alignItems="flex-start">
+                      <Box sx={{ flex: 1, p: 2, bgcolor: 'warning.lighter', borderRadius: 1, borderLeft: '4px solid', borderColor: 'warning.main' }}>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                          Aclaraciones para el análisis de documentos
+                        </Typography>
+                        <Typography variant="body2">
+                          {acopio.instrucciones_extraccion}
+                        </Typography>
+                      </Box>
+                      <Tooltip title="Editar aclaraciones">
+                        <IconButton size="small" onClick={openInstruccionesDialog} sx={{ mt: 0.5 }}>
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </Stack>
+                  ) : (
+                    <Button
+                      variant="text"
+                      size="small"
+                      onClick={openInstruccionesDialog}
+                      startIcon={<EditIcon fontSize="inherit" />}
+                      sx={{ px: 0, minWidth: 0, textTransform: 'none', color: 'text.secondary' }}
+                    >
+                      Agregar aclaraciones para el análisis de documentos
+                    </Button>
+                  )}
+                </Box>
+
                 {/* Datos del Acopio */}
                 <Typography variant="h6" gutterBottom>Información General</Typography>
                 <Grid container spacing={2} sx={{ mb: 3 }}>
@@ -1338,6 +1408,36 @@ const MovimientosAcopioPage = () => {
               </Button>
               <Button onClick={handleGuardarDescripcionAcopio} variant="contained" disabled={guardandoDescripcion}>
                 {guardandoDescripcion ? 'Guardando...' : 'Guardar'}
+              </Button>
+            </Stack>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={instruccionesDialogOpen} onClose={closeInstruccionesDialog} maxWidth="sm" fullWidth>
+          <DialogContent>
+            <Typography variant="h6" gutterBottom>
+              Aclaraciones para el análisis de documentos
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Estas indicaciones se envían al bot cada vez que analiza remitos, facturas u otros documentos de este acopio. 
+              Usalo para aclarar particularidades del proveedor (formato de números, unidades, etc.)
+            </Typography>
+            <TextField
+              value={instruccionesEdit}
+              onChange={(e) => setInstruccionesEdit(e.target.value)}
+              placeholder='Ej: "Este corralón usa la coma para separar decimales con tres ceros atrás (10,000 = 10 unidades). Se maneja solo en kg."'
+              fullWidth
+              multiline
+              minRows={4}
+              maxRows={8}
+              sx={{ mb: 2 }}
+            />
+            <Stack direction="row" spacing={2} justifyContent="flex-end">
+              <Button onClick={closeInstruccionesDialog} variant="outlined">
+                Cancelar
+              </Button>
+              <Button onClick={handleGuardarInstrucciones} variant="contained" disabled={guardandoInstrucciones}>
+                {guardandoInstrucciones ? 'Guardando...' : 'Guardar'}
               </Button>
             </Stack>
           </DialogContent>

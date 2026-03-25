@@ -632,7 +632,7 @@ const FollowUpConfig = () => {
                             label="Texto"
                             value={btn.body}
                             onChange={(e) => updateButton(idx, 'body', e.target.value)}
-                            placeholder="Ej: Agendar demo"
+                            placeholder="Ej: Agendar reunión"
                             inputProps={{ maxLength: 20 }}
                             sx={{ flex: 1 }}
                           />

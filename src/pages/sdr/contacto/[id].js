@@ -1925,7 +1925,7 @@ const ContactoSDRDetailPage = () => {
                                                     </Tooltip>
                                                 )}
                                                 {contacto.datosBot?.agendarClickeado ? (
-                                                    <Tooltip title="✅ Objetivo alcanzado: tocó el link de agendar demo">
+                                                    <Tooltip title="✅ Objetivo alcanzado: tocó el link de agendar reunión">
                                                         <Chip
                                                             size="small"
                                                             icon={<EventIcon sx={{ fontSize: 12 }} />}
@@ -1936,7 +1936,7 @@ const ContactoSDRDetailPage = () => {
                                                         />
                                                     </Tooltip>
                                                 ) : contacto.ab_test_variante && (
-                                                    <Tooltip title="Aún no tocó el link de agendar demo">
+                                                    <Tooltip title="Aún no tocó el link de agendar reunión">
                                                         <Chip
                                                             size="small"
                                                             icon={<EventIcon sx={{ fontSize: 12 }} />}
@@ -2120,7 +2120,7 @@ const ContactoSDRDetailPage = () => {
                                             </Tooltip>
                                         )}
                                         {contacto.datosBot?.agendarClickeado && (
-                                            <Tooltip title="✅ Objetivo: tocó el link de agendar demo">
+                                            <Tooltip title="✅ Objetivo: tocó el link de agendar reunión">
                                                 <Chip
                                                     size="small"
                                                     icon={<EventIcon sx={{ fontSize: 14 }} />}

@@ -90,6 +90,7 @@ export default function EditarAcopioPage() {
   const [proveedor, setProveedor] = useState('');
   const [proyecto, setProyecto] = useState('');
   const [descripcion, setDescripcion] = useState('');
+  const [instruccionesExtraccion, setInstruccionesExtraccion] = useState('');
   const [tipoLista, setTipoLista] = useState('');
   const [valorTotal, setValorTotal] = useState(0);
   const [actualizacionAutomatica, setActualizacionAutomatica] = useState(false); // Por defecto manual
@@ -157,6 +158,7 @@ const goNext = () => setCurrentIdx((i) => (i + 1) % (urls?.length || 0));
         setProveedor(acopioData.proveedor || '');
         setProyecto(acopioData.proyecto_id || acopioData.proyectoId || '');
         setDescripcion(acopioData.descripcion || '');
+        setInstruccionesExtraccion(acopioData.instrucciones_extraccion || '');
         
         // Usar el campo correcto del backend
         const valorAcopio = acopioData.valor_acopio || acopioData.valorTotal || acopioData.valor_total || 0;
@@ -367,6 +369,7 @@ const goNext = () => setCurrentIdx((i) => (i + 1) % (urls?.length || 0));
         proyecto_id: proyecto,
         codigo,
         descripcion,
+        instrucciones_extraccion: instruccionesExtraccion,
       };
       
       console.log('1. Actualizando datos básicos:', datosBasicos);
@@ -1051,6 +1054,20 @@ const goNext = () => setCurrentIdx((i) => (i + 1) % (urls?.length || 0));
                 fullWidth
                 placeholder="Descripción breve para identificar el acopio"
                 helperText="Esta descripción se mostrará en el listado de acopios"
+              />
+
+              {/* Instrucciones para extracción */}
+              <TextField
+                label="Aclaraciones para el análisis de documentos"
+                value={instruccionesExtraccion}
+                onChange={(e) => setInstruccionesExtraccion(e.target.value)}
+                size="small"
+                fullWidth
+                multiline
+                minRows={2}
+                maxRows={6}
+                placeholder='Ej: "Este corralón usa coma para separar decimales con tres ceros atrás (10,000 = 10 unidades, no diez mil). Se maneja solo en kg."'
+                helperText="Estas aclaraciones se envían al bot cada vez que analiza documentos de este acopio (remitos, facturas, etc.)"
               />
 
               <Stack direction="row" spacing={2} alignItems="center">
