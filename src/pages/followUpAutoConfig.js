@@ -43,6 +43,7 @@ const EMPTY_CONFIG = {
   requiereReunion: '',
   estadoReunion: '',
   calificacionReunion: '',
+  respetar_horario: true,
   prompt: '',
 };
 
@@ -82,6 +83,7 @@ const Page = () => {
         requiereReunion: config.requiereReunion == null ? '' : String(config.requiereReunion),
         estadoReunion: config.estadoReunion || '',
         calificacionReunion: config.calificacionReunion || '',
+        respetar_horario: config.respetar_horario !== false,
         prompt: config.prompt || '',
       });
     } else {
@@ -119,6 +121,7 @@ const Page = () => {
         requiereReunion: form.requiereReunion === '' ? null : form.requiereReunion === 'true',
         estadoReunion: form.estadoReunion || null,
         calificacionReunion: form.calificacionReunion || null,
+        respetar_horario: form.respetar_horario,
         prompt: form.prompt,
       };
 
@@ -266,6 +269,10 @@ const Page = () => {
               <FormControlLabel
                 control={<Switch checked={form.activo} onChange={e => setForm({ ...form, activo: e.target.checked })} />}
                 label="Activo"
+              />
+              <FormControlLabel
+                control={<Switch checked={form.respetar_horario} onChange={e => setForm({ ...form, respetar_horario: e.target.checked })} />}
+                label="Respetar horario"
               />
             </Stack>
 
