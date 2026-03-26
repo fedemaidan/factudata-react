@@ -1,4 +1,4 @@
-import { doc, getDoc, updateDoc, addDoc, collection, deleteDoc, query, getDocs, where } from 'firebase/firestore';
+import { doc, collection, deleteDoc, query, getDocs, where } from 'firebase/firestore';
 import { db } from 'src/config/firebase';
 import api from './axiosConfig';
 import  { addProyectoToEmpresa } from 'src/services/empresaService';
@@ -61,21 +61,26 @@ export const getProyectosFromUser = async (user) => {
     }
       
       const proyectos = await Promise.all(user.proyectos.map(async (proyectoRef) => {
-      const pathSegments = proyectoRef._key.path.segments;
-      const path = pathSegments.slice(proyectoRef._key.path.offset, proyectoRef._key.path.offset + proyectoRef._key.path.len).join('/');
-
-      const proyectoDocRef = doc(db, path); // Crea una referencia al documento usando el path
-      const proyectoDoc = await getDoc(proyectoDocRef); // Obtiene el documento de Firestore
-      
-      if (proyectoDoc.exists()) {
-        return {
-          ...proyectoDoc.data(),
-          id: proyectoDoc.id,
-        };
-      } else {
-        console.log(`No se encontró el proyecto con referencia: ${proyectoRef.path}`);
-        return null; 
+      // Extraer ID del proyecto de la referencia (puede ser string o DocumentReference)
+      let proyectoId = null;
+      if (typeof proyectoRef === 'string') {
+        proyectoId = proyectoRef.includes('/') ? proyectoRef.split('/').pop() : proyectoRef;
+      } else if (proyectoRef?.id) {
+        proyectoId = proyectoRef.id;
+      } else if (proyectoRef?._key?.path?.segments) {
+        const segs = proyectoRef._key.path.segments;
+        const offset = proyectoRef._key.path.offset || 0;
+        const len = proyectoRef._key.path.len || segs.length;
+        const path = segs.slice(offset, offset + len).join('/');
+        proyectoId = path.split('/').pop();
       }
+
+      if (!proyectoId) {
+        console.log('No se pudo extraer ID del proyecto');
+        return null;
+      }
+
+      return await getProyectoById(proyectoId);
     }));
     
     return proyectos.filter(proyecto => proyecto !== null && proyecto.eliminado !== true);
@@ -94,19 +99,9 @@ export const getProyectosFromUser = async (user) => {
  */
 export const getProyectoById = async (id) => {
   try {
-    const proyectoDocRef = doc(db, 'proyectos', id);
-    const proyectoDoc = await getDoc(proyectoDocRef);
-
-    if (proyectoDoc.exists()) {
-      console.log('Proyecto obtenido con éxito');
-      return {
-        ...proyectoDoc.data(),
-        id: proyectoDoc.id,
-      };
-    } else {
-      console.log('No se encontró el proyecto');
-      return null;
-    }
+    const response = await api.get(`/proyecto/${id}`);
+    console.log('Proyecto obtenido con éxito');
+    return response.data;
   } catch (err) {
     console.error('Error al obtener el proyecto:', err);
     return null;
@@ -121,7 +116,7 @@ export const getProyectoById = async (id) => {
  */
 export const updateProyecto = async (id, proyecto, empresaId = null) => {
   try {
-    asegurarIdsSubproyectos(proyecto); // ← agregar esta línea
+    asegurarIdsSubproyectos(proyecto);
     console.log(proyecto, " proyecto a actualizar");
     proyecto = {
       carpetaRef: proyecto.carpetaRef ?? "",
@@ -136,9 +131,8 @@ export const updateProyecto = async (id, proyecto, empresaId = null) => {
       datos_facturacion_cliente: proyecto.datos_facturacion_cliente ?? "",
     }
     console.log("proyecto nuevo", proyecto);
-    const proyectoDocRef = doc(db, 'proyectos', id);
-    await updateDoc(proyectoDocRef, proyecto);
-    
+    await api.put(`/proyecto/${id}`, proyecto);
+
     if (empresaId) {
       try {
         await api.post('/cache/invalidate', { tipo: 'empresa', id: empresaId });
@@ -260,22 +254,20 @@ export const crearProyecto = async (proyecto, empresaId) => {
  */
 export const deleteProyectoById = async (proyectoId, empresaId = null) => {
   try {
-    // Obtén todos los movimientos asociados al proyecto
+    // Elimina movimientos asociados al proyecto (movimientos siguen en Firestore)
     const movimientosQuery = query(
       collection(db, 'movimientos'),
       where('proyecto_id', '==', proyectoId)
     );
     const movimientosSnapshot = await getDocs(movimientosQuery);
 
-    // Elimina cada movimiento asociado al proyecto
     const deleteMovementsPromises = movimientosSnapshot.docs.map((movimientoDoc) =>
       movimientosService.deleteMovimientoById(movimientoDoc.id)
     );
     await Promise.all(deleteMovementsPromises);
 
-    // Elimina el proyecto una vez que todos los movimientos se han eliminado
-    const proyectoDocRef = doc(db, 'proyectos', proyectoId);
-    await deleteDoc(proyectoDocRef);
+    // Elimina el proyecto via REST API
+    await api.delete(`/proyecto/${proyectoId}`);
 
     if (empresaId) {
       try {

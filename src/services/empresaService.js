@@ -1,5 +1,3 @@
-import { doc, updateDoc, getDoc, addDoc, collection, getDocs, deleteDoc } from 'firebase/firestore';
-import { db } from 'src/config/firebase';
 import api from './axiosConfig';
 import profileService from 'src/services/profileService';
 import { deleteCajaById, deleteProyectoById, getCajasByEmpresaId, getProyectoById } from 'src/services/proyectosService';
@@ -14,18 +12,17 @@ import TicketService from './ticketService';
 export const getInfoToDeleteEmpresa = async (empresaId) => {
   try {
     const profiles = await profileService.getProfileByEmpresa(empresaId);
-    const empresaDocRef = doc(db, 'empresas', empresaId);
-    const empresaDoc = await getDoc(empresaDocRef);
+    const empresa = await getEmpresaById(empresaId);
 
-    if (!empresaDoc.exists()) {
+    if (!empresa) {
       console.error('No se encontró la empresa');
       return null;
     }
 
-    const { proyectosIds, nombre, tipo } = empresaDoc.data();
+    const { proyectosIds, nombre, tipo } = empresa;
     if (tipo == "Constructora") {
       const proyectos = await Promise.all(
-        proyectosIds.map(async (proyectoId) => {
+        (proyectosIds || []).map(async (proyectoId) => {
           const proyecto = await getProyectoById(proyectoId);
           const movimientosARS = await TicketService.getMovimientosForProyecto(proyectoId, 'ARS');
           const movimientosUSD = await TicketService.getMovimientosForProyecto(proyectoId, 'USD');
@@ -83,21 +80,9 @@ export const getInfoToDeleteEmpresa = async (empresaId) => {
  */
 export const crearEmpresa = async (empresaDetails) => {
   try {
-    console.log(empresaDetails)
-    const empresaDocRef = await addDoc(collection(db, 'empresas'), empresaDetails);
-    const empresaDoc = await getDoc(empresaDocRef);
-    if (!empresaDoc.exists()) {
-      console.error('No se pudo obtener el documento de la empresa recién creada');
-      return null;
-    }
-
-    const nuevaEmpresa = {
-      ...empresaDoc.data(),
-      id: empresaDoc.id,
-    };
-
+    const response = await api.post('/empresa', empresaDetails);
     console.log('Empresa creada con éxito');
-    return nuevaEmpresa;
+    return response.data;
   } catch (err) {
     console.error('Error al crear la empresa:', err);
     return null;
@@ -112,21 +97,16 @@ export const crearEmpresa = async (empresaDetails) => {
  */
 export const addProyectoToEmpresa = async (empresaId, proyectoId) => {
   try {
-    // Obtener la empresa
-    const empresaDocRef = doc(db, 'empresas', empresaId);
-    const empresaDoc = await getDoc(empresaDocRef);
-
-    if (!empresaDoc.exists()) {
+    const empresa = await getEmpresaById(empresaId);
+    if (!empresa) {
       console.error('No se encontró la empresa para actualizar');
       return false;
     }
 
-    // Actualizar la empresa para agregar el ID del nuevo proyecto
-    const empresaData = empresaDoc.data();
-    const proyectosIds = empresaData.proyectosIds || [];
+    const proyectosIds = empresa.proyectosIds || [];
     proyectosIds.push(proyectoId);
 
-    await updateDoc(empresaDocRef, { proyectosIds });
+    await updateEmpresaDetails(empresaId, { proyectosIds });
 
     console.log('Proyecto añadido a la empresa con éxito');
     return true;
@@ -145,18 +125,7 @@ export const addProyectoToEmpresa = async (empresaId, proyectoId) => {
  */
 export const updateEmpresaDetails = async (empresaId, newDetails) => {
   try {
-    console.log(newDetails)
-    const empresaDocRef = doc(db, 'empresas', empresaId);
-    await updateDoc(empresaDocRef, newDetails);
-    
-    // Invalidate cache
-    try {
-      await api.post('/cache/invalidate', { tipo: 'empresa', id: empresaId });
-      console.log('Caché invalidado automáticamente tras actualización');
-    } catch (cacheErr) {
-      console.warn('No se pudo invalidar el caché:', cacheErr);
-    }
-
+    await api.put(`/empresa/${empresaId}`, newDetails);
     console.log('Detalles de la empresa actualizados con éxito');
     return true;
   } catch (err) {
@@ -187,31 +156,32 @@ export const invalidateEmpresaCache = async (empresaId) => {
  */
 export const getEmpresaDetailsFromUser = async (user) => {
   try {
-    
-    if (!user || !user.empresa || !user.empresa._key || !user.empresa._key.path || !user.empresa._key.path.segments) {
-      console.log('Información de la empresa no proporcionada o incompleta en el objeto usuario');
+    if (!user || !user.empresa) {
+      console.log('Información de la empresa no proporcionada');
       return null;
     }
-    console.log(user.empresa, "1")
-    const pathSegments = user.empresa._key.path.segments;
-    const path = pathSegments.slice(user.empresa._key.path.offset, user.empresa._key.path.offset + user.empresa._key.path.len).join('/');
-    console.log(path)
-    const empresaDocRef = doc(db, path); // Crea una referencia al documento usando el path
-    const empresaDoc = await getDoc(empresaDocRef); // Obtiene el documento de Firestore
 
-    if (empresaDoc.exists()) {
-      console.log('Detalles de la empresa obtenidos con éxito');
-      return {
-        ...empresaDoc.data(),
-        id: empresaDoc.id,
+    // Extraer empresaId de distintas formas
+    let empresaId = null;
+    const e = user.empresa;
+    if (typeof e === 'string') {
+      empresaId = e.includes('/') ? e.split('/').pop() : e;
+    } else if (e && typeof e === 'object') {
+      if (e.id) empresaId = e.id;
+      else if (e._key?.path?.segments) {
+        const segs = e._key.path.segments;
+        const offset = e._key.path.offset || 0;
+        const len = e._key.path.len || segs.length;
+        const path = segs.slice(offset, offset + len).join('/');
+        empresaId = path.split('/').pop();
       }
-    } else {
-      console.log('No se encontró el documento de la empresa');
-      return null; // Retorna null si el documento no existe
     }
+
+    if (!empresaId) return null;
+    return await getEmpresaById(empresaId);
   } catch (err) {
     console.error('Error al obtener los detalles de la empresa:', err);
-    return null; // Retorna null en caso de error
+    return null;
   }
 };
 
@@ -222,19 +192,9 @@ export const getEmpresaDetailsFromUser = async (user) => {
  */
 export const getEmpresaById = async (empresaId) => {
   try {
-    const empresaDocRef = doc(db, 'empresas', empresaId);
-    const empresaDoc = await getDoc(empresaDocRef);
-
-    if (empresaDoc.exists()) {
-      console.log('Detalles de la empresa obtenidos con éxito');
-      return {
-        ...empresaDoc.data(),
-        id: empresaDoc.id,
-      };
-    } else {
-      console.log('No se encontró la empresa con ID:', empresaId);
-      return null;
-    }
+    const response = await api.get(`/empresa/${empresaId}`);
+    console.log('Detalles de la empresa obtenidos con éxito');
+    return response.data;
   } catch (err) {
     console.error('Error al obtener los detalles de la empresa:', err);
     return null;
@@ -248,16 +208,9 @@ export const getEmpresaById = async (empresaId) => {
  */
 export const getAllEmpresas = async () => {
   try {
-    const empresasCollectionRef = collection(db, 'empresas');
-    const empresasSnapshot = await getDocs(empresasCollectionRef);
-
-    const empresas = empresasSnapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
-
+    const response = await api.get('/empresa');
     console.log('Empresas obtenidas con éxito');
-    return empresas;
+    return response.data;
   } catch (err) {
     console.error('Error al obtener las empresas:', err);
     return [];
@@ -279,26 +232,23 @@ export const deleteEmpresa = async (empresaId) => {
       await profileService.deleteProfile(profile.id);
     }
 
-    // Obtener y eliminar proyectos asociados a la empresa
-    const empresaDocRef = doc(db, 'empresas', empresaId);
-    const empresaDoc = await getDoc(empresaDocRef);
-    if (empresaDoc.exists()) {
-      const empresa = empresaDoc.data();
+    // Obtener y eliminar proyectos/cajas asociados
+    const empresa = await getEmpresaById(empresaId);
+    if (empresa) {
       if (empresa.tipo == "Constructora") {
-        for (const proyectoId of empresa.proyectosIds) {
+        for (const proyectoId of (empresa.proyectosIds || [])) {
           await deleteProyectoById(proyectoId);
         }
-      }
-      else {
-        const cajas = await getCajasByEmpresaId(empresa.id)
-        for (const cajaId of cajas) {
-          await deleteCajaById(cajaId.id);
+      } else {
+        const cajas = await getCajasByEmpresaId(empresaId);
+        for (const caja of cajas) {
+          await deleteCajaById(caja.id);
         }
       }
     }
 
-    // // Finalmente, eliminar la empresa
-    await deleteDoc(empresaDocRef);
+    // Eliminar la empresa
+    await api.delete(`/empresa/${empresaId}`);
     console.log('Empresa, perfiles y proyectos eliminados con éxito');
   } catch (err) {
     console.error('Error al eliminar la empresa y sus dependencias:', err);
