@@ -12,7 +12,18 @@ export function useVersionCheck({
     try {
       const remote = await getRemoteVersion();
       if (remote && localVersion && remote !== localVersion) {
+        // Evitar loop: si ya recargamos en esta sesión con esta versión, no recargar de nuevo
+        const reloadKey = `version_reload_${remote}`;
+        if (sessionStorage.getItem(reloadKey)) return;
+        sessionStorage.setItem(reloadKey, '1');
         setUpdateAvailable(true);
+        try {
+          if ('serviceWorker' in navigator) {
+            const regs = await navigator.serviceWorker.getRegistrations();
+            await Promise.all(regs.map(r => r.unregister()));
+          }
+        } catch {}
+        window.location.reload();
       }
     } catch {/* opcional: log */}
   }, [getRemoteVersion, localVersion]);

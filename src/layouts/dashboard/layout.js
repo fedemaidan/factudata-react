@@ -40,9 +40,9 @@ export const Layout = withAuthGuard((props) => {
   });
 
   const { updateAvailable, triggerReload } = useVersionCheck({
-    getRemoteVersion: getRemoteVersionFromFirestore, // o getRemoteVersionFromStorage
+    getRemoteVersion: getRemoteVersionFromFirestore,
     pollMs: 5 * 60 * 1000, // 5 minutos
-    // opcional: localVersion: process.env.NEXT_PUBLIC_APP_VERSION
+    localVersion: process.env.NEXT_PUBLIC_APP_VERSION || '',
   });
   
   const handlePathnameChange = useCallback(() => {
