@@ -152,7 +152,7 @@ const EmpresasListPage = () => {
         ? empresa?.proyectosIds?.length === parseInt(filters.proyectos, 10)
         : true;
       const matchesCliente = soloClientes
-        ? empresa?.tipo?.toLowerCase() === 'cliente'
+        ? empresa?.esCliente === true
         : true;
 
       return matchesNombre && matchesTipo && matchesProyectos && matchesCliente;
