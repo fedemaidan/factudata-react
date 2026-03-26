@@ -46,6 +46,7 @@ import EventAvailableIcon from '@mui/icons-material/EventAvailable';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useAuthContext } from 'src/contexts/auth-context';
 import SDRService from 'src/services/sdrService';
+import FollowUpAutoService from 'src/services/followUpAutoService';
 import DrawerDetalleContactoSDR, { EstadoChip } from 'src/components/sdr/DrawerDetalleContactoSDR';
 import ModalAgregarContacto from 'src/components/sdr/ModalAgregarContacto';
 import ModalImportarExcel from 'src/components/sdr/ModalImportarExcel';
@@ -808,6 +809,28 @@ const ContactosSDRPage = () => {
             cargarContactos();
         } catch (error) {
             setSnackbar({ open: true, message: 'Error al asignar cadencia', severity: 'error' });
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
+    // Desactivar/Activar follow-up automático masivamente
+    const handleToggleFollowUpMasivo = async (activo) => {
+        if (seleccionados.length === 0) return;
+        const label = activo ? 'activar' : 'desactivar';
+        if (!confirm(`¿${activo ? 'Activar' : 'Desactivar'} follow-up automático para ${seleccionados.length} contacto(s)?`)) return;
+        setActionLoading(true);
+        try {
+            const res = await FollowUpAutoService.actualizarFollowUpAutoMasivo(seleccionados, activo);
+            setSnackbar({
+                open: true,
+                message: `Follow-up ${activo ? 'activado' : 'desactivado'} en ${res.modificados} contacto(s)`,
+                severity: 'success'
+            });
+            setSeleccionados([]);
+            cargarContactos();
+        } catch (error) {
+            setSnackbar({ open: true, message: `Error al ${label} follow-up`, severity: 'error' });
         } finally {
             setActionLoading(false);
         }
@@ -1778,6 +1801,12 @@ const ContactosSDRPage = () => {
                                 <Button size="small" onClick={() => setModalCambiarEstadoMasivo(true)}>
                                     🔄 Estado
                                 </Button>
+                                <Button size="small" onClick={() => handleToggleFollowUpMasivo(false)} disabled={actionLoading}>
+                                    ⏹ Follow-Up Off
+                                </Button>
+                                <Button size="small" onClick={() => handleToggleFollowUpMasivo(true)} disabled={actionLoading}>
+                                    ▶️ Follow-Up On
+                                </Button>
                                 <Button size="small" onClick={async () => {
                                     setActionLoading(true);
                                     try {
@@ -2645,6 +2674,20 @@ const ContactosSDRPage = () => {
                                     onClick={() => setModalCambiarEstadoMasivo(true)}
                                 >
                                     Cambiar estado
+                                </Button>
+                                <Button
+                                    size="small"
+                                    onClick={() => handleToggleFollowUpMasivo(false)}
+                                    disabled={actionLoading}
+                                >
+                                    ⏹ Follow-Up Off
+                                </Button>
+                                <Button
+                                    size="small"
+                                    onClick={() => handleToggleFollowUpMasivo(true)}
+                                    disabled={actionLoading}
+                                >
+                                    ▶️ Follow-Up On
                                 </Button>
                                 <Button
                                     size="small"

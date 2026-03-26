@@ -24,6 +24,12 @@ const FollowUpAutoService = {
         const res = await api.patch(`/sdr/contactos/${contactoId}/followup-auto`, data);
         return res.data;
     },
+
+    // ── Bulk ──
+    actualizarFollowUpAutoMasivo: async (contactoIds, activo) => {
+        const res = await api.post('/sdr/contactos/bulk-followup-auto', { contactoIds, activo });
+        return res.data;
+    },
 };
 
 export default FollowUpAutoService;
