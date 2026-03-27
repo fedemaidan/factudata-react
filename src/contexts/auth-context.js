@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useReducer, useRef } from 'react';
+import { createContext, useContext, useEffect, useReducer, useRef, useState } from 'react';
 import PropTypes from 'prop-types';
 import { auth } from '../config/firebase';
 import {
@@ -38,6 +38,7 @@ const HANDLERS = {
 const initialState = {
   isAuthenticated: false,
   isLoading: true,
+  authReady: false,
   user: null,
   originalUser: null,
 };
@@ -122,6 +123,8 @@ export const AuthContext = createContext({ undefined });
 export const AuthProvider = (props) => {
   const { children } = props;
   const [state, dispatch] = useReducer(reducer, initialState);
+  const [authReady, setAuthReady] = useState(false);
+  const authReadyRef = useRef(false);
   const initialized = useRef(false);
   const stateRef = useRef(initialState);
 
@@ -152,8 +155,19 @@ export const AuthProvider = (props) => {
       } catch (_) {}
     }
 
+    // Fallback: si Firebase no responde en 5s, desbloquear la app con lo que haya en localStorage
+    const authReadyTimeout = setTimeout(() => {
+      if (!authReadyRef.current) {
+        console.warn('[Auth] Timeout esperando onAuthStateChanged, desbloqueando con estado actual');
+        setAuthReady(true);
+        authReadyRef.current = true;
+      }
+    }, 5000);
+
     onAuthStateChanged(auth, async (user) => {
       console.log('AUTENTICANDO CON CREDENCIALES');
+
+      clearTimeout(authReadyTimeout);
 
       if (user) {
         const idToken = await user.getIdToken(true); // Forzar actualización
@@ -168,6 +182,8 @@ export const AuthProvider = (props) => {
           stateRef.current.isAuthenticated &&
           (!!stateRef.current.user?.id || !!stateRef.current.user?.user_id);
         if (shouldIgnoreNullEvent) {
+          setAuthReady(true);
+          authReadyRef.current = true;
           return;
         }
         dispatch({
@@ -175,6 +191,8 @@ export const AuthProvider = (props) => {
           payload: { user: null, originalUser: null, clearStorage: false },
         });
       }
+      setAuthReady(true);
+      authReadyRef.current = true;
     });
   };
 
@@ -480,6 +498,7 @@ export const AuthProvider = (props) => {
     <AuthContext.Provider
       value={{
         ...state,
+        authReady,
         classicSignIn,
         signUp,
         signUpWithCode,

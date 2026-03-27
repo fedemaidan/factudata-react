@@ -6,7 +6,7 @@ import { useAuthContext } from 'src/contexts/auth-context';
 export const AuthGuard = (props) => {
   const { children } = props;
   const router = useRouter();
-  const { isAuthenticated, isLoading } = useAuthContext();
+  const { isAuthenticated, isLoading, authReady } = useAuthContext();
   const { user } = useAuthContext();
   const ignore = useRef(false);
   const [checked, setChecked] = useState(false);
@@ -21,7 +21,7 @@ export const AuthGuard = (props) => {
         return;
       }
 
-      if (isLoading) {
+      if (isLoading || !authReady) {
         return;
       }
 
@@ -46,7 +46,7 @@ export const AuthGuard = (props) => {
           .catch(console.error);
       }
     },
-    [router.isReady, isAuthenticated, isLoading, checked, router, user]
+    [router.isReady, isAuthenticated, isLoading, authReady, checked, router, user]
   );
 
   if (!checked) {
