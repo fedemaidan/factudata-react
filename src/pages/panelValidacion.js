@@ -275,6 +275,7 @@ const PanelValidacionPage = () => {
         severity: 'success',
         autoHideDuration: 4000,
       });
+      setEditDrawer({ open: false, mov: null, form: {} });
     } catch (e) {
       setItems(previousItems);
       setSnackbar({ open: true, message: e.message || 'Error al guardar', severity: 'error', autoHideDuration: 4000 });
