@@ -254,15 +254,12 @@ export const crearProyecto = async (proyecto, empresaId) => {
  */
 export const deleteProyectoById = async (proyectoId, empresaId = null) => {
   try {
-    // Elimina movimientos asociados al proyecto (movimientos siguen en Firestore)
-    const movimientosQuery = query(
-      collection(db, 'movimientos'),
-      where('proyecto_id', '==', proyectoId)
-    );
-    const movimientosSnapshot = await getDocs(movimientosQuery);
+    // Obtener IDs de movimientos asociados al proyecto via API
+    const response = await api.get(`movimientos/ids-by-proyecto/${proyectoId}`);
+    const ids = response.data?.ids || [];
 
-    const deleteMovementsPromises = movimientosSnapshot.docs.map((movimientoDoc) =>
-      movimientosService.deleteMovimientoById(movimientoDoc.id)
+    const deleteMovementsPromises = ids.map((id) =>
+      movimientosService.deleteMovimientoById(id)
     );
     await Promise.all(deleteMovementsPromises);
 
@@ -287,20 +284,16 @@ export const deleteProyectoById = async (proyectoId, empresaId = null) => {
 
 export const deleteCajaById = async (cajaId) => {
   try {
-    // Obtén todos los movimientos asociados al proyecto
-    const movimientosQuery = query(
-      collection(db, 'movimientos'),
-      where('caja_id', '==', cajaId)
-    );
-    const movimientosSnapshot = await getDocs(movimientosQuery);
+    // Obtener IDs de movimientos asociados a la caja via API
+    const response = await api.get(`movimientos/ids-by-caja/${cajaId}`);
+    const ids = response.data?.ids || [];
 
-    // Elimina cada movimiento asociado al proyecto
-    const deleteMovementsPromises = movimientosSnapshot.docs.map((movimientoDoc) =>
-      movimientosService.deleteMovimientoById(movimientoDoc.id)
+    const deleteMovementsPromises = ids.map((id) =>
+      movimientosService.deleteMovimientoById(id)
     );
     await Promise.all(deleteMovementsPromises);
 
-    // Elimina el proyecto una vez que todos los movimientos se han eliminado
+    // Elimina la caja una vez que todos los movimientos se han eliminado
     const cajaDocRef = doc(db, 'cajas', cajaId);
     await deleteDoc(cajaDocRef);
 

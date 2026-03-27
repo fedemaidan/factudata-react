@@ -1,8 +1,9 @@
-import { collection, doc, addDoc, getDoc, updateDoc, limit,  query, where, getDocs, orderBy, serverTimestamp, Timestamp, getDocsFromServer, or, and} from 'firebase/firestore';
+import { collection, doc, addDoc, getDoc, updateDoc, limit, query, where, getDocs, orderBy, serverTimestamp } from 'firebase/firestore';
 import { db, storage } from 'src/config/firebase';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { uploadFile, deleteFacturaByFilename } from './facturasService'; // Importa el servicio de facturas para subir los archivos
 import { removeCreditsForUser } from './creditService';
+import api from './axiosConfig';
 
 const ticketService = {
   cloneTicket: async (ticketId) => {
@@ -263,19 +264,10 @@ const ticketService = {
   },
   getMovimientosForProyecto: async (proyectoId, moneda) => {
     try {
-      const q = query(collection(db, 'movimientos'), where('proyecto_id', '==', proyectoId), where('moneda', '==', moneda), orderBy('fecha_factura', 'desc')  );
-      const querySnapshot = await getDocsFromServer(q);
-
-      const movimientos = [];
-      querySnapshot.forEach((doc) => {
-          const mov = {
-            id: doc.id,
-            ...doc.data(),
-          };
-          movimientos.push(mov);
+      const response = await api.get(`movimientos/proyecto/${proyectoId}`, {
+        params: { moneda, sort: 'fecha_factura', order: 'desc' },
       });
-      
-      return movimientos;
+      return (response.data?.movimientos || []).map(m => ({ ...m, id: m._id || m.id }));
     } catch (err) {
       console.error(err);
       return [];
@@ -283,32 +275,10 @@ const ticketService = {
   },
   getCajaChicaDelUsuario: async (user, moneda = 'ARS') => {
     try {
-      let queryRef = collection(db, 'movimientos');
-  
-      // Armamos la query para los movimientos de caja chica
-      const movsQuery = query(
-        queryRef,
-        and(
-          where("caja_chica", "==", true),
-          where("moneda", "==", moneda),
-          where("user_phone", "==", user.phone),
-        ),
-        orderBy("codigo_operacion", "desc")
-      );
-      
-      
-  
-      const movsSnapshot = await getDocs(movsQuery);
-      const movimientos = [];
-  
-      movsSnapshot.forEach((doc) => {
-        movimientos.push({
-          id: doc.id,
-          ...doc.data()
-        });
+      const response = await api.get('movimientos/caja-chica', {
+        params: { user_phone: user.phone, moneda },
       });
-  
-      return movimientos;
+      return (response.data?.movimientos || []).map(m => ({ ...m, id: m._id || m.id }));
     } catch (err) {
       console.error('Error en getCajaChicaDelUsuario:', err);
       return [];
@@ -317,32 +287,10 @@ const ticketService = {
   
   getLastMovimientosForProyecto: async (proyectoId, limiteDias = 7) => {
     try {
-      console.log("getLastMovimientosForProyecto")
-      // Calcula la fecha hace 7 días
-      const sieteDiasAtras = new Date();
-      sieteDiasAtras.setDate(sieteDiasAtras.getDate() - limiteDias);
-  
-      const q = query(
-        collection(db, 'movimientos'),
-        where('proyecto_id', '==', proyectoId),
-        // where('fecha_factura', '>=', Timestamp.fromDate(sieteDiasAtras)),
-        where('fecha_factura', '>=', Timestamp.fromDate(sieteDiasAtras)),
-        orderBy('fecha_factura', 'desc'),
-      );
-  
-      const querySnapshot = await getDocs(q);
-  
-      const movimientos = [];
-      querySnapshot.forEach((doc) => {
-        // Agregar cada movimiento a la lista
-        const mov = {
-          id: doc.id,
-          ...doc.data(),
-        };
-        movimientos.push(mov);
+      const response = await api.get(`movimientos/proyecto/${proyectoId}/recientes`, {
+        params: { dias: limiteDias },
       });
-  
-      return movimientos;
+      return (response.data?.movimientos || []).map(m => ({ ...m, id: m._id || m.id }));
     } catch (err) {
       console.error('Error al obtener los movimientos:', err);
       return [];
@@ -350,36 +298,15 @@ const ticketService = {
   }, 
   getMovimientosEnRango: async (proyectoId, desde, hasta) => {
     try {
-      console.log("getMovimientosEnRango");
-
-      // Convertir fechas JS a Timestamp de Firebase
       const fechaDesde = new Date(desde);
       fechaDesde.setHours(0, 0, 0, 0);
-      const desdeTimestamp = Timestamp.fromDate(fechaDesde);
-      
       const fechaHasta = new Date(hasta);
       fechaHasta.setHours(23, 59, 59, 999);
-      const hastaTimestamp = Timestamp.fromDate(fechaHasta);
 
-      const q = query(
-        collection(db, 'movimientos'),
-        where('proyecto_id', '==', proyectoId),
-        where('fecha_factura', '>=', desdeTimestamp),
-        where('fecha_factura', '<=', hastaTimestamp),
-        orderBy('fecha_factura', 'desc')
-      );
-
-      const querySnapshot = await getDocs(q);
-      const movimientos = [];
-
-      querySnapshot.forEach((doc) => {
-        movimientos.push({
-          id: doc.id,
-          ...doc.data(),
-        });
+      const response = await api.get(`movimientos/proyecto/${proyectoId}/rango`, {
+        params: { desde: fechaDesde.toISOString(), hasta: fechaHasta.toISOString() },
       });
-
-      return movimientos;
+      return (response.data?.movimientos || []).map(m => ({ ...m, id: m._id || m.id }));
     } catch (err) {
       console.error('Error al obtener movimientos en rango:', err);
       return [];
