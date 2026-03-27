@@ -24,6 +24,8 @@ const formatDate = (d) => {
 const DrillDownDialog = ({ open, onClose, movimientos = [], titulo = '', displayCurrency = 'ARS' }) => {
   const [page, setPage] = useState(0);
   const [imgPreview, setImgPreview] = useState({ open: false, url: null });
+  const [showUsd, setShowUsd] = useState(false);
+  const [showCac, setShowCac] = useState(false);
   const rowsPerPage = 25;
 
   const openImg = (url) => setImgPreview({ open: true, url });
@@ -33,6 +35,53 @@ const DrillDownDialog = ({ open, onClose, movimientos = [], titulo = '', display
   useEffect(() => {
     if (!open) closeImg();
   }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    setShowUsd(false);
+    setShowCac(false);
+    setPage(0);
+  }, [open, displayCurrency]);
+
+  const getAmountByCurrency = (mov, currency) => {
+    const total = Number(mov?.total ?? mov?.monto ?? 0);
+    const monedaMov = (mov?.moneda || 'ARS').toUpperCase();
+    const eqTotal = mov?.equivalencias?.total || {};
+
+    if (currency === 'ARS') {
+      if (monedaMov === 'ARS') return total;
+      if (eqTotal.ars != null && !isNaN(eqTotal.ars)) return Number(eqTotal.ars);
+      return total;
+    }
+
+    if (currency === 'USD') {
+      if (monedaMov === 'USD') return total;
+      if (eqTotal.usd_blue != null && !isNaN(eqTotal.usd_blue)) return Number(eqTotal.usd_blue);
+      return null;
+    }
+
+    if (currency === 'CAC') {
+      if (monedaMov === 'CAC') return total;
+      if (eqTotal.cac != null && !isNaN(eqTotal.cac)) return Number(eqTotal.cac);
+      return null;
+    }
+
+    return total;
+  };
+
+  const formatCurrencyValue = (amount, currency) => {
+    if (amount == null || isNaN(amount)) return '-';
+    if (currency === 'ARS') {
+      return formatValue(amount, 'currency', 'ARS');
+    }
+    if (currency === 'USD') {
+      return Number(amount).toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    }
+    if (currency === 'CAC') {
+      return Number(amount).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    return String(amount);
+  };
 
   const sortedMovs = useMemo(() => {
     return [...movimientos].sort((a, b) => {
@@ -47,10 +96,30 @@ const DrillDownDialog = ({ open, onClose, movimientos = [], titulo = '', display
     [sortedMovs, page],
   );
 
-  const totalMonto = useMemo(
-    () => movimientos.reduce((acc, m) => acc + (m.total ?? m.monto ?? 0), 0),
-    [movimientos],
-  );
+  const acumuladoById = useMemo(() => {
+    const ordered = [...sortedMovs].reverse(); // cronológico para acumulado
+    const map = {};
+    let running = 0;
+
+    for (const m of ordered) {
+      const amount = getAmountByCurrency(m, 'ARS');
+      if (amount != null && !isNaN(amount)) {
+        running += Number(amount);
+      }
+      map[m.id] = running;
+    }
+
+    return map;
+  }, [sortedMovs]);
+
+  const totalesPorMoneda = useMemo(() => {
+    const map = {};
+    for (const m of movimientos) {
+      const cur = m.moneda || displayCurrency;
+      map[cur] = (map[cur] || 0) + (m.total ?? m.monto ?? 0);
+    }
+    return map;
+  }, [movimientos, displayCurrency]);
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
@@ -64,12 +133,32 @@ const DrillDownDialog = ({ open, onClose, movimientos = [], titulo = '', display
               <Typography variant="body2" color="text.secondary">
                 {movimientos.length} movimientos
               </Typography>
+              <Chip label="ARS" size="small" color="primary" variant="filled" />
               <Chip
-                label={formatValue(totalMonto, 'currency', displayCurrency)}
+                label="USD"
                 size="small"
-                color="primary"
-                variant="outlined"
+                color="success"
+                variant={showUsd ? 'filled' : 'outlined'}
+                onClick={() => setShowUsd((prev) => !prev)}
+                sx={{ cursor: 'pointer' }}
               />
+              <Chip
+                label="CAC"
+                size="small"
+                color="secondary"
+                variant={showCac ? 'filled' : 'outlined'}
+                onClick={() => setShowCac((prev) => !prev)}
+                sx={{ cursor: 'pointer' }}
+              />
+              {Object.entries(totalesPorMoneda).map(([cur, total]) => (
+                <Chip
+                  key={cur}
+                  label={formatValue(total, 'currency', cur)}
+                  size="small"
+                  color="primary"
+                  variant="outlined"
+                />
+              ))}
             </Stack>
           </Stack>
           <IconButton onClick={onClose} size="small">
@@ -89,7 +178,14 @@ const DrillDownDialog = ({ open, onClose, movimientos = [], titulo = '', display
                 <TableCell sx={{ fontWeight: 700, backgroundColor: 'grey.100' }}>Proyecto</TableCell>
                 <TableCell sx={{ fontWeight: 700, backgroundColor: 'grey.100' }}>Etapa</TableCell>
                 <TableCell sx={{ fontWeight: 700, backgroundColor: 'grey.100' }}>Usuario</TableCell>
-                <TableCell sx={{ fontWeight: 700, backgroundColor: 'grey.100' }} align="right">Monto</TableCell>
+                <TableCell sx={{ fontWeight: 700, backgroundColor: 'grey.100' }} align="right">
+                  Monto (ARS)
+                </TableCell>
+                <TableCell sx={{ fontWeight: 700, backgroundColor: 'grey.100' }} align="right">
+                  Acumulado (ARS)
+                </TableCell>
+                {showUsd && <TableCell sx={{ fontWeight: 700, backgroundColor: 'grey.100', color: 'success.main' }} align="right">USD</TableCell>}
+                {showCac && <TableCell sx={{ fontWeight: 700, backgroundColor: 'grey.100', color: 'secondary.main' }} align="right">CAC</TableCell>}
                 <TableCell sx={{ fontWeight: 700, backgroundColor: 'grey.100' }}>Notas</TableCell>
                 <TableCell sx={{ fontWeight: 700, backgroundColor: 'grey.100', textAlign: 'center' }}>Archivo</TableCell>
               </TableRow>
@@ -114,8 +210,21 @@ const DrillDownDialog = ({ open, onClose, movimientos = [], titulo = '', display
                   <TableCell>{m.etapa || '-'}</TableCell>
                   <TableCell>{m.usuario_nombre || m.usuario || '-'}</TableCell>
                   <TableCell align="right" sx={{ whiteSpace: 'nowrap', fontWeight: 500 }}>
-                    {formatValue(m.total ?? m.monto ?? 0, 'currency', m.moneda || displayCurrency)}
+                    {formatCurrencyValue(getAmountByCurrency(m, 'ARS'), 'ARS')}
                   </TableCell>
+                  <TableCell align="right" sx={{ whiteSpace: 'nowrap', color: 'text.secondary', fontWeight: 500 }}>
+                    {formatCurrencyValue(acumuladoById[m.id], 'ARS')}
+                  </TableCell>
+                  {showUsd && (
+                    <TableCell align="right" sx={{ whiteSpace: 'nowrap', color: 'success.main' }}>
+                      {formatCurrencyValue(getAmountByCurrency(m, 'USD'), 'USD')}
+                    </TableCell>
+                  )}
+                  {showCac && (
+                    <TableCell align="right" sx={{ whiteSpace: 'nowrap', color: 'secondary.main' }}>
+                      {formatCurrencyValue(getAmountByCurrency(m, 'CAC'), 'CAC')}
+                    </TableCell>
+                  )}
                   <TableCell>
                     <Typography
                       variant="body2"
@@ -139,7 +248,7 @@ const DrillDownDialog = ({ open, onClose, movimientos = [], titulo = '', display
               ))}
               {visibleRows.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={10} align="center">
+                  <TableCell colSpan={11 + (showUsd ? 1 : 0) + (showCac ? 1 : 0)} align="center">
                     <Typography variant="body2" color="text.secondary" py={3}>
                       Sin movimientos
                     </Typography>
