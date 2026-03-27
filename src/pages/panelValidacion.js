@@ -35,6 +35,8 @@ const PanelValidacionPage = () => {
   const [editDrawer, setEditDrawer] = useState({ open: false, mov: null, form: {} });
   const [proyectos, setProyectos] = useState([]);
   const [empresa, setEmpresa] = useState(null);
+  /** Empresa cargada al entrar al panel (misma fuente de verdad que movementForm para comprobante_info). */
+  const [empresaPanel, setEmpresaPanel] = useState(null);
   const [drawerCatalogos, setDrawerCatalogos] = useState({
     comprobanteInfo: {},
     ingresoInfo: {},
@@ -152,6 +154,31 @@ const PanelValidacionPage = () => {
     if (empresaId) fetchBorradores();
   }, [empresaId, fetchBorradores]);
 
+  useEffect(() => {
+    if (!empresaId) {
+      setEmpresaPanel(null);
+      return undefined;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await getEmpresaById(empresaId);
+        if (!cancelled) setEmpresaPanel(data);
+      } catch {
+        if (!cancelled) setEmpresaPanel(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [empresaId]);
+
+  const panelCamposCfg = useMemo(
+    () => getCamposConfig(empresaPanel?.comprobante_info || {}, empresaPanel?.ingreso_info || {}, 'egreso'),
+    [empresaPanel],
+  );
+  const tablaUsaFechaPago = Boolean(panelCamposCfg.fecha_pago);
+
   const handleEditar = async (mov) => {
     let proys = [];
     let empresaData = null;
@@ -181,15 +208,9 @@ const PanelValidacionPage = () => {
       });
     }
 
-    const fechaVal = mov.fecha_factura;
-    const fechaStr =
-      typeof fechaVal === 'string' && fechaVal.includes('T')
-        ? fechaVal.split('T')[0]
-        : typeof fechaVal === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(fechaVal)
-          ? fechaVal
-          : fechaVal?.toDate
-            ? fechaVal.toDate().toISOString().split('T')[0]
-            : '';
+
+    const fechaFacturaStr = formatTimestamp(mov.fecha_factura) || '';
+    const fechaPagoStr = mov.fecha_pago ? formatTimestamp(mov.fecha_pago) || '' : '';
 
     setEditDrawer({
       open: true,
@@ -198,15 +219,8 @@ const PanelValidacionPage = () => {
         ...mov,
         type: 'egreso',
         proyecto_id: mov.proyecto_id || '',
-        fecha_factura: fechaStr,
-        fecha_pago:
-          typeof mov.fecha_pago === 'string' && mov.fecha_pago.includes('T')
-            ? mov.fecha_pago.split('T')[0]
-            : typeof mov.fecha_pago === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(mov.fecha_pago)
-              ? mov.fecha_pago
-              : mov.fecha_pago?.toDate
-                ? mov.fecha_pago.toDate().toISOString().split('T')[0]
-                : (mov.fecha_pago || ''),
+        fecha_factura: fechaFacturaStr,
+        fecha_pago: fechaPagoStr,
         impuestos: Array.isArray(mov.impuestos) ? mov.impuestos : [],
         tags_extra: Array.isArray(mov.tags_extra) ? mov.tags_extra : [],
       },
@@ -395,7 +409,8 @@ const PanelValidacionPage = () => {
       form?.total === '' ||
       form?.total === undefined ||
       form?.total === null ||
-      !form?.fecha_factura
+      !form?.fecha_factura ||
+      (Boolean(camposConfig.fecha_pago) && !form?.fecha_pago)
     );
   }, [editDrawer.form, drawerCatalogos.comprobanteInfo, drawerCatalogos.ingresoInfo, savingEdit]);
 
@@ -548,7 +563,7 @@ const PanelValidacionPage = () => {
               <Table size="small">
                 <TableHead>
                   <TableRow>
-                    <TableCell>Fecha</TableCell>
+                    <TableCell>{tablaUsaFechaPago ? 'Fecha de pago' : 'Fecha factura'}</TableCell>
                     <TableCell>Proyecto</TableCell>
                     <TableCell>Proveedor</TableCell>
                     <TableCell>Usuario</TableCell>
@@ -561,7 +576,9 @@ const PanelValidacionPage = () => {
                 <TableBody>
                   {items.map((m) => (
                     <TableRow key={m.id} hover>
-                      <TableCell>{formatTimestamp(m.fecha_factura)}</TableCell>
+                      <TableCell>
+                        {formatTimestamp(tablaUsaFechaPago ? (m.fecha_pago || m.fecha_factura) : m.fecha_factura)}
+                      </TableCell>
                       <TableCell>{getProyectoNombre(m)}</TableCell>
                       <TableCell>{m.nombre_proveedor || '-'}</TableCell>
                       <TableCell>{m.nombre_user || '-'}</TableCell>

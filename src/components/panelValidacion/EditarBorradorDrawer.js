@@ -20,8 +20,11 @@ import {
   getOptionsFromContext,
 } from 'src/components/movementFieldsConfig';
 import { formatNumberWithThousands, parsearMonto } from 'src/utils/celulandia/separacionMiles';
+import { formatTimestamp } from 'src/utils/formatters';
 
 const DRAWER_WIDTH = 720;
+const DRAWER_WIDTH_PDF = 'min(96vw, 1480px)';
+const FORM_COLUMN_WIDTH = 360;
 
 const MONEY_FIELDS = new Set(['total', 'subtotal', 'total_original', 'dolar_referencia', 'subtotal_dolar', 'total_dolar']);
 
@@ -52,10 +55,17 @@ function EditarBorradorFormContent({
     () => getCamposConfig(comprobanteInfo, ingresoInfo, 'egreso'),
     [comprobanteInfo, ingresoInfo],
   );
-  const camposVisibles = useMemo(
-    () => getCamposVisibles(comprobanteInfo, empresa, ingresoInfo, 'egreso').filter((campo) => campo.name !== 'type'),
-    [comprobanteInfo, empresa, ingresoInfo],
-  );
+  /** Misma visibilidad que movementForm; fecha factura y (si aplica) fecha pago van justo después del proyecto. */
+  const camposVisibles = useMemo(() => {
+    const vis = getCamposVisibles(comprobanteInfo, empresa, ingresoInfo, 'egreso').filter(
+      (campo) => campo.name !== 'type',
+    );
+    const priority = ['fecha_factura'];
+    if (camposConfig.fecha_pago) priority.push('fecha_pago');
+    const head = priority.map((n) => vis.find((c) => c.name === n)).filter(Boolean);
+    const tail = vis.filter((c) => !priority.includes(c.name));
+    return [...head, ...tail];
+  }, [comprobanteInfo, empresa, ingresoInfo, camposConfig.fecha_pago]);
   const optionsContext = useMemo(
     () => ({
       proveedores,
@@ -267,7 +277,8 @@ function EditarBorradorFormContent({
             form.total === '' ||
             form.total === undefined ||
             form.total === null ||
-            !form.fecha_factura
+            !form.fecha_factura ||
+            (Boolean(camposConfig.fecha_pago) && !form.fecha_pago)
           }
         >
           {saving ? 'Confirmando...' : 'Confirmar'}
@@ -301,16 +312,13 @@ function EditarBorradorDrawer({
   saving = false,
 }) {
   const urlImagen = mov?.url_imagen || mov?.url_image;
-  const isPdf = urlImagen && String(urlImagen).toLowerCase().includes('.pdf');
+  const isPdf = Boolean(urlImagen && String(urlImagen).toLowerCase().includes('.pdf'));
   const tieneImagen = Boolean(urlImagen) && !isPdf;
+  const drawerPaperWidth = isPdf && urlImagen
+    ? { xs: '100%', sm: DRAWER_WIDTH_PDF }
+    : { xs: '100%', sm: DRAWER_WIDTH };
 
-  const formatFecha = (val) => {
-    if (!val) return '';
-    if (typeof val === 'string' && val.includes('T')) return val.split('T')[0];
-    if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(val)) return val;
-    if (val?.toDate) return val.toDate().toISOString().split('T')[0];
-    return '';
-  };
+  const formatFecha = (val) => formatTimestamp(val) || '';
 
   const formContent = (
     <EditarBorradorFormContent
@@ -351,20 +359,36 @@ function EditarBorradorDrawer({
       anchor="right"
       open={open}
       onClose={onClose}
-      PaperProps={{ sx: { width: { xs: '100%', sm: DRAWER_WIDTH } } }}
+      PaperProps={{
+        sx: {
+          width: drawerPaperWidth,
+          maxWidth: '100%',
+        },
+      }}
     >
       <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-        <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
-          {/* Imagen o PDF a la izquierda */}
+        <Box
+          sx={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: { xs: 'column', sm: 'row' },
+            overflow: 'hidden',
+            minHeight: 0,
+          }}
+        >
+          {/* PDF o imagen: con PDF ocupa casi todo el ancho del drawer amplio */}
           <Box
             sx={{
               flex: 1,
+              minWidth: 0,
+              minHeight: 0,
               display: 'flex',
-              alignItems: 'center',
+              alignItems: 'stretch',
               justifyContent: 'center',
-              p: 2,
+              p: isPdf ? 1.5 : 2,
               bgcolor: 'grey.50',
-              borderRight: 1,
+              borderRight: { xs: 0, sm: 1 },
+              borderBottom: { xs: 1, sm: 0 },
               borderColor: 'divider',
             }}
           >
@@ -373,7 +397,7 @@ function EditarBorradorDrawer({
                 sx={{
                   width: '100%',
                   height: '100%',
-                  minHeight: 280,
+                  minHeight: isPdf ? { xs: 360, sm: 'min(88vh, 920px)' } : 280,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -383,7 +407,19 @@ function EditarBorradorDrawer({
                 }}
               >
                 {isPdf ? (
-                  <embed src={urlImagen} width="100%" height="100%" style={{ minHeight: 400 }} />
+                  <Box
+                    component="embed"
+                    src={urlImagen}
+                    type="application/pdf"
+                    title="Comprobante PDF"
+                    sx={{
+                      display: 'block',
+                      border: 'none',
+                      width: '100%',
+                      height: '100%',
+                      minHeight: { xs: 360, sm: 'min(85vh, 880px)' },
+                    }}
+                  />
                 ) : (
                   <img
                     src={urlImagen}
@@ -403,8 +439,15 @@ function EditarBorradorDrawer({
             )}
           </Box>
 
-          {/* Formulario al lado */}
-          <Box sx={{ width: 360, p: 2, overflowY: 'auto' }}>
+          <Box
+            sx={{
+              width: { xs: '100%', sm: FORM_COLUMN_WIDTH },
+              maxWidth: '100%',
+              p: 2,
+              overflowY: 'auto',
+              flexShrink: 0,
+            }}
+          >
             {formContent}
           </Box>
         </Box>
