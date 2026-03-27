@@ -91,13 +91,14 @@ const ReportService = {
    * Exporta un reporte a PDF enviando los resultados computados al backend.
    * Devuelve un Blob con el PDF.
    */
-  exportPDF: async ({ reportConfig, results, displayCurrency, movimientosCount, filtrosTexto }) => {
+  exportPDF: async ({ reportConfig, results, displayCurrency, movimientosCount, filtrosTexto, cotizaciones }) => {
     const res = await api.post('/reports/export-pdf', {
       reportConfig,
       results,
       displayCurrency,
       movimientosCount,
       filtrosTexto,
+      cotizaciones,
     }, { responseType: 'blob' });
     return res.data;
   },

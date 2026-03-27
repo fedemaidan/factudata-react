@@ -6,6 +6,7 @@ import MovementsTableBlock from './blocks/MovementsTableBlock';
 import BudgetVsActualBlock from './blocks/BudgetVsActualBlock';
 import ChartBlock from './blocks/ChartBlock';
 import GroupedDetailBlock from './blocks/GroupedDetailBlock';
+import CategoryBudgetMatrixBlock from './blocks/CategoryBudgetMatrixBlock';
 import DrillDownDialog from './DrillDownDialog';
 import { executeReport } from 'src/tools/reportEngine';
 
@@ -14,6 +15,7 @@ const BLOCK_COMPONENTS = {
   summary_table: SummaryTableBlock,
   movements_table: MovementsTableBlock,
   budget_vs_actual: BudgetVsActualBlock,
+  category_budget_matrix: CategoryBudgetMatrixBlock,
   chart: ChartBlock,
   grouped_detail: GroupedDetailBlock,
 };
@@ -108,6 +110,7 @@ const ReportView = ({ reportConfig, movimientos = [], presupuestos = [], display
                 data={block.data}
                 displayCurrency={primaryCurrency}
                 displayCurrencies={currencies}
+                cotizaciones={cotizaciones}
                 onDrillDown={handleDrillDown}
               />
             </Grid>

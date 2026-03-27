@@ -427,12 +427,23 @@ const PresupuestoDrawer = ({
     setError(null);
 
     try {
+      // Determinar tipo_creacion basado en moneda e indexación
+      let tipo_creacion = 'Pesos fijos';
+      if (moneda !== 'ARS') {
+        tipo_creacion = moneda === 'USD' ? 'USD' : 'CAC';
+      } else if (indexacion === 'USD') {
+        tipo_creacion = 'Ajustado por dólar';
+      } else if (indexacion === 'CAC') {
+        tipo_creacion = 'Ajustado por CAC';
+      }
+
       const data = {
         empresa_id: empresaId,
         proyecto_id: proyectoFinal,
         tipo: tipo,
         monto: parseFloat(monto),
         moneda: moneda,
+        tipo_creacion: tipo_creacion,
         indexacion: moneda === 'ARS' ? (indexacion || null) : null,
         cac_tipo: moneda === 'ARS' && indexacion === 'CAC' ? (cacTipo || 'general') : null,
         base_calculo: baseCalculo || 'total',
