@@ -27,6 +27,11 @@ export const EtapasDetails = ({ empresa, refreshEmpresa }) => {
   }, [empresa?.id]);
 
   const categoriasOptions = (empresa.categorias || []).flatMap(cat => [
+    cat.name,
+    ...(cat.subcategorias || []).map(sub => `${cat.name} - ${sub}`)
+  ]);
+
+  const abrirModal = (index = null) => {
     setEditingIndex(index);
     if (index !== null) {
       setForm(etapas[index]);
