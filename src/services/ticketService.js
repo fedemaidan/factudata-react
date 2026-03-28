@@ -275,8 +275,9 @@ const ticketService = {
   },
   getCajaChicaDelUsuario: async (user, moneda = 'ARS') => {
     try {
+      const empresa_id = user.empresa?.id || user.empresaId;
       const response = await api.get('movimientos/caja-chica', {
-        params: { user_phone: user.phone, moneda },
+        params: { user_phone: user.phone, moneda, empresa_id },
       });
       return (response.data?.movimientos || []).map(m => ({ ...m, id: m._id || m.id }));
     } catch (err) {
@@ -296,6 +297,15 @@ const ticketService = {
       return [];
     }
   }, 
+  getResumenEmpresa: async (empresaId) => {
+    try {
+      const response = await api.get(`movimientos/resumen-empresa/${empresaId}`);
+      return response.data?.resumen || [];
+    } catch (err) {
+      console.error('Error al obtener resumen empresa:', err);
+      return [];
+    }
+  },
   getMovimientosEnRango: async (proyectoId, desde, hasta) => {
     try {
       const fechaDesde = new Date(desde);

@@ -23,6 +23,22 @@ export const asegurarIdsSubproyectos = (proyecto) => {
 
 
 /**
+ * Obtiene los proyectos de una empresa en una sola query (endpoint batch).
+ * @param {string} empresaId - ID de la empresa.
+ * @returns {Promise<object[]>}
+ */
+export const getProyectosByEmpresaId = async (empresaId) => {
+  try {
+    const response = await api.get(`/proyecto/empresa/${empresaId}`);
+    const proyectos = response.data || [];
+    return proyectos.filter(p => p && p.eliminado !== true);
+  } catch (err) {
+    console.error('Error al obtener proyectos por empresa:', err);
+    return [];
+  }
+};
+
+/**
  * Obtiene los proyectos de un empresa a partir de las referencias almacenadas en el atributo proyectos.
  * @param {object} empresa - El objeto empresa que contiene las referencias de los proyectos.
  * @returns {Promise<object[]>} - Retorna un array con los proyectos o un array vacío si no se encuentran o hay un error.

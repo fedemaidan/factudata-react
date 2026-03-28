@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import Router from 'next/router';
 import Head from 'next/head';
 import { CacheProvider } from '@emotion/react';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -42,6 +43,17 @@ const App = (props) => {
   const { Component, emotionCache = clientSideEmotionCache, pageProps } = props;
 
   useNProgress();
+
+  // Recuperar de errores de carga de chunks tras un deploy
+  useEffect(() => {
+    const handleRouteError = (err, url) => {
+      if (err.message && err.message.includes('Unexpected token')) {
+        window.location.href = url;
+      }
+    };
+    Router.events.on('routeChangeError', handleRouteError);
+    return () => Router.events.off('routeChangeError', handleRouteError);
+  }, []);
 
   const getLayout = Component.getLayout ?? ((page) => page);
 

@@ -14,7 +14,7 @@ import {
  * Hook que gestiona toda la carga de datos para el módulo de reportes.
  *
  * - Carga reportes (configs) desde MongoDB via API
- * - Carga movimientos desde Firestore (directo)
+ * - Carga movimientos via API (MongoDB)
  * - Carga presupuestos de control via API (si el reporte lo requiere)
  * - Gestiona filtros runtime
  */

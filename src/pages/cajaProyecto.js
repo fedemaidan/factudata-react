@@ -7,7 +7,7 @@ import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import Head from 'next/head';
 import { Box, Container, Stack, Chip, Typography, TextField, InputAdornment, Paper, Card, CardContent, Button, Select, MenuItem, FormControl, InputLabel, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, useMediaQuery, IconButton, Menu, Table, TableBody, TableCell, TableHead, TableRow, TableContainer, Tooltip, MenuItem as MenuOption, Divider, TablePagination, Drawer, List, ListItem, ListItemText, Badge, Fab } from '@mui/material';
 
-import { Checkbox, Popover, FormControlLabel, Switch } from '@mui/material';
+import { Checkbox, Popover, FormControlLabel, Switch, CircularProgress, Backdrop } from '@mui/material';
 
 import { useTheme } from '@mui/material/styles';
 import FilterListIcon from '@mui/icons-material/FilterList';
@@ -227,6 +227,7 @@ const ProyectoMovimientosPage = () => {
   const [movimientosUSD, setMovimientosUSD] = useState([]);
   const [tablaActiva, setTablaActiva] = useState('ARS');
   const [empresa, setEmpresa] = useState(null);
+  const [loadingPage, setLoadingPage] = useState(true);
   const [filtrosActivos, setFiltrosActivos] = useState(true);
   const [accionesActivas, setAccionesActivas] = useState(false);
   const [showDolar, setShowDolar] = useState(true);
@@ -774,28 +775,40 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
   
   
 
-  const handleRefresh = async () => {
-    if (!proyectoId) return;
-  
-    const movs = await ticketService.getMovimientosForProyecto(proyectoId, 'ARS');
-    const movsUsd = await ticketService.getMovimientosForProyecto(proyectoId, 'USD');
+  // Fetch movimientos ARS+USD en paralelo e hidratar nombres de usuario
+  const fetchAndHydrateMovimientos = useCallback(async (pid) => {
+    const [movs, movsUsd] = await Promise.all([
+      ticketService.getMovimientosForProyecto(pid, 'ARS'),
+      ticketService.getMovimientosForProyecto(pid, 'USD'),
+    ]);
     const allMovs = [...(movs || []), ...(movsUsd || [])];
     const idsSinNombre = [...new Set(allMovs.filter((m) => m.id_user && !m.nombre_user).map((m) => m.id_user))];
-    const usuariosMap = {};
-    for (const id of idsSinNombre) {
-      const profile = await profileService.getProfileById(id) || await profileService.getProfileByUserId(id);
-      if (profile) {
-        usuariosMap[id] = [profile.firstName, profile.lastName].filter(Boolean).join(' ').trim() || profile.email || '-';
+    if (idsSinNombre.length > 0) {
+      const profiles = await Promise.all(
+        idsSinNombre.map(async (id) => {
+          const profile = await profileService.getProfileById(id) || await profileService.getProfileByUserId(id);
+          const name = profile
+            ? ([profile.firstName, profile.lastName].filter(Boolean).join(' ').trim() || profile.email || '-')
+            : null;
+          return { id, name };
+        })
+      );
+      const usuariosMap = {};
+      for (const { id, name } of profiles) { if (name) usuariosMap[id] = name; }
+      for (const mov of allMovs) {
+        if (mov.id_user && !mov.nombre_user && usuariosMap[mov.id_user]) {
+          mov.nombre_user = usuariosMap[mov.id_user];
+        }
       }
     }
-    for (const mov of allMovs) {
-      if (mov.id_user && !mov.nombre_user && usuariosMap[mov.id_user]) {
-        mov.nombre_user = usuariosMap[mov.id_user];
-      }
-    }
-    setMovimientos(movs);
-    setMovimientosUSD(movsUsd);
-  
+    setMovimientos(movs || []);
+    setMovimientosUSD(movsUsd || []);
+    return { movs, movsUsd };
+  }, []);
+
+  const handleRefresh = async () => {
+    if (!proyectoId) return;
+    await fetchAndHydrateMovimientos(proyectoId);
     setAlert({
       open: true,
       message: 'Listado actualizado correctamente',
@@ -810,41 +823,43 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
       setShowPesos(true);
     }
     const fetchMovimientosData = async (proyectoId) => {
+      setLoadingPage(true);
+      // Limpiar datos anteriores para no mostrar info de otro proyecto
+      setMovimientos([]);
+      setMovimientosUSD([]);
+      setProyecto(null);
 
-      const empresa = await getEmpresaDetailsFromUser(user);
+      // Cargar empresa, proyecto y movimientos en paralelo
+      const [empresa, proyecto] = await Promise.all([
+        getEmpresaDetailsFromUser(user),
+        getProyectoById(proyectoId),
+      ]);
+
       const cajasIniciales = empresa.cajas_virtuales?.length > 0 ? empresa.cajas_virtuales : [
         { nombre: 'Caja en Pesos', moneda: 'ARS', medio_pago: "" , equivalencia: 'none', type: '' },
         { nombre: 'Caja en Dólares', moneda: 'USD', medio_pago: "" , equivalencia: 'none', type: '' },
       ];
       if (!empresa.cajas_virtuales || empresa.cajas_virtuales.length === 0) {
-        await updateEmpresaDetails(empresa.id, { cajas_virtuales: cajasIniciales });
+        updateEmpresaDetails(empresa.id, { cajas_virtuales: cajasIniciales }); // fire-and-forget
       }
       setEmpresa({ ...empresa, cajas_virtuales: cajasIniciales });
       setCajasVirtuales(cajasIniciales);
 
-      // Cargar proyectos para transferencias internas
-      try {
-        const proyectosData = await getProyectosByEmpresa(empresa);
-        setProyectos(proyectosData || []);
-      } catch (error) {
-        console.error('Error cargando proyectos:', error);
-      }
+      // Cargar proyectos para transferencias (no bloquea la tabla)
+      getProyectosByEmpresa(empresa).then(data => setProyectos(data || [])).catch(() => {});
 
       if (empresa.solo_dolar) {
         setTablaActiva("USD")
       }
 
-      const proyecto = await getProyectoById(proyectoId);
       setProyecto(proyecto);
-            // --- hidratar preferencias guardadas ---
+      // --- hidratar preferencias guardadas ---
       const savedCols = proyecto?.ui_prefs?.columnas;
       if (savedCols) {
-        // respetamos lo guardado
         if (typeof savedCols.compact === 'boolean') {
           setCompactCols(savedCols.compact);
         }
         if (savedCols.visible && typeof savedCols.visible === 'object') {
-          // merge con defaults actuales para no perder llaves nuevas
           setVisibleCols((prev) => ({ ...defaultVisible, ...savedCols.visible }));
         }
         if (Array.isArray(savedCols.orden)) {
@@ -852,24 +867,7 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
         }
       }
       setPrefsHydrated(true);
-      const movs = await ticketService.getMovimientosForProyecto(proyectoId, 'ARS');
-      const movsUsd = await ticketService.getMovimientosForProyecto(proyectoId, 'USD');
-      const allMovs = [...(movs || []), ...(movsUsd || [])];
-      const idsSinNombre = [...new Set(allMovs.filter((m) => m.id_user && !m.nombre_user).map((m) => m.id_user))];
-      const usuariosMap = {};
-      for (const id of idsSinNombre) {
-        const profile = await profileService.getProfileById(id) || await profileService.getProfileByUserId(id);
-        if (profile) {
-          usuariosMap[id] = [profile.firstName, profile.lastName].filter(Boolean).join(' ').trim() || profile.email || '-';
-        }
-      }
-      for (const mov of allMovs) {
-        if (mov.id_user && !mov.nombre_user && usuariosMap[mov.id_user]) {
-          mov.nombre_user = usuariosMap[mov.id_user];
-        }
-      }
-      setMovimientos(movs);
-      setMovimientosUSD(movsUsd);
+      await fetchAndHydrateMovimientos(proyectoId);
 
       // Aplicar filtro desde query params si existe, o limpiar si no está
       if (router.query.codigoSync) {
@@ -900,6 +898,7 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
       if (pid) {
         await fetchMovimientosData(pid);
       }
+      setLoadingPage(false);
     };
 
     fetchData();
@@ -1446,7 +1445,12 @@ useEffect(() => {
       <Head>
         <title>{tituloConCodigo}</title>
       </Head>
-      <Box component="main" sx={{ flexGrow: 1, py: 8, paddingTop: 2 }}>
+      <Box component="main" sx={{ flexGrow: 1, py: 8, paddingTop: 2, position: 'relative' }}>
+        {loadingPage && (
+          <Backdrop open sx={{ position: 'absolute', zIndex: 10, bgcolor: 'rgba(255,255,255,0.7)' }}>
+            <CircularProgress />
+          </Backdrop>
+        )}
         <Container maxWidth="xl">
           <Stack spacing={3}>
             

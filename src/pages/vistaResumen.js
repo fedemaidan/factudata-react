@@ -42,7 +42,7 @@ import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout'
 import { useAuthContext } from 'src/contexts/auth-context'
 import { useRouter } from 'next/router'
 import { getEmpresaById, getEmpresaDetailsFromUser } from 'src/services/empresaService'
-import { getProyectosFromUser } from 'src/services/proyectosService'
+import { getProyectosByEmpresaId } from 'src/services/proyectosService'
 import { formatTimestamp } from 'src/utils/formatters'
 import ticketService from 'src/services/ticketService'
 
@@ -600,88 +600,62 @@ function BoxSummaryPage() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Cargar empresa (como en tu page de Configuración Básica)
-    let mounted = true
-    ;(async () => {
-      try {
-        let emp = null
-        if (!empresaId) {
-           emp = await getEmpresaDetailsFromUser(user);
-        }
-        else {
-          emp = await getEmpresaById(empresaId)
-        } 
-        if (!mounted) return
-        setEmpresa(emp)
-      } catch (e) {
-        console.error('Error cargando empresa:', e)
-      }
-    })()
-    return () => { mounted = false }
-  }, [empresaId])
-
-  useEffect(() => {
-    // Cargar proyectos por usuario (sin getCajasByEmpresaId)
     if (!user) return
     let mounted = true
     setLoading(true)
     ;(async () => {
       try {
-        const proys = await getProyectosFromUser(user)
+        // 1. Obtener empresa
+        const emp = empresaId
+          ? await getEmpresaById(empresaId)
+          : await getEmpresaDetailsFromUser(user)
         if (!mounted) return
-        
-        // const proysActive = proys.filter((p) => {
-        //   p.activo = p.activo === false ? false : true
-        //   return p.activo !== false
-        // })
-        const proysActive = proys
+        setEmpresa(emp)
 
-        // Normalizamos el shape esperado de la page
-        const mapped = (proysActive || []).map((p) => {
-          // Si cada proyecto ya trae cajas agregadas, las usamos; si no, caemos a 0
+        // 2. Proyectos + resumen de totales en paralelo (1 query cada uno)
+        const [proys, resumen] = await Promise.all([
+          getProyectosByEmpresaId(emp.id),
+          ticketService.getResumenEmpresa(emp.id),
+        ])
+        if (!mounted) return
+
+        // Indexar resumen por proyecto_id para lookup O(1)
+        const resumenMap = {}
+        for (const r of resumen) { resumenMap[r.proyecto_id] = r }
+
+        const mapped = (proys || []).map((p) => {
+          const r = resumenMap[p.id || p._id] || {}
           const cajas = {
-            ARS: Number(p?.totalPesos ?? 0),
-            USD: Number(p?.totalDolares ?? 0),
+            ARS: r.ARS ?? 0,
+            USD: r.USD ?? 0,
           }
 
+          const ultimoMovimiento = r.ultimaFecha
+            ? { fecha: r.ultimaFecha }
+            : (p?.ultimoMovimiento || p?.lastMovement || { fecha: p?.updatedAt || p?.createdAt || null })
 
-          const ultimoMovimientoRaw =
-            p?.ultimoMovimiento || p?.lastMovement || {
-              fecha: p?.updatedAt || p?.createdAt || null,
-              tipo: '-',
-              proveedor: '-',
-              monto: 0,
-              moneda: 'ARS',
-            }
-
-          const ultimoMovimiento = ultimoMovimientoRaw
-
-
-          // Categorías por proyecto (si existen totales precalculados, usarlos)
-          const categorias = getCategoriasARSFromProyecto(p)
-
+          const categorias = r.categorias || getCategoriasARSFromProyecto(p)
 
           return {
-            id: p.id,
+            id: p.id || p._id,
             nombre: p.nombre || 'Proyecto sin nombre',
             activo: p.activo === false ? false : true,
             cajas,
             ultimoMovimiento,
             categorias,
-            movimientosRecientes: p?.movimientosRecientes || [],
           }
         })
 
         setProjects(mapped)
       } catch (e) {
-        console.error('Error cargando proyectos del usuario:', e)
+        console.error('Error cargando datos:', e)
         setProjects([])
       } finally {
         if (mounted) setLoading(false)
       }
     })()
     return () => { mounted = false }
-  }, [user])
+  }, [user, empresaId])
 
   if (!user || !empresa) {
     return (

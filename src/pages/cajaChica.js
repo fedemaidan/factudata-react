@@ -1,6 +1,11 @@
 // Nueva página para listar movimientos de caja chica del usuario logueado
 import { useState, useEffect, useMemo } from 'react';
-import { Box, Container, Typography, Stack, Select, MenuItem, TextField, InputAdornment, Paper, Table, TableBody, TableCell, TableHead, TableRow, Chip, Snackbar, Alert, Button, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions } from '@mui/material';
+import {
+  Box, Container, Typography, Stack, Select, MenuItem, TextField, InputAdornment,
+  Paper, Table, TableBody, TableCell, TableHead, TableRow, Chip, Snackbar, Alert,
+  Button, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions,
+  CircularProgress, Card, CardContent, ToggleButton, ToggleButtonGroup,
+} from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import SearchIcon from '@mui/icons-material/Search';
@@ -18,14 +23,15 @@ import TransferenciaModal from 'src/components/cajaChica/TransferenciaModal';
 import MovimientoCajaChicaModal from 'src/components/cajaChica/MovimientoCajaChicaModal';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import { getProyectosByEmpresa } from 'src/services/proyectosService';
-import { set } from 'nprogress';
 import { formatTimestamp } from 'src/utils/formatters';
 
-const formatCurrency = (amount) => {
-  if (amount)
-    return amount.toLocaleString('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 });
-  else
-    return "$ 0";
+const formatCurrency = (amount, moneda = 'ARS') => {
+  if (!amount) return moneda === 'USD' ? 'US$ 0' : '$ 0';
+  return amount.toLocaleString('es-AR', {
+    style: 'currency',
+    currency: moneda,
+    minimumFractionDigits: 0,
+  });
 };
 
 const CajaChicaPage = () => {
@@ -33,15 +39,19 @@ const CajaChicaPage = () => {
   const { user } = useAuthContext();
   const { userId } = router.query;
   const [movimientos, setMovimientos] = useState([]);
+  const [isLoadingMovimientos, setIsLoadingMovimientos] = useState(true);
   const [alert, setAlert] = useState({ open: false, message: '', severity: 'info' });
   const [filtroDias, setFiltroDias] = useState('730');
   const [filtroObs, setFiltroObs] = useState('');
   const [filtroProveedor, setFiltroProveedor] = useState('');
   const [filtroProyecto, setFiltroProyecto] = useState('');
+  const [filtroCategoria, setFiltroCategoria] = useState('');
+  const [moneda, setMoneda] = useState('ARS');
   const [userById, setUserById] = useState(null);
   
   // Estados para transferencias
   const [profiles, setProfiles] = useState([]);
+  const [saldosMap, setSaldosMap] = useState({});
   const [isTransferLoading, setIsTransferLoading] = useState(false);
   const [transferModalOpen, setTransferModalOpen] = useState(false);
 
@@ -90,6 +100,7 @@ const CajaChicaPage = () => {
 
   const fetchMovimientos = async () => {
     if (!user) return;
+    setIsLoadingMovimientos(true);
     let userU = user;
     
     if (userId) {
@@ -97,16 +108,24 @@ const CajaChicaPage = () => {
       setUserById(userU);
     }
     
-    const movs = await ticketService.getCajaChicaDelUsuario(userU);
-    setMovimientos(movs.filter(m => m.moneda === 'ARS'));
+    // Pass empresa context for proper filtering
+    const userWithEmpresa = { ...userU, empresa: userU.empresa || user.empresa, empresaId: userU.empresaId || user.empresa?.id };
+    const movs = await ticketService.getCajaChicaDelUsuario(userWithEmpresa, moneda);
+    setMovimientos(movs);
     
-    // Cargar perfiles para transferencias
+    // Cargar perfiles y saldos para transferencias
     if (user?.empresa) {
       try {
-        const perfiles = await profileService.getProfileByEmpresa(user.empresa.id);
+        const [perfiles, saldos] = await Promise.all([
+          profileService.getProfileByEmpresa(user.empresa.id),
+          cajaChicaService.getSaldosPorEmpresa(user.empresa.id),
+        ]);
         setProfiles(perfiles);
+        const map = {};
+        saldos.forEach(s => { map[s.user_phone] = s; });
+        setSaldosMap(map);
       } catch (err) {
-        console.error('Error cargando perfiles:', err);
+        console.error('Error cargando perfiles/saldos:', err);
       }
     }
 
@@ -122,6 +141,7 @@ const CajaChicaPage = () => {
     } catch (err) {
       console.error('Error cargando proyectos/categorías:', err);
     }
+    setIsLoadingMovimientos(false);
   };
 
   const handleOpenMovModal = (tipo) => {
@@ -190,7 +210,7 @@ const CajaChicaPage = () => {
   useEffect(() => {
     if (!router.isReady) return;
     fetchMovimientos();
-  }, [user, userId, router.isReady]);
+  }, [user, userId, router.isReady, moneda]);
 
   const handleCloseAlert = () => setAlert({ ...alert, open: false });
 
@@ -206,7 +226,12 @@ const CajaChicaPage = () => {
     movimientos.forEach((m) => m.proyecto && set.add(m.proyecto));
     return Array.from(set);
   }, [movimientos]);
-  
+
+  const categoriasUnicas = useMemo(() => {
+    const set = new Set();
+    movimientos.forEach((m) => m.categoria && set.add(m.categoria));
+    return Array.from(set).sort();
+  }, [movimientos]);
 
   const movimientosFiltrados = useMemo(() => {
     const hoy = new Date();
@@ -218,15 +243,38 @@ const CajaChicaPage = () => {
       const coincideObs = mov.observacion.toLowerCase().includes(filtroObs.toLowerCase());
       const coincideProveedor = filtroProveedor ? mov.nombre_proveedor?.toLowerCase().includes(filtroProveedor.toLowerCase()) : true;
       const coincideProyecto = filtroProyecto ? mov.proyecto === filtroProyecto : true;
-      return coincideDias && coincideObs && coincideProveedor && coincideProyecto;
+      const coincideCategoria = filtroCategoria ? mov.categoria === filtroCategoria : true;
+      return coincideDias && coincideObs && coincideProveedor && coincideProyecto && coincideCategoria;
     }).sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
-  }, [movimientos, filtroDias, filtroObs, filtroProveedor, filtroProyecto]);
+  }, [movimientos, filtroDias, filtroObs, filtroProveedor, filtroProyecto, filtroCategoria]);
   
   const saldoFiltrado = useMemo(() => {
     return movimientosFiltrados.reduce((acc, mov) => {
       const total = Number(mov.total) || 0;
       return acc + (mov.type === 'ingreso' ? total : -total);
     }, 0);
+  }, [movimientosFiltrados]);
+
+  const totalIngresosFiltrado = useMemo(() => {
+    return movimientosFiltrados.filter(m => m.type === 'ingreso').reduce((acc, m) => acc + (Number(m.total) || 0), 0);
+  }, [movimientosFiltrados]);
+
+  const totalEgresosFiltrado = useMemo(() => {
+    return movimientosFiltrados.filter(m => m.type !== 'ingreso').reduce((acc, m) => acc + (Number(m.total) || 0), 0);
+  }, [movimientosFiltrados]);
+
+  // Acumulado: saldo corrido de más antiguo a más reciente
+  const movimientosConAcumulado = useMemo(() => {
+    // movimientosFiltrados está ordenado desc (más reciente primero), invertimos para calcular
+    const ordenados = [...movimientosFiltrados].reverse();
+    let acum = 0;
+    const mapa = new Map();
+    ordenados.forEach((mov, i) => {
+      const total = Number(mov.total) || 0;
+      acum += mov.type === 'ingreso' ? total : -total;
+      mapa.set(mov.id || i, acum);
+    });
+    return mapa;
   }, [movimientosFiltrados]);
   
   return (
@@ -243,59 +291,92 @@ const CajaChicaPage = () => {
               <Typography variant="h4">
               { userById ? "Caja chica de " + userById.firstName + " " + userById.lastName : "Mi Caja Chica"}
               </Typography>
-              {userId && (
-                <Button variant="outlined" onClick={() => router.push('/perfilesEmpresa')}>
-                  ← Volver a Cajas Chicas
-                </Button>
-              )}
-            </Box>
-            
-            <Box display="flex" justifyContent="space-between" alignItems="center">
-              <Box>
-                <Typography variant="h6">Saldo Disponible: {formatCurrency(saldoTotalCaja)}</Typography>
-                <Typography variant="subtitle1">
-                  Saldo con filtros aplicados: {formatCurrency(saldoFiltrado)}
-                </Typography>
-              </Box>
-              
-              <Box display="flex" gap={1}>
-                {true && (
-                  <>
-                    <Button 
-                      variant="contained" 
-                      color="success"
-                      startIcon={<AddCircleOutlineIcon />}
-                      onClick={() => handleOpenMovModal('ingreso')}
-                    >
-                      Ingreso
-                    </Button>
-                    <Button 
-                      variant="contained" 
-                      color="error"
-                      startIcon={<RemoveCircleOutlineIcon />}
-                      onClick={() => handleOpenMovModal('egreso')}
-                    >
-                      Egreso
-                    </Button>
-                  </>
-                )}
-                <Button 
-                  variant="contained" 
-                  color="primary"
-                  onClick={handleOpenTransferModal}
-                  disabled={profiles.length < 2}
+              <Box display="flex" gap={1} alignItems="center">
+                <ToggleButtonGroup
+                  value={moneda}
+                  exclusive
+                  onChange={(e, val) => val && setMoneda(val)}
+                  size="small"
                 >
-                  Nueva Transferencia
-                </Button>
+                  <ToggleButton value="ARS">ARS</ToggleButton>
+                  <ToggleButton value="USD">USD</ToggleButton>
+                </ToggleButtonGroup>
+                {userId && (
+                  <Button variant="outlined" onClick={() => router.push('/perfilesEmpresa')}>
+                    ← Volver a Cajas Chicas
+                  </Button>
+                )}
               </Box>
             </Box>
 
-
+            {/* Cards resumen */}
             <Stack direction="row" spacing={2}>
+              <Card sx={{ minWidth: 180 }}>
+                <CardContent>
+                  <Typography variant="subtitle2" color="text.secondary">Saldo</Typography>
+                  <Typography variant="h5" color={saldoTotalCaja >= 0 ? 'success.main' : 'error.main'}>
+                    {formatCurrency(saldoTotalCaja, moneda)}
+                  </Typography>
+                </CardContent>
+              </Card>
+              <Card sx={{ minWidth: 180 }}>
+                <CardContent>
+                  <Typography variant="subtitle2" color="text.secondary">Ingresos (filtrado)</Typography>
+                  <Typography variant="h5" color="success.main">
+                    {formatCurrency(totalIngresosFiltrado, moneda)}
+                  </Typography>
+                </CardContent>
+              </Card>
+              <Card sx={{ minWidth: 180 }}>
+                <CardContent>
+                  <Typography variant="subtitle2" color="text.secondary">Egresos (filtrado)</Typography>
+                  <Typography variant="h5" color="error.main">
+                    {formatCurrency(totalEgresosFiltrado, moneda)}
+                  </Typography>
+                </CardContent>
+              </Card>
+              <Card sx={{ minWidth: 180 }}>
+                <CardContent>
+                  <Typography variant="subtitle2" color="text.secondary">Saldo filtrado</Typography>
+                  <Typography variant="h5">
+                    {formatCurrency(saldoFiltrado, moneda)}
+                  </Typography>
+                </CardContent>
+              </Card>
+            </Stack>
+            
+            <Box display="flex" justifyContent="flex-end" gap={1}>
+              <Button 
+                variant="contained" 
+                color="success"
+                startIcon={<AddCircleOutlineIcon />}
+                onClick={() => handleOpenMovModal('ingreso')}
+              >
+                Ingreso
+              </Button>
+              <Button 
+                variant="contained" 
+                color="error"
+                startIcon={<RemoveCircleOutlineIcon />}
+                onClick={() => handleOpenMovModal('egreso')}
+              >
+                Egreso
+              </Button>
+              <Button 
+                variant="contained" 
+                color="primary"
+                onClick={handleOpenTransferModal}
+                disabled={profiles.length < 2}
+              >
+                Nueva Transferencia
+              </Button>
+            </Box>
+
+            <Stack direction="row" spacing={2} flexWrap="wrap">
               <Select
                   value={filtroDias}
                   onChange={(e) => setFiltroDias(e.target.value)}
-                  label="Filtrar por días"
+                  size="small"
                 >
                   <MenuItem value="15">Últimos 15 días</MenuItem>
                   <MenuItem value="30">Últimos 30 días</MenuItem>
@@ -308,6 +389,7 @@ const CajaChicaPage = () => {
                 <TextField
                   label="Buscar por Observación"
                   variant="outlined"
+                  size="small"
                   onChange={(e) => setFiltroObs(e.target.value)}
                   InputProps={{
                     startAdornment: (
@@ -322,12 +404,23 @@ const CajaChicaPage = () => {
                   value={filtroProyecto}
                   onChange={(e) => setFiltroProyecto(e.target.value)}
                   displayEmpty
+                  size="small"
                 >
                   <MenuItem value="">Todos los proyectos</MenuItem>
                   {proyectosUnicos.map((proy, index) => (
-                    <MenuItem key={index} value={proy}>
-                      {proy}
-                    </MenuItem>
+                    <MenuItem key={index} value={proy}>{proy}</MenuItem>
+                  ))}
+                </Select>
+
+                <Select
+                  value={filtroCategoria}
+                  onChange={(e) => setFiltroCategoria(e.target.value)}
+                  displayEmpty
+                  size="small"
+                >
+                  <MenuItem value="">Todas las categorías</MenuItem>
+                  {categoriasUnicas.map((cat, index) => (
+                    <MenuItem key={index} value={cat}>{cat}</MenuItem>
                   ))}
                 </Select>
 
@@ -335,18 +428,38 @@ const CajaChicaPage = () => {
                   label="Proveedor"
                   value={filtroProveedor}
                   onChange={(e) => setFiltroProveedor(e.target.value)}
+                  size="small"
                 />
             </Stack>
 
+            {isLoadingMovimientos ? (
+              <Box display="flex" justifyContent="center" py={5}>
+                <CircularProgress />
+              </Box>
+            ) : movimientosFiltrados.length === 0 ? (
+              <Paper sx={{ p: 5, textAlign: 'center' }}>
+                <Typography variant="h6" color="text.secondary" gutterBottom>
+                  {movimientos.length === 0
+                    ? 'No hay movimientos en esta caja chica'
+                    : 'No hay movimientos que coincidan con los filtros'}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {movimientos.length === 0
+                    ? 'Creá un ingreso o egreso para empezar'
+                    : 'Probá ajustando los filtros'}
+                </Typography>
+              </Paper>
+            ) : (
             <Paper>
-              <Table>
+              <Table size="small">
                 <TableHead>
                   <TableRow>
                     <TableCell>Código</TableCell>
                     <TableCell>Fecha</TableCell>
                     <TableCell>Proyecto</TableCell>
                     <TableCell>Tipo</TableCell>
-                    <TableCell>Total</TableCell>
+                    <TableCell align="right">Total</TableCell>
+                    <TableCell align="right">Acumulado</TableCell>
                     <TableCell>Categoría</TableCell>
                     <TableCell>Proveedor</TableCell>
                     <TableCell>Observación</TableCell>
@@ -354,8 +467,10 @@ const CajaChicaPage = () => {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {movimientosFiltrados.map((mov, index) => (
-                    <TableRow key={index}>
+                  {movimientosFiltrados.map((mov, index) => {
+                    const acumulado = movimientosConAcumulado.get(mov.id || index) || 0;
+                    return (
+                    <TableRow key={mov.id || index}>
                         <TableCell>{mov.codigo_operacion}</TableCell>
                       <TableCell>{formatTimestamp(mov.fecha_factura)}</TableCell>
                       <TableCell>{mov.proyecto}</TableCell>
@@ -363,14 +478,25 @@ const CajaChicaPage = () => {
                         <Chip
                           label={mov.type === "ingreso" ? "Ingreso" : "Egreso"}
                           color={mov.type === "ingreso" ? "success" : "error"}
+                          size="small"
                         />
                       </TableCell>
-                      <TableCell>{formatCurrency(mov.total)}</TableCell>
+                      <TableCell align="right">{formatCurrency(mov.total, moneda)}</TableCell>
+                      <TableCell align="right">
+                        <Typography
+                          variant="body2"
+                          color={acumulado >= 0 ? 'success.main' : 'error.main'}
+                          fontWeight={500}
+                        >
+                          {formatCurrency(acumulado, moneda)}
+                        </Typography>
+                      </TableCell>
                       <TableCell>{mov.categoria}</TableCell>
                       <TableCell>{mov.nombre_proveedor}</TableCell>
                       <TableCell>{mov.observacion}</TableCell>
-                      <TableCell>
+                      <TableCell sx={{ whiteSpace: 'nowrap' }}>
                             <Button
+                              size="small"
                               color="primary"
                               startIcon={<EditIcon />}
                               onClick={() => {
@@ -379,21 +505,24 @@ const CajaChicaPage = () => {
                                 router.push(`/movementForm?movimientoId=${mov.id}&lastPageUrl=${encodeURIComponent(backUrl)}&lastPageName=${encodeURIComponent(backName)}`);
                               }}
                             >
-                              Ver / Editar
+                              Editar
                             </Button>
                             <Button
+                              size="small"
                               color="error"
                               startIcon={<DeleteIcon />}
                               onClick={() => handleEliminarClick(mov.id)}
                             >
-                              {deletingElement !== mov.id ? "Eliminar" : "Eliminando..."}
+                              {deletingElement !== mov.id ? "Eliminar" : "..."}
                             </Button>
                           </TableCell>
                     </TableRow>
-                  ))}
+                    );
+                  })}
                 </TableBody>
               </Table>
             </Paper>
+            )}
           </Stack>
         </Container>
 
@@ -404,7 +533,8 @@ const CajaChicaPage = () => {
           profiles={profiles}
           userActual={user}
           isLoading={isTransferLoading}
-          usuarioFijo={userById || user} // Usuario fijo es el de la caja actual
+          usuarioFijo={userById || user}
+          saldosMap={saldosMap}
         />
 
         <MovimientoCajaChicaModal
