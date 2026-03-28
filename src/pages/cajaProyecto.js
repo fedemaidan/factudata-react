@@ -885,20 +885,24 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
     };
 
     const fetchData = async () => {
-      let pid = proyectoId;
+      try {
+        let pid = proyectoId;
 
-      if (!proyectoId) {
-        
-        const proyectos = await getProyectosByEmpresa(empresa);
-        if (proyectos.length === 1) {
-          pid = proyectos[0].id;
+        if (!proyectoId) {
+          const proyectos = await getProyectosByEmpresa(empresa);
+          if (proyectos.length === 1) {
+            pid = proyectos[0].id;
+          }
         }
-      }
 
-      if (pid) {
-        await fetchMovimientosData(pid);
+        if (pid) {
+          await fetchMovimientosData(pid);
+        }
+      } catch (err) {
+        console.error('Error cargando datos de caja:', err);
+      } finally {
+        setLoadingPage(false);
       }
-      setLoadingPage(false);
     };
 
     fetchData();

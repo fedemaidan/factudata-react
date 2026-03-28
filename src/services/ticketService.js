@@ -1,4 +1,4 @@
-import { collection, doc, addDoc, getDoc, updateDoc, limit, query, where, getDocs, orderBy, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, addDoc, getDoc, updateDoc, query, where, getDocs, orderBy, serverTimestamp } from 'firebase/firestore';
 import { db, storage } from 'src/config/firebase';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { uploadFile, deleteFacturaByFilename } from './facturasService'; // Importa el servicio de facturas para subir los archivos

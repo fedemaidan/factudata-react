@@ -101,6 +101,7 @@ const CajaChicaPage = () => {
   const fetchMovimientos = async () => {
     if (!user) return;
     setIsLoadingMovimientos(true);
+    try {
     let userU = user;
     
     if (userId) {
@@ -141,7 +142,9 @@ const CajaChicaPage = () => {
     } catch (err) {
       console.error('Error cargando proyectos/categorías:', err);
     }
-    setIsLoadingMovimientos(false);
+    } finally {
+      setIsLoadingMovimientos(false);
+    }
   };
 
   const handleOpenMovModal = (tipo) => {
@@ -245,7 +248,7 @@ const CajaChicaPage = () => {
       const coincideProyecto = filtroProyecto ? mov.proyecto === filtroProyecto : true;
       const coincideCategoria = filtroCategoria ? mov.categoria === filtroCategoria : true;
       return coincideDias && coincideObs && coincideProveedor && coincideProyecto && coincideCategoria;
-    }).sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+    }).sort((a, b) => new Date(formatTimestamp(b.fecha_factura)) - new Date(formatTimestamp(a.fecha_factura)));
   }, [movimientos, filtroDias, filtroObs, filtroProveedor, filtroProyecto, filtroCategoria]);
   
   const saldoFiltrado = useMemo(() => {
