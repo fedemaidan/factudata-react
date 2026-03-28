@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Button,
@@ -30,26 +30,15 @@ import AddCircleIcon from '@mui/icons-material/AddCircle';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import SaveIcon from '@mui/icons-material/Save';
-import { updateEmpresaDetails } from 'src/services/empresaService';
+import proveedorService from 'src/services/proveedorService';
 import Papa from 'papaparse';
 
-export const ProveedoresDetails = ({ empresa, refreshEmpresa }) => {
+export const ProveedoresDetails = ({ empresa }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [aliasInput, setAliasInput] = useState('');
 
-  const [proveedoresData, setProveedoresData] = useState(() => {
-    if (empresa.proveedores_data?.length > 0) return empresa.proveedores_data;
-    return (empresa.proveedores ?? []).map((nombre) => ({
-      id: crypto.randomUUID(),
-      nombre,
-      razon_social: '',
-      cuit: '',
-      direccion: '',
-      alias: [],
-      categorias: []
-    }));
-  });
-  const [editingProveedorIndex, setEditingProveedorIndex] = useState(null);
+  const [proveedoresData, setProveedoresData] = useState([]);
+  const [editingProveedor, setEditingProveedor] = useState(null);
   const [openModal, setOpenModal] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmMessage, setConfirmMessage] = useState('');
@@ -59,6 +48,18 @@ export const ProveedoresDetails = ({ empresa, refreshEmpresa }) => {
   const [snackbarSeverity, setSnackbarSeverity] = useState('success');
 
   const handleSnackbarClose = () => setSnackbarOpen(false);
+
+  const fetchProveedores = useCallback(async () => {
+    if (!empresa?.id) return;
+    try {
+      const data = await proveedorService.getByEmpresa(empresa.id);
+      setProveedoresData(data);
+    } catch (err) {
+      console.error('Error cargando proveedores:', err);
+    }
+  }, [empresa?.id]);
+
+  useEffect(() => { fetchProveedores(); }, [fetchProveedores]);
 
   const formik = useFormik({
     initialValues: {
@@ -76,35 +77,29 @@ export const ProveedoresDetails = ({ empresa, refreshEmpresa }) => {
     onSubmit: async (values, { resetForm }) => {
       setIsLoading(true);
       try {
-        const nuevoProveedor = {
-          id: editingProveedorIndex !== null
-            ? proveedoresData[editingProveedorIndex].id
-            : crypto.randomUUID(), 
-          nombre: values.nombre.trim(),
-          razon_social: values.razon_social.trim(),
-          cuit: values.cuit.trim(),
-          direccion: values.direccion.trim(),
-          alias: values.alias,
-          categorias: values.categorias,
-        };
-
-        const nuevosData = [...proveedoresData];
-        if (editingProveedorIndex !== null) {
-          nuevosData[editingProveedorIndex] = nuevoProveedor;
+        if (editingProveedor) {
+          await proveedorService.actualizar(empresa.id, editingProveedor._id, {
+            nombre: values.nombre.trim(),
+            razon_social: values.razon_social.trim(),
+            cuit: values.cuit.trim(),
+            direccion: values.direccion.trim(),
+            alias: values.alias,
+            categorias: values.categorias,
+          });
+          setSnackbarMessage('Proveedor actualizado');
         } else {
-          nuevosData.push(nuevoProveedor);
+          await proveedorService.crear(empresa.id, {
+            nombre: values.nombre.trim(),
+            razon_social: values.razon_social.trim(),
+            cuit: values.cuit.trim(),
+            direccion: values.direccion.trim(),
+            alias: values.alias,
+            categorias: values.categorias,
+          });
+          setSnackbarMessage('Proveedor agregado');
         }
-
-        const nuevosNombres = nuevosData.map(p => p.nombre);
-        setProveedoresData(nuevosData);
-        await updateEmpresaDetails(empresa.id, {
-          proveedores: nuevosNombres,
-          proveedores_data: nuevosData
-        });
-        await refreshEmpresa?.();
-
-        setSnackbarMessage(editingProveedorIndex !== null ? 'Proveedor actualizado' : 'Proveedor agregado');
         setSnackbarSeverity('success');
+        await fetchProveedores();
       } catch (err) {
         console.error(err);
         setSnackbarMessage('Error al guardar el proveedor');
@@ -112,7 +107,7 @@ export const ProveedoresDetails = ({ empresa, refreshEmpresa }) => {
       } finally {
         setSnackbarOpen(true);
         setOpenModal(false);
-        setEditingProveedorIndex(null);
+        setEditingProveedor(null);
         resetForm();
         setIsLoading(false);
       }
@@ -133,18 +128,12 @@ export const ProveedoresDetails = ({ empresa, refreshEmpresa }) => {
     setConfirmOpen(true);
   };
 
-  const eliminarProveedor = async (nombreProveedor) => {
-    confirmarEliminacion(`¿Estás seguro de que deseas eliminar el proveedor "${nombreProveedor}"?`, async () => {
+  const eliminarProveedor = async (prov) => {
+    confirmarEliminacion(`¿Estás seguro de que deseas eliminar el proveedor "${prov.nombre}"?`, async () => {
       setIsLoading(true);
       try {
-        const nuevosData = proveedoresData.filter((prov) => prov.nombre !== nombreProveedor);
-        const nuevosNombres = nuevosData.map(p => p.nombre);
-        setProveedoresData(nuevosData);
-        await updateEmpresaDetails(empresa.id, {
-          proveedores: nuevosNombres,
-          proveedores_data: nuevosData
-        });
-        await refreshEmpresa?.();
+        await proveedorService.eliminar(empresa.id, prov._id);
+        await fetchProveedores();
         setSnackbarMessage('Proveedor eliminado con éxito');
         setSnackbarSeverity('success');
       } catch (error) {
@@ -158,29 +147,28 @@ export const ProveedoresDetails = ({ empresa, refreshEmpresa }) => {
     });
   };
 
-  const iniciarEdicionProveedor = (index) => {
-    const p = proveedoresData[index];
-    setEditingProveedorIndex(index);
+  const iniciarEdicionProveedor = (prov) => {
+    setEditingProveedor(prov);
     formik.setValues({
-      nombre: p.nombre,
-      razon_social: p.razon_social ?? '',
-      cuit: p.cuit,
-      direccion: p.direccion,
-      alias: p.alias ?? [],
-      categorias: p.categorias ?? []
+      nombre: prov.nombre,
+      razon_social: prov.razon_social ?? '',
+      cuit: prov.cuit ?? '',
+      direccion: prov.direccion ?? '',
+      alias: prov.alias ?? [],
+      categorias: prov.categorias ?? []
     });
     setOpenModal(true);
   };
 
   const iniciarCreacionProveedor = () => {
-    setEditingProveedorIndex(null);
+    setEditingProveedor(null);
     formik.resetForm();
     setAliasInput('');
     setOpenModal(true);
   };
 
   const cancelarEdicion = () => {
-    setEditingProveedorIndex(null);
+    setEditingProveedor(null);
     formik.resetForm();
     setAliasInput('');
     setOpenModal(false);
@@ -220,7 +208,6 @@ export const ProveedoresDetails = ({ empresa, refreshEmpresa }) => {
           .filter(c => categoriasValidas.has(c));
   
         return {
-          id: crypto.randomUUID(),
           nombre: row.Nombre?.trim() ?? '',
           cuit: row.CUIT?.trim() ?? '',
           razon_social: row['Razon Social']?.trim() ?? '',
@@ -230,15 +217,8 @@ export const ProveedoresDetails = ({ empresa, refreshEmpresa }) => {
         };
       }).filter(p => p.nombre);
   
-      const actualizados = [...proveedoresData, ...nuevos];
-      const nombres = actualizados.map(p => p.nombre);
-      setProveedoresData(actualizados);
-  
-      await updateEmpresaDetails(empresa.id, {
-        proveedores: nombres,
-        proveedores_data: actualizados
-      });
-      await refreshEmpresa?.();
+      await proveedorService.importar(empresa.id, nuevos);
+      await fetchProveedores();
   
       setSnackbarMessage('Proveedores importados con éxito');
       setSnackbarSeverity('success');
@@ -259,17 +239,17 @@ export const ProveedoresDetails = ({ empresa, refreshEmpresa }) => {
         <Divider />
         <CardContent>
           <List>
-            {proveedoresData.map((prov, index) => (
-              <ListItem key={index} divider>
+            {proveedoresData.map((prov) => (
+              <ListItem key={prov._id} divider>
                 <ListItemText
                   primary={prov.nombre}
-                  secondary={`CUIT: ${prov.cuit} | Razón social: ${prov.razon_social} | Dirección: ${prov.direccion} | Alias: ${prov.alias.join(', ')} | Categorías: ${prov.categorias.join(', ')}`}
+                  secondary={`CUIT: ${prov.cuit || ''} | Razón social: ${prov.razon_social || ''} | Dirección: ${prov.direccion || ''} | Alias: ${(prov.alias || []).join(', ')} | Categorías: ${(prov.categorias || []).join(', ')}`}
                 />
                 <ListItemSecondaryAction>
-                  <IconButton edge="end" onClick={() => iniciarEdicionProveedor(index)}>
+                  <IconButton edge="end" onClick={() => iniciarEdicionProveedor(prov)}>
                     <EditIcon />
                   </IconButton>
-                  <IconButton edge="end" onClick={() => eliminarProveedor(prov.nombre)}>
+                  <IconButton edge="end" onClick={() => eliminarProveedor(prov)}>
                     <DeleteIcon />
                   </IconButton>
                 </ListItemSecondaryAction>
@@ -307,7 +287,7 @@ export const ProveedoresDetails = ({ empresa, refreshEmpresa }) => {
       <Dialog open={openModal} onClose={cancelarEdicion} aria-labelledby="form-dialog-title">
         <form autoComplete="off" noValidate onSubmit={formik.handleSubmit}>
           <DialogTitle id="form-dialog-title">
-            {editingProveedorIndex !== null ? 'Editar Proveedor' : 'Agregar Proveedor'}
+            {editingProveedor ? 'Editar Proveedor' : 'Agregar Proveedor'}
           </DialogTitle>
           <DialogContent>
             <TextField fullWidth name="nombre" label="Nombre" value={formik.values.nombre} onChange={formik.handleChange} sx={{ mt: 2 }} />

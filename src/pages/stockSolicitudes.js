@@ -34,6 +34,7 @@ import BusinessIcon from '@mui/icons-material/Business';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useAuthContext } from 'src/contexts/auth-context';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
+import proveedorService from 'src/services/proveedorService';
 import StockSolicitudesService from 'src/services/stock/stockSolicitudesService';
 import StockMovimientosService from 'src/services/stock/stockMovimientosService';
 import StockConfigService from 'src/services/stock/stockConfigService';
@@ -149,8 +150,9 @@ export default function StockSolicitudes() {
         const empresa = await getEmpresaDetailsFromUser(user);
         // Leer stock_config de la empresa (Fase T / Fase 3)
         setStockConfig(empresa?.stock_config || {});
+        const provsApi = await proveedorService.getByEmpresa(empresa.id);
         setProveedores(
-          (empresa?.proveedores_data || []).map((p) => ({ id: p.id || '', nombre: p.nombre || '', cuit: p.cuit || '' })).filter((p) => p.nombre)
+          provsApi.map((p) => ({ id: p._id || '', nombre: p.nombre || '', cuit: p.cuit || '' })).filter((p) => p.nombre)
         );
         try {
           const lista = await StockSolicitudesService.listarUsuarios({ empresa_id: empresa.id });

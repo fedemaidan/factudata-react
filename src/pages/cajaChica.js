@@ -23,6 +23,7 @@ import TransferenciaModal from 'src/components/cajaChica/TransferenciaModal';
 import MovimientoCajaChicaModal from 'src/components/cajaChica/MovimientoCajaChicaModal';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import { getProyectosByEmpresa } from 'src/services/proyectosService';
+import proveedorService from 'src/services/proveedorService';
 import { formatTimestamp } from 'src/utils/formatters';
 
 const formatCurrency = (amount, moneda = 'ARS') => {
@@ -61,6 +62,7 @@ const CajaChicaPage = () => {
   const [isMovLoading, setIsMovLoading] = useState(false);
   const [proyectosEmpresa, setProyectosEmpresa] = useState([]);
   const [categoriasEmpresa, setCategoriasEmpresa] = useState([]);
+  const [proveedoresEmpresa, setProveedoresEmpresa] = useState([]);
 
 
   const [deletingElement, setDeletingElement] = useState(null);
@@ -130,14 +132,17 @@ const CajaChicaPage = () => {
       }
     }
 
-    // Cargar proyectos y categorías para el modal de movimiento
+    // Cargar proyectos, categorías y proveedores para el modal de movimiento
     try {
       const empresa = await getEmpresaDetailsFromUser(user);
       if (empresa) {
-        const pys = await getProyectosByEmpresa(empresa);
+        const [pys, provNombres] = await Promise.all([
+          getProyectosByEmpresa(empresa),
+          proveedorService.getNombres(empresa.id),
+        ]);
         setProyectosEmpresa(pys);
-        const cats = empresa.categorias || [];
-        setCategoriasEmpresa(cats);
+        setCategoriasEmpresa(empresa.categorias || []);
+        setProveedoresEmpresa(provNombres);
       }
     } catch (err) {
       console.error('Error cargando proyectos/categorías:', err);
@@ -546,6 +551,7 @@ const CajaChicaPage = () => {
           onSubmit={handleCreateMovimiento}
           proyectos={proyectosEmpresa}
           categorias={categoriasEmpresa}
+          proveedores={proveedoresEmpresa}
           usuarioDestino={userById || user}
           isLoading={isMovLoading}
           tipoInicial={movModalTipo}

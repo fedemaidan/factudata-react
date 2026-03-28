@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import proveedorService from 'src/services/proveedorService';
 import profileService from 'src/services/profileService';
 import {
   Typography, Button, Card, CardContent, CardActions, CardHeader, Divider, IconButton, LinearProgress, TextField, Select, MenuItem, InputLabel, FormControl,
@@ -168,13 +169,13 @@ export const UsuariosDetails = ({ empresa }) => {
     enviarAhora: true
   });
 
-  // Opciones de proveedores desde la empresa
-  const proveedoresOptions = useMemo(() => {
-    if (empresa?.proveedores_data?.length > 0) {
-      return empresa.proveedores_data.map(p => p?.nombre).filter(Boolean);
+  // Opciones de proveedores desde la API
+  const [proveedoresOptions, setProveedoresOptions] = useState([]);
+  useEffect(() => {
+    if (empresa?.id) {
+      proveedorService.getNombres(empresa.id).then(setProveedoresOptions).catch(() => {});
     }
-    return (empresa?.proveedores || []).filter(Boolean);
-  }, [empresa]);
+  }, [empresa?.id]);
 
   // Opciones de proyectos (nombres)
   const proyectosOptions = useMemo(() => {

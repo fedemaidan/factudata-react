@@ -31,6 +31,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import SaveIcon from '@mui/icons-material/Save';
 import RestoreIcon from '@mui/icons-material/Restore';
 import { updateEmpresaDetails } from 'src/services/empresaService';
+import proveedorService from 'src/services/proveedorService';
 import Papa from 'papaparse';
 
 //todo - borrar luego
@@ -143,23 +144,21 @@ export const CategoriasDetails = ({ empresa, refreshEmpresa }) => {
           }
 
           // Actualizar proveedores si cambió el nombre de la categoría
-          let proveedoresActualizados = empresa.proveedores_data || [];
           if (nombreAnterior !== nuevoNombre) {
-            proveedoresActualizados = proveedoresActualizados.map(prov => {
-              if (!prov.categorias) return prov;
-              
-              const nuevasCategoriasProv = prov.categorias.map(catString => {
-                // Si es exactamente la categoría
-                if (catString === nombreAnterior) return nuevoNombre;
-                // Si es una subcategoría "Categoria - Sub"
-                if (catString.startsWith(`${nombreAnterior} - `)) {
-                  return catString.replace(`${nombreAnterior} - `, `${nuevoNombre} - `);
-                }
-                return catString;
+            const proveedores = await proveedorService.getByEmpresa(empresa.id);
+            const updates = proveedores
+              .filter(prov => prov.categorias?.some(c => c === nombreAnterior || c.startsWith(`${nombreAnterior} - `)))
+              .map(prov => {
+                const nuevasCategoriasProv = prov.categorias.map(catString => {
+                  if (catString === nombreAnterior) return nuevoNombre;
+                  if (catString.startsWith(`${nombreAnterior} - `)) {
+                    return catString.replace(`${nombreAnterior} - `, `${nuevoNombre} - `);
+                  }
+                  return catString;
+                });
+                return proveedorService.actualizar(empresa.id, prov._id, { categorias: nuevasCategoriasProv });
               });
-
-              return { ...prov, categorias: nuevasCategoriasProv };
-            });
+            await Promise.all(updates);
           }
 
           setEditingCategoria(null);
@@ -167,8 +166,7 @@ export const CategoriasDetails = ({ empresa, refreshEmpresa }) => {
           
           setCategorias(newCategorias);
           await updateEmpresaDetails(empresa.id, { 
-            categorias: newCategorias,
-            proveedores_data: proveedoresActualizados
+            categorias: newCategorias
           });
         } else {
           const newCategoria = { id: Date.now(), name: values.name, subcategorias: [] };
@@ -299,20 +297,18 @@ const handleImportarCSV = async (e) => {
         // Formato esperado en proveedores: "Categoria - Subcategoria"
         const stringBusqueda = `${nombreCategoria} - ${subcategoriaNombre}`;
         
-        const proveedoresActualizados = (empresa.proveedores_data || []).map(prov => {
-          if (!prov.categorias || !prov.categorias.includes(stringBusqueda)) return prov;
-          
-          return {
-            ...prov,
+        const proveedores = await proveedorService.getByEmpresa(empresa.id);
+        const updates = proveedores
+          .filter(prov => prov.categorias?.includes(stringBusqueda))
+          .map(prov => proveedorService.actualizar(empresa.id, prov._id, {
             categorias: prov.categorias.filter(c => c !== stringBusqueda)
-          };
-        });
+          }));
+        await Promise.all(updates);
 
-        // 3. Guardar todo junto
+        // 3. Guardar categorías
         setCategorias(newCategorias);
         await updateEmpresaDetails(empresa.id, { 
-          categorias: newCategorias,
-          proveedores_data: proveedoresActualizados
+          categorias: newCategorias
         });
         
         await refreshEmpresa?.();
@@ -341,24 +337,22 @@ const handleImportarCSV = async (e) => {
 
         // 2. Limpiar proveedores
         // Eliminar cualquier string que empiece con "NombreCategoria" o sea igual a "NombreCategoria"
-        const proveedoresActualizados = (empresa.proveedores_data || []).map(prov => {
-          if (!prov.categorias) return prov;
-          
-          const nuevasCategoriasProv = prov.categorias.filter(catString => {
-            // Si es exactamente la categoría
-            if (catString === nombreCategoria) return false;
-            // Si es una subcategoría "Categoria - Sub"
-            if (catString.startsWith(`${nombreCategoria} - `)) return false;
-            return true;
+        const proveedores = await proveedorService.getByEmpresa(empresa.id);
+        const updates = proveedores
+          .filter(prov => prov.categorias?.some(c => c === nombreCategoria || c.startsWith(`${nombreCategoria} - `)))
+          .map(prov => {
+            const nuevasCategoriasProv = prov.categorias.filter(catString => {
+              if (catString === nombreCategoria) return false;
+              if (catString.startsWith(`${nombreCategoria} - `)) return false;
+              return true;
+            });
+            return proveedorService.actualizar(empresa.id, prov._id, { categorias: nuevasCategoriasProv });
           });
-
-          return { ...prov, categorias: nuevasCategoriasProv };
-        });
+        await Promise.all(updates);
 
         setCategorias(newCategorias);
         await updateEmpresaDetails(empresa.id, { 
-          categorias: newCategorias,
-          proveedores_data: proveedoresActualizados
+          categorias: newCategorias
         });
         
         await refreshEmpresa?.();

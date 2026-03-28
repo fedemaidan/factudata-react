@@ -8,6 +8,7 @@ import {
 } from '@mui/material';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { getEmpresaById } from 'src/services/empresaService';
+import proveedorService from 'src/services/proveedorService';
 import ticketService from 'src/services/ticketService';
 import movimientosService from 'src/services/movimientosService';
 import { formatCurrency, formatTimestamp } from 'src/utils/formatters';
@@ -26,6 +27,7 @@ const RevisionFacturasPage = () => {
   const [filtroCuenta, setFiltroCuenta] = useState('Cuenta A');
   const [filtroProveedor, setFiltroProveedor] = useState('');
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
+  const [proveedoresNombres, setProveedoresNombres] = useState([]);
 
   const hoy = new Date();
   const hace30Dias = new Date();
@@ -42,6 +44,7 @@ const RevisionFacturasPage = () => {
       if (empresa.cuentas){
         setFiltroCuenta(empresa.cuentas[0]);
       }
+      proveedorService.getNombres(empresa.id).then(setProveedoresNombres).catch(() => {});
       
       const proyectosData = await getProyectosByEmpresa(empresa);
 
@@ -120,7 +123,7 @@ const RevisionFacturasPage = () => {
               </FormControl>
               <Autocomplete
                 freeSolo
-                options={empresa?.proveedores_data?.map(p => p.nombre) || []}
+                options={proveedoresNombres}
                 getOptionLabel={(option) => option || ''}
                 value={filtroProveedor}
                 onInputChange={(event, newInputValue) => setFiltroProveedor(newInputValue)}

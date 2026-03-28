@@ -55,6 +55,7 @@ import { useAuthContext } from 'src/contexts/auth-context';
 import presupuestoService from 'src/services/presupuestoService';
 import MonedasService from 'src/services/monedasService';
 import { getEmpresaById, getEmpresaDetailsFromUser } from 'src/services/empresaService';
+import proveedorService from 'src/services/proveedorService';
 import { getProyectosFromUser } from 'src/services/proyectosService';
 import { formatCurrency, formatTimestamp } from 'src/utils/formatters';
 import dayjs from 'dayjs';
@@ -431,10 +432,7 @@ const ControlPresupuestosPage = () => {
         setEtapas(empresaData.etapas || ['Cimientos', 'Estructura', 'Cerramientos', 'Instalaciones', 'Terminaciones']);
         
         // Cargar proveedores de la empresa
-        const proveedoresData = empresaData.proveedores_data || [];
-        const proveedoresNombres = proveedoresData.length > 0 
-          ? proveedoresData.map(p => p.nombre)
-          : (empresaData.proveedores || []);
+        const proveedoresNombres = await proveedorService.getNombres(empresaData.id);
         setProveedoresEmpresa(proveedoresNombres);
 
         const proyectosUsuario = await getProyectosFromUser(user);
