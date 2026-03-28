@@ -4,7 +4,7 @@ import {
   Box, Container, Typography, Stack, Select, MenuItem, TextField, InputAdornment,
   Paper, Table, TableBody, TableCell, TableHead, TableRow, Chip, Snackbar, Alert,
   Button, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions,
-  CircularProgress, Card, CardContent, ToggleButton, ToggleButtonGroup,
+  CircularProgress, Card, CardContent, ToggleButton, ToggleButtonGroup, Autocomplete,
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -432,11 +432,13 @@ const CajaChicaPage = () => {
                   ))}
                 </Select>
 
-                <TextField
-                  label="Proveedor"
+                <Autocomplete
+                  freeSolo
+                  options={proveedoresEmpresa}
                   value={filtroProveedor}
-                  onChange={(e) => setFiltroProveedor(e.target.value)}
-                  size="small"
+                  onInputChange={(e, val) => setFiltroProveedor(val)}
+                  renderInput={(params) => <TextField {...params} label="Proveedor" size="small" />}
+                  sx={{ minWidth: 200 }}
                 />
             </Stack>
 
