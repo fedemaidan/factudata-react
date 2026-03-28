@@ -14,6 +14,11 @@ import {
   CircularProgress
 } from '@mui/material';
 
+const formatCurrency = (amount) => {
+  if (!amount) return '$ 0';
+  return amount.toLocaleString('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 });
+};
+
 const TransferenciaModal = ({
   open,
   onClose,
@@ -21,7 +26,8 @@ const TransferenciaModal = ({
   profiles = [],
   userActual = null,
   isLoading = false,
-  usuarioFijo = null // Cuando hay un usuario fijo como origen
+  usuarioFijo = null,
+  saldosMap = {},
 }) => {
   const [formData, setFormData] = useState({
     usuario_origen_id: usuarioFijo?.id || '',
@@ -67,6 +73,8 @@ const TransferenciaModal = ({
       newErrors.monto = 'El monto es requerido';
     } else if (parseFloat(formData.monto) <= 0) {
       newErrors.monto = 'El monto debe ser mayor a 0';
+    } else if (saldoOrigen != null && parseFloat(formData.monto) > saldoOrigen) {
+      newErrors.monto = `Saldo insuficiente (disponible: ${formatCurrency(saldoOrigen)})`;
     }
 
     setErrors(newErrors);
@@ -75,9 +83,6 @@ const TransferenciaModal = ({
 
   const handleSubmit = () => {
     if (!validateForm()) return;
-
-    console.log('🔍 [Debug] userActual completo:', userActual);
-    console.log('🔍 [Debug] usuarioFijo:', usuarioFijo);
 
     // Determinar usuario origen: usuarioFijo o seleccionado del form
     const usuarioOrigen = usuarioFijo || profiles.find(p => p.id === formData.usuario_origen_id);
@@ -97,7 +102,6 @@ const TransferenciaModal = ({
       observacion: formData.observacion || null
     };
 
-    console.log('🔍 [Debug] transferData eniado:', transferData);
     onSubmit(transferData);
   };
 
@@ -119,6 +123,10 @@ const TransferenciaModal = ({
   // Filtrar perfiles para destino (excluir origen seleccionado)
   const origenSeleccionado = usuarioFijo?.id || formData.usuario_origen_id;
   const perfilesDestino = profiles.filter(profile => profile.id !== origenSeleccionado);
+
+  // Saldo del usuario origen
+  const usuarioOrigenProfile = usuarioFijo || profiles.find(p => p.id === formData.usuario_origen_id);
+  const saldoOrigen = usuarioOrigenProfile?.phone ? (saldosMap[usuarioOrigenProfile.phone]?.saldo_ars ?? null) : null;
 
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
@@ -180,7 +188,7 @@ const TransferenciaModal = ({
             value={formData.monto}
             onChange={handleChange('monto')}
             error={!!errors.monto}
-            helperText={errors.monto}
+            helperText={errors.monto || (saldoOrigen != null ? `Saldo disponible: ${formatCurrency(saldoOrigen)}` : '')}
             inputProps={{ min: "0", step: "0.01" }}
             fullWidth
             required

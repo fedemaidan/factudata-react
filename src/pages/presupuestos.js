@@ -45,6 +45,7 @@ import presupuestoService from 'src/services/presupuestoService';
 import MonedasService from 'src/services/monedasService';
 import PresupuestoDrawer from 'src/components/PresupuestoDrawer';
 import { getEmpresaById, getEmpresaDetailsFromUser } from 'src/services/empresaService';
+import proveedorService from 'src/services/proveedorService';
 import { getProyectosFromUser } from 'src/services/proyectosService';
 import { formatCurrency, formatTimestamp } from 'src/utils/formatters';
 import * as XLSX from 'xlsx';
@@ -236,7 +237,8 @@ const PresupuestosPage = () => {
 
         setProyectos(proyectosUsuario);
         setEmpresaId(empresa.id);
-        setProveedores(empresa.proveedores || []);
+        const provNombres = await proveedorService.getNombres(empresa.id);
+        setProveedores(provNombres);
 
         const categoriasEmpresa = empresa.categorias || [];
         const categoriasFormateadas = categoriasEmpresa.map(cat => ({

@@ -14,6 +14,7 @@ import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import movimientosService from 'src/services/movimientosService';
 import { getEmpresaById } from 'src/services/empresaService';
 import { getProyectosByEmpresa } from 'src/services/proyectosService';
+import proveedorService from 'src/services/proveedorService';
 import { formatCurrency, formatTimestamp } from 'src/utils/formatters';
 import EditarBorradorDrawer from 'src/components/panelValidacion/EditarBorradorDrawer';
 import PanelValidacionFiltersBar from 'src/components/panelValidacion/PanelValidacionFiltersBar';
@@ -195,10 +196,11 @@ const PanelValidacionPage = () => {
     setProyectos(proys);
     if (empresaData) {
       const obras = Array.isArray(empresaData.obras) ? empresaData.obras : [];
+      const provNombres = await proveedorService.getNombres(empresaData.id);
       setDrawerCatalogos({
         comprobanteInfo: empresaData.comprobante_info || {},
         ingresoInfo: empresaData.ingreso_info || {},
-        proveedores: [...(empresaData.proveedores || []), 'Ajuste'],
+        proveedores: [...provNombres, 'Ajuste'],
         categorias: [...(empresaData.categorias || []), { name: 'Ingreso dinero', subcategorias: [] }, { name: 'Ajuste', subcategorias: ['Ajuste'] }],
         tagsExtra: empresaData.tags_extra || [],
         mediosPago: empresaData.medios_pago?.length ? empresaData.medios_pago : ['Efectivo', 'Transferencia', 'Tarjeta', 'Mercado Pago', 'Cheque'],

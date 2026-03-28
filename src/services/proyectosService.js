@@ -23,6 +23,22 @@ export const asegurarIdsSubproyectos = (proyecto) => {
 
 
 /**
+ * Obtiene los proyectos de una empresa en una sola query (endpoint batch).
+ * @param {string} empresaId - ID de la empresa.
+ * @returns {Promise<object[]>}
+ */
+export const getProyectosByEmpresaId = async (empresaId) => {
+  try {
+    const response = await api.get(`/proyecto/empresa/${empresaId}`);
+    const proyectos = response.data || [];
+    return proyectos.filter(p => p && p.eliminado !== true);
+  } catch (err) {
+    console.error('Error al obtener proyectos por empresa:', err);
+    return [];
+  }
+};
+
+/**
  * Obtiene los proyectos de un empresa a partir de las referencias almacenadas en el atributo proyectos.
  * @param {object} empresa - El objeto empresa que contiene las referencias de los proyectos.
  * @returns {Promise<object[]>} - Retorna un array con los proyectos o un array vacío si no se encuentran o hay un error.
@@ -254,15 +270,12 @@ export const crearProyecto = async (proyecto, empresaId) => {
  */
 export const deleteProyectoById = async (proyectoId, empresaId = null) => {
   try {
-    // Elimina movimientos asociados al proyecto (movimientos siguen en Firestore)
-    const movimientosQuery = query(
-      collection(db, 'movimientos'),
-      where('proyecto_id', '==', proyectoId)
-    );
-    const movimientosSnapshot = await getDocs(movimientosQuery);
+    // Obtener IDs de movimientos asociados al proyecto via API
+    const response = await api.get(`movimientos/ids-by-proyecto/${proyectoId}`);
+    const ids = response.data?.ids || [];
 
-    const deleteMovementsPromises = movimientosSnapshot.docs.map((movimientoDoc) =>
-      movimientosService.deleteMovimientoById(movimientoDoc.id)
+    const deleteMovementsPromises = ids.map((id) =>
+      movimientosService.deleteMovimientoById(id)
     );
     await Promise.all(deleteMovementsPromises);
 
@@ -287,20 +300,16 @@ export const deleteProyectoById = async (proyectoId, empresaId = null) => {
 
 export const deleteCajaById = async (cajaId) => {
   try {
-    // Obtén todos los movimientos asociados al proyecto
-    const movimientosQuery = query(
-      collection(db, 'movimientos'),
-      where('caja_id', '==', cajaId)
-    );
-    const movimientosSnapshot = await getDocs(movimientosQuery);
+    // Obtener IDs de movimientos asociados a la caja via API
+    const response = await api.get(`movimientos/ids-by-caja/${cajaId}`);
+    const ids = response.data?.ids || [];
 
-    // Elimina cada movimiento asociado al proyecto
-    const deleteMovementsPromises = movimientosSnapshot.docs.map((movimientoDoc) =>
-      movimientosService.deleteMovimientoById(movimientoDoc.id)
+    const deleteMovementsPromises = ids.map((id) =>
+      movimientosService.deleteMovimientoById(id)
     );
     await Promise.all(deleteMovementsPromises);
 
-    // Elimina el proyecto una vez que todos los movimientos se han eliminado
+    // Elimina la caja una vez que todos los movimientos se han eliminado
     const cajaDocRef = doc(db, 'cajas', cajaId);
     await deleteDoc(cajaDocRef);
 

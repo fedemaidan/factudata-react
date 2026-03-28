@@ -13,6 +13,7 @@ import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import movimientosService from 'src/services/movimientosService';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import { useAuthContext } from 'src/contexts/auth-context';
+import proveedorService from 'src/services/proveedorService';
 import { useBreadcrumbs } from 'src/contexts/breadcrumbs-context';
 import { dateToTimestamp, formatCurrency, formatTimestamp } from 'src/utils/formatters';
 import HomeIcon from '@mui/icons-material/Home';
@@ -327,11 +328,11 @@ const MovementFormPage = () => {
       const proyectosData = await getProyectosByEmpresa(empresa);
       setProyectos(proyectosData);
       const cates = [...empresa.categorias, { name: 'Ingreso dinero', subcategorias: [] }, { name: 'Ajuste', subcategorias: ['Ajuste'] }];
-      const provs = [...empresa.proveedores, 'Ajuste'];
+      const provs = await proveedorService.getNombres(empresa.id);
       setComprobanteInfo(empresa.comprobante_info || []);
       setIngresoInfo(empresa.ingreso_info || {});
       setCategorias(cates);
-      setProveedores(provs);
+      setProveedores([...provs, 'Ajuste']);
       setTagsExtra(empresa.tags_extra || []);
       setMediosPago(empresa.medios_pago?.length ? empresa.medios_pago : mediosPago);
 

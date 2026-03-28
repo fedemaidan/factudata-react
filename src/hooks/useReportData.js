@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
-import { db } from 'src/config/firebase';
+import api from 'src/services/axiosConfig';
 import { getProyectosFromUser } from 'src/services/proyectosService';
 import PresupuestoService from 'src/services/presupuestoService';
 import ReportService from 'src/services/reportService';
@@ -15,7 +14,7 @@ import {
  * Hook que gestiona toda la carga de datos para el módulo de reportes.
  *
  * - Carga reportes (configs) desde MongoDB via API
- * - Carga movimientos desde Firestore (directo)
+ * - Carga movimientos via API (MongoDB)
  * - Carga presupuestos de control via API (si el reporte lo requiere)
  * - Gestiona filtros runtime
  */
@@ -90,7 +89,7 @@ export function useReportData(user, empresaId) {
   }, [user]);
 
   // ═══════════════════════════════════════════
-  //  3. Cargar movimientos de Firestore por proyecto(s)
+  //  3. Cargar movimientos por proyecto(s) via API
   // ═══════════════════════════════════════════
   const fetchMovimientosForProyectos = useCallback(async (proyectoIds) => {
     if (!proyectoIds?.length) return [];
@@ -108,38 +107,17 @@ export function useReportData(user, empresaId) {
       }
     }
 
-    // Fetch en paralelo (máx 5 concurrentes para no saturar Firestore)
+    // Fetch en paralelo (máx 5 concurrentes)
     const batchSize = 5;
     for (let i = 0; i < toFetch.length; i += batchSize) {
       const batch = toFetch.slice(i, i + batchSize);
       const batchResults = await Promise.all(
         batch.map(async (pid) => {
           try {
-            // Traer ARS y USD
-            const [arsSnap, usdSnap] = await Promise.all([
-              getDocs(
-                query(
-                  collection(db, 'movimientos'),
-                  where('proyecto_id', '==', pid),
-                  where('moneda', '==', 'ARS'),
-                  orderBy('fecha_factura', 'desc'),
-                ),
-              ),
-              getDocs(
-                query(
-                  collection(db, 'movimientos'),
-                  where('proyecto_id', '==', pid),
-                  where('moneda', '==', 'USD'),
-                  orderBy('fecha_factura', 'desc'),
-                ),
-              ),
-            ]);
-
-            const movs = [
-              ...arsSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
-              ...usdSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
-            ];
-
+            const response = await api.get(`movimientos/proyecto/${pid}`, {
+              params: { sort: 'fecha_factura', order: 'desc' },
+            });
+            const movs = (response.data?.movimientos || []).map(m => ({ ...m, id: m._id || m.id }));
             movCacheRef.current.set(pid, movs);
             return movs;
           } catch (err) {

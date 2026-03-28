@@ -7,6 +7,7 @@ import * as Yup from 'yup';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import movimientosService from 'src/services/movimientosService';
 import {getEmpresaDetailsFromUser} from 'src/services/empresaService';
+import proveedorService from 'src/services/proveedorService';
 import { useAuthContext } from 'src/contexts/auth-context';
 import { Timestamp } from 'firebase/firestore';
 import Snackbar from '@mui/material/Snackbar';
@@ -286,10 +287,10 @@ const MovementDataEntryPage = () => {
         const empresa = await getEmpresaDetailsFromUser(user);
         setEmpresa(empresa);
         const cates = empresa.categorias;
-        const proveedores = empresa.proveedores;
         cates.push({ name: "Ingreso dinero", subcategorias: [] });
         setCategorias(cates);
-        setProveedores(proveedores);
+        const provNombres = await proveedorService.getNombres(empresa.id);
+        setProveedores(provNombres);
         setTagsExtra(empresa.tags_extra || []);
 
         const data = await movimientosService.getMovimientoById(movimientoId);

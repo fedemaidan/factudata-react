@@ -48,6 +48,7 @@ import { getProyectosByEmpresa, getProyectosFromUser } from 'src/services/proyec
 import { useAuthContext } from 'src/contexts/auth-context';
 import { formatCurrency, formatTimestamp } from 'src/utils/formatters';
 import { getEmpresaById, getEmpresaDetailsFromUser } from 'src/services/empresaService';
+import proveedorService from 'src/services/proveedorService';
 import { useRouter } from 'next/router';
 import { subDays } from 'date-fns';
 import DatePicker from 'react-datepicker';
@@ -68,6 +69,7 @@ const TodosProyectosPage = () => {
   const [tableHeadArray, setTableHeadArray] = useState([]);
   const [categoriasUnicas, setCategoriasUnicas] = useState([]);
   const [proveedoresUnicos, setProveedoresUnicos] = useState([]);
+  const [proveedoresData, setProveedoresData] = useState([]);
   const [etapasUnicas, setEtapasUnicas] = useState([]);
   const [mediosPagoUnicos, setMediosPagoUnicos] = useState([]);
   // Estados de Filtros existentes
@@ -345,7 +347,7 @@ const TodosProyectosPage = () => {
           ?.filter((i) => !i.nombre.includes('IVA'))
           .reduce((acc, i) => acc + (i.monto || 0), 0) || 0;
 
-      const proveedor = (empresa.proveedores_data || []).find((p) => p.id === mov.id_proveedor);
+      const proveedor = proveedoresData.find((p) => p._id === mov.id_proveedor);
       const punto_venta = mov.numero_factura?.split('-')[0] || '';
       const numero_desde = mov.numero_factura?.split('-')[1] || '';
 
@@ -471,6 +473,13 @@ const TodosProyectosPage = () => {
       }
 
       const proyectosData = await getProyectosFromUser(user);
+
+      // Cargar proveedores desde API
+      proveedorService.getByEmpresa(empresa.id).then(provs => {
+        setProveedoresData(provs);
+        setProveedoresUnicos(provs.map(p => p.nombre));
+      }).catch(() => {});
+
       const proysActive = proyectosData.filter((p) => {
           p.activo = p.activo === false ? false : true
           return p.activo !== false
@@ -675,7 +684,6 @@ const TodosProyectosPage = () => {
       let todas = getTableHeadArray(empresa);
       setCategoriasUnicas(empresa?.categorias.map((cat) => cat.name));
       setMediosPagoUnicos(empresa?.medios_pago || []);
-      setProveedoresUnicos(empresa?.proveedores_data?.map((p) => p.nombre) || empresa?.proveedores);
       setEtapasUnicas(empresa?.etapas?.map((e) => e.nombre) || []);
 
       todas = todas.filter(([key]) => key !== 'acciones');

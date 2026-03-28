@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Card, CardHeader, Divider, CardContent, List, ListItem,
   ListItemText, ListItemSecondaryAction, IconButton, Button,
@@ -10,6 +10,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import SaveIcon from '@mui/icons-material/Save';
 import { updateEmpresaDetails } from 'src/services/empresaService';
+import proveedorService from 'src/services/proveedorService';
 
 export const EtapasDetails = ({ empresa, refreshEmpresa }) => {
   const [etapas, setEtapas] = useState(empresa?.etapas || []);
@@ -17,14 +18,15 @@ export const EtapasDetails = ({ empresa, refreshEmpresa }) => {
   const [form, setForm] = useState({ nombre: '', descripcion: '', categorias: [], proveedores: [] });
   const [open, setOpen] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
+  const [proveedoresOptions, setProveedoresOptions] = useState([]);
+
+  useEffect(() => {
+    if (empresa?.id) {
+      proveedorService.getNombres(empresa.id).then(setProveedoresOptions).catch(() => {});
+    }
+  }, [empresa?.id]);
 
   const categoriasOptions = (empresa.categorias || []).flatMap(cat => [
-    cat.name,
-    ...(cat.subcategorias || []).map(sub => `${cat.name} - ${sub}`)
-  ]);
-  const proveedoresOptions = empresa.proveedores ?? [];
-
-  const abrirModal = (index = null) => {
     setEditingIndex(index);
     if (index !== null) {
       setForm(etapas[index]);

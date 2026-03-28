@@ -5,6 +5,7 @@ import * as Yup from 'yup';
 import movimientosService from 'src/services/movimientosService'; // Asegúrate de que este servicio tiene un método para agregar movimientos
 import { useAuthContext } from 'src/contexts/auth-context';
 import {getEmpresaDetailsFromUser} from 'src/services/empresaService';
+import proveedorService from 'src/services/proveedorService';
 import { useRouter } from 'next/router';
 
 const AddMovementPage = () => {
@@ -41,12 +42,11 @@ const AddMovementPage = () => {
         const empresa = await getEmpresaDetailsFromUser(user)
         setEmpresa(empresa)
         const cates = empresa.categorias
-        const proveedores = empresa.proveedores
         cates.push({name: "Ingreso dinero", subcategorias: []})
         cates.push({name: "Ajuste", subcategorias: ["Ajuste"]})
-        proveedores.push("Ajuste")
         setCategorias(cates)
-        setProveedores(proveedores)
+        const provNombres = await proveedorService.getNombres(empresa.id);
+        setProveedores([...provNombres, 'Ajuste'])
 
         formik.setValues({
           

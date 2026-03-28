@@ -13,6 +13,7 @@ import {
   CircularProgress,
   ToggleButton,
   ToggleButtonGroup,
+  Autocomplete,
 } from '@mui/material';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import RemoveCircleOutlineIcon from '@mui/icons-material/RemoveCircleOutline';
@@ -23,6 +24,7 @@ const MovimientoCajaChicaModal = ({
   onSubmit,
   proyectos = [],
   categorias = [],
+  proveedores = [],
   usuarioDestino = null,
   isLoading = false,
   tipoInicial = 'egreso',
@@ -208,12 +210,21 @@ const MovimientoCajaChicaModal = ({
 
           {/* Proveedor (opcional) */}
           {formData.type === 'egreso' && (
-            <TextField
-              label="Proveedor"
+            <Autocomplete
+              freeSolo
+              options={proveedores}
               value={formData.nombre_proveedor}
-              onChange={handleChange('nombre_proveedor')}
-              fullWidth
-              placeholder="Opcional"
+              onInputChange={(_e, val) => {
+                setFormData((prev) => ({ ...prev, nombre_proveedor: val }));
+              }}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="Proveedor"
+                  fullWidth
+                  placeholder="Opcional"
+                />
+              )}
             />
           )}
 
