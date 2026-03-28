@@ -42,7 +42,7 @@ import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout'
 import { useAuthContext } from 'src/contexts/auth-context'
 import { useRouter } from 'next/router'
 import { getEmpresaById, getEmpresaDetailsFromUser } from 'src/services/empresaService'
-import { getProyectosByEmpresaId } from 'src/services/proyectosService'
+import { getProyectosFromUser } from 'src/services/proyectosService'
 import { formatTimestamp } from 'src/utils/formatters'
 import ticketService from 'src/services/ticketService'
 
@@ -614,7 +614,7 @@ function BoxSummaryPage() {
 
         // 2. Proyectos + resumen de totales en paralelo (1 query cada uno)
         const [proys, resumen] = await Promise.all([
-          getProyectosByEmpresaId(emp.id),
+          getProyectosFromUser(user),
           ticketService.getResumenEmpresa(emp.id),
         ])
         if (!mounted) return
