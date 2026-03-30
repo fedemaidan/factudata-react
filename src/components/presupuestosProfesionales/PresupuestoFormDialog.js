@@ -31,6 +31,7 @@ import CloudUploadOutlinedIcon from '@mui/icons-material/CloudUploadOutlined';
 import DeleteIcon from '@mui/icons-material/Delete';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
+import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import {
   MONEDAS,
   formatCurrency,
@@ -41,6 +42,7 @@ import {
   parseNumberInput,
   handleNumericKeyDown,
 } from './constants';
+import { validateLogoFileForUpload } from 'src/utils/presupuestos/logoFileValidation';
 import { sumaIncidenciasObjetivo } from './incidenciaHelpers';
 import MonedasService from 'src/services/monedasService';
 import cacService from 'src/services/cacService';
@@ -56,6 +58,17 @@ import {
   normalizarAjusteMoneda,
   toMesAnterior,
 } from './monedaAjusteConfig';
+
+const isoADateLocal = (iso) => {
+  if (!iso || typeof iso !== 'string') return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso.trim());
+  if (!m) return null;
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  if (!y || !mo || !d) return null;
+  return new Date(y, mo - 1, d);
+};
 
 const COEF_PATIOS_DEFAULT = 0.5;
 const COEF_VEREDA_DEFAULT = 0.25;
@@ -327,19 +340,19 @@ const MonedaAjusteBlock = ({ form, onFormChange }) => {
       return;
     }
     setLoadingUsd(true);
-    const fechaHoy = hoyIso();
-    MonedasService.obtenerDolar(fechaHoy)
+    const fechaRef = (form.fecha && String(form.fecha).trim()) || hoyIso();
+    MonedasService.obtenerDolar(fechaRef)
       .then((dolarData) => {
         const valor = pickUsdValue(dolarData, ajuste.usd_fuente, ajuste.usd_valor);
         setValorUsd(valor);
-        setFechaUsd(dolarData?.fecha || fechaHoy);
+        setFechaUsd(dolarData?.fecha || fechaRef);
       })
       .catch(() => {
         setValorUsd(null);
         setFechaUsd(null);
       })
       .finally(() => setLoadingUsd(false));
-  }, [mostrarConfigUsd, ajuste.usd_fuente, ajuste.usd_valor]);
+  }, [mostrarConfigUsd, ajuste.usd_fuente, ajuste.usd_valor, form.fecha]);
 
   useEffect(() => {
     if (!mostrarConfigCac) {
@@ -348,7 +361,8 @@ const MonedaAjusteBlock = ({ form, onFormChange }) => {
       return;
     }
     setLoadingCac(true);
-    const mesRef = toMesAnterior(hoyIso());
+    const fechaRef = (form.fecha && String(form.fecha).trim()) || hoyIso();
+    const mesRef = toMesAnterior(fechaRef);
     cacService.getCacPorFecha(mesRef)
       .then((cacData) => {
         const valor = pickCacValue(cacData, ajuste.cac_tipo);
@@ -360,7 +374,7 @@ const MonedaAjusteBlock = ({ form, onFormChange }) => {
         setFechaCac(null);
       })
       .finally(() => setLoadingCac(false));
-  }, [mostrarConfigCac, ajuste.cac_tipo]);
+  }, [mostrarConfigCac, ajuste.cac_tipo, form.fecha]);
 
   const patchForm = (patch) => onFormChange({ ...form, ...patch });
 
@@ -534,7 +548,13 @@ const MonedaAjusteBlock = ({ form, onFormChange }) => {
                       const parsed = v === '' ? null : parseFloat(v);
                       patchForm({
                         cotizacion_snapshot: parsed != null && !Number.isNaN(parsed)
-                          ? { tipo: 'CAC', fuente: 'cac', referencia: ajuste.cac_tipo, valor: parsed, fecha_origen: hoyIso() }
+                          ? {
+                              tipo: 'CAC',
+                              fuente: 'cac',
+                              referencia: ajuste.cac_tipo,
+                              valor: parsed,
+                              fecha_origen: (form.fecha && String(form.fecha).trim()) || hoyIso(),
+                            }
                           : null,
                       });
                     }}
@@ -557,7 +577,13 @@ const MonedaAjusteBlock = ({ form, onFormChange }) => {
                       const parsed = v === '' ? null : parseFloat(v);
                       patchForm({
                         cotizacion_snapshot: parsed != null && !Number.isNaN(parsed)
-                          ? { tipo: 'USD', fuente: ajuste.usd_fuente, referencia: ajuste.usd_valor, valor: parsed, fecha_origen: hoyIso() }
+                          ? {
+                              tipo: 'USD',
+                              fuente: ajuste.usd_fuente,
+                              referencia: ajuste.usd_valor,
+                              valor: parsed,
+                              fecha_origen: (form.fecha && String(form.fecha).trim()) || hoyIso(),
+                            }
                           : null,
                       });
                     }}
@@ -631,6 +657,7 @@ const PresupuestoFormDialog = ({
   logoPreviewUrl = '',
   onUploadLogo,
   onRemoveLogo,
+  onLogoPickError,
 }) => {
   const puedeDistribuirPorIncidencias = !isEdit;
   const sumaIncidencias = useMemo(() => sumaIncidenciasObjetivo(form.rubros), [form.rubros]);
@@ -642,7 +669,11 @@ const PresupuestoFormDialog = ({
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file) return;
-    if (!file.type?.startsWith('image/')) return;
+    const check = validateLogoFileForUpload(file);
+    if (!check.ok) {
+      onLogoPickError?.(check.message);
+      return;
+    }
     await onUploadLogo?.(file);
   };
 
@@ -651,12 +682,35 @@ const PresupuestoFormDialog = ({
     <DialogTitle>{isEdit ? 'Editar Presupuesto' : 'Nuevo Presupuesto Profesional'}</DialogTitle>
     <DialogContent dividers>
       <Stack spacing={2} sx={{ mt: 1 }}>
-        <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ md: 'flex-start' }}>
           <TextField
             label="Título *"
             fullWidth
+            sx={{ flex: 1 }}
             value={form.titulo}
             onChange={(e) => onFormChange({ ...form, titulo: e.target.value })}
+          />
+          <DatePicker
+            label="Fecha del presupuesto"
+            value={isoADateLocal((form.fecha && String(form.fecha).trim()) || hoyIso())}
+            onChange={(date) => {
+              if (!date || Number.isNaN(date.getTime())) {
+                onFormChange({ ...form, fecha: hoyIso() });
+                return;
+              }
+              const y = date.getFullYear();
+              const m = String(date.getMonth() + 1).padStart(2, '0');
+              const d = String(date.getDate()).padStart(2, '0');
+              onFormChange({ ...form, fecha: `${y}-${m}-${d}` });
+            }}
+            format="dd/MM/yyyy"
+            slotProps={{
+              textField: {
+                size: 'small',
+                fullWidth: true,
+                sx: { width: { xs: '100%', md: 220 }, flexShrink: 0 },
+              },
+            }}
           />
         </Stack>
 
@@ -994,14 +1048,21 @@ const PresupuestoFormDialog = ({
                 src={logoPreviewUrl || form.empresa_logo_url || ''}
                 alt="Logo empresa"
                 variant="rounded"
+                imgProps={{
+                  onError: (e) => {
+                    e.currentTarget.onerror = null;
+                  },
+                }}
                 sx={{ width: 72, height: 72, bgcolor: 'grey.100', border: 1, borderColor: 'divider' }}
               />
               <Stack spacing={0.75} sx={{ flex: 1 }}>
                 <Typography variant="body2" color="text.secondary">
                   Cargá una imagen clara para que aparezca en el presupuesto y PDF.
                 </Typography>
-                <Typography variant="caption" color="text.disabled">
-                  Formatos: JPG, PNG, o WEBP.
+                <Typography variant="caption" color="text.disabled" component="div">
+                  Formatos: JPG, PNG, WEBP, GIF, AVIF, BMP, TIFF, ICO, SVG, HEIC/HEIF. Máx. 8&nbsp;MB.
+                  En algunos navegadores el tipo de archivo no se detecta: si la extensión es correcta, se acepta.
+                  HEIC/Fotos de iPhone: la vista previa puede fallar en la PC; al guardar se optimiza el logo.
                 </Typography>
                 <Stack direction="row" spacing={1} flexWrap="wrap">
                   <Button
@@ -1031,7 +1092,7 @@ const PresupuestoFormDialog = ({
             <input
               ref={logoInputRef}
               type="file"
-              accept="image/*"
+              accept="image/*,.jpg,.jpeg,.jfif,.png,.gif,.webp,.avif,.bmp,.tif,.tiff,.heic,.heif,.svg,.ico"
               style={{ display: 'none' }}
               onChange={handleLogoInputChange}
             />

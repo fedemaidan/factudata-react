@@ -125,7 +125,10 @@ const formatCostoM2Cac = (value, cacMesReferencia) => {
   return cacMesReferencia ? `${valorStr} (índice ${cacMesReferencia})` : valorStr;
 };
 
-const renderCostoM2Rows = (costoM2Data = {}, inTable = false) => {
+const costoM2ValorMostrable = (v) => v != null && Number.isFinite(v) && v > 0;
+
+const renderCostoM2Rows = (costoM2Data, inTable = false) => {
+  if (!costoM2Data) return null;
   const ars = costoM2Data?.ars;
   const usd = costoM2Data?.usd;
   const cac = costoM2Data?.cac;
@@ -147,13 +150,24 @@ const renderCostoM2Rows = (costoM2Data = {}, inTable = false) => {
         <Text style={styles.tableCellRight}>{value}</Text>
       </View>
     );
-  return (
-    <>
-      <Row label="Costo por m² (ARS)" value={formatCostoM2(ars, 'ARS')} />
-      <Row label="Costo por m² (USD)" value={formatCostoM2(usd, 'USD')} />
-      <Row label="Costo por m² (CAC último mes)" value={formatCostoM2Cac(cac, cacMesReferencia)} />
-    </>
-  );
+  const out = [];
+  if (costoM2ValorMostrable(ars)) {
+    out.push(<Row key="m2-ars" label="Costo por m² (ARS)" value={formatCostoM2(ars, 'ARS')} />);
+  }
+  if (costoM2ValorMostrable(usd)) {
+    out.push(<Row key="m2-usd" label="Costo por m² (USD)" value={formatCostoM2(usd, 'USD')} />);
+  }
+  if (costoM2ValorMostrable(cac)) {
+    out.push(
+      <Row
+        key="m2-cac"
+        label="Costo por m² (CAC último mes)"
+        value={formatCostoM2Cac(cac, cacMesReferencia)}
+      />
+    );
+  }
+  if (!out.length) return null;
+  return <>{out}</>;
 };
 
 const capitalize = (str) => {
@@ -219,10 +233,11 @@ const renderRubros = (rubros = [], currency, totalNeto, costoM2Data, tieneAnexos
     );
   }
 
-  if (!tieneAnexos && costoM2Data) {
+  const filasCostoM2 = renderCostoM2Rows(costoM2Data, true);
+  if (!tieneAnexos && filasCostoM2) {
     rows.push(
       <View key="costo-m2-rows">
-        {renderCostoM2Rows(costoM2Data, true)}
+        {filasCostoM2}
       </View>
     );
   }
@@ -230,7 +245,7 @@ const renderRubros = (rubros = [], currency, totalNeto, costoM2Data, tieneAnexos
   return rows;
 };
 
-const buildSurfaceLines = (analisis, totalNeto, currency) => {
+const buildSurfaceLines = (analisis, totalNeto, currency, incluirPromedioMontoM2 = true) => {
   if (!analisis) return [];
   const cubierta = Number(analisis.sup_cubierta_m2) || 0;
   const patios = Number(analisis.sup_patios_m2) || 0;
@@ -247,7 +262,12 @@ const buildSurfaceLines = (analisis, totalNeto, currency) => {
     `Superficie vereda: ${vereda ? `${Math.round(vereda)} m²` : '—'}`,
     `Superficie ponderada: ${ponderada ? `${Math.round(ponderada)} m²` : '—'}`,
   ];
-  if (promedio !== null && Number.isFinite(promedio)) {
+  if (
+    incluirPromedioMontoM2 &&
+    promedio !== null &&
+    Number.isFinite(promedio) &&
+    promedio > 0
+  ) {
     lines.push(`Promedio por m²: ${formatCurrency(promedio, currency)}`);
   }
   return lines;
@@ -367,20 +387,33 @@ const renderResumenContractual = (totalOriginal, impactoAnexos, totalActualizado
           <Text style={[styles.tableCellRight, accentTextStyle]}>{equivRow.value}</Text>
         </View>
       )}
-      {costoM2Data && renderCostoM2Rows(costoM2Data)}
+      {renderCostoM2Rows(costoM2Data)}
     </View>
   );
 };
 
 const isValidHex = (v) => v && /^#[0-9A-Fa-f]{6}$/.test(v);
 
-export const PresupuestoPdfDocument = ({ presupuesto, empresa, costoM2Data = {}, logoDataUrl = null }) => {
+export const PresupuestoPdfDocument = ({
+  presupuesto,
+  empresa,
+  costoM2Data = null,
+  incluirTotalesM2 = true,
+  logoDataUrl = null,
+}) => {
   const rubros = presupuesto?.rubros || [];
   const totalNeto =
     Number(presupuesto.total_neto) ||
     rubros.reduce((acc, rubro) => acc + (Number(rubro.monto) || 0), 0);
   const currency = presupuesto?.moneda || 'ARS';
-  const surfaceLines = buildSurfaceLines(presupuesto?.analisis_superficies, totalNeto, currency);
+  const mostrarM2 = incluirTotalesM2 !== false;
+  const costoM2ParaPdf = mostrarM2 ? costoM2Data : null;
+  const surfaceLines = buildSurfaceLines(
+    presupuesto?.analisis_superficies,
+    totalNeto,
+    currency,
+    mostrarM2
+  );
   const notes = presupuesto?.notas_texto?.trim() || '';
   const anexos = presupuesto?.anexos || [];
   const impactoAnexos = anexos.reduce((s, a) => s + (Number(a.monto_diferencia) || 0), 0);
@@ -416,10 +449,29 @@ export const PresupuestoPdfDocument = ({ presupuesto, empresa, costoM2Data = {},
             <Text style={[styles.tableCellRight, { color: headerText }]}>Total</Text>
             <Text style={[styles.tableCellRight, { flex: 0.6, color: headerText }]}>Inc.</Text>
           </View>
-          {renderRubros(rubros, currency, totalNeto, costoM2Data, tieneAnexos, presupuesto, headerBg, headerText)}
+          {renderRubros(
+            rubros,
+            currency,
+            totalNeto,
+            costoM2ParaPdf,
+            tieneAnexos,
+            presupuesto,
+            headerBg,
+            headerText
+          )}
         </View>
         {tieneAnexos && renderAnexos(anexos, currency, headerBg, headerText)}
-        {tieneAnexos && renderResumenContractual(totalNeto, impactoAnexos, totalActualizado, currency, costoM2Data, presupuesto, headerBg, headerText)}
+        {tieneAnexos &&
+          renderResumenContractual(
+            totalNeto,
+            impactoAnexos,
+            totalActualizado,
+            currency,
+            costoM2ParaPdf,
+            presupuesto,
+            headerBg,
+            headerText
+          )}
         {(notes || surfaceLines.length > 0) && (
           <View style={styles.notesBox} wrap>
             {notes ? (

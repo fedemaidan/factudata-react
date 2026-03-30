@@ -10,6 +10,7 @@ const sanitizeFileName = (value) =>
     .slice(0, 40);
 
 import { loadImageAsDataUrl } from './loadLogoForPdf';
+import { getM2BaseFromPresupuesto } from './presupuestoM2Base';
 
 const downloadBlob = (blob, filename) => {
   const url = window.URL.createObjectURL(blob);
@@ -22,17 +23,7 @@ const downloadBlob = (blob, filename) => {
   window.URL.revokeObjectURL(url);
 };
 
-const getM2Base = (presupuesto) => {
-  const analisis = presupuesto?.analisis_superficies;
-  if (!analisis) return 0;
-  const cubierta = Number(analisis.sup_cubierta_m2) || 0;
-  const patios = Number(analisis.sup_patios_m2) || 0;
-  const coefPatios = Number(analisis.coef_patios) >= 0 ? (Number(analisis.coef_patios) || 0.5) : 0.5;
-  const vereda = Number(analisis.sup_vereda_m2) || 0;
-  const coefVereda = Number(analisis.coef_vereda) >= 0 ? (Number(analisis.coef_vereda) || 0.25) : 0.25;
-  const ponderadaOriginal = Number(analisis.sup_ponderada_m2) || 0;
-  return ponderadaOriginal || cubierta + patios * coefPatios + vereda * coefVereda || 0;
-};
+const getM2Base = getM2BaseFromPresupuesto;
 
 const formatFechaMes = (fechaRef) => {
   const d = fechaRef ? new Date(fechaRef) : new Date();
@@ -56,8 +47,7 @@ const calcularCostoM2Data = async (presupuesto) => {
   const currency = (presupuesto?.moneda || 'ARS').toUpperCase();
   const m2Base = getM2Base(presupuesto);
 
-  const fallback = { ars: null, usd: null, cac: null, cacMesReferencia: null };
-  if (m2Base <= 0 || totalActualizado <= 0) return fallback;
+  if (m2Base <= 0 || totalActualizado <= 0) return null;
 
   let tipoCambio = null;
   let valorCac = null;
@@ -117,15 +107,23 @@ const calcularCostoM2Data = async (presupuesto) => {
     ? (totalFinalArs / valorCac) / m2Base
     : null;
 
-  return {
+  const out = {
     ars: costoM2Ars != null && Number.isFinite(costoM2Ars) ? costoM2Ars : null,
     usd: costoM2Usd != null && Number.isFinite(costoM2Usd) ? costoM2Usd : null,
     cac: costoM2Cac != null && Number.isFinite(costoM2Cac) ? costoM2Cac : null,
     cacMesReferencia,
   };
+  const tieneAlguno =
+    (out.ars != null && out.ars > 0) ||
+    (out.usd != null && out.usd > 0) ||
+    (out.cac != null && out.cac > 0);
+  return tieneAlguno ? out : null;
 };
 
-export async function exportPresupuestoToPdfRenderer(presupuesto, { empresa } = {}) {
+export async function exportPresupuestoToPdfRenderer(
+  presupuesto,
+  { empresa, incluirTotalesM2 = true } = {}
+) {
   if (!presupuesto) {
     throw new Error('Presupuesto inválido');
   }
@@ -138,11 +136,13 @@ export async function exportPresupuestoToPdfRenderer(presupuesto, { empresa } = 
     empresa?.nombre || presupuesto.empresa_nombre
   )}`;
 
-  let costoM2Data = { ars: null, usd: null, cac: null, cacMesReferencia: null, ajusteMonetario: null };
-  try {
-    costoM2Data = await calcularCostoM2Data(presupuesto);
-  } catch (err) {
-    console.warn('Error al calcular costo por m² para PDF:', err);
+  let costoM2Data = null;
+  if (incluirTotalesM2) {
+    try {
+      costoM2Data = await calcularCostoM2Data(presupuesto);
+    } catch (err) {
+      console.warn('Error al calcular costo por m² para PDF:', err);
+    }
   }
 
   let logoDataUrl = null;
@@ -156,6 +156,7 @@ export async function exportPresupuestoToPdfRenderer(presupuesto, { empresa } = 
       presupuesto={presupuesto}
       empresa={empresa}
       costoM2Data={costoM2Data}
+      incluirTotalesM2={incluirTotalesM2}
       logoDataUrl={logoDataUrl}
     />
   );

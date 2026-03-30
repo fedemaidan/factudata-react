@@ -3,7 +3,14 @@ import Head from 'next/head';
 import {
   Alert,
   Box,
+  Button,
+  Checkbox,
   Container,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  FormControlLabel,
   LinearProgress,
   Paper,
   Snackbar,
@@ -29,6 +36,8 @@ import cacService from 'src/services/cacService';
 import usePresupuestosList from 'src/hooks/presupuestosProfesionales/usePresupuestosList';
 import usePlantillasList from 'src/hooks/presupuestosProfesionales/usePlantillasList';
 import usePlantillaImport from 'src/hooks/presupuestosProfesionales/usePlantillaImport';
+import { getM2BaseFromPresupuesto } from 'src/utils/presupuestos/presupuestoM2Base';
+import { validateLogoFileForUpload } from 'src/utils/presupuestos/logoFileValidation';
 import {
   PresupuestoFormDialog,
   PresupuestoDeleteDialog,
@@ -66,8 +75,19 @@ import {
    Formulario vacío – Presupuesto
    ================================================================ */
 
+const presupuestoFechaDocAFormIso = (fechaVal) => {
+  if (fechaVal == null || fechaVal === '') return hoyIso();
+  const dt = fechaVal instanceof Date ? fechaVal : new Date(fechaVal);
+  if (Number.isNaN(dt.getTime())) return hoyIso();
+  const y = dt.getFullYear();
+  const m = String(dt.getMonth() + 1).padStart(2, '0');
+  const d = String(dt.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
+
 const emptyPresupuesto = {
   titulo: '',
+  fecha: '',
   proyecto_id: '',
   proyecto_nombre: '',
   obra_direccion: '',
@@ -96,6 +116,11 @@ const emptyPresupuesto = {
 
 const emptyRubro = { nombre: '', monto: 0, incidencia_objetivo_pct: null, tareas: [] };
 const emptyTarea = { descripcion: '' };
+
+const presupuestoConSuperficieParaPdf = (p) =>
+  p && typeof p === 'object'
+    ? { ...p, analisis_superficies: p.analisis_superficies ?? emptyPresupuesto.analisis_superficies }
+    : p;
 
 const CAC_LABELS = {
   [CAC_TIPOS.GENERAL]: 'Promedio',
@@ -190,6 +215,9 @@ const PresupuestosProfesionales = () => {
   const [detalleTab, setDetalleTab] = useState(0);
   const [detallePdfExporting, setDetallePdfExporting] = useState(false);
   const [exportingPdfId, setExportingPdfId] = useState(null);
+  const [pdfExportOpcionesOpen, setPdfExportOpcionesOpen] = useState(false);
+  const [pdfIncluirTotalesM2, setPdfIncluirTotalesM2] = useState(true);
+  const [pdfExportCtx, setPdfExportCtx] = useState(null);
 
   // ── Presupuestos: agregar anexo ──
   const [openAnexo, setOpenAnexo] = useState(false);
@@ -308,7 +336,7 @@ const PresupuestosProfesionales = () => {
 
   const resolverCotizacionSnapshot = async (form) => {
     const ajuste = normalizarAjusteMoneda(form);
-    const fechaHoy = hoyIso();
+    const fechaRef = (form.fecha && String(form.fecha).trim()) || hoyIso();
     const snap = form.cotizacion_snapshot;
     const snapValor = snap?.valor;
     const tieneOverride = snap && Number.isFinite(Number(snapValor)) && Number(snapValor) > 0;
@@ -320,20 +348,20 @@ const PresupuestosProfesionales = () => {
           fuente: ajuste.usd_fuente,
           referencia: ajuste.usd_valor,
           valor: Number(snapValor),
-          fecha_origen: form.cotizacion_snapshot?.fecha_origen || fechaHoy,
+          fecha_origen: form.cotizacion_snapshot?.fecha_origen || fechaRef,
         };
       }
-      const dolarData = await MonedasService.obtenerDolar(fechaHoy);
+      const dolarData = await MonedasService.obtenerDolar(fechaRef);
       const valorUsd = pickUsdValue(dolarData, ajuste.usd_fuente, ajuste.usd_valor);
       if (!valorUsd) {
-        throw new Error(`No hay cotización USD ${ajuste.usd_fuente}/${ajuste.usd_valor} para ${fechaHoy}`);
+        throw new Error(`No hay cotización USD ${ajuste.usd_fuente}/${ajuste.usd_valor} para ${fechaRef}`);
       }
       return {
         tipo: 'USD',
         fuente: ajuste.usd_fuente,
         referencia: ajuste.usd_valor,
         valor: valorUsd,
-        fecha_origen: dolarData?.fecha || fechaHoy,
+        fecha_origen: dolarData?.fecha || fechaRef,
       };
     }
 
@@ -344,10 +372,10 @@ const PresupuestosProfesionales = () => {
           fuente: 'cac',
           referencia: ajuste.cac_tipo,
           valor: Number(snapValor),
-          fecha_origen: form.cotizacion_snapshot?.fecha_origen || fechaHoy,
+          fecha_origen: form.cotizacion_snapshot?.fecha_origen || fechaRef,
         };
       }
-      const mesReferencia = toMesAnterior(fechaHoy);
+      const mesReferencia = toMesAnterior(fechaRef);
       const cacData = await cacService.getCacPorFecha(mesReferencia);
       const valorCac = pickCacValue(cacData, ajuste.cac_tipo);
       if (!valorCac) {
@@ -369,6 +397,7 @@ const PresupuestosProfesionales = () => {
   const handleOpenPPCreate = () => {
     setPpForm({
       ...emptyPresupuesto,
+      fecha: hoyIso(),
       plantilla_id: '',
       plantilla_notas_id: '',
       notas_texto: TEXTO_NOTAS_DEFAULT,
@@ -387,6 +416,7 @@ const PresupuestosProfesionales = () => {
       const full = await PresupuestoProfesionalService.obtenerPorId(row._id);
       setPpForm({
         titulo: full.titulo || '',
+        fecha: presupuestoFechaDocAFormIso(full.fecha),
         proyecto_id: full.proyecto_id || '',
         proyecto_nombre: full.proyecto_nombre || '',
         obra_direccion: full.obra_direccion || '',
@@ -458,6 +488,7 @@ const PresupuestosProfesionales = () => {
       const cotizacionSnapshot = await resolverCotizacionSnapshot(ppForm);
 
       const userEmail = user?.email;
+      const fechaPresupuestoIso = (ppForm.fecha && String(ppForm.fecha).trim()) || hoyIso();
       const payload = {
         empresa_id: empresaId,
         empresa_nombre: empresaNombre,
@@ -467,8 +498,8 @@ const PresupuestosProfesionales = () => {
         proyecto_nombre: ppForm.proyecto_nombre || null,
         obra_direccion: ppForm.obra_direccion || null,
         moneda: ajuste.moneda,
-        fecha: hoyIso(),
-        fecha_presupuesto: hoyIso(),
+        fecha: fechaPresupuestoIso,
+        fecha_presupuesto: fechaPresupuestoIso,
         indexacion: ajuste.moneda === 'ARS' ? ajuste.indexacion : INDEXACION_VALUES.USD,
         cac_tipo: ajuste.indexacion === INDEXACION_VALUES.CAC ? ajuste.cac_tipo : null,
         base_calculo: ppForm.base_calculo || 'total',
@@ -693,49 +724,97 @@ const PresupuestosProfesionales = () => {
     }
   };
 
+  const openPdfExportOpciones = useCallback((ctx) => {
+    setPdfIncluirTotalesM2(true);
+    setPdfExportCtx(ctx);
+    setPdfExportOpcionesOpen(true);
+  }, []);
+
+  const ejecutarExportPresupuestoPdf = async (ctx, incluirTotalesM2, options = {}) => {
+    const { rowFull } = options;
+    try {
+      const { exportPresupuestoToPdfRenderer } = await import(
+        '../utils/presupuestos/exportPresupuestoToPdfRenderer'
+      );
+      const opts = {
+        empresa: { nombre: empresaNombre },
+        incluirTotalesM2,
+      };
+
+      if (ctx.source === 'row') {
+        setExportingPdfId(ctx.row._id);
+        const full =
+          rowFull ||
+          ctx.prefetchedFull ||
+          (await PresupuestoProfesionalService.obtenerPorId(ctx.row._id));
+        await exportPresupuestoToPdfRenderer(presupuestoConSuperficieParaPdf(full), opts);
+        showAlert('PDF descargado', 'success');
+      } else {
+        setDetallePdfExporting(true);
+        await exportPresupuestoToPdfRenderer(presupuestoConSuperficieParaPdf(detalleData), opts);
+        showAlert('PDF descargado', 'success');
+      }
+    } catch (err) {
+      console.error('Error exportando presupuesto a PDF:', err);
+      showAlert('Error al generar el PDF', 'error');
+    } finally {
+      if (ctx.source === 'row') {
+        setExportingPdfId((current) => (current === ctx.row._id ? null : current));
+      } else {
+        setDetallePdfExporting(false);
+      }
+    }
+  };
+
   const handleExportPdfFromRow = async (row) => {
     if (exportingPdfId === row._id) return;
     if (!row.rubros?.length) {
       showAlert('El presupuesto no tiene rubros', 'warning');
       return;
     }
-
     setExportingPdfId(row._id);
     try {
       const full = await PresupuestoProfesionalService.obtenerPorId(row._id);
-      const { exportPresupuestoToPdfRenderer } = await import(
-        '../utils/presupuestos/exportPresupuestoToPdfRenderer'
-      );
-      await exportPresupuestoToPdfRenderer(full, { empresa: { nombre: empresaNombre } });
-      showAlert('PDF descargado', 'success');
+      const base = getM2BaseFromPresupuesto(presupuestoConSuperficieParaPdf(full));
+      if (base <= 0) {
+        await ejecutarExportPresupuestoPdf({ source: 'row', row }, false, { rowFull: full });
+      } else {
+        setExportingPdfId(null);
+        openPdfExportOpciones({ source: 'row', row, prefetchedFull: full });
+      }
     } catch (err) {
-      console.error('Error exportando presupuesto a PDF:', err);
-      showAlert('Error al generar el PDF', 'error');
-    } finally {
+      console.error('Error preparando PDF:', err);
+      showAlert('Error al obtener el presupuesto', 'error');
       setExportingPdfId((current) => (current === row._id ? null : current));
     }
   };
 
-  const handleExportPdfFromDetalle = async () => {
+  const handleExportPdfFromDetalle = () => {
     if (!detalleData) return;
     if (!detalleData.rubros?.length) {
       showAlert('El presupuesto no tiene rubros', 'warning');
       return;
     }
-
-    setDetallePdfExporting(true);
-    try {
-      const { exportPresupuestoToPdfRenderer } = await import(
-        '../utils/presupuestos/exportPresupuestoToPdfRenderer'
-      );
-      await exportPresupuestoToPdfRenderer(detalleData, { empresa: { nombre: empresaNombre } });
-      showAlert('PDF descargado', 'success');
-    } catch (err) {
-      console.error('Error exportando PDF desde detalle:', err);
-      showAlert('Error al generar el PDF', 'error');
-    } finally {
-      setDetallePdfExporting(false);
+    const base = getM2BaseFromPresupuesto(presupuestoConSuperficieParaPdf(detalleData));
+    if (base <= 0) {
+      void ejecutarExportPresupuestoPdf({ source: 'detalle' }, false);
+      return;
     }
+    openPdfExportOpciones({ source: 'detalle' });
+  };
+
+  const handleCancelPdfExportOpciones = () => {
+    setPdfExportOpcionesOpen(false);
+    setPdfExportCtx(null);
+  };
+
+  const handleConfirmPdfExportOpciones = async () => {
+    if (!pdfExportCtx) return;
+    const ctx = pdfExportCtx;
+    const incluir = pdfIncluirTotalesM2;
+    setPdfExportOpcionesOpen(false);
+    setPdfExportCtx(null);
+    await ejecutarExportPresupuestoPdf(ctx, incluir);
   };
 
   /* ================================================================
@@ -994,8 +1073,9 @@ const PresupuestosProfesionales = () => {
 
   const handleUploadLogo = async (file) => {
     if (!file) return;
-    if (!file.type?.startsWith('image/')) {
-      showAlert('Seleccioná una imagen válida', 'warning');
+    const check = validateLogoFileForUpload(file);
+    if (!check.ok) {
+      showAlert(check.message, 'warning');
       return;
     }
     if (ppLogoPreviewUrl) URL.revokeObjectURL(ppLogoPreviewUrl);
@@ -1327,6 +1407,7 @@ const PresupuestosProfesionales = () => {
               onDuplicarSorbyData={() => {
                 setPpForm({
                   ...emptyPresupuesto,
+                  fecha: hoyIso(),
                   plantilla_id: PLANTILLA_SORBYDATA_ID,
                   plantilla_notas_id: PLANTILLA_SORBYDATA_ID,
                   notas_texto: PLANTILLA_SORBYDATA.notas?.trim() || TEXTO_NOTAS_DEFAULT,
@@ -1342,6 +1423,7 @@ const PresupuestosProfesionales = () => {
               onDuplicarPlantilla={(pl) => {
                 setPpForm({
                   ...emptyPresupuesto,
+                  fecha: hoyIso(),
                   plantilla_id: pl._id,
                   plantilla_notas_id: pl._id,
                   notas_texto: pl.notas?.trim() || TEXTO_NOTAS_DEFAULT,
@@ -1398,6 +1480,7 @@ const PresupuestosProfesionales = () => {
         logoUploading={ppSaving}
         logoPreviewUrl={ppLogoPreviewUrl}
         onUploadLogo={handleUploadLogo}
+        onLogoPickError={(msg) => showAlert(msg, 'warning')}
         onRemoveLogo={() => {
           setPpLogoFile(null);
           setPpLogoPreviewUrl('');
@@ -1411,6 +1494,31 @@ const PresupuestosProfesionales = () => {
         presupuesto={ppToDelete}
         onConfirm={handleConfirmDeletePP}
       />
+
+      <Dialog open={pdfExportOpcionesOpen} onClose={handleCancelPdfExportOpciones} fullWidth maxWidth="sm">
+        <DialogTitle>Exportar PDF</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Podés incluir o no los importes por metro cuadrado (ARS, USD, CAC) junto al total del presupuesto,
+            y el promedio monetario en la sección &quot;Análisis de superficies&quot;.
+          </Typography>
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={pdfIncluirTotalesM2}
+                onChange={(e) => setPdfIncluirTotalesM2(e.target.checked)}
+              />
+            }
+            label="Incluir totales por m² en el PDF"
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={handleCancelPdfExportOpciones}>Cancelar</Button>
+          <Button variant="contained" onClick={handleConfirmPdfExportOpciones}>
+            Descargar PDF
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <PresupuestoDetalleDialog
         open={openDetalle}

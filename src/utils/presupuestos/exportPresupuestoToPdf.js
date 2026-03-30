@@ -118,7 +118,7 @@ const buildSurfaceLines = (analisis, totalNeto, currency) => {
     `Superficie ponderada: ${ponderada ? `${Math.round(ponderada)} m²` : '—'}`,
   ];
 
-  if (promedio !== null && Number.isFinite(promedio)) {
+  if (promedio !== null && Number.isFinite(promedio) && promedio > 0) {
     lines.push(`Promedio por m²: ${formatCurrency(promedio, currency)}`);
   }
 
