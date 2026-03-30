@@ -168,13 +168,11 @@ const PresupuestosTableRow = ({
                 </IconButton>
               </span>
             </Tooltip>
-            {estado === 'borrador' && (
-              <Tooltip title="Editar">
-                <IconButton size="small" onClick={() => onOpenEdit(row)}>
-                  <EditIcon fontSize="small" />
-                </IconButton>
-              </Tooltip>
-            )}
+            <Tooltip title="Editar">
+              <IconButton size="small" onClick={() => onOpenEdit(row)}>
+                <EditIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
             <Tooltip
               title={
                 estado === 'aceptado'
