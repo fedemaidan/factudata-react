@@ -1183,10 +1183,21 @@ const movimientosConProrrateo = useMemo(() => {
       const total = mov.total || 0;
       const ratio = (usdBlue && total > 0) ? (usdBlue / total).toFixed(4) : 'N/A';
       
+      const parseFecha = (f) => {
+        if (!f) return '';
+        let d;
+        if (typeof f === 'object' && f.seconds != null) {
+          d = new Date(f.seconds * 1000);
+        } else {
+          d = new Date(f);
+        }
+        return isNaN(d.getTime()) ? '' : d.toLocaleDateString('es-AR');
+      };
+
       return [
         mov.id || '',
         mov.codigo_operacion || '',
-        mov.fecha_factura ? new Date(mov.fecha_factura.seconds * 1000).toLocaleDateString('es-AR') : '',
+        parseFecha(mov.fecha_factura),
         mov.type || '',
         mov.moneda || '',
         total,
