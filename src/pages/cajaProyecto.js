@@ -1753,7 +1753,7 @@ useEffect(() => {
               <TotalesFiltrados
                   t={totalesDetallados}
                   fmt={formatByCurrency}
-                  moneda={cajaSeleccionada?.moneda || tablaActiva || 'ARS'}
+                  moneda={cajaSeleccionada?.moneda || filters.caja?.moneda || tablaActiva || 'ARS'}
                   showUsdBlue={false}
                   usdBlue={totalesUsdBlue}
                   chips={[]}
