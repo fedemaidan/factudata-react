@@ -207,8 +207,12 @@ const goNext = () => setCurrentIdx((i) => (i + 1) % (urls?.length || 0));
           const valorOperacion = compra.valorOperacion || 0;
           const cantidadCalculada = valorUnitario > 0 ? valorOperacion / valorUnitario : 1;
           
+          // mongoId = ObjectId real del material en MongoDB (para sincronización)
+          // id = clave única para el DataGrid de MUI
+          const mongoId = compra.id || null;
           return {
-            id: `${acopioId}-${i}-${compra.id || Math.random()}`,
+            id: `${acopioId}-${i}-${mongoId || Math.random()}`,
+            mongoId,
             codigo: compra.codigo || '',
             descripcion: compra.descripcion || '',
             cantidad: compra.cantidad || cantidadCalculada || 1,
@@ -381,7 +385,7 @@ const goNext = () => setCurrentIdx((i) => (i + 1) % (urls?.length || 0));
 
       // 3. Sincronizar productos (una sola llamada - el backend gestiona crear/actualizar/eliminar)
       const productosParaSync = productos.map((p) => ({
-        id: p.id,
+        id: p.mongoId || p.id,
         codigo: p.codigo,
         descripcion: p.descripcion,
         cantidad: Number(p.cantidad) || 0,
@@ -396,10 +400,10 @@ const goNext = () => setCurrentIdx((i) => (i + 1) % (urls?.length || 0));
         console.warn('Algunos productos tuvieron errores:', resultadoSync.errores);
       }
       
-      // 4. Actualizar campos del acopio (PATCH) - tipo, valor_acopio, url_image
+      // 4. Actualizar campos del acopio (PATCH) - tipo, url_image
+      // Nota: valor_acopio ya NO se envía — el backend lo calcula atómicamente con $inc
       const camposAcopio = {
         tipo: tipoLista,
-        valor_acopio: Number(valorTotal) || 0,
         url_image: urls,
       };
       
@@ -587,6 +591,7 @@ const goNext = () => setCurrentIdx((i) => (i + 1) % (urls?.length || 0));
     setProductos((rows) => {
       const nuevo = {
         id: `nuevo-${Date.now()}`,
+        mongoId: null,
         codigo: '',
         descripcion: '',
         cantidad: tipoLista === 'materiales' ? 1 : undefined,
