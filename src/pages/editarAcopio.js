@@ -1042,6 +1042,9 @@ const goNext = () => setCurrentIdx((i) => (i + 1) % (urls?.length || 0));
                   size="small"
                   fullWidth
                 >
+                  <MenuItem value="">
+                    <em>Sin proyecto asignado</em>
+                  </MenuItem>
                   {proyectosOptions.map((p) => (
                     <MenuItem key={p.id} value={p.id}>
                       {p.nombre}
