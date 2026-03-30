@@ -28,7 +28,6 @@ import {
   ESTADOS,
   ESTADO_COLOR,
   ESTADO_LABEL,
-  TRANSICIONES_VALIDAS,
   formatCurrency,
   formatDate,
   formatPct,
@@ -49,9 +48,8 @@ const PresupuestosTableRow = ({
 }) => {
   const [selectOpen, setSelectOpen] = useState(false);
   const estado = ESTADOS.includes(row.estado) ? row.estado : (row.estado || 'borrador');
-  const transiciones = TRANSICIONES_VALIDAS[estado] || [];
-  const opcionesSelect = [estado, ...transiciones.filter((e) => e !== estado)].filter(Boolean);
-  const puedeCambiar = transiciones.length > 0 && changingEstadoId !== row._id;
+  const opcionesSelect = ESTADOS;
+  const puedeCambiar = changingEstadoId !== row._id;
   return (
     <React.Fragment>
       <TableRow hover>
