@@ -622,7 +622,11 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
     const nuevas = cajasVirtuales.filter((_, i) => i !== index);
     setCajasVirtuales(nuevas);
     updateEmpresaDetails(empresa.id, { cajas_virtuales: nuevas });
-    if (cajaSeleccionada === cajasVirtuales[index]) setCajaSeleccionada(null);
+    if (cajaSeleccionada === cajasVirtuales[index]) {
+      const fallback = nuevas[0] || null;
+      setCajaSeleccionada(fallback);
+      setFilters((f) => ({ ...f, caja: fallback }));
+    }
     handleCloseCajaMenu();
   };
   
@@ -844,6 +848,15 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
       }
       setEmpresa({ ...empresa, cajas_virtuales: cajasIniciales });
       setCajasVirtuales(cajasIniciales);
+
+      // Autoseleccionar caja: la que coincida con el filtro de la URL, o la primera
+      const cajaFromUrl = router.query.caja ? (() => { try { return JSON.parse(router.query.caja); } catch { return null; } })() : null;
+      const cajaDefault = (cajaFromUrl && cajasIniciales.find(c => c.moneda === cajaFromUrl.moneda && c.medio_pago === (cajaFromUrl.medio_pago || '')))
+        || cajasIniciales[0]
+        || null;
+      if (cajaDefault) {
+        setCajaSeleccionada(cajaDefault);
+      }
 
       // Cargar proyectos para transferencias (no bloquea la tabla)
       getProyectosByEmpresa(empresa).then(data => setProyectos(data || [])).catch(() => {});
