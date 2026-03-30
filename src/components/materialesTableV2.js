@@ -72,7 +72,7 @@ export default function MaterialesTableV2({ materialesAgrupados, loading, tipo }
         id: m.codigo + '_' + m.descripcion + '_' + idx,
         codigo: m.codigo,
         descripcion: m.descripcion,
-        valorUnitario: formatCurrency(m.valorUnitario) || 0,
+        valorUnitario: Number(m.valorUnitario) || 0,
         cantidadAcopiada: Number(m.cantidadAcopiada) || 0,
         cantidadDesacopiada: Number(m.cantidadDesacopiada) || 0,
         valorTotalAcopiado: Number(m.valorTotalAcopiado) || 0,
@@ -96,7 +96,7 @@ export default function MaterialesTableV2({ materialesAgrupados, loading, tipo }
     const base = [
       { field: 'codigo', headerName: 'Código', flex: 0.8, minWidth: 140 },
       { field: 'descripcion', headerName: 'Descripción', flex: 1.6, minWidth: 260 },
-      { field: 'valorUnitario', headerName: 'Valor unitario', flex: 0.8, minWidth: 140 },
+      { field: 'valorUnitario', headerName: 'Valor unitario', type: 'number', flex: 0.8, minWidth: 140, valueFormatter: (p) => fmtCurrency(p.value) },
     ];
 
     if (!isLista) {
@@ -154,6 +154,7 @@ export default function MaterialesTableV2({ materialesAgrupados, loading, tipo }
       const out = {
         Codigo: r.codigo,
         Descripcion: r.descripcion,
+        ValorUnitario: r.valorUnitario,
         CantidadDesacopiada: r.cantidadDesacopiada,
         ValorTotalDesacopiado: r.valorTotalDesacopiado
       };
