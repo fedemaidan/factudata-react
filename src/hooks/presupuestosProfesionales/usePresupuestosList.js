@@ -23,7 +23,8 @@ const usePresupuestosList = ({
       const filters = {
         empresa_id: empresaId,
         limit: ppRowsPerPage,
-        page: ppPage,
+        // Backend usa paginacion 1-based; MUI TablePagination usa 0-based.
+        page: ppPage + 1,
       };
       if (filtroEstado) filters.estado = filtroEstado;
       if (filtroMoneda) filters.moneda = filtroMoneda;

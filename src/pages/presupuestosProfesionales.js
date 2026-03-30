@@ -545,7 +545,7 @@ const PresupuestosProfesionales = () => {
 
 
       if (ppIsEdit) {
-        await PresupuestoProfesionalService.actualizar(ppEditId, payload);
+        await PresupuestoProfesionalService.actualizar(ppEditId, payload, ppLogoFile);
         showAlert('Presupuesto actualizado');
       } else {
         await PresupuestoProfesionalService.crear(payload, ppLogoFile);

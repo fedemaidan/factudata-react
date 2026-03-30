@@ -70,8 +70,17 @@ const PresupuestoProfesionalService = {
     throw new Error('Error al obtener presupuesto profesional');
   },
 
-  actualizar: async (id, data) => {
-    const res = await api.put(`${BASE}/${id}`, data);
+  actualizar: async (id, data, logoFile = null) => {
+    let body = data;
+    let headers;
+    if (logoFile) {
+      const formData = new FormData();
+      formData.append('payload', JSON.stringify(data));
+      formData.append('logo', logoFile);
+      body = formData;
+      headers = { 'Content-Type': 'multipart/form-data' };
+    }
+    const res = await api.put(`${BASE}/${id}`, body, headers ? { headers } : undefined);
     if (res.status === 200) return unwrap(res);
     throw new Error('Error al actualizar presupuesto profesional');
   },
