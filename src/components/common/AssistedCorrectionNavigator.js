@@ -24,6 +24,10 @@ import CloseIcon from "@mui/icons-material/Close";
  * @param {boolean} [showConfirmButton=false] - Si mostrar botón Confirmar/Continuar
  * @param {string} [confirmLabel="Continuar"] - Etiqueta del botón de confirmar
  * @param {boolean} [confirmDisabled=false] - Si el botón Continuar debe estar deshabilitado
+ * @param {boolean} [showDuplicadoButton=false] - Botón marcar duplicado y avanzar
+ * @param {Function} [onDuplicadoYContinuar] - Callback duplicado y siguiente
+ * @param {string} [duplicadoLabel="Duplicado"] - Etiqueta botón duplicado
+ * @param {boolean} [duplicadoDisabled=false] - Deshabilitar botón duplicado (p. ej. loading)
  * @param {"top"|"bottom"} [position="bottom"] - Posición de la barra
  * @param {number} [topOffset=16] - Offset desde arriba cuando position=top (ej. por alert)
  */
@@ -39,6 +43,10 @@ const AssistedCorrectionNavigator = ({
   showConfirmButton = false,
   confirmLabel = "Continuar",
   confirmDisabled = false,
+  showDuplicadoButton = false,
+  onDuplicadoYContinuar,
+  duplicadoLabel = "Duplicado",
+  duplicadoDisabled = false,
   position = "bottom",
   topOffset = 16,
 }) => {
@@ -83,6 +91,18 @@ const AssistedCorrectionNavigator = ({
           sx={{ whiteSpace: "nowrap" }}
         >
           {confirmLabel}
+        </Button>
+      )}
+      {showDuplicadoButton && typeof onDuplicadoYContinuar === "function" && (
+        <Button
+          size="small"
+          variant="outlined"
+          color="warning"
+          onClick={onDuplicadoYContinuar}
+          disabled={duplicadoDisabled}
+          sx={{ whiteSpace: "nowrap" }}
+        >
+          {duplicadoLabel}
         </Button>
       )}
       <Typography variant="caption" color="text.secondary">

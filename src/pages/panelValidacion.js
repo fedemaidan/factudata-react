@@ -4,7 +4,8 @@ import { useRouter } from 'next/router';
 import {
   Box, Container, Typography, Table, TableBody, TableCell, TableHead, TableRow,
   CircularProgress, Button, Stack, Snackbar, Alert,
-  Dialog, DialogTitle, DialogContent, IconButton, Tooltip, Chip
+  Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions,
+  IconButton, Tooltip, Chip,
 } from '@mui/material';
 import ImageIcon from '@mui/icons-material/Image';
 import EditIcon from '@mui/icons-material/Edit';
@@ -50,6 +51,13 @@ const PanelValidacionPage = () => {
     clientesOptions: [],
   });
   const [savingEdit, setSavingEdit] = useState(false);
+  /** Id del borrador mientras corre POST marcar-duplicado (drawer, fila o corrección asistida). */
+  const [marcandoDuplicadoId, setMarcandoDuplicadoId] = useState(null);
+  const [duplicadoDialog, setDuplicadoDialog] = useState({
+    open: false,
+    mode: null,
+    borradorId: null,
+  });
 
   const [filtros, setFiltros] = useState({
     fechaDesde: '',
@@ -83,7 +91,8 @@ const PanelValidacionPage = () => {
       isEligible: (row) =>
         Boolean(row) &&
         row.estado_borrador !== 'confirmado' &&
-        row.estado_carga !== 'confirmado',
+        row.estado_carga !== 'confirmado' &&
+        row.estado_borrador !== 'duplicado',
       getModalType: () => 'borrador',
     }),
     []
@@ -112,6 +121,8 @@ const PanelValidacionPage = () => {
     };
     if (f.estado === 'confirmado') {
       api.estado_borrador = 'confirmado';
+    } else if (f.estado === 'duplicado') {
+      api.estado_borrador = 'duplicado';
     } else if (f.estado && ['pendiente', 'completado', 'error'].includes(f.estado)) {
       api.estado_procesamiento = f.estado;
     }
@@ -292,6 +303,188 @@ const PanelValidacionPage = () => {
     setEditDrawer({ open: false, mov: null, form: {} });
   }, [detenerCorreccion]);
 
+  const borradorPendienteRevision = useCallback(
+    (m) =>
+      Boolean(m) &&
+      m.estado_borrador !== 'confirmado' &&
+      m.estado_carga !== 'confirmado' &&
+      m.estado_borrador !== 'duplicado',
+    []
+  );
+
+  const aplicarDuplicadoEnLista = useCallback((borradorId) => {
+    setItems((prev) =>
+      prev.map((item) =>
+        item.id === borradorId ? { ...item, estado_borrador: 'duplicado' } : item
+      )
+    );
+  }, []);
+
+  const ejecutarMarcarDuplicadoApi = useCallback(async (borradorId) => {
+    const res = await movimientosService.marcarBorradoresDuplicado([borradorId]);
+    if (res.error) throw new Error(res.message);
+    const errItem = res.data?.errores?.find((e) => e.borradorId === borradorId);
+    if (errItem) throw new Error(errItem.error);
+  }, []);
+
+  const ejecutarDuplicadoDrawer = useCallback(
+    async (borradorId) => {
+      if (!borradorId) return;
+      setMarcandoDuplicadoId(borradorId);
+      const previousItems = items;
+      aplicarDuplicadoEnLista(borradorId);
+      try {
+        await ejecutarMarcarDuplicadoApi(borradorId);
+        setSnackbar({
+          open: true,
+          message: 'Marcado como duplicado',
+          severity: 'success',
+          autoHideDuration: 4000,
+        });
+        setEditDrawer({ open: false, mov: null, form: {} });
+      } catch (e) {
+        setItems(previousItems);
+        setSnackbar({
+          open: true,
+          message: e.message || 'Error al marcar duplicado',
+          severity: 'error',
+          autoHideDuration: 4000,
+        });
+      } finally {
+        setMarcandoDuplicadoId(null);
+      }
+    },
+    [items, aplicarDuplicadoEnLista, ejecutarMarcarDuplicadoApi]
+  );
+
+  const ejecutarDuplicadoAsistida = useCallback(
+    (borradorId) => {
+      if (!borradorId) return;
+      const notificationId = addNotification({
+        message: 'Marcando como duplicado...',
+        severity: 'info',
+        autoHideDuration: null,
+      });
+      const previousItems = items;
+      aplicarDuplicadoEnLista(borradorId);
+      setEditDrawer({ open: false, mov: null, form: {} });
+      setMarcandoDuplicadoId(borradorId);
+
+      const next = correccionConfirmarYAvanzar();
+      if (next) {
+        handleEditar(next);
+      } else {
+        handleCloseCorreccionFlow();
+        fetchBorradores();
+      }
+
+      (async () => {
+        try {
+          await ejecutarMarcarDuplicadoApi(borradorId);
+          updateNotification(notificationId, {
+            message: 'Marcado como duplicado',
+            severity: 'success',
+            autoHideDuration: 3000,
+          });
+        } catch (e) {
+          updateNotification(notificationId, {
+            message: e.message || 'Error al marcar duplicado',
+            severity: 'error',
+            autoHideDuration: 4000,
+          });
+          setItems(previousItems);
+        } finally {
+          setMarcandoDuplicadoId(null);
+        }
+      })();
+    },
+    [
+      items,
+      aplicarDuplicadoEnLista,
+      ejecutarMarcarDuplicadoApi,
+      addNotification,
+      updateNotification,
+      correccionConfirmarYAvanzar,
+      handleCloseCorreccionFlow,
+      fetchBorradores,
+      handleEditar,
+    ]
+  );
+
+  const ejecutarDuplicadoFila = useCallback(
+    async (borradorId) => {
+      if (!borradorId) return;
+      setMarcandoDuplicadoId(borradorId);
+      const previousItems = items;
+      aplicarDuplicadoEnLista(borradorId);
+      try {
+        await ejecutarMarcarDuplicadoApi(borradorId);
+        setSnackbar({
+          open: true,
+          message: 'Marcado como duplicado',
+          severity: 'success',
+          autoHideDuration: 4000,
+        });
+      } catch (e) {
+        setItems(previousItems);
+        setSnackbar({
+          open: true,
+          message: e.message || 'Error al marcar duplicado',
+          severity: 'error',
+          autoHideDuration: 4000,
+        });
+      } finally {
+        setMarcandoDuplicadoId(null);
+      }
+    },
+    [items, aplicarDuplicadoEnLista, ejecutarMarcarDuplicadoApi]
+  );
+
+  const handleCerrarDuplicadoDialog = useCallback(() => {
+    setDuplicadoDialog({ open: false, mode: null, borradorId: null });
+  }, []);
+
+  const handleAbrirConfirmDuplicadoDesdeDrawer = useCallback(() => {
+    const mov = editDrawer.mov;
+    if (!mov?.id || !borradorPendienteRevision(mov)) return;
+    setDuplicadoDialog({
+      open: true,
+      mode: correccionActiva ? 'asistida' : 'drawer',
+      borradorId: mov.id,
+    });
+  }, [editDrawer.mov, correccionActiva, borradorPendienteRevision]);
+
+  const handleAbrirConfirmDuplicadoFila = useCallback(
+    (m) => {
+      if (!m?.id || !borradorPendienteRevision(m)) return;
+      setDuplicadoDialog({ open: true, mode: 'fila', borradorId: m.id });
+    },
+    [borradorPendienteRevision]
+  );
+
+  const handleConfirmarDuplicadoDialog = useCallback(() => {
+    const { open, mode, borradorId } = duplicadoDialog;
+    if (!open || !borradorId || !mode) return;
+    handleCerrarDuplicadoDialog();
+    if (mode === 'fila') {
+      void ejecutarDuplicadoFila(borradorId);
+      return;
+    }
+    if (mode === 'drawer') {
+      void ejecutarDuplicadoDrawer(borradorId);
+      return;
+    }
+    if (mode === 'asistida') {
+      ejecutarDuplicadoAsistida(borradorId);
+    }
+  }, [
+    duplicadoDialog,
+    handleCerrarDuplicadoDialog,
+    ejecutarDuplicadoFila,
+    ejecutarDuplicadoDrawer,
+    ejecutarDuplicadoAsistida,
+  ]);
+
   const handleGuardarEdicionConAvance = useCallback(() => {
     const { mov, form } = editDrawer;
     if (!mov?.id) return;
@@ -408,6 +601,7 @@ const PanelValidacionPage = () => {
     const shouldShowProyecto = Boolean(camposConfig?.proyecto);
     return (
       savingEdit ||
+      Boolean(marcandoDuplicadoId) ||
       (shouldShowProyecto && !form?.proyecto_id) ||
       form?.total === '' ||
       form?.total === undefined ||
@@ -415,7 +609,7 @@ const PanelValidacionPage = () => {
       !form?.fecha_factura ||
       (Boolean(camposConfig.fecha_pago) && !form?.fecha_pago)
     );
-  }, [editDrawer.form, drawerCatalogos.comprobanteInfo, drawerCatalogos.ingresoInfo, savingEdit]);
+  }, [editDrawer.form, drawerCatalogos.comprobanteInfo, drawerCatalogos.ingresoInfo, savingEdit, marcandoDuplicadoId]);
 
   const filterChips = useMemo(() => {
     const chips = [];
@@ -424,6 +618,7 @@ const PanelValidacionPage = () => {
       completado: 'Listo',
       error: 'Error',
       confirmado: 'Confirmado',
+      duplicado: 'Duplicado',
     };
     const t = filtros.texto?.trim();
     if (t) chips.push(`Buscar: ${t}`);
@@ -446,6 +641,9 @@ const PanelValidacionPage = () => {
   };
 
   const getEstadoProcesamientoLabel = (mov) => {
+    if (mov?.estado_borrador === 'duplicado') {
+      return { label: 'Duplicado', color: 'warning', variant: 'filled' };
+    }
     const eb = mov?.estado_borrador || mov?.estado_carga;
     if (eb === 'confirmado') return { label: 'Confirmado', color: 'success', variant: 'filled' };
     const ep = mov?.estado_procesamiento;
@@ -615,12 +813,23 @@ const PanelValidacionPage = () => {
                         {!m.url_imagen && !m.url_image && <Typography variant="caption" color="text.secondary">-</Typography>}
                       </TableCell>
                       <TableCell>
-                        {(m?.estado_borrador === 'confirmado' || m?.estado_carga === 'confirmado') ? (
+                        {!borradorPendienteRevision(m) ? (
                           <Typography variant="caption" color="text.secondary">-</Typography>
                         ) : (
-                          <Button size="small" variant="outlined" startIcon={<EditIcon />} onClick={() => handleEditar(m)}>
-                            Revisar
-                          </Button>
+                          <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap alignItems="center">
+                            <Button size="small" variant="outlined" startIcon={<EditIcon />} onClick={() => handleEditar(m)}>
+                              Revisar
+                            </Button>
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              color="warning"
+                              onClick={() => handleAbrirConfirmDuplicadoFila(m)}
+                              disabled={Boolean(marcandoDuplicadoId)}
+                            >
+                              Duplicado
+                            </Button>
+                          </Stack>
                         )}
                       </TableCell>
                     </TableRow>
@@ -647,6 +856,36 @@ const PanelValidacionPage = () => {
         </DialogContent>
       </Dialog>
 
+      <Dialog
+        open={duplicadoDialog.open}
+        onClose={handleCerrarDuplicadoDialog}
+        maxWidth="xs"
+        fullWidth
+        aria-labelledby="duplicado-dialog-title"
+        aria-describedby="duplicado-dialog-desc"
+        ModalProps={{ sx: { zIndex: (t) => t.zIndex.modal + 24 } }}
+      >
+        <DialogTitle id="duplicado-dialog-title">Marcar como duplicado</DialogTitle>
+        <DialogContent>
+          <DialogContentText id="duplicado-dialog-desc">
+            El borrador pasará a estado duplicado y no se registrará ningún movimiento en caja. ¿Continuar?
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button variant="outlined" onClick={handleCerrarDuplicadoDialog} disabled={Boolean(marcandoDuplicadoId)}>
+            Cancelar
+          </Button>
+          <Button
+            variant="contained"
+            color="warning"
+            onClick={handleConfirmarDuplicadoDialog}
+            disabled={Boolean(marcandoDuplicadoId)}
+          >
+            Sí, marcar duplicado
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       <EditarBorradorDrawer
         open={editDrawer.open}
         mov={editDrawer.mov}
@@ -664,8 +903,10 @@ const PanelValidacionPage = () => {
         clientesOptions={drawerCatalogos.clientesOptions}
         onClose={correccionActiva ? handleCloseCorreccionFlow : () => setEditDrawer({ open: false, mov: null, form: {} })}
         onSave={correccionActiva ? handleGuardarEdicionConAvance : handleGuardarEdicion}
+        onMarcarDuplicado={handleAbrirConfirmDuplicadoDesdeDrawer}
         onFormChange={(form) => setEditDrawer((d) => ({ ...d, form }))}
         saving={savingEdit}
+        markingDuplicado={editDrawer.mov?.id != null && marcandoDuplicadoId === editDrawer.mov.id}
       />
 
       {correccionActiva && (
@@ -677,10 +918,14 @@ const PanelValidacionPage = () => {
           onPrev={handleCorreccionAnterior}
           onNext={handleCorreccionSiguiente}
           onConfirmarYContinuar={handleGuardarEdicionConAvance}
+          onDuplicadoYContinuar={handleAbrirConfirmDuplicadoDesdeDrawer}
           onCloseFlow={handleCloseCorreccionFlow}
           showConfirmButton
+          showDuplicadoButton
           confirmLabel={savingEdit ? 'Continuando...' : 'Continuar'}
           confirmDisabled={continuarDisabled}
+          duplicadoLabel={marcandoDuplicadoId ? 'Marcando...' : 'Duplicado'}
+          duplicadoDisabled={Boolean(marcandoDuplicadoId) || savingEdit}
           position="top"
         />
       )}
