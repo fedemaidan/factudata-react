@@ -1,4 +1,5 @@
 export { default as PresupuestoFormDialog } from './PresupuestoFormDialog';
+export { default as PresupuestoPdfFullPreviewDialog } from './PresupuestoPdfFullPreviewDialog';
 export { default as PresupuestoDeleteDialog } from './PresupuestoDeleteDialog';
 export { default as PresupuestoDetalleDialog } from './PresupuestoDetalleDialog';
 export { default as AgregarAnexoDialog } from './AgregarAnexoDialog';

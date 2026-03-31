@@ -1,6 +1,12 @@
 import React from 'react';
 import { Document, Page, Text, View, Image, StyleSheet } from '@react-pdf/renderer';
 
+/** Dimensiones base del logo en puntos PDF (se multiplican por logo_pdf_escala). */
+const PDF_LOGO_BASE_W = 85;
+const PDF_LOGO_BASE_H = 47;
+/** Altura fija del encabezado (~40% menos que 132pt). Logo y nombre van en absolute: no estiran la franja. */
+const PDF_HEADER_FIXED_HEIGHT = 78;
+
 const styles = StyleSheet.create({
   page: {
     paddingTop: 10,
@@ -13,25 +19,45 @@ const styles = StyleSheet.create({
   header: {
     backgroundColor: '#0a4791',
     borderRadius: 2,
-    padding: 6,
+    padding: 4,
     marginBottom: 10,
+    height: PDF_HEADER_FIXED_HEIGHT,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  headerTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
     alignItems: 'center',
+    flexShrink: 0,
+  },
+  /** Sin logo: texto empresa superpuesto (no ocupa fila extra ni flexGrow). */
+  headerNombreAbsolute: {
+    position: 'absolute',
+    left: 4,
+    right: 4,
+    top: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerLogoAbsolute: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   headerFecha: {
     fontSize: 8,
     color: '#fff',
   },
-  headerLogo: {
-    width: 85,
-    height: 47,
-    objectFit: 'contain',
-    marginTop: 2,
-  },
   headerNombreEmpresa: {
     fontSize: 10,
     fontWeight: 'bold',
     color: '#fff',
-    marginTop: 2,
+    textAlign: 'center',
   },
   headerObra: {
     fontSize: 8,
@@ -394,6 +420,12 @@ const renderResumenContractual = (totalOriginal, impactoAnexos, totalActualizado
 
 const isValidHex = (v) => v && /^#[0-9A-Fa-f]{6}$/.test(v);
 
+const normalizeLogoPdfEscala = (v) => {
+  const n = Number(v);
+  if (!Number.isFinite(n) || n <= 0) return 1;
+  return Math.min(2, Math.max(0.5, Math.round(n * 100) / 100));
+};
+
 export const PresupuestoPdfDocument = ({
   presupuesto,
   empresa,
@@ -421,12 +453,15 @@ export const PresupuestoPdfDocument = ({
   const tieneAnexos = anexos.length > 0;
   const headerBg = isValidHex(presupuesto?.header_bg_color) ? presupuesto.header_bg_color : '#0a4791';
   const headerText = isValidHex(presupuesto?.header_text_color) ? presupuesto.header_text_color : '#ffffff';
+  const logoEscala = normalizeLogoPdfEscala(presupuesto?.logo_pdf_escala);
+  const logoW = PDF_LOGO_BASE_W * logoEscala;
+  const logoH = PDF_LOGO_BASE_H * logoEscala;
 
   return (
     <Document>
       <Page size="A4" style={styles.page}>
         <View fixed style={[styles.header, { backgroundColor: headerBg }]}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
+          <View style={styles.headerTopRow}>
             <Text style={[styles.headerObra, { color: headerText }]}>
               {presupuesto?.obra_direccion || '—'}
             </Text>
@@ -434,12 +469,19 @@ export const PresupuestoPdfDocument = ({
               {formatFecha(presupuesto?.fecha || presupuesto?.createdAt)}
             </Text>
           </View>
-          {logoDataUrl ? (
-            <Image src={logoDataUrl} style={styles.headerLogo} />
+          {!logoDataUrl ? (
+            <View style={styles.headerNombreAbsolute}>
+              <Text style={[styles.headerNombreEmpresa, { color: headerText }]}>
+                {empresa?.nombre || presupuesto?.empresa_nombre || 'Empresa'}
+              </Text>
+            </View>
           ) : (
-            <Text style={[styles.headerNombreEmpresa, { color: headerText }]}>
-              {empresa?.nombre || presupuesto?.empresa_nombre || 'Empresa'}
-            </Text>
+            <View style={styles.headerLogoAbsolute}>
+              <Image
+                src={logoDataUrl}
+                style={{ width: logoW, height: logoH, objectFit: 'contain' }}
+              />
+            </View>
           )}
         </View>
         <View style={{ marginTop: 6 }}>

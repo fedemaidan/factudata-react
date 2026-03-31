@@ -38,7 +38,8 @@ const resolveVersionActual = (presupuesto) => {
   return presupuesto.versiones.find((v) => Number(v?.numero_version) === numero) || null;
 };
 
-const calcularCostoM2Data = async (presupuesto) => {
+/** Misma lógica que al exportar el PDF (costos por m² en tabla). Reutilizable para vista previa. */
+export async function calcularCostoM2DataForPdf(presupuesto) {
   const rubros = presupuesto?.rubros || [];
   const totalNeto = Number(presupuesto?.total_neto) || rubros.reduce((acc, r) => acc + (Number(r.monto) || 0), 0);
   const anexos = presupuesto?.anexos || [];
@@ -139,7 +140,7 @@ export async function exportPresupuestoToPdfRenderer(
   let costoM2Data = null;
   if (incluirTotalesM2) {
     try {
-      costoM2Data = await calcularCostoM2Data(presupuesto);
+      costoM2Data = await calcularCostoM2DataForPdf(presupuesto);
     } catch (err) {
       console.warn('Error al calcular costo por m² para PDF:', err);
     }

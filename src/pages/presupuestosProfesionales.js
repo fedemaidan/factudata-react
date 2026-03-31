@@ -98,6 +98,7 @@ const emptyPresupuesto = {
   usd_fuente: USD_FUENTES.OFICIAL,
   usd_valor: USD_VALORES.PROMEDIO,
   empresa_logo_url: '',
+  logo_pdf_escala: 1,
   header_bg_color: '#0a4791',
   header_text_color: '#ffffff',
   rubros: [],
@@ -429,6 +430,10 @@ const PresupuestosProfesionales = () => {
         cotizacion_snapshot: full.cotizacion_snapshot || null,
         plantilla_notas_id: '',
         empresa_logo_url: full.empresa_logo_url || '',
+        logo_pdf_escala:
+          full.logo_pdf_escala != null && Number.isFinite(Number(full.logo_pdf_escala))
+            ? Math.min(2, Math.max(0.5, Number(full.logo_pdf_escala)))
+            : 1,
         header_bg_color: full.header_bg_color || '#0a4791',
         header_text_color: full.header_text_color || '#ffffff',
         rubros: (full.rubros || []).map((r) => ({
@@ -507,6 +512,11 @@ const PresupuestosProfesionales = () => {
         usd_valor: (ajuste.moneda === 'USD' || ajuste.indexacion === INDEXACION_VALUES.USD) ? ajuste.usd_valor : null,
         cotizacion_snapshot: cotizacionSnapshot,
         empresa_logo_url: ppForm.empresa_logo_url || null,
+        logo_pdf_escala: (() => {
+          const n = Number(ppForm.logo_pdf_escala);
+          if (!Number.isFinite(n)) return 1;
+          return Math.min(2, Math.max(0.5, Math.round(n * 100) / 100));
+        })(),
         header_bg_color: ppForm.header_bg_color || '#0a4791',
         header_text_color: ppForm.header_text_color || '#ffffff',
         rubros: ppForm.rubros
@@ -1486,6 +1496,8 @@ const PresupuestosProfesionales = () => {
           setPpLogoPreviewUrl('');
           setPpForm((prev) => ({ ...prev, empresa_logo_url: '' }));
         }}
+        empresaNombre={empresaNombre}
+        onPdfPreviewError={(message, severity = 'warning') => showAlert(message, severity)}
       />
 
       <PresupuestoDeleteDialog
