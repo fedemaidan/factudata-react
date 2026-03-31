@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Avatar,
   Box,
@@ -18,6 +18,7 @@ import {
   MenuItem,
   Paper,
   Select,
+  Slider,
   Stack,
   Switch,
   TextField,
@@ -31,6 +32,7 @@ import CloudUploadOutlinedIcon from '@mui/icons-material/CloudUploadOutlined';
 import DeleteIcon from '@mui/icons-material/Delete';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
+import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import {
   MONEDAS,
@@ -43,6 +45,10 @@ import {
   handleNumericKeyDown,
 } from './constants';
 import { validateLogoFileForUpload } from 'src/utils/presupuestos/logoFileValidation';
+import { loadImageAsDataUrl } from 'src/utils/presupuestos/loadLogoForPdf';
+import { calcularCostoM2DataForPdf } from 'src/utils/presupuestos/exportPresupuestoToPdfRenderer';
+import { buildPresupuestoDraftForPdfPreview } from 'src/utils/presupuestos/buildPresupuestoDraftForPdfPreview';
+import PresupuestoPdfFullPreviewDialog from './PresupuestoPdfFullPreviewDialog';
 import { sumaIncidenciasObjetivo } from './incidenciaHelpers';
 import MonedasService from 'src/services/monedasService';
 import cacService from 'src/services/cacService';
@@ -657,13 +663,84 @@ const PresupuestoFormDialog = ({
   logoPreviewUrl = '',
   onUploadLogo,
   onRemoveLogo,
-  onLogoPickError,
+       onLogoPickError,
+  empresaNombre = '',
+  onPdfPreviewError,
 }) => {
   const puedeDistribuirPorIncidencias = !isEdit;
   const sumaIncidencias = useMemo(() => sumaIncidenciasObjetivo(form.rubros), [form.rubros]);
   const sumaInvalida = sumaIncidencias > 100;
   const sumaBaja = sumaIncidencias < 100 && sumaIncidencias >= 0;
   const logoInputRef = useRef(null);
+  const logoPdfEscala = (() => {
+    const n = Number(form.logo_pdf_escala);
+    if (!Number.isFinite(n)) return 1;
+    return Math.min(2, Math.max(0.5, Math.round(n * 100) / 100));
+  })();
+  const tieneLogoVisual = Boolean(logoPreviewUrl || form.empresa_logo_url);
+
+  /** Evita setPpForm en cada paso del Slider (regeneraba todo el árbol de la página). */
+  const [logoEscalaLocal, setLogoEscalaLocal] = useState(null);
+  useEffect(() => {
+    setLogoEscalaLocal(null);
+  }, [form.logo_pdf_escala]);
+  useEffect(() => {
+    if (!tieneLogoVisual) setLogoEscalaLocal(null);
+  }, [tieneLogoVisual]);
+
+  const logoPdfEscalaMostrada =
+    logoEscalaLocal !== null && Number.isFinite(logoEscalaLocal) ? logoEscalaLocal : logoPdfEscala;
+
+  const [pdfFullPreviewOpen, setPdfFullPreviewOpen] = useState(false);
+  const [pdfFullPreviewLoading, setPdfFullPreviewLoading] = useState(false);
+  const [pdfFullPreviewState, setPdfFullPreviewState] = useState(null);
+
+  const handleClosePdfFullPreview = useCallback(() => {
+    setPdfFullPreviewOpen(false);
+    setPdfFullPreviewState(null);
+    setPdfFullPreviewLoading(false);
+  }, []);
+
+  const handleOpenPdfFullPreview = async () => {
+    const rubrosConNombre = (form.rubros || []).filter((r) => r.nombre?.trim());
+    if (!rubrosConNombre.length) {
+      onPdfPreviewError?.('Agregá al menos un rubro con nombre para ver la vista previa.', 'warning');
+      return;
+    }
+    setPdfFullPreviewOpen(true);
+    setPdfFullPreviewLoading(true);
+    setPdfFullPreviewState(null);
+    try {
+      const presupuesto = buildPresupuestoDraftForPdfPreview(form, empresaNombre);
+      if (!presupuesto) {
+        throw new Error('Datos incompletos');
+      }
+      let logoDataUrl = null;
+      const logoSrc = logoPreviewUrl || form.empresa_logo_url;
+      if (logoSrc) {
+        logoDataUrl = await loadImageAsDataUrl(logoSrc);
+      }
+      let costoM2Data = null;
+      try {
+        costoM2Data = await calcularCostoM2DataForPdf(presupuesto);
+      } catch (err) {
+        console.warn('Vista previa PDF: costo m²', err);
+      }
+      setPdfFullPreviewState({
+        presupuesto,
+        empresa: { nombre: empresaNombre || '' },
+        logoDataUrl,
+        costoM2Data,
+        incluirTotalesM2: true,
+      });
+    } catch (err) {
+      console.error(err);
+      onPdfPreviewError?.('No se pudo generar la vista previa. Intentá de nuevo.', 'error');
+      setPdfFullPreviewOpen(false);
+    } finally {
+      setPdfFullPreviewLoading(false);
+    }
+  };
 
   const handleLogoInputChange = async (event) => {
     const file = event.target.files?.[0];
@@ -678,6 +755,7 @@ const PresupuestoFormDialog = ({
   };
 
   return (
+    <>
   <Dialog open={open} onClose={onClose} fullWidth maxWidth="lg">
     <DialogTitle>{isEdit ? 'Editar Presupuesto' : 'Nuevo Presupuesto Profesional'}</DialogTitle>
     <DialogContent dividers>
@@ -1098,7 +1176,59 @@ const PresupuestoFormDialog = ({
             />
             {logoUploading && <LinearProgress />}
           </Stack>
-          <Divider sx={{ my: 1 }} />
+            <Divider sx={{ my: 1 }} />
+            <Stack spacing={1}>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ sm: 'center' }} flexWrap="wrap">
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={<PictureAsPdfIcon />}
+                  onClick={handleOpenPdfFullPreview}
+                  disabled={saving || logoUploading}
+                >
+                  Ver vista previa del PDF
+                </Button>
+                <Typography variant="caption" color="text.secondary" sx={{ maxWidth: 420 }}>
+                  Mismo documento que al descargar el PDF desde el listado o el detalle.
+                </Typography>
+              </Stack>
+            </Stack>
+            <Stack spacing={0.5} sx={{ mt: 1 }}>
+              <Typography variant="caption" color="text.secondary">
+                Tamaño del logo en el PDF ({Math.round(logoPdfEscalaMostrada * 100)}% del tamaño base)
+              </Typography>
+              <Slider
+                size="small"
+                value={logoPdfEscalaMostrada}
+                min={0.5}
+                max={2}
+                step={0.05}
+                valueLabelDisplay="auto"
+                valueLabelFormat={(v) => `${Math.round(Number(v) * 100)}%`}
+                disabled={!tieneLogoVisual}
+                onChange={(_, v) => {
+                  if (!tieneLogoVisual) return;
+                  setLogoEscalaLocal(v);
+                }}
+                onChangeCommitted={(_, v) => {
+                  if (!tieneLogoVisual) return;
+                  setLogoEscalaLocal(null);
+                  onFormChange((prev) => ({ ...prev, logo_pdf_escala: v }));
+                  setPdfFullPreviewState((prev) => {
+                    if (!prev?.presupuesto) return prev;
+                    return {
+                      ...prev,
+                      presupuesto: { ...prev.presupuesto, logo_pdf_escala: v },
+                    };
+                  });
+                }}
+              />
+              {!tieneLogoVisual ? (
+                <Typography variant="caption" color="text.disabled">
+                  Cargá un logo para activar el control de escala.
+                </Typography>
+              ) : null}
+            </Stack>
           <HeaderColorBlock form={form} onFormChange={onFormChange} />
         </Paper>
       </Stack>
@@ -1114,6 +1244,17 @@ const PresupuestoFormDialog = ({
       </Button>
     </DialogActions>
   </Dialog>
+    <PresupuestoPdfFullPreviewDialog
+      open={pdfFullPreviewOpen}
+      onClose={handleClosePdfFullPreview}
+      loading={pdfFullPreviewLoading}
+      presupuesto={pdfFullPreviewState?.presupuesto}
+      empresa={pdfFullPreviewState?.empresa}
+      logoDataUrl={pdfFullPreviewState?.logoDataUrl}
+      costoM2Data={pdfFullPreviewState?.costoM2Data}
+      incluirTotalesM2={pdfFullPreviewState?.incluirTotalesM2 ?? true}
+    />
+    </>
   );
 };
 
