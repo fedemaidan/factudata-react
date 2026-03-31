@@ -433,6 +433,15 @@ export const SideNav = (props) => {
             </SvgIcon>
           ),
         });
+        baseItems.push({
+          title: "Plan de Cobros",
+          path: "cobros",
+          icon: (
+            <SvgIcon fontSize="small">
+              <AttachMoneyIcon />
+            </SvgIcon>
+          ),
+        });
       }
 
       if (permisosUsuario.includes("VER_UNIDADES")) {
