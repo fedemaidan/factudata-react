@@ -29,6 +29,15 @@ const planCobroService = {
 
   eliminarPlan: (id, empresaId) =>
     api.delete(`/cobros/${id}`, { data: { empresa_id: empresaId } }),
+
+  editarCuota: (planId, cuotaId, data) =>
+    api.put(`/cobros/${planId}/cuotas/${cuotaId}`, data),
+
+  eliminarCuota: (planId, cuotaId, data) =>
+    api.delete(`/cobros/${planId}/cuotas/${cuotaId}`, { data }),
+
+  agregarCuota: (planId, data) =>
+    api.post(`/cobros/${planId}/cuotas`, data),
 };
 
 export default planCobroService;

@@ -119,6 +119,23 @@ const formatCurrencyWithCode = (amount, currencyCode = 'ARS') => {
     return Timestamp.fromDate(new Date(year, month - 1, day, 13, 30));
   };
 
-export {formatTimestamp, formatCurrency, formatCurrencyWithCode, toDateFromFirestore, dateToTimestamp
+/** Formatea un string/number para mostrar con separador de miles (es-AR: 1.234.567,89) */
+const formatNumberInput = (value) => {
+  if (value === '' || value == null) return '';
+  const str = String(value);
+  const cleaned = str.replace(/[^\d,.-]/g, '');
+  const parts = cleaned.replace(',', '.').split('.');
+  const intPart = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  if (parts.length > 1) return `${intPart},${parts[1]}`;
+  return intPart;
+};
+
+/** Parsea un string con separador de miles a valor numérico crudo (string sin formato) */
+const parseNumberInput = (formatted) => {
+  if (formatted === '' || formatted == null) return '';
+  return String(formatted).replace(/\./g, '').replace(',', '.');
+};
+
+export {formatTimestamp, formatCurrency, formatCurrencyWithCode, toDateFromFirestore, dateToTimestamp, formatNumberInput, parseNumberInput
 };
 

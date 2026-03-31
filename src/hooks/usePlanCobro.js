@@ -95,5 +95,34 @@ export function usePlanCobro(planId, empresaId) {
     return updated;
   }, [planId, empresaId]);
 
-  return { plan, loading, error, refresh: cargarPlan, confirmarPlan, marcarCobrada, revertirCobro };
+  const editarCuota = useCallback(async (cuotaId, cambios) => {
+    const res = await planCobroService.editarCuota(planId, cuotaId, {
+      empresa_id: empresaId,
+      ...cambios,
+    });
+    const updated = unwrap(res);
+    setPlan(updated);
+    return updated;
+  }, [planId, empresaId]);
+
+  const eliminarCuota = useCallback(async (cuotaId) => {
+    const res = await planCobroService.eliminarCuota(planId, cuotaId, {
+      empresa_id: empresaId,
+    });
+    const updated = unwrap(res);
+    setPlan(updated);
+    return updated;
+  }, [planId, empresaId]);
+
+  const agregarCuota = useCallback(async (cuotaData) => {
+    const res = await planCobroService.agregarCuota(planId, {
+      empresa_id: empresaId,
+      ...cuotaData,
+    });
+    const updated = unwrap(res);
+    setPlan(updated);
+    return updated;
+  }, [planId, empresaId]);
+
+  return { plan, loading, error, refresh: cargarPlan, confirmarPlan, marcarCobrada, revertirCobro, editarCuota, eliminarCuota, agregarCuota };
 }

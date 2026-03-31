@@ -18,7 +18,7 @@ import {
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import UndoIcon from '@mui/icons-material/Undo';
-import { formatCurrency } from 'src/utils/formatters';
+import { formatCurrency, formatNumberInput, parseNumberInput } from 'src/utils/formatters';
 
 const estadoColor = {
   cobrada: 'success',
@@ -64,12 +64,12 @@ export const CuotasTableEdit = ({ cuotas, onChange, moneda = 'ARS', showCAC = fa
       <TableContainer component={Paper} variant="outlined">
         <Table size="small">
           <TableHead>
-            <TableRow>
+            <TableRow sx={{ '& th': { fontWeight: 600, textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: 0.5, color: 'text.secondary' } }}>
               <TableCell>#</TableCell>
-              <TableCell>Fecha vencimiento</TableCell>
+              <TableCell>Fecha</TableCell>
               <TableCell>Monto ({moneda})</TableCell>
-              {showCAC && <TableCell>Equiv. CAC</TableCell>}
-              <TableCell>Descripción</TableCell>
+              {showCAC && <TableCell>Equiv. CAC (solo lectura)</TableCell>}
+              <TableCell>Descripción (opcional)</TableCell>
               <TableCell />
             </TableRow>
           </TableHead>
@@ -94,12 +94,11 @@ export const CuotasTableEdit = ({ cuotas, onChange, moneda = 'ARS', showCAC = fa
                   </TableCell>
                   <TableCell>
                     <TextField
-                      type="number"
                       size="small"
-                      value={c.monto}
-                      onChange={(e) => update(i, 'monto', e.target.value)}
-                      sx={{ width: 120 }}
-                      inputProps={{ min: 0, step: '0.01' }}
+                      value={formatNumberInput(c.monto)}
+                      onChange={(e) => update(i, 'monto', parseNumberInput(e.target.value))}
+                      sx={{ width: 140 }}
+                      inputProps={{ inputMode: 'decimal' }}
                     />
                   </TableCell>
                   {showCAC && (

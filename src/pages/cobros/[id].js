@@ -5,35 +5,40 @@ import {
   Box,
   Button,
   Chip,
+  CircularProgress,
   Container,
   Dialog,
   DialogActions,
   DialogContent,
   DialogContentText,
   DialogTitle,
-  Divider,
   Grid,
+  InputAdornment,
   LinearProgress,
   Paper,
   Skeleton,
   Snackbar,
   Alert,
   Stack,
-  Tooltip,
+  TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   Typography,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
+import AddIcon from '@mui/icons-material/Add';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
+import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useAuthContext } from 'src/contexts/auth-context';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import { usePlanCobro } from 'src/hooks/usePlanCobro';
-import { CuotasTableReadonly } from 'src/components/planCobro/CuotasTable';
-import { formatCurrency } from 'src/utils/formatters';
+import { formatCurrency, formatNumberInput, parseNumberInput } from 'src/utils/formatters';
 import planCobroService from 'src/services/planCobroService';
 
 const ESTADO_COLOR = { borrador: 'default', activo: 'primary', completado: 'success' };
@@ -50,6 +55,19 @@ const DetallePlanPage = () => {
   const [confirmCobrar, setConfirmCobrar] = useState(null); // cuota object or null
   const [cobrandoId, setCobrandoId] = useState(null);
   const [reverting, setReverting] = useState(null);
+  const [tipoCobro, setTipoCobro] = useState('total'); // 'total' | 'parcial'
+  const [montoParcial, setMontoParcial] = useState('');
+
+  // Edit cuota dialog
+  const [editCuota, setEditCuota] = useState(null); // cuota object or null
+  const [editForm, setEditForm] = useState({ monto: '', fecha_vencimiento: '', descripcion: '' });
+
+  // Delete cuota dialog
+  const [deleteCuota, setDeleteCuota] = useState(null);
+
+  // Add cuota dialog
+  const [showAddCuota, setShowAddCuota] = useState(false);
+  const [addForm, setAddForm] = useState({ monto: '', fecha_vencimiento: '', descripcion: '' });
 
   useEffect(() => {
     if (!user) return;
@@ -58,7 +76,7 @@ const DetallePlanPage = () => {
     });
   }, [user]);
 
-  const { plan, loading, error, refresh, confirmarPlan, marcarCobrada, revertirCobro } = usePlanCobro(
+  const { plan, loading, error, refresh, confirmarPlan, marcarCobrada, revertirCobro, editarCuota, eliminarCuota, agregarCuota } = usePlanCobro(
     id || null,
     empresaId
   );
@@ -70,18 +88,32 @@ const DetallePlanPage = () => {
   const handleCobrarClick = (cuotaId) => {
     const cuota = (plan.cuotas || []).find((c) => c._id === cuotaId);
     setConfirmCobrar(cuota || { _id: cuotaId });
+    const restante = cuota ? cuota.monto - (cuota.monto_cobrado || 0) : 0;
+    // If cuota is partially paid, default to paying the rest in full
+    if (cuota && cuota.estado === 'cobrada_parcial') {
+      setTipoCobro('total');
+    } else {
+      setTipoCobro('total');
+    }
+    setMontoParcial('');
   };
 
   const handleCobrarConfirm = async () => {
     if (!confirmCobrar) return;
     const cuotaId = confirmCobrar._id;
+    const parcial = tipoCobro === 'parcial' ? parseNumberInput(montoParcial) : null;
+    if (tipoCobro === 'parcial' && (!parcial || Number(parcial) <= 0)) return;
     setConfirmCobrar(null);
     setCobrandoId(cuotaId);
     try {
-      const updated = await marcarCobrada(cuotaId, { fecha_cobrado: new Date().toISOString().split('T')[0] });
-      const msg = updated?.movimiento_caja_id
-        ? 'Cuota cobrada. Movimiento de caja registrado.'
-        : 'Cuota marcada como cobrada.';
+      await marcarCobrada(cuotaId, {
+        fecha_cobrado: new Date().toISOString().split('T')[0],
+        monto_parcial: parcial ? Number(parcial) : undefined,
+      });
+      await refresh();
+      const msg = tipoCobro === 'parcial'
+        ? 'Pago parcial registrado.'
+        : 'Cuota cobrada. Movimiento de caja registrado.';
       setAlert({ open: true, message: msg, severity: 'success' });
     } catch (err) {
       setAlert({ open: true, message: err.message || 'Error al marcar cuota', severity: 'error' });
@@ -94,11 +126,68 @@ const DetallePlanPage = () => {
     setReverting(cuotaId);
     try {
       await revertirCobro(cuotaId);
+      await refresh();
       setAlert({ open: true, message: 'Cobro revertido correctamente', severity: 'success' });
     } catch (err) {
       setAlert({ open: true, message: err.message || 'Error al revertir', severity: 'error' });
     } finally {
       setReverting(null);
+    }
+  };
+
+  const handleEditClick = (cuota) => {
+    setEditCuota(cuota);
+    setEditForm({
+      monto: String(cuota.monto || ''),
+      fecha_vencimiento: cuota.fecha_vencimiento
+        ? new Date(cuota.fecha_vencimiento).toISOString().split('T')[0]
+        : '',
+      descripcion: cuota.descripcion || '',
+    });
+  };
+
+  const handleEditConfirm = async () => {
+    if (!editCuota) return;
+    const montoNum = parseNumberInput(editForm.monto);
+    if (!montoNum || Number(montoNum) <= 0) return;
+    try {
+      await editarCuota(editCuota._id, {
+        monto: Number(montoNum),
+        fecha_vencimiento: editForm.fecha_vencimiento || undefined,
+        descripcion: editForm.descripcion || undefined,
+      });
+      setEditCuota(null);
+      setAlert({ open: true, message: 'Cuota actualizada', severity: 'success' });
+    } catch (err) {
+      setAlert({ open: true, message: err.message || 'Error al editar cuota', severity: 'error' });
+    }
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteCuota) return;
+    try {
+      await eliminarCuota(deleteCuota._id);
+      setDeleteCuota(null);
+      setAlert({ open: true, message: 'Cuota eliminada', severity: 'success' });
+    } catch (err) {
+      setAlert({ open: true, message: err.message || 'Error al eliminar cuota', severity: 'error' });
+    }
+  };
+
+  const handleAddConfirm = async () => {
+    const montoNum = parseNumberInput(addForm.monto);
+    if (!montoNum || Number(montoNum) <= 0) return;
+    try {
+      await agregarCuota({
+        monto: Number(montoNum),
+        fecha_vencimiento: addForm.fecha_vencimiento || undefined,
+        descripcion: addForm.descripcion || undefined,
+      });
+      setShowAddCuota(false);
+      setAddForm({ monto: '', fecha_vencimiento: '', descripcion: '' });
+      setAlert({ open: true, message: 'Cuota agregada', severity: 'success' });
+    } catch (err) {
+      setAlert({ open: true, message: err.message || 'Error al agregar cuota', severity: 'error' });
     }
   };
 
@@ -165,8 +254,18 @@ const DetallePlanPage = () => {
 
   const resumen = plan.resumen || {};
   const monedaDisplay = plan.moneda === 'CAC' ? 'ARS' : plan.moneda || 'ARS';
+  const indexacionLabel = plan.indexacion === 'CAC' ? `CAC ${cacTipoLabel}` : plan.indexacion === 'USD' ? 'Dólar' : '';
+  const allCuotas = plan.cuotas || [];
+  const totalCuotas = allCuotas.length;
+  const cuotasCobradas = allCuotas.filter((c) => c.estado === 'cobrada').length;
+  const proximaCuota = allCuotas.find((c) => c.estado === 'pendiente' || c.estado === 'cobrada_parcial' || c.estado_ui === 'vencida' || c.estado_ui === 'cobrada_parcial_vencida');
+  const proximaFecha = proximaCuota?.fecha_vencimiento
+    ? new Date(proximaCuota.fecha_vencimiento).toLocaleDateString('es-AR')
+    : null;
   const pct =
     resumen.total > 0 ? Math.round(((resumen.cobrado || 0) / resumen.total) * 100) : 0;
+  const showCAC = !!plan.indexacion;
+  const cacTipoLabel = plan.cac_tipo === 'general' ? 'Promedio' : plan.cac_tipo === 'mano_obra' ? 'M. Obra' : 'Materiales';
 
   return (
     <>
@@ -189,63 +288,44 @@ const DetallePlanPage = () => {
 
           <Stack direction="row" justifyContent="space-between" alignItems="flex-start" mb={3}>
             <Box>
-              <Stack direction="row" spacing={1} alignItems="center">
+              <Stack direction="row" spacing={1.5} alignItems="center">
                 <Typography variant="h5" fontWeight={700}>
-                  {plan.nombre}
+                  {plan.proyecto_nombre ? `${plan.proyecto_nombre} — ` : ''}{plan.nombre}
                 </Typography>
-                {plan.codigo && (
-                  <Typography variant="body2" color="text.secondary">
-                    #{plan.codigo}
-                  </Typography>
-                )}
                 <Chip
                   label={ESTADO_LABEL[plan.estado] || plan.estado}
                   color={ESTADO_COLOR[plan.estado] || 'default'}
                   size="small"
                 />
               </Stack>
-              {/* Subtitle with project & index info */}
-              <Stack direction="row" spacing={2} mt={0.5} flexWrap="wrap" useFlexGap>
-                {plan.proyecto_nombre && (
-                  <Typography variant="body2" color="text.secondary">
-                    Proyecto: {plan.proyecto_nombre}
-                  </Typography>
-                )}
-                {plan.indexacion && (
-                  <Tooltip title={plan.cac_tipo ? `Tipo: ${plan.cac_tipo}` : ''}>
-                    <Stack direction="row" spacing={0.5} alignItems="center">
-                      <InfoOutlinedIcon fontSize="small" color="action" />
-                      <Typography variant="body2" color="text.secondary">
-                        Indexación: {plan.indexacion}
-                        {plan.cac_tipo && plan.indexacion === 'CAC' ? ` (${plan.cac_tipo})` : ''}
-                      </Typography>
-                    </Stack>
-                  </Tooltip>
-                )}
-                {plan.moneda && (
-                  <Typography variant="body2" color="text.secondary">
-                    Moneda: {plan.moneda}
-                  </Typography>
-                )}
-              </Stack>
+              {/* Subtitle metadata line */}
+              <Typography variant="body2" color="text.secondary" mt={0.5}>
+                {[
+                  plan.proyecto_nombre && `Proyecto: ${plan.proyecto_nombre}`,
+                  plan.createdAt && `Creado: ${new Date(plan.createdAt).toLocaleDateString('es-AR')}`,
+                  plan.indexacion === 'CAC' &&
+                    `Índice: CAC ${cacTipoLabel}${plan.cac_valor_base ? ` (base = ${Number(plan.cac_valor_base).toLocaleString('es-AR')})` : ''}`,
+                  `Moneda: ${monedaDisplay}${indexacionLabel ? ` + idx ${indexacionLabel}` : ''}`,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </Typography>
               {plan.notas && (
-                <Typography variant="body2" color="text.secondary" mt={0.5}>
+                <Typography variant="body2" color="text.secondary" mt={0.5} fontStyle="italic">
                   {plan.notas}
                 </Typography>
               )}
             </Box>
 
             <Stack direction="row" spacing={1}>
-              {plan.estado !== 'completado' && (
-                <Button
-                  variant="outlined"
-                  size="small"
-                  startIcon={<PictureAsPdfIcon />}
-                  onClick={handleExportarPDF}
-                >
-                  PDF
-                </Button>
-              )}
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<PictureAsPdfIcon />}
+                onClick={handleExportarPDF}
+              >
+                Exportar PDF
+              </Button>
               {plan.estado === 'borrador' && (
                 <>
                   <Button
@@ -265,59 +345,78 @@ const DetallePlanPage = () => {
                   >
                     Confirmar plan
                   </Button>
+                  <Button
+                    variant="outlined"
+                    color="error"
+                    size="small"
+                    startIcon={<DeleteIcon />}
+                    onClick={() => setConfirmEliminar(true)}
+                  >
+                    Eliminar
+                  </Button>
                 </>
-              )}
-              {plan.estado === 'activo' && (
-                <Button
-                  variant="outlined"
-                  size="small"
-                  startIcon={<PictureAsPdfIcon />}
-                  onClick={handleExportarPDF}
-                >
-                  PDF
-                </Button>
-              )}
-              {plan.estado === 'borrador' && (
-                <Button
-                  variant="outlined"
-                  color="error"
-                  size="small"
-                  startIcon={<DeleteIcon />}
-                  onClick={() => setConfirmEliminar(true)}
-                >
-                  Eliminar
-                </Button>
               )}
             </Stack>
           </Stack>
 
-          {/* Métricas */}
+          {/* Métricas con borde superior de color */}
           <Grid container spacing={2} mb={3}>
             {[
-              { label: 'Total', value: formatCurrency(resumen.total || 0, monedaDisplay) },
-              { label: 'Cobrado', value: formatCurrency(resumen.cobrado || 0, monedaDisplay), color: 'success.main' },
-              { label: 'Pendiente', value: formatCurrency(resumen.pendiente || 0, monedaDisplay), color: resumen.hay_vencidas ? 'error.main' : undefined },
+              {
+                label: 'TOTAL DEL PLAN',
+                value: formatCurrency(resumen.total || 0, monedaDisplay),
+                borderColor: '#1976D2',
+                subtitle: showCAC && plan.cac_valor_base
+                  ? `${Math.round((resumen.total || 0) / plan.cac_valor_base).toLocaleString('es-AR')} CAC al crear`
+                  : null,
+              },
+              {
+                label: 'COBRADO',
+                value: formatCurrency(resumen.cobrado || 0, monedaDisplay),
+                borderColor: '#2E7D32',
+                subtitle: `${cuotasCobradas} de ${totalCuotas} cuotas`,
+              },
+              {
+                label: 'PENDIENTE',
+                value: formatCurrency(resumen.pendiente || 0, monedaDisplay),
+                borderColor: '#D32F2F',
+                subtitle: proximaFecha ? `Próxima: ${proximaFecha}` : null,
+              },
             ].map((m) => (
               <Grid item xs={12} sm={4} key={m.label}>
-                <Paper variant="outlined" sx={{ p: 2, textAlign: 'center' }}>
-                  <Typography variant="caption" color="text.secondary" display="block">
+                <Paper
+                  variant="outlined"
+                  sx={{
+                    p: 2,
+                    textAlign: 'center',
+                    borderTop: `3px solid ${m.borderColor}`,
+                  }}
+                >
+                  <Typography variant="overline" color="text.secondary" display="block">
                     {m.label}
                   </Typography>
-                  <Typography variant="h6" fontWeight={700} color={m.color}>
+                  <Typography variant="h5" fontWeight={700}>
                     {m.value}
                   </Typography>
+                  {m.subtitle && (
+                    <Typography variant="caption" color="text.secondary">
+                      {m.subtitle}
+                    </Typography>
+                  )}
                 </Paper>
               </Grid>
             ))}
           </Grid>
 
           {/* Barra de progreso */}
-          <Box mb={3}>
+          <Box mb={4}>
             <Stack direction="row" justifyContent="space-between" mb={0.5}>
               <Typography variant="body2" color="text.secondary">
                 Progreso de cobro
               </Typography>
-              <Typography variant="body2">{pct}%</Typography>
+              <Typography variant="body2" fontWeight={600}>
+                {pct}%{totalCuotas > 0 ? ` (${cuotasCobradas}/${totalCuotas} cuotas)` : ''}
+              </Typography>
             </Stack>
             <LinearProgress
               variant="determinate"
@@ -327,43 +426,417 @@ const DetallePlanPage = () => {
             />
           </Box>
 
-          <Divider sx={{ mb: 3 }} />
+          {/* Cuotas como tarjetas */}
+          <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
+            <Typography variant="subtitle1" fontWeight={600}>
+              Cuotas
+            </Typography>
+            {plan.estado === 'activo' && (
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<AddIcon />}
+                onClick={() => {
+                  setAddForm({ monto: '', fecha_vencimiento: '', descripcion: '' });
+                  setShowAddCuota(true);
+                }}
+              >
+                Agregar cuota
+              </Button>
+            )}
+          </Stack>
 
-          {/* Cuotas */}
-          <Typography variant="subtitle1" fontWeight={600} mb={2}>
-            Cuotas
-          </Typography>
+          <Stack spacing={1.5}>
+            {allCuotas.map((cuota, idx) => {
+              const esCobrada = cuota.estado === 'cobrada';
+              const esParcial = cuota.estado === 'cobrada_parcial';
+              const esVencida = cuota.estado_ui === 'vencida';
+              const esParcialVencida = cuota.estado_ui === 'cobrada_parcial_vencida';
+              const bgColor = esCobrada
+                ? '#E8F5E9'
+                : esParcial || esParcialVencida
+                  ? '#FFF8E1'
+                  : esVencida
+                    ? '#FFEBEE'
+                    : 'transparent';
+              const leftBorder = esCobrada
+                ? '4px solid #4CAF50'
+                : esParcial || esParcialVencida
+                  ? '4px solid #FF9800'
+                  : esVencida
+                    ? '4px solid #F44336'
+                    : '4px solid #2196F3';
+              const restante = esParcial ? cuota.monto - (cuota.monto_cobrado || 0) : 0;
 
-          <CuotasTableReadonly
-            cuotas={plan.cuotas || []}
-            moneda={plan.moneda}
-            onMarcarCobrada={plan.estado === 'activo' ? handleCobrarClick : undefined}
-            onRevertirCobro={plan.estado === 'activo' ? handleRevertir : undefined}
-            loadingId={cobrandoId}
-            revertingId={reverting}
-            showCAC={!!plan.indexacion}
-          />
+              return (
+                <Paper
+                  key={cuota._id || idx}
+                  variant="outlined"
+                  sx={{ p: 2, bgcolor: bgColor, borderLeft: leftBorder }}
+                >
+                  <Stack
+                    direction={{ xs: 'column', sm: 'row' }}
+                    alignItems={{ sm: 'center' }}
+                    justifyContent="space-between"
+                    spacing={1}
+                  >
+                    {/* Icon + Info */}
+                    <Stack direction="row" alignItems="center" spacing={1.5} flex={1}>
+                      {esCobrada ? (
+                        <CheckCircleIcon sx={{ color: '#4CAF50', fontSize: 28 }} />
+                      ) : esParcial || esParcialVencida ? (
+                        <FiberManualRecordIcon sx={{ color: '#FF9800', fontSize: 28 }} />
+                      ) : esVencida ? (
+                        <ErrorOutlineIcon sx={{ color: '#F44336', fontSize: 28 }} />
+                      ) : (
+                        <FiberManualRecordIcon sx={{ color: '#2196F3', fontSize: 28 }} />
+                      )}
+                      <Box>
+                        <Typography variant="subtitle2" fontWeight={600} sx={{ letterSpacing: 0.3 }}>
+                          CUOTA {cuota.numero || idx + 1}
+                          {cuota.fecha_vencimiento &&
+                            ` / ${new Date(cuota.fecha_vencimiento).toLocaleDateString('es-AR')}`}
+                          {cuota.descripcion && ` / ${cuota.descripcion}`}
+                        </Typography>
+                        {(esParcial || esParcialVencida) && (
+                          <Typography variant="caption" color="warning.main" fontWeight={500}>
+                            Cobrado parcialmente: {formatCurrency(cuota.monto_cobrado || 0, monedaDisplay)} de {formatCurrency(cuota.monto, monedaDisplay)}
+                            {' '}— Resta: {formatCurrency(restante, monedaDisplay)}
+                          </Typography>
+                        )}
+                      </Box>
+                    </Stack>
+
+                    {/* Monto + CAC */}
+                    <Box textAlign="right" minWidth={160}>
+                      <Typography variant="subtitle1" fontWeight={700}>
+                        {formatCurrency(cuota.monto, monedaDisplay)}
+                      </Typography>
+                      {showCAC && cuota.equivalencia_cac != null && (
+                        <Typography variant="caption" color="text.secondary">
+                          {Number(cuota.equivalencia_cac).toLocaleString('es-AR')} CAC
+                          {esCobrada ? ' al cobrar' : ''}
+                        </Typography>
+                      )}
+                    </Box>
+
+                    {/* Estado + Acción */}
+                    <Stack direction="row" alignItems="center" spacing={1} minWidth={200} justifyContent="flex-end">
+                      {esCobrada && cuota.fecha_cobrado && (
+                        <Typography variant="body2" color="success.main" fontWeight={500}>
+                          Cobrada el {new Date(cuota.fecha_cobrado).toLocaleDateString('es-AR')}
+                        </Typography>
+                      )}
+                      {(esParcial || esParcialVencida) && plan.estado === 'activo' && (
+                        <>
+                          <Button
+                            variant="outlined"
+                            size="small"
+                            color="warning"
+                            onClick={() => handleCobrarClick(cuota._id)}
+                            disabled={cobrandoId === cuota._id}
+                            startIcon={
+                              cobrandoId === cuota._id ? (
+                                <CircularProgress size={14} color="inherit" />
+                              ) : (
+                                <CheckCircleIcon fontSize="small" />
+                              )
+                            }
+                          >
+                            Cobrar resto
+                          </Button>
+                          <Button
+                            variant="text"
+                            size="small"
+                            color="warning"
+                            onClick={() => handleRevertir(cuota._id)}
+                            disabled={reverting === cuota._id}
+                          >
+                            {reverting === cuota._id ? 'Revertiendo...' : 'Revertir'}
+                          </Button>
+                        </>
+                      )}
+                      {!esCobrada && !esParcial && !esParcialVencida && plan.estado === 'activo' && (
+                        <>
+                          <Button
+                            variant="outlined"
+                            size="small"
+                            color={esVencida ? 'error' : 'success'}
+                            onClick={() => handleCobrarClick(cuota._id)}
+                            disabled={cobrandoId === cuota._id}
+                            startIcon={
+                              cobrandoId === cuota._id ? (
+                                <CircularProgress size={14} color="inherit" />
+                              ) : (
+                                <CheckCircleIcon fontSize="small" />
+                              )
+                            }
+                          >
+                            Cobrar
+                          </Button>
+                          <Button
+                            variant="text"
+                            size="small"
+                            onClick={() => handleEditClick(cuota)}
+                            sx={{ minWidth: 'auto', px: 0.5 }}
+                          >
+                            <EditIcon fontSize="small" />
+                          </Button>
+                          <Button
+                            variant="text"
+                            size="small"
+                            color="error"
+                            onClick={() => setDeleteCuota(cuota)}
+                            sx={{ minWidth: 'auto', px: 0.5 }}
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </Button>
+                        </>
+                      )}
+                      {esCobrada && plan.estado === 'activo' && (
+                        <Button
+                          variant="text"
+                          size="small"
+                          color="warning"
+                          onClick={() => handleRevertir(cuota._id)}
+                          disabled={reverting === cuota._id}
+                        >
+                          {reverting === cuota._id ? 'Revertiendo...' : 'Revertir'}
+                        </Button>
+                      )}
+                    </Stack>
+                  </Stack>
+                </Paper>
+              );
+            })}
+          </Stack>
+
+          {/* Leyenda */}
+          {allCuotas.length > 0 && (
+            <Stack direction="row" spacing={3} mt={2}>
+              <Stack direction="row" alignItems="center" spacing={0.5}>
+                <CheckCircleIcon sx={{ fontSize: 16, color: '#4CAF50' }} />
+                <Typography variant="caption" color="text.secondary">Cobrada</Typography>
+              </Stack>
+              <Stack direction="row" alignItems="center" spacing={0.5}>
+                <FiberManualRecordIcon sx={{ fontSize: 16, color: '#FF9800' }} />
+                <Typography variant="caption" color="text.secondary">Cobrada parcialmente</Typography>
+              </Stack>
+              <Stack direction="row" alignItems="center" spacing={0.5}>
+                <FiberManualRecordIcon sx={{ fontSize: 16, color: '#2196F3' }} />
+                <Typography variant="caption" color="text.secondary">Pendiente</Typography>
+              </Stack>
+              <Stack direction="row" alignItems="center" spacing={0.5}>
+                <ErrorOutlineIcon sx={{ fontSize: 16, color: '#F44336' }} />
+                <Typography variant="caption" color="text.secondary">Vencida</Typography>
+              </Stack>
+            </Stack>
+          )}
         </Container>
       </Box>
 
-      {/* Diálogo confirmar cobrar */}
-      <Dialog open={!!confirmCobrar} onClose={() => setConfirmCobrar(null)}>
-        <DialogTitle>Confirmar cobro</DialogTitle>
+      {/* Diálogo confirmar cobrar (total o parcial) */}
+      <Dialog open={!!confirmCobrar} onClose={() => setConfirmCobrar(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>Registrar cobro</DialogTitle>
         <DialogContent>
-          <DialogContentText>
-            ¿Marcar como cobrada la cuota #{confirmCobrar?.numero} por{' '}
-            <strong>{formatCurrency(confirmCobrar?.monto || 0, monedaDisplay)}</strong>?
-            {confirmCobrar?.fecha_vencimiento && (
-              <> (Vto: {new Date(confirmCobrar.fecha_vencimiento).toLocaleDateString('es-AR')})</>
-            )}
-            <br />
-            Se registrará un movimiento de caja automáticamente.
-          </DialogContentText>
+          {(() => {
+            const montoRestante = (confirmCobrar?.monto || 0) - (confirmCobrar?.monto_cobrado || 0);
+            const yaParcial = confirmCobrar?.estado === 'cobrada_parcial';
+            return (
+              <>
+                <DialogContentText sx={{ mb: 2 }}>
+                  Cuota #{confirmCobrar?.numero} — Monto: <strong>{formatCurrency(confirmCobrar?.monto || 0, monedaDisplay)}</strong>
+                  {confirmCobrar?.fecha_vencimiento && (
+                    <> (Vto: {new Date(confirmCobrar.fecha_vencimiento).toLocaleDateString('es-AR')})</>
+                  )}
+                  {yaParcial && (
+                    <>
+                      <br />
+                      Ya cobrado: <strong>{formatCurrency(confirmCobrar?.monto_cobrado || 0, monedaDisplay)}</strong>
+                      {' '}— Restante: <strong>{formatCurrency(montoRestante, monedaDisplay)}</strong>
+                    </>
+                  )}
+                </DialogContentText>
+
+                <ToggleButtonGroup
+                  value={tipoCobro}
+                  exclusive
+                  onChange={(_, val) => {
+                    if (val) { setTipoCobro(val); setMontoParcial(''); }
+                  }}
+                  size="small"
+                  sx={{ mb: 2 }}
+                >
+                  <ToggleButton value="total">{yaParcial ? 'Cobrar todo el resto' : 'Cobro total'}</ToggleButton>
+                  <ToggleButton value="parcial">Pago parcial</ToggleButton>
+                </ToggleButtonGroup>
+
+                {tipoCobro === 'parcial' && (
+                  <TextField
+                    label="Monto a cobrar"
+                    value={formatNumberInput(montoParcial)}
+                    onChange={(e) => setMontoParcial(parseNumberInput(e.target.value))}
+                    fullWidth
+                    size="small"
+                    sx={{ mt: 1 }}
+                    inputProps={{ inputMode: 'decimal' }}
+                    InputProps={{
+                      startAdornment: <InputAdornment position="start">$</InputAdornment>,
+                    }}
+                    helperText={
+                      montoParcial && montoRestante
+                        ? `Resto después de este pago: ${formatCurrency(Math.max(0, montoRestante - (Number(montoParcial) || 0)), monedaDisplay)}`
+                        : ''
+                    }
+                  />
+                )}
+
+                <Typography variant="body2" color="text.secondary" mt={2}>
+                  Se registrará un movimiento de caja automáticamente.
+                </Typography>
+              </>
+            );
+          })()}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setConfirmCobrar(null)}>Cancelar</Button>
-          <Button color="success" variant="contained" onClick={handleCobrarConfirm}>
-            Confirmar cobro
+          <Button
+            color="success"
+            variant="contained"
+            onClick={handleCobrarConfirm}
+            disabled={tipoCobro === 'parcial' && (!montoParcial || Number(montoParcial) <= 0)}
+          >
+            {tipoCobro === 'parcial' ? 'Cobrar parcial' : 'Confirmar cobro'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Diálogo editar cuota */}
+      <Dialog open={!!editCuota} onClose={() => setEditCuota(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>Editar cuota</DialogTitle>
+        <DialogContent>
+          <Stack
+            direction="row"
+            alignItems="center"
+            spacing={1}
+            sx={{ mb: 2, mt: 1, p: 1.5, bgcolor: '#FFF8E1', border: '1px solid #FFE082', borderRadius: 1 }}
+          >
+            <WarningAmberIcon sx={{ color: '#F9A825', fontSize: 20 }} />
+            <Typography variant="body2">
+              Modificar el monto de esta cuota cambia el total del plan de cobros.
+            </Typography>
+          </Stack>
+
+          <Stack spacing={2}>
+            <TextField
+              label="Monto *"
+              value={formatNumberInput(editForm.monto)}
+              onChange={(e) => setEditForm((f) => ({ ...f, monto: parseNumberInput(e.target.value) }))}
+              fullWidth
+              size="small"
+              inputProps={{ inputMode: 'decimal' }}
+              InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment> }}
+            />
+            <TextField
+              label="Fecha de vencimiento"
+              type="date"
+              value={editForm.fecha_vencimiento}
+              onChange={(e) => setEditForm((f) => ({ ...f, fecha_vencimiento: e.target.value }))}
+              fullWidth
+              size="small"
+              InputLabelProps={{ shrink: true }}
+            />
+            <TextField
+              label="Descripción"
+              value={editForm.descripcion}
+              onChange={(e) => setEditForm((f) => ({ ...f, descripcion: e.target.value }))}
+              fullWidth
+              size="small"
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditCuota(null)}>Cancelar</Button>
+          <Button
+            variant="contained"
+            onClick={handleEditConfirm}
+            disabled={!editForm.monto || Number(parseNumberInput(editForm.monto)) <= 0}
+          >
+            Guardar cambios
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Diálogo eliminar cuota */}
+      <Dialog open={!!deleteCuota} onClose={() => setDeleteCuota(null)}>
+        <DialogTitle>Eliminar cuota</DialogTitle>
+        <DialogContent>
+          <Stack
+            direction="row"
+            alignItems="center"
+            spacing={1}
+            sx={{ mb: 2, p: 1.5, bgcolor: '#FFF8E1', border: '1px solid #FFE082', borderRadius: 1 }}
+          >
+            <WarningAmberIcon sx={{ color: '#F9A825', fontSize: 20 }} />
+            <Typography variant="body2">
+              Al eliminar esta cuota se modifica el valor total del plan de cobros.
+            </Typography>
+          </Stack>
+          <DialogContentText>
+            ¿Eliminar la cuota #{deleteCuota?.numero} por{' '}
+            <strong>{formatCurrency(deleteCuota?.monto || 0, monedaDisplay)}</strong>?
+            Esta acción no se puede deshacer.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteCuota(null)}>Cancelar</Button>
+          <Button color="error" variant="contained" onClick={handleDeleteConfirm}>
+            Eliminar cuota
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Diálogo agregar cuota */}
+      <Dialog open={showAddCuota} onClose={() => setShowAddCuota(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Agregar cuota</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <TextField
+              label="Monto *"
+              value={formatNumberInput(addForm.monto)}
+              onChange={(e) => setAddForm((f) => ({ ...f, monto: parseNumberInput(e.target.value) }))}
+              fullWidth
+              size="small"
+              inputProps={{ inputMode: 'decimal' }}
+              InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment> }}
+            />
+            <TextField
+              label="Fecha de vencimiento"
+              type="date"
+              value={addForm.fecha_vencimiento}
+              onChange={(e) => setAddForm((f) => ({ ...f, fecha_vencimiento: e.target.value }))}
+              fullWidth
+              size="small"
+              InputLabelProps={{ shrink: true }}
+            />
+            <TextField
+              label="Descripción"
+              value={addForm.descripcion}
+              onChange={(e) => setAddForm((f) => ({ ...f, descripcion: e.target.value }))}
+              fullWidth
+              size="small"
+              placeholder="Ej: Certificado adicional"
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowAddCuota(false)}>Cancelar</Button>
+          <Button
+            variant="contained"
+            onClick={handleAddConfirm}
+            disabled={!addForm.monto || Number(parseNumberInput(addForm.monto)) <= 0}
+          >
+            Agregar
           </Button>
         </DialogActions>
       </Dialog>
