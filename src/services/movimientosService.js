@@ -314,6 +314,17 @@ const movimientosService = {
     }
   },
 
+  // Panel de validación: marcar como duplicado (no crea movimiento)
+  marcarBorradoresDuplicado: async (ids) => {
+    try {
+      const response = await api.post('panel-validacion/marcar-duplicado', { ids });
+      return { error: false, data: response.data };
+    } catch (err) {
+      console.error('Error marcando duplicado:', err);
+      return { error: true, message: err.response?.data?.error || err.message };
+    }
+  },
+
   // Obtener movimientos por grupo de prorrateo
   getMovimientosByGrupoProrrateo: async (grupoId) => {
     try {

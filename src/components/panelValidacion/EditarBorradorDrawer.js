@@ -44,7 +44,9 @@ function EditarBorradorFormContent({
   onFormChange,
   onSave,
   onClose,
+  onMarcarDuplicado,
   saving,
+  markingDuplicado = false,
   formatFecha,
 }) {
   const categoriaSeleccionada = useMemo(
@@ -267,12 +269,13 @@ function EditarBorradorFormContent({
 
       {camposVisibles.map((campo) => renderCampo(campo))}
 
-      <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
+      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mt: 2 }}>
         <Button
           variant="contained"
           onClick={onSave}
           disabled={
             saving ||
+            markingDuplicado ||
             (shouldShowProyecto && !form.proyecto_id) ||
             form.total === '' ||
             form.total === undefined ||
@@ -283,7 +286,17 @@ function EditarBorradorFormContent({
         >
           {saving ? 'Confirmando...' : 'Confirmar'}
         </Button>
-        <Button variant="outlined" onClick={onClose}>
+        {typeof onMarcarDuplicado === 'function' && (
+          <Button
+            variant="outlined"
+            color="warning"
+            onClick={onMarcarDuplicado}
+            disabled={saving || markingDuplicado}
+          >
+            {markingDuplicado ? 'Marcando...' : 'Duplicado'}
+          </Button>
+        )}
+        <Button variant="outlined" onClick={onClose} disabled={saving || markingDuplicado}>
           Cancelar
         </Button>
       </Stack>
@@ -308,8 +321,10 @@ function EditarBorradorDrawer({
   clientesOptions = [],
   onClose,
   onSave,
+  onMarcarDuplicado,
   onFormChange,
   saving = false,
+  markingDuplicado = false,
 }) {
   const urlImagen = mov?.url_imagen || mov?.url_image;
   const isPdf = Boolean(urlImagen && String(urlImagen).toLowerCase().includes('.pdf'));
@@ -337,7 +352,9 @@ function EditarBorradorDrawer({
       onFormChange={onFormChange}
       onSave={onSave}
       onClose={onClose}
+      onMarcarDuplicado={onMarcarDuplicado}
       saving={saving}
+      markingDuplicado={markingDuplicado}
       formatFecha={formatFecha}
     />
   );
