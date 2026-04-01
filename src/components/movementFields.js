@@ -11,9 +11,11 @@ import {
   Button,
   Paper,
   Grid,
-  Chip
+  Chip,
+  Stack
 } from '@mui/material';
 import { Alert } from '@mui/material';
+import { formatCurrency } from 'src/utils/formatters';
 import ImpuestosEditor from './impuestosEditor';
 import {
   getCamposVisibles,
@@ -40,8 +42,59 @@ const MovementFields = ({
   movimiento,
   group = 'general',
   obrasOptions = [],
-  clientesOptions = []
+  clientesOptions = [],
+  parcialMonto = '',
+  onParcialMontoChange,
 }) => {
+
+  const renderPagoParcialDetalle = () => {
+    if (
+      formik.values.type !== 'egreso' ||
+      formik.values.estado !== 'Parcialmente Pagado' ||
+      !empresa?.con_estados ||
+      typeof onParcialMontoChange !== 'function'
+    ) {
+      return null;
+    }
+
+    if (group !== 'montos') {
+      return null;
+    }
+
+    const totalFactura = Number(formik.values.total) || 0;
+    const pagado = Number(parcialMonto) || 0;
+    const pendiente = Math.max(0, totalFactura - pagado);
+
+    return (
+      <Box sx={{ mt: 2 }}>
+        <TextField
+          label="Monto pagado"
+          type="number"
+          size="small"
+          fullWidth
+          value={parcialMonto}
+          onChange={onParcialMontoChange}
+          inputProps={{ min: 0, step: 0.01 }}
+        />
+        {totalFactura > 0 && (
+          <Stack direction="row" spacing={1} sx={{ mt: 1, flexWrap: 'wrap' }}>
+            <Chip
+              size="small"
+              color="success"
+              variant="outlined"
+              label={`Pagado: ${formatCurrency(pagado, 2)}`}
+            />
+            <Chip
+              size="small"
+              color="warning"
+              variant="outlined"
+              label={`Saldo pendiente: ${formatCurrency(pendiente, 2)}`}
+            />
+          </Stack>
+        )}
+      </Box>
+    );
+  };
 
   // Efecto para calcular valores en dólares cuando cambian los campos relevantes
   React.useEffect(() => {
@@ -146,7 +199,8 @@ const MovementFields = ({
           </Box>
         );
       }
-      return (
+
+      const regularField = (
         <TextField
           key={campo.name}
           fullWidth
@@ -159,6 +213,17 @@ const MovementFields = ({
           disabled={campo.readonly}
         />
       );
+
+      if (campo.name === 'total') {
+        return (
+          <>
+            {regularField}
+            {renderPagoParcialDetalle()}
+          </>
+        );
+      }
+
+      return regularField;
     }
 
     if (campo.type === 'textarea') {

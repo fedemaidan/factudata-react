@@ -181,6 +181,7 @@ const MovementFormPage = () => {
   const [viewerHeightVh, setViewerHeightVh] = useState(70);
   const [isWide, setIsWide] = useState(false);
   const [fullOpen, setFullOpen] = useState(false);
+  const [parcialMonto, setParcialMonto] = useState('');
 
   // En edit mode, priorizar datos del movimiento sobre query params
   const effectiveProyectoId = (isEditMode && movimiento?.proyecto_id) || proyectoId || null;
@@ -360,6 +361,7 @@ const MovementFormPage = () => {
           setCreatedUser(null);
         }
         
+        const isParcialPagado = data.estado === 'Parcialmente Pagado' && data.monto_total;
         formik.setValues({
           ...formik.values,
           ...data,
@@ -373,8 +375,14 @@ const MovementFormPage = () => {
           obra: data.obra || '',
           cliente: data.cliente || '',
           factura_cliente: typeof data.factura_cliente === 'boolean' ? data.factura_cliente : false,
-          dolar_referencia_manual: data.dolar_referencia_manual ?? false
+          dolar_referencia_manual: data.dolar_referencia_manual ?? false,
+          total: isParcialPagado ? data.monto_total : data.total,
+          monto_total: data.monto_total || '',
         });
+        if (isParcialPagado) {
+          const montoPagado = data.total;
+          setParcialMonto(String(montoPagado));
+        }
       }
       
       // Éxito: resetear contador de reintentos
@@ -533,6 +541,7 @@ const createdAtStr = (() => {
       categoria: '',
       subcategoria: '',
       estado: 'Pendiente',
+      monto_total: '',
       url_imagen: null,
       tags_extra: [],
       caja_chica: false,
@@ -566,10 +575,16 @@ const createdAtStr = (() => {
         tags_extra: values.tags_extra || [],
         url_imagen: movimiento?.url_imagen ?? values.url_imagen,
         impuestos: values.impuestos || [],
-        obra: values.obra || '',         // <-- NUEVO
-        cliente: values.cliente || '',   // <-- NUEVO
+        obra: values.obra || '',
+        cliente: values.cliente || '',
         factura_cliente: values.factura_cliente === true
       };
+
+      // Pago parcial: total en DB = monto pagado; monto_total = importe completo de la factura
+      if (values.estado === 'Parcialmente Pagado' && values.type === 'egreso') {
+        payload.monto_total = Number(values.total) || 0;
+        payload.total = Number(parcialMonto) || 0;
+      }
 
       const subtotal  = Number(values.subtotal) || 0;
       const impTotal  = (values.impuestos || []).reduce((a, i) => a + (Number(i.monto) || 0), 0);
@@ -614,6 +629,16 @@ const createdAtStr = (() => {
   }, [formik.values.categoria, categorias]);
 
   const titulo = isEditMode ? `Editar Movimiento (${movimiento?.codigo_operacion || '-'})` : 'Agregar Movimiento';
+
+  useEffect(() => {
+    if (formik.values.estado !== 'Parcialmente Pagado' || formik.values.type !== 'egreso') {
+      setParcialMonto('');
+    }
+  }, [formik.values.estado, formik.values.type]);
+
+  const handleParcialMontoChange = (e) => {
+    setParcialMonto(e.target.value);
+  };
 
   const handleCloseStockPopup = () => {
     setStockPopupOpen(false);
@@ -967,6 +992,7 @@ const createdAtStr = (() => {
                         obrasOptions={obrasOptions}
                         clientesOptions={clientesOptions}
                       />
+
                     </form>
                   </Box>
                 )}
@@ -992,6 +1018,8 @@ const createdAtStr = (() => {
                         lastPageUrl={lastPageUrl}
                         lastPageName={lastPageName}
                         movimiento={movimiento}
+                        parcialMonto={parcialMonto}
+                        onParcialMontoChange={handleParcialMontoChange}
                       />
                     </form>
                   </Box>
@@ -1117,7 +1145,12 @@ const createdAtStr = (() => {
                         { key: 'total',            label: 'Total', configKey: null, format: (v)=>formatCurrency(v,2) },
                         { key: 'estado',           label: 'Estado', configKey: null,
                           render: () => (
-                            <Chip size="small" color={V.estado === 'Pagado' ? 'success' : 'warning'} label={V.estado || 'Pendiente'} sx={{ ml: 0.5 }} />
+                            <Chip
+                              size="small"
+                              color={V.estado === 'Pagado' ? 'success' : V.estado === 'Parcialmente Pagado' ? 'info' : 'warning'}
+                              label={V.estado || 'Pendiente'}
+                              sx={{ ml: 0.5 }}
+                            />
                           )
                         },
                         { key: 'caja_chica',       label: 'Caja Chica', configKey: 'caja_chica', format: yesNo },
