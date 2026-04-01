@@ -14,6 +14,7 @@ const BLOCK_TYPES = [
   { value: 'summary_table', label: 'Tabla Resumen', desc: 'Agrupa movimientos por categoría, proveedor, etapa, mes, etc. con totales.' },
   { value: 'movements_table', label: 'Tabla de Movimientos', desc: 'Lista individual de movimientos con paginación.' },
   { value: 'budget_vs_actual', label: 'Presupuesto vs Real', desc: 'Compara presupuesto de control vs gastos reales por categoría.' },
+  { value: 'category_budget_matrix', label: 'Matriz de Presupuestos por Proyecto', desc: 'Para una categoría específica, muestra presupuesto inicial, adicionales, total, recibido y saldo por proyecto.' },
   { value: 'chart', label: 'Gráfico', desc: 'Muestra datos agrupados en gráficos de barras, torta, línea o área.' },
   { value: 'grouped_detail', label: 'Detalle por Grupo', desc: 'Muestra chips o mini-cards de grupos con tabla de movimientos filtrada al seleccionar.' },
 ];
@@ -136,6 +137,19 @@ function defaultBlock(type) {
         presupuestos_con_campo: null,
         excluir: {},
       };
+    case 'category_budget_matrix':
+      return {
+        ...base,
+        categoria_objetivo: '',
+        tipo_presupuesto: 'egreso',
+        columna_concepto_titulo: 'Concepto',
+        asumir_monto_incluye_adicionales: true,
+        label_presupuesto_inicial: 'Presupuesto inicial',
+        label_total_presupuesto: 'Total presupuesto',
+        label_recibido: 'Recibido',
+        label_saldo: 'Saldo',
+        proyectos_seleccionados: [], // [] significa todos por default
+      };
     case 'chart':
       return {
         ...base,
@@ -164,7 +178,7 @@ function defaultBlock(type) {
 
 // ─── Componente Principal ───
 
-const BlockEditorDialog = ({ open, onClose, onSave, initialBlock }) => {
+const BlockEditorDialog = ({ open, onClose, onSave, initialBlock, proyectos = [] }) => {
   const isEditing = !!initialBlock;
   const [step, setStep] = useState(isEditing ? 1 : 0); // 0=elegir tipo, 1=configurar
   const [block, setBlock] = useState(null);
@@ -172,7 +186,13 @@ const BlockEditorDialog = ({ open, onClose, onSave, initialBlock }) => {
   useEffect(() => {
     if (open) {
       if (initialBlock) {
-        setBlock({ ...initialBlock });
+        // Asegurar que el block tiene todos los campos necesarios
+        const block = { ...initialBlock };
+        // Para category_budget_matrix, asegurar que existe proyectos_seleccionados
+        if (block.type === 'category_budget_matrix' && !block.proyectos_seleccionados) {
+          block.proyectos_seleccionados = [];
+        }
+        setBlock(block);
         setStep(1);
       } else {
         setBlock(null);
@@ -262,7 +282,7 @@ const BlockEditorDialog = ({ open, onClose, onSave, initialBlock }) => {
           </FormControl>
 
           {/* Filtro de tipo (compartido) */}
-          {block.type !== 'budget_vs_actual' && (
+          {!['budget_vs_actual', 'category_budget_matrix'].includes(block.type) && (
             <FormControl size="small" fullWidth>
               <InputLabel>Filtrar por tipo de movimiento</InputLabel>
               <Select
@@ -291,6 +311,9 @@ const BlockEditorDialog = ({ open, onClose, onSave, initialBlock }) => {
           )}
           {block.type === 'budget_vs_actual' && (
             <BudgetVsActualConfig block={block} onChange={updateBlock} />
+          )}
+          {block.type === 'category_budget_matrix' && (
+            <CategoryBudgetMatrixConfig block={block} onChange={updateBlock} proyectos={proyectos} />
           )}
           {block.type === 'chart' && (
             <ChartConfig block={block} onChange={updateBlock} />
@@ -906,6 +929,156 @@ function ChartConfig({ block, onChange }) {
         }
         renderInput={(params) => <TextField {...params} label="Excluir proveedores" placeholder="Escribí y presioná Enter" />}
       />
+    </Stack>
+  );
+}
+
+function CategoryBudgetMatrixConfig({ block, onChange, proyectos = [] }) {
+  return (
+    <Stack spacing={2}>
+      <Alert severity="info" variant="outlined" sx={{ py: 0.5 }}>
+        Este bloque usa presupuestos de control y arma una planilla por proyecto para una sola categoria.
+      </Alert>
+
+      <TextField
+        label="Categoria objetivo"
+        value={block.categoria_objetivo || ''}
+        onChange={(e) => onChange('categoria_objetivo', e.target.value)}
+        size="small"
+        fullWidth
+        placeholder="Ej: Mano de obra"
+        helperText="Se compara contra el campo categoria/rubro del presupuesto."
+      />
+
+      <FormControl size="small" fullWidth>
+        <InputLabel>Tipo de presupuesto</InputLabel>
+        <Select
+          value={block.tipo_presupuesto || 'egreso'}
+          label="Tipo de presupuesto"
+          onChange={(e) => onChange('tipo_presupuesto', e.target.value)}
+        >
+          <MenuItem value="egreso">Solo Egresos</MenuItem>
+          <MenuItem value="ingreso">Solo Ingresos</MenuItem>
+          <MenuItem value="ambos">Ambos</MenuItem>
+        </Select>
+      </FormControl>
+
+      <TextField
+        label="Titulo columna conceptos"
+        value={block.columna_concepto_titulo || 'Concepto'}
+        onChange={(e) => onChange('columna_concepto_titulo', e.target.value)}
+        size="small"
+        fullWidth
+      />
+
+      <Autocomplete
+        multiple
+        size="small"
+        options={proyectos || []}
+        getOptionLabel={(o) => (typeof o === 'string' ? o : o.nombre || o.id || '')}
+        value={(block.proyectos_seleccionados || [])
+          .map((selectedId) => {
+            // Buscar el proyecto en la lista de opciones disponibles
+            const proyecto = proyectos.find((p) => {
+              const pId = typeof p === 'string' ? p : (p.id || p);
+              const pName = typeof p === 'string' ? p : (p.nombre || '');
+              return String(pId) === String(selectedId) || String(pName) === String(selectedId);
+            });
+            return proyecto || selectedId;
+          })
+          .filter(Boolean)}
+        onChange={(_, val) => {
+          const selected = val.map((v) => {
+            if (typeof v === 'string') return v;
+            const id = String(v.id || '').trim();
+            const nombre = String(v.nombre || '').trim();
+            // Persistir ID cuando existe para que no dependa de cambios de nombre.
+            return id || nombre;
+          });
+          onChange('proyectos_seleccionados', selected);
+        }}
+        renderTags={(value, getTagProps) =>
+          value.map((option, index) => {
+            // Obtener el nombre del proyecto
+            let label = typeof option === 'string' ? option : option.nombre || option.id || '';
+            if (typeof option === 'string') {
+              // Si es un ID, buscar su nombre
+              const proyecto = proyectos.find((p) => {
+                const pId = typeof p === 'string' ? p : (p.id || p);
+                return String(pId) === String(option);
+              });
+              if (proyecto) {
+                label = (typeof proyecto === 'string' ? proyecto : (proyecto.nombre || proyecto.id));
+              }
+            }
+            return (
+              <Chip
+                key={index}
+                label={label}
+                size="small"
+                {...getTagProps({ index })}
+              />
+            );
+          })
+        }
+        renderInput={(params) => (
+          <TextField
+            {...params}
+            label="Proyectos a incluir"
+            helperText={
+              (block.proyectos_seleccionados || []).length === 0
+                ? 'Dejar vacío para incluir todos los proyectos'
+                : `${(block.proyectos_seleccionados || []).length} proyecto(s) seleccionado(s)`
+            }
+          />
+        )}
+      />
+
+      <FormControlLabel
+        control={
+          <Switch
+            checked={block.asumir_monto_incluye_adicionales !== false}
+            onChange={(e) => onChange('asumir_monto_incluye_adicionales', e.target.checked)}
+          />
+        }
+        label="Asumir que el monto del presupuesto ya incluye adicionales"
+      />
+
+      <Divider />
+
+      <Typography variant="subtitle2" fontWeight={600}>Etiquetas de filas</Typography>
+      <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+        <TextField
+          label="Fila inicial"
+          value={block.label_presupuesto_inicial || 'Presupuesto inicial'}
+          onChange={(e) => onChange('label_presupuesto_inicial', e.target.value)}
+          size="small"
+          fullWidth
+        />
+        <TextField
+          label="Fila total"
+          value={block.label_total_presupuesto || 'Total presupuesto'}
+          onChange={(e) => onChange('label_total_presupuesto', e.target.value)}
+          size="small"
+          fullWidth
+        />
+      </Stack>
+      <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+        <TextField
+          label="Fila recibido"
+          value={block.label_recibido || 'Recibido'}
+          onChange={(e) => onChange('label_recibido', e.target.value)}
+          size="small"
+          fullWidth
+        />
+        <TextField
+          label="Fila saldo"
+          value={block.label_saldo || 'Saldo'}
+          onChange={(e) => onChange('label_saldo', e.target.value)}
+          size="small"
+          fullWidth
+        />
+      </Stack>
     </Stack>
   );
 }

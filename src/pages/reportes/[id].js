@@ -191,13 +191,15 @@ const ReportDetailPage = () => {
   };
 
   const handleExport = () => {
-    if (!selectedReport || filteredMovimientos.length === 0) return;
+    const hasBudgetDataset = !!selectedReport?.datasets?.presupuestos;
+    if (!selectedReport || (filteredMovimientos.length === 0 && !hasBudgetDataset)) return;
     const results = executeReport(selectedReport, filteredMovimientos, presupuestos, displayCurrencies, cotizaciones);
     exportReportToXLSX(selectedReport, results, filteredMovimientos, displayCurrencies);
   };
 
   const handleExportPDF = async () => {
-    if (!selectedReport || filteredMovimientos.length === 0) return;
+    const hasBudgetDataset = !!selectedReport?.datasets?.presupuestos;
+    if (!selectedReport || (filteredMovimientos.length === 0 && !hasBudgetDataset)) return;
     try {
       await exportReportToPDF({
         reportConfig: selectedReport,
@@ -318,7 +320,7 @@ const ReportDetailPage = () => {
           <IconButton
             size="small"
             onClick={handleExport}
-            disabled={loadingData || filteredMovimientos.length === 0}
+            disabled={loadingData || (filteredMovimientos.length === 0 && !selectedReport?.datasets?.presupuestos)}
           >
             <DownloadIcon fontSize="small" />
           </IconButton>
@@ -327,7 +329,7 @@ const ReportDetailPage = () => {
           <IconButton
             size="small"
             onClick={handleExportPDF}
-            disabled={loadingData || filteredMovimientos.length === 0}
+            disabled={loadingData || (filteredMovimientos.length === 0 && !selectedReport?.datasets?.presupuestos)}
           >
             <PictureAsPdfIcon fontSize="small" />
           </IconButton>
@@ -456,6 +458,7 @@ const ReportDetailPage = () => {
         onClose={() => setBlockDialogOpen(false)}
         onSave={handleAddBlock}
         initialBlock={null}
+        proyectos={proyectos}
       />
 
       {/* Dialog para compartir reporte */}

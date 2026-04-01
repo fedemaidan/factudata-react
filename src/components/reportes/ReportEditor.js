@@ -661,6 +661,7 @@ const ReportEditor = ({
         onClose={() => setBlockDialogOpen(false)}
         onSave={handleBlockSave}
         initialBlock={editingBlockIdx !== null ? config.layout[editingBlockIdx] : null}
+        proyectos={proyectos}
       />
     </Box>
   );

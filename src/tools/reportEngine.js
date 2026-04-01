@@ -507,7 +507,6 @@ export function processBudgetVsActual(block, movimientos, presupuestos, currenci
   if (block.mostrar_tipo && block.mostrar_tipo !== 'ambos') {
     presFiltered = presFiltered.filter((p) => p.tipo === block.mostrar_tipo);
   }
-
   // Filtrar presupuestos que tengan el campo seleccionado cargado
   if (block.presupuestos_con_campo) {
     const campoReq = block.presupuestos_con_campo; // 'categoria' | 'etapa' | 'proveedor'
@@ -615,6 +614,270 @@ export function processBudgetVsActual(block, movimientos, presupuestos, currenci
           : 0,
     },
   };
+}
+
+/**
+ * Procesa un bloque category_budget_matrix
+ * Matriz por categoría con columnas de proyectos y filas:
+ * - Presupuesto inicial
+ * - Adicionales (una fila por concepto)
+ * - Total presupuesto
+ * - Recibido/Ejecutado
+ * - Saldo
+ */
+export function processCategoryBudgetMatrix(block, movimientos, presupuestos, currencies, cotizaciones) {
+  const displayCurrency = currencies[0];
+  const list = Array.isArray(presupuestos) ? presupuestos : [];
+  const movs = Array.isArray(movimientos) ? movimientos : [];
+
+  // Mapa proyecto_id -> nombre para fallback en reportes públicos
+  const projectNameById = new Map();
+  for (const m of movs) {
+    const pid = m?.proyecto_id != null ? String(m.proyecto_id) : null;
+    if (!pid) continue;
+    const pname = m?.proyecto || m?.proyecto_nombre || m?.nombre_proyecto || null;
+    if (pname && !projectNameById.has(pid)) {
+      projectNameById.set(pid, String(pname));
+    }
+  }
+
+  const categoriaTarget = normalizeText(block.categoria_objetivo || '');
+  const tipoTarget = block.tipo_presupuesto || 'egreso';
+  const asumirMontoIncluyeAdicionales = block.asumir_monto_incluye_adicionales !== false;
+
+  const projectsMap = new Map();
+  const additionalRows = new Map();
+  const projectAccum = new Map();
+  const projectTiposCreacion = new Map(); // Guardar tipos de creación por proyecto
+
+  for (const p of list) {
+    // Filtrar por tipo de presupuesto
+    if (tipoTarget !== 'ambos' && (p.tipo || 'egreso') !== tipoTarget) {
+      continue;
+    }
+
+    // Filtrar por categoría específica (si fue indicada)
+    if (categoriaTarget) {
+      const categoriaPres = normalizeText(p.categoria || p.rubro || '');
+      if (categoriaPres !== categoriaTarget) {
+        continue;
+      }
+    }
+
+    const { id: proyectoId, nombre: proyectoNombre } = getPresupuestoProjectInfo(p, projectNameById);
+    if (!projectsMap.has(proyectoId)) {
+      projectsMap.set(proyectoId, { id: proyectoId, nombre: proyectoNombre });
+      projectTiposCreacion.set(proyectoId, []);
+    }
+
+    // Agregar tipo_creacion (persistido o inferido para presupuestos legacy)
+    const tipoCreacion = p.tipo_creacion || inferTipoCreacionFromPresupuesto(p);
+    if (tipoCreacion) {
+      const tiposExistentes = projectTiposCreacion.get(proyectoId);
+      if (!tiposExistentes.includes(tipoCreacion)) {
+        tiposExistentes.push(tipoCreacion);
+      }
+    }
+
+    const acc = projectAccum.get(proyectoId) || {
+      inicial: 0,
+      totalPresupuesto: 0,
+      recibido: 0,
+      saldo: 0,
+    };
+
+    const adicionales = Array.isArray(p.adicionales) ? p.adicionales : [];
+    let totalAdicionales = 0;
+
+    for (const adic of adicionales) {
+      const montoAdicBase = Number(adic?.monto ?? adic?.valor ?? 0);
+      if (!Number.isFinite(montoAdicBase)) continue;
+
+      const montoAdic = convertPresupuestoValue(p, montoAdicBase, displayCurrency, cotizaciones);
+      totalAdicionales += montoAdic;
+
+      const label = (adic?.concepto || adic?.motivo || 'Adicional').trim() || 'Adicional';
+      const adicKey = normalizeText(label);
+
+      const row = additionalRows.get(adicKey) || {
+        key: `adic_${adicKey}`,
+        label,
+        type: 'additional',
+        values: {},
+      };
+
+      row.values[proyectoId] = (row.values[proyectoId] || 0) + montoAdic;
+      additionalRows.set(adicKey, row);
+    }
+
+    const montoTotal = getPresupuestoAmount(p, displayCurrency, cotizaciones);
+    const montoInicial = asumirMontoIncluyeAdicionales ? montoTotal - totalAdicionales : montoTotal;
+    const recibido = convertPresupuestoValue(p, Number(p.ejecutado || 0), displayCurrency, cotizaciones);
+    const totalPresupuesto = montoInicial + totalAdicionales;
+    const saldo = totalPresupuesto - recibido;
+
+    acc.inicial += montoInicial;
+    acc.totalPresupuesto += totalPresupuesto;
+    acc.recibido += recibido;
+    acc.saldo += saldo;
+
+    projectAccum.set(proyectoId, acc);
+  }
+
+  // Filtrar proyectos según proyectos_seleccionados si está configurado
+  let projectColumns = [...projectsMap.values()];
+  const proyectosSeleccionados = block.proyectos_seleccionados || [];
+  
+  if (Array.isArray(proyectosSeleccionados) && proyectosSeleccionados.length > 0) {
+    // Normalizar los seleccionados: pueden ser IDs o nombres
+    const selectedSet = new Set(
+      proyectosSeleccionados.map((psel) => normalizeText(psel))
+    );
+    
+    // Filtrar columnas comparando IDs de forma flexible
+    projectColumns = projectColumns.filter((col) => (
+      selectedSet.has(normalizeText(col.id)) || selectedSet.has(normalizeText(col.nombre))
+    ));
+  }
+
+  // Agregar información de tipos de creación a cada proyecto
+  projectColumns = projectColumns.map(col => ({
+    ...col,
+    tiposCreacion: projectTiposCreacion.get(col.id) || [],
+  }));
+
+  const initialRow = {
+    key: 'presupuesto_inicial',
+    label: block.label_presupuesto_inicial || 'Presupuesto inicial',
+    type: 'initial',
+    values: {},
+  };
+  const totalRow = {
+    key: 'total_presupuesto',
+    label: block.label_total_presupuesto || 'Total presupuesto',
+    type: 'summary',
+    values: {},
+  };
+  const recibidoRow = {
+    key: 'recibido',
+    label: block.label_recibido || 'Recibido',
+    type: 'summary',
+    values: {},
+  };
+  const saldoRow = {
+    key: 'saldo',
+    label: block.label_saldo || 'Saldo',
+    type: 'summary',
+    values: {},
+  };
+
+  for (const col of projectColumns) {
+    const acc = projectAccum.get(col.id) || { inicial: 0, totalPresupuesto: 0, recibido: 0, saldo: 0 };
+    initialRow.values[col.id] = acc.inicial;
+    totalRow.values[col.id] = acc.totalPresupuesto;
+    recibidoRow.values[col.id] = acc.recibido;
+    saldoRow.values[col.id] = acc.saldo;
+  }
+
+  const rows = [
+    initialRow,
+    ...[...additionalRows.values()],
+    totalRow,
+    recibidoRow,
+    saldoRow,
+  ];
+
+  const movimientosRecibidoByProject = {};
+  for (const col of projectColumns) {
+    movimientosRecibidoByProject[col.id] = [];
+  }
+
+  if (movs.length > 0 && projectColumns.length > 0) {
+    for (const m of movs) {
+      if (tipoTarget !== 'ambos' && m.type !== tipoTarget) continue;
+
+      if (categoriaTarget) {
+        const categoriaMov = normalizeText(m.categoria || m.rubro || '');
+        if (categoriaMov !== categoriaTarget) continue;
+      }
+
+      const movProjectId = m.proyecto_id != null ? String(m.proyecto_id) : null;
+      let targetProjectId = null;
+
+      if (movProjectId && movimientosRecibidoByProject[movProjectId]) {
+        targetProjectId = movProjectId;
+      } else {
+        const movProjectName = normalizeText(m.proyecto || m.proyecto_nombre || m.nombre_proyecto || '');
+        if (movProjectName) {
+          const byName = projectColumns.find((p) => normalizeText(p.nombre) === movProjectName);
+          if (byName) targetProjectId = byName.id;
+        }
+      }
+
+      if (targetProjectId) {
+        movimientosRecibidoByProject[targetProjectId].push(m);
+      }
+    }
+  }
+
+  recibidoRow._movimientos_by_project = movimientosRecibidoByProject;
+
+  return {
+    categoria: block.categoria_objetivo || 'Todas',
+    rowHeaderTitle: block.columna_concepto_titulo || 'Concepto',
+    projectColumns,
+    rows,
+  };
+}
+
+function normalizeText(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function inferTipoCreacionFromPresupuesto(presupuesto) {
+  const moneda = String(presupuesto?.moneda || '').toUpperCase();
+  const indexacion = String(presupuesto?.indexacion || '').toUpperCase();
+
+  if (moneda === 'USD') return 'USD';
+  if (moneda === 'CAC') return 'CAC';
+  if (indexacion === 'USD') return 'Ajustado por dólar';
+  if (indexacion === 'CAC') return 'Ajustado por CAC';
+  if (moneda === 'ARS' || !moneda) return 'Pesos fijos';
+
+  return null;
+}
+
+function getPresupuestoProjectInfo(presupuesto, projectNameById = new Map()) {
+  const proyectoObj = (typeof presupuesto.proyecto === 'object' && presupuesto.proyecto)
+    ? presupuesto.proyecto
+    : null;
+  const rawId =
+    presupuesto.proyecto_id ||
+    proyectoObj?.id ||
+    proyectoObj?._id ||
+    (typeof presupuesto.proyecto === 'string' ? presupuesto.proyecto : null) ||
+    presupuesto.proyecto_nombre ||
+    'sin-proyecto';
+  const id = String(rawId);
+  const nombre =
+    presupuesto.proyecto_nombre ||
+    presupuesto.nombre_proyecto ||
+    (typeof presupuesto.proyecto === 'object' ? (presupuesto.proyecto?.nombre || presupuesto.proyecto?.label) : null) ||
+    (typeof presupuesto.proyecto === 'string' ? presupuesto.proyecto : null) ||
+    projectNameById.get(id) ||
+    presupuesto.proyecto_nombre ||
+    (presupuesto.proyecto_id ? String(presupuesto.proyecto_id) : 'Sin proyecto');
+
+  return { id, nombre };
+}
+
+function convertPresupuestoValue(pres, value, displayCurrency, cotizaciones) {
+  const fakePres = {
+    ...pres,
+    monto_presupuestado: value,
+    monto: value,
+  };
+  return getPresupuestoAmount(fakePres, displayCurrency, cotizaciones);
 }
 
 /**
@@ -741,6 +1004,7 @@ const BLOCK_PROCESSORS = {
   summary_table: processSummaryTable,
   movements_table: processMovementsTable,
   budget_vs_actual: processBudgetVsActual,
+  category_budget_matrix: processCategoryBudgetMatrix,
   chart: processChart,
   grouped_detail: processGroupedDetail,
 };

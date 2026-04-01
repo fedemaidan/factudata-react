@@ -42,6 +42,9 @@ export function exportReportToXLSX(reportConfig, results, movimientos = [], disp
       case 'budget_vs_actual':
         exportBudgetVsActual(wb, sheetName, block.data, displayCurrency);
         break;
+      case 'category_budget_matrix':
+        exportCategoryBudgetMatrix(wb, sheetName, block.data, displayCurrency);
+        break;
       default:
         break;
     }
@@ -182,5 +185,39 @@ function exportBudgetVsActual(wb, name, data, displayCurrency) {
   }
 
   const ws = XLSX.utils.json_to_sheet(xlsRows);
+  XLSX.utils.book_append_sheet(wb, ws, name);
+}
+
+function exportCategoryBudgetMatrix(wb, name, data, displayCurrency) {
+  const { categoria, rowHeaderTitle, projectColumns = [], rows = [] } = data || {};
+
+  const header = [rowHeaderTitle || 'Concepto', ...projectColumns.map((p) => p.nombre)];
+  const aoa = [
+    [`Categoria: ${categoria || 'Todas'}`],
+    [],
+    header,
+  ];
+
+  // Si hay tipos de creación, agregar una fila adicional con ellos
+  if (projectColumns.some(p => p.tiposCreacion && p.tiposCreacion.length > 0)) {
+    const tiposRow = ['Tipo de creación'];
+    for (const p of projectColumns) {
+      const tipos = (p.tiposCreacion || []).join(' / ') || '';
+      tiposRow.push(tipos);
+    }
+    aoa.push(tiposRow);
+    aoa.push([]); // Línea vacía para separar
+  }
+
+  for (const row of rows) {
+    const line = [row.label];
+    for (const p of projectColumns) {
+      const val = Number(row.values?.[p.id] || 0);
+      line.push(row.type === 'additional' && val === 0 ? '' : val);
+    }
+    aoa.push(line);
+  }
+
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
   XLSX.utils.book_append_sheet(wb, ws, name);
 }

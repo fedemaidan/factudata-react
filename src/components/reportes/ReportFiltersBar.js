@@ -82,8 +82,8 @@ const ReportFiltersBar = ({
             </>
           )}
 
-          {/* Proyectos multi-select (oculto si están fijados en config) */}
-          {filtrosSchema.proyectos?.enabled && !filtrosSchema.proyectos?.fijos && (
+          {/* Proyectos multi-select (OCULTO si viene de arriba) */}
+          {filtrosSchema.proyectos?.enabled && !filtrosSchema.proyectos?.fijos && !availableOptions.proyectos?.length && (
             <Autocomplete
               multiple
               size="small"
@@ -257,9 +257,12 @@ const ReportFiltersBar = ({
                 Ver valores en
               </Typography>
               <ToggleButtonGroup
-                value={filters.moneda_equivalente || ['ARS']}
+                exclusive
+                value={(filters.moneda_equivalente && filters.moneda_equivalente[0]) || 'ARS'}
                 onChange={(_, val) => {
-                  if (val && val.length > 0) handleChange('moneda_equivalente', val);
+                  if (val) {
+                    handleChange('moneda_equivalente', [val]);
+                  }
                 }}
                 size="small"
               >

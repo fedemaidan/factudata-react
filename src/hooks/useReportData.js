@@ -53,6 +53,27 @@ export function useReportData(user, empresaId) {
   // Cache para evitar re-fetches
   const movCacheRef = useRef(new Map()); // proyecto_id → movimientos[]
 
+  const enrichPresupuestosWithProjectName = useCallback((items) => {
+    const list = Array.isArray(items) ? items : [];
+    const byId = new Map((proyectos || []).map((p) => [String(p.id), p.nombre || p.proyecto || p.id]));
+
+    return list.map((p) => {
+      const pid = p?.proyecto_id != null ? String(p.proyecto_id) : null;
+      const nombreProyecto =
+        p?.proyecto_nombre ||
+        p?.nombre_proyecto ||
+        (pid ? byId.get(pid) : null) ||
+        p?.proyecto ||
+        null;
+
+      return {
+        ...p,
+        proyecto_nombre: nombreProyecto,
+        nombre_proyecto: nombreProyecto,
+      };
+    });
+  }, [proyectos]);
+
   // ═══════════════════════════════════════════
   //  1. Cargar lista de reportes
   // ═══════════════════════════════════════════
@@ -143,11 +164,16 @@ export function useReportData(user, empresaId) {
       const response = await PresupuestoService.listarPresupuestos(empresaId);
       // listarPresupuestos retorna { presupuestos: [...], success: bool }
       const list = response?.presupuestos || response || [];
-      setPresupuestos(Array.isArray(list) ? list : []);
+      setPresupuestos(enrichPresupuestosWithProjectName(list));
     } catch (err) {
       console.error('Error cargando presupuestos:', err);
     }
-  }, [empresaId]);
+  }, [empresaId, enrichPresupuestosWithProjectName]);
+
+  // Si cambia el catálogo de proyectos, refrescar nombres en presupuestos ya cargados
+  useEffect(() => {
+    setPresupuestos((prev) => enrichPresupuestosWithProjectName(prev));
+  }, [proyectos, enrichPresupuestosWithProjectName]);
 
   // ═══════════════════════════════════════════
   //  5. Cargar datos completos cuando se selecciona un reporte

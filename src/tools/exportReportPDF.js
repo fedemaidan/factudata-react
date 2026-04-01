@@ -34,6 +34,7 @@ export async function exportReportToPDF({
     displayCurrency,
     movimientosCount: movimientos.length,
     filtrosTexto,
+    cotizaciones,
   });
 
   // 4. Descargar el archivo

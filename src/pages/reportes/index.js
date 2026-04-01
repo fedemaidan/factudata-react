@@ -175,7 +175,56 @@ const TEMPLATES = [
       },
     ],
   },
+  {
+    nombre: 'Categoria por Proyecto',
+    descripcion: 'Planilla por categoria con inicial, adicionales, total, recibido y saldo por proyecto',
+    display_currency: 'ARS',
+    datasets: { movimientos: false, presupuestos: true },
+    filtros_schema: {
+      fecha: { enabled: false },
+      proyectos: { enabled: false },
+      tipo: { enabled: false },
+      categorias: { enabled: false },
+    },
+    layout: [
+      {
+        type: 'category_budget_matrix',
+        titulo: 'Categoria por Proyecto',
+        categoria_objetivo: '',
+        tipo_presupuesto: 'egreso',
+        columna_concepto_titulo: 'Obras',
+        asumir_monto_incluye_adicionales: true,
+        label_presupuesto_inicial: 'Ppto. inicial',
+        label_total_presupuesto: 'Total presupuesto',
+        label_recibido: 'Recibido',
+        label_saldo: 'Saldo',
+      },
+    ],
+  },
 ];
+
+const toErrorText = (err, fallback = 'Ocurrio un error') => {
+  if (!err) return fallback;
+  if (typeof err === 'string') return err;
+
+  const responseData = err?.response?.data;
+  if (typeof responseData === 'string') return responseData;
+  if (responseData?.message && typeof responseData.message === 'string') return responseData.message;
+  if (responseData?.error && typeof responseData.error === 'string') return responseData.error;
+  if (responseData?.error?.message && typeof responseData.error.message === 'string') return responseData.error.message;
+
+  if (err?.message && typeof err.message === 'string') return err.message;
+
+  if (responseData && typeof responseData === 'object') {
+    try {
+      return JSON.stringify(responseData);
+    } catch (_e) {
+      return fallback;
+    }
+  }
+
+  return fallback;
+};
 
 const ReportListPage = () => {
   const router = useRouter();
@@ -193,6 +242,8 @@ const ReportListPage = () => {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [newReportName, setNewReportName] = useState('');
   const [newReportTemplate, setNewReportTemplate] = useState('');
+  const [creatingReport, setCreatingReport] = useState(false);
+  const [createError, setCreateError] = useState('');
 
   // ─── Empresa ───
   useEffect(() => {
@@ -261,11 +312,15 @@ const ReportListPage = () => {
   };
 
   const handleCreateReport = async () => {
-    if (!newReportName.trim()) return;
+    if (!newReportName.trim() || !empresaId || creatingReport) return;
 
     let data;
     if (newReportTemplate) {
       const template = TEMPLATES.find((t) => t.nombre === newReportTemplate);
+      if (!template) {
+        setCreateError('La plantilla seleccionada no es valida.');
+        return;
+      }
       data = {
         ...template,
         nombre: newReportName.trim(),
@@ -288,21 +343,40 @@ const ReportListPage = () => {
     }
 
     try {
+      setCreatingReport(true);
+      setCreateError('');
       const created = await ReportService.create(data);
+
+      const createdId =
+        created?._id ||
+        created?.id ||
+        created?.report?._id ||
+        created?.report?.id ||
+        null;
+
+      const createdLayout = created?.layout || created?.report?.layout || [];
+
       setCreateDialogOpen(false);
       setNewReportName('');
       setNewReportTemplate('');
 
-      if (created) {
-        // Si el reporte se creó en blanco, abrir directo en modo edición
-        if (!created.layout || created.layout.length === 0) {
-          router.push(`/reportes/${created._id}?edit=1`);
-        } else {
-          router.push(`/reportes/${created._id}`);
-        }
+      await loadReports();
+
+      if (!createdId) {
+        return;
+      }
+
+      // Si el reporte se creó en blanco, abrir directo en modo edición
+      if (!createdLayout || createdLayout.length === 0) {
+        router.push(`/reportes/${createdId}?edit=1`);
+      } else {
+        router.push(`/reportes/${createdId}`);
       }
     } catch (err) {
       console.error('Error creando reporte:', err);
+      setCreateError(toErrorText(err, 'No se pudo crear el reporte.'));
+    } finally {
+      setCreatingReport(false);
     }
   };
 
@@ -446,19 +520,29 @@ const ReportListPage = () => {
           {/* Dialog crear reporte */}
           <Dialog
             open={createDialogOpen}
-            onClose={() => setCreateDialogOpen(false)}
+            onClose={() => {
+              if (creatingReport) return;
+              setCreateDialogOpen(false);
+              setCreateError('');
+            }}
             maxWidth="sm"
             fullWidth
           >
             <DialogTitle>Nuevo Reporte</DialogTitle>
             <DialogContent>
               <Stack spacing={3} mt={1}>
+                {createError && (
+                  <Alert severity="error">
+                    {createError}
+                  </Alert>
+                )}
                 <TextField
                   label="Nombre del reporte"
                   value={newReportName}
                   onChange={(e) => setNewReportName(e.target.value)}
                   fullWidth
                   autoFocus
+                  disabled={creatingReport}
                 />
                 <FormControl fullWidth>
                   <InputLabel>Plantilla (opcional)</InputLabel>
@@ -466,6 +550,7 @@ const ReportListPage = () => {
                     value={newReportTemplate}
                     label="Plantilla (opcional)"
                     onChange={(e) => setNewReportTemplate(e.target.value)}
+                    disabled={creatingReport}
                   >
                     <MenuItem value="">
                       <em>En blanco</em>
@@ -483,13 +568,21 @@ const ReportListPage = () => {
               </Stack>
             </DialogContent>
             <DialogActions>
-              <Button onClick={() => setCreateDialogOpen(false)}>Cancelar</Button>
+              <Button
+                onClick={() => {
+                  if (creatingReport) return;
+                  setCreateDialogOpen(false);
+                  setCreateError('');
+                }}
+              >
+                Cancelar
+              </Button>
               <Button
                 variant="contained"
                 onClick={handleCreateReport}
-                disabled={!newReportName.trim()}
+                disabled={!newReportName.trim() || !empresaId || creatingReport}
               >
-                Crear
+                {creatingReport ? 'Creando...' : 'Crear'}
               </Button>
             </DialogActions>
           </Dialog>
