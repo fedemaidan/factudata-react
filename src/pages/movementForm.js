@@ -20,6 +20,10 @@ import HomeIcon from '@mui/icons-material/Home';
 import FolderIcon from '@mui/icons-material/Folder';
 import ReceiptIcon from '@mui/icons-material/Receipt';
 import MovementFields from 'src/components/movementFields';
+import {
+  computeNetSubtotalFromTotalImpuestos,
+  isSubtotalFieldEnabled,
+} from 'src/components/movementFieldsConfig';
 import profileService from 'src/services/profileService';
 import OpenInFullIcon from '@mui/icons-material/OpenInFull';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
@@ -571,6 +575,15 @@ const createdAtStr = (() => {
         factura_cliente: values.factura_cliente === true
       };
 
+      const tipoMov = values.type || 'egreso';
+      const usaSubtotal = isSubtotalFieldEnabled(comprobante_info, ingreso_info, tipoMov);
+
+      if (!usaSubtotal) {
+        payload.subtotal = computeNetSubtotalFromTotalImpuestos(values.total, values.impuestos);
+        await savePayload(payload);
+        return;
+      }
+
       const subtotal  = Number(values.subtotal) || 0;
       const impTotal  = (values.impuestos || []).reduce((a, i) => a + (Number(i.monto) || 0), 0);
       const total     = Number(values.total) || 0;
@@ -591,6 +604,26 @@ const createdAtStr = (() => {
     loadInitialData(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [movimientoId]);
+
+  // Subtotal oculto en config: mantener neto = total − impuestos para UI (USD, ImpuestosEditor) y coherencia al guardar
+  useEffect(() => {
+    if (isInitialLoading) return;
+    const tipoMov = formik.values.type || 'egreso';
+    if (isSubtotalFieldEnabled(comprobante_info, ingreso_info, tipoMov)) return;
+    const net = computeNetSubtotalFromTotalImpuestos(formik.values.total, formik.values.impuestos);
+    const cur = Number(formik.values.subtotal) || 0;
+    if (Math.abs(cur - net) > 0.005) {
+      formik.setFieldValue('subtotal', net);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- sincronizar solo ante total/impuestos/tipo/config
+  }, [
+    isInitialLoading,
+    formik.values.total,
+    formik.values.impuestos,
+    formik.values.type,
+    comprobante_info,
+    ingreso_info,
+  ]);
 
   // Abrir popup de stock automáticamente si viene showStockPopup=true y no fue procesado
   useEffect(() => {
