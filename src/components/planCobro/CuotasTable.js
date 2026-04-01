@@ -9,6 +9,7 @@ import {
   Paper,
   TextField,
   IconButton,
+  InputAdornment,
   Tooltip,
   Typography,
   Box,
@@ -44,7 +45,7 @@ const tiempoRelativo = (fecha) => {
 };
 
 // Modo edición (para crear/confirmar plan)
-export const CuotasTableEdit = ({ cuotas, onChange, moneda = 'ARS', showCAC = false, cacPreview = null }) => {
+export const CuotasTableEdit = ({ cuotas, onChange, moneda = 'ARS', showCAC = false, cacPreview = null, montoTotal = 0 }) => {
   const add = () => {
     onChange([
       ...cuotas,
@@ -59,6 +60,8 @@ export const CuotasTableEdit = ({ cuotas, onChange, moneda = 'ARS', showCAC = fa
     onChange(next);
   };
 
+  const showPct = montoTotal > 0;
+
   return (
     <Box>
       <TableContainer component={Paper} variant="outlined">
@@ -68,6 +71,7 @@ export const CuotasTableEdit = ({ cuotas, onChange, moneda = 'ARS', showCAC = fa
               <TableCell>#</TableCell>
               <TableCell>Fecha</TableCell>
               <TableCell>Monto ({moneda})</TableCell>
+              {showPct && <TableCell align="right" sx={{ fontWeight: 600, width: 80 }}>%</TableCell>}
               {showCAC && <TableCell>Equiv. CAC (solo lectura)</TableCell>}
               <TableCell>Descripción (opcional)</TableCell>
               <TableCell />
@@ -75,8 +79,8 @@ export const CuotasTableEdit = ({ cuotas, onChange, moneda = 'ARS', showCAC = fa
           </TableHead>
           <TableBody>
             {cuotas.map((c, i) => {
-              const cacEquiv = showCAC && cacPreview?.valor && Number(c.monto)
-                ? (Number(c.monto) / cacPreview.valor).toFixed(2)
+              const cacEquiv = showCAC && cacPreview?.cac_indice && Number(c.monto)
+                ? (Number(c.monto) / cacPreview.cac_indice).toFixed(2)
                 : null;
 
               return (
@@ -97,10 +101,34 @@ export const CuotasTableEdit = ({ cuotas, onChange, moneda = 'ARS', showCAC = fa
                       size="small"
                       value={formatNumberInput(c.monto)}
                       onChange={(e) => update(i, 'monto', parseNumberInput(e.target.value))}
+                      onFocus={(e) => e.target.select()}
                       sx={{ width: 140 }}
                       inputProps={{ inputMode: 'decimal' }}
                     />
                   </TableCell>
+                  {showPct && (
+                    <TableCell align="right">
+                      <TextField
+                        size="small"
+                        type="text"
+                        value={montoTotal > 0 ? String(Math.round((Number(c.monto) / montoTotal) * 100)) : ''}
+                        onChange={(e) => {
+                          const raw = e.target.value.replace(/[^\d]/g, '');
+                          const pct = parseInt(raw, 10);
+                          if (raw === '') {
+                            onChange(cuotas.map((cu, j) => j === i ? { ...cu, monto: '' } : cu));
+                          } else if (!isNaN(pct) && pct >= 0 && pct <= 100) {
+                            const nuevo = String(Math.round(montoTotal * pct / 100));
+                            onChange(cuotas.map((cu, j) => j === i ? { ...cu, monto: nuevo } : cu));
+                          }
+                        }}
+                        onFocus={(e) => e.target.select()}
+                        InputProps={{ endAdornment: <InputAdornment position="end">%</InputAdornment> }}
+                        sx={{ width: 100 }}
+                        inputProps={{ inputMode: 'numeric' }}
+                      />
+                    </TableCell>
+                  )}
                   {showCAC && (
                     <TableCell>
                       <Typography variant="body2" color="text.secondary">

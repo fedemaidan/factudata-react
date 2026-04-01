@@ -34,6 +34,7 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
+import FolderIcon from '@mui/icons-material/Folder';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useAuthContext } from 'src/contexts/auth-context';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
@@ -61,6 +62,7 @@ const DetallePlanPage = () => {
   // Edit cuota dialog
   const [editCuota, setEditCuota] = useState(null); // cuota object or null
   const [editForm, setEditForm] = useState({ monto: '', fecha_vencimiento: '', descripcion: '' });
+  const [editCacInput, setEditCacInput] = useState(''); // CAC units input para planes indexados
 
   // Delete cuota dialog
   const [deleteCuota, setDeleteCuota] = useState(null);
@@ -68,6 +70,8 @@ const DetallePlanPage = () => {
   // Add cuota dialog
   const [showAddCuota, setShowAddCuota] = useState(false);
   const [addForm, setAddForm] = useState({ monto: '', fecha_vencimiento: '', descripcion: '' });
+  // CAC actual para planes indexados — se usa para calcular el valor en pesos ajustado
+  const [cacActual, setCacActual] = useState(null);
 
   useEffect(() => {
     if (!user) return;
@@ -84,6 +88,27 @@ const DetallePlanPage = () => {
   useEffect(() => {
     if (error) setAlert({ open: true, message: 'Error al cargar el plan', severity: 'error' });
   }, [error]);
+
+  // Fetch CAC del momento (2 meses atrás, lógica estándar) para mostrar ARS actualizado
+  useEffect(() => {
+    if (!plan || plan.indexacion !== 'CAC') return;
+    const hoy = new Date().toISOString().split('T')[0];
+    planCobroService.previewCAC(hoy, plan.cac_tipo || 'general')
+      .then((res) => {
+        const cac = res?.data?.data?.cac_indice;
+        if (cac) setCacActual(cac);
+      })
+      .catch(() => {});
+  }, [plan?.indexacion, plan?.cac_tipo]);
+
+  // Para planes CAC con monto ajustable: valor actual en ARS = monto_cac × cac_actual
+  const getMontoCuota = (cuota) => {
+    if (!cuota) return 0;
+    if (plan?.indexacion === 'CAC' && cuota.monto_cac && cacActual) {
+      return Math.round(cuota.monto_cac * cacActual * 100) / 100;
+    }
+    return cuota.monto || 0;
+  };
 
   const handleCobrarClick = (cuotaId) => {
     const cuota = (plan.cuotas || []).find((c) => c._id === cuotaId);
@@ -137,22 +162,29 @@ const DetallePlanPage = () => {
 
   const handleEditClick = (cuota) => {
     setEditCuota(cuota);
+    // Para planes CAC usamos el monto ajustado al índice actual; si no cargó aún, usamos nominal
+    const esCac = plan?.indexacion === 'CAC' && cuota.monto_cac;
+    const montoArs = esCac ? getMontoCuota(cuota) : (cuota.monto || 0);
     setEditForm({
-      monto: String(cuota.monto || ''),
+      monto: String(montoArs),
       fecha_vencimiento: cuota.fecha_vencimiento
         ? new Date(cuota.fecha_vencimiento).toISOString().split('T')[0]
         : '',
       descripcion: cuota.descripcion || '',
     });
+    setEditCacInput(esCac ? String(Math.round(cuota.monto_cac * 100) / 100) : '');
   };
 
   const handleEditConfirm = async () => {
     if (!editCuota) return;
     const montoNum = parseNumberInput(editForm.monto);
     if (!montoNum || Number(montoNum) <= 0) return;
+    const esCacPlan = plan?.indexacion === 'CAC' && editCuota?.monto_cac;
+    const cacNum = esCacPlan ? parseFloat(editCacInput.replace(',', '.')) : null;
     try {
       await editarCuota(editCuota._id, {
         monto: Number(montoNum),
+        ...(esCacPlan && cacNum > 0 ? { monto_cac: cacNum } : {}),
         fecha_vencimiento: editForm.fecha_vencimiento || undefined,
         descripcion: editForm.descripcion || undefined,
       });
@@ -254,6 +286,7 @@ const DetallePlanPage = () => {
 
   const resumen = plan.resumen || {};
   const monedaDisplay = plan.moneda === 'CAC' ? 'ARS' : plan.moneda || 'ARS';
+  const cacTipoLabel = plan.cac_tipo === 'general' ? 'Promedio' : plan.cac_tipo === 'mano_obra' ? 'M. Obra' : 'Materiales';
   const indexacionLabel = plan.indexacion === 'CAC' ? `CAC ${cacTipoLabel}` : plan.indexacion === 'USD' ? 'Dólar' : '';
   const allCuotas = plan.cuotas || [];
   const totalCuotas = allCuotas.length;
@@ -265,7 +298,15 @@ const DetallePlanPage = () => {
   const pct =
     resumen.total > 0 ? Math.round(((resumen.cobrado || 0) / resumen.total) * 100) : 0;
   const showCAC = !!plan.indexacion;
-  const cacTipoLabel = plan.cac_tipo === 'general' ? 'Promedio' : plan.cac_tipo === 'mano_obra' ? 'M. Obra' : 'Materiales';
+  const cacIndiceBase = plan.cotizacion_snapshot?.cac_indice || null;
+
+  // Totales ajustados por CAC actual (cuando el plan es indexado y cacActual está disponible)
+  const totalAjustado = (showCAC && cacActual)
+    ? allCuotas.reduce((acc, c) => acc + getMontoCuota(c), 0)
+    : null;
+  const pendienteAjustado = (showCAC && cacActual)
+    ? allCuotas.filter((c) => c.estado !== 'cobrada').reduce((acc, c) => acc + getMontoCuota(c), 0)
+    : null;
 
   return (
     <>
@@ -288,20 +329,28 @@ const DetallePlanPage = () => {
 
           <Stack direction="row" justifyContent="space-between" alignItems="flex-start" mb={3}>
             <Box>
-              <Stack direction="row" spacing={1.5} alignItems="center">
+              <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap">
                 <Typography variant="h5" fontWeight={700}>
-                  {plan.proyecto_nombre ? `${plan.proyecto_nombre} — ` : ''}{plan.nombre}
+                  {plan.nombre}
                 </Typography>
                 <Chip
                   label={ESTADO_LABEL[plan.estado] || plan.estado}
                   color={ESTADO_COLOR[plan.estado] || 'default'}
                   size="small"
                 />
+                {plan.proyecto_nombre && (
+                  <Chip
+                    icon={<FolderIcon sx={{ fontSize: 16 }} />}
+                    label={plan.proyecto_nombre}
+                    variant="outlined"
+                    size="small"
+                    sx={{ fontWeight: 500 }}
+                  />
+                )}
               </Stack>
               {/* Subtitle metadata line */}
               <Typography variant="body2" color="text.secondary" mt={0.5}>
                 {[
-                  plan.proyecto_nombre && `Proyecto: ${plan.proyecto_nombre}`,
                   plan.createdAt && `Creado: ${new Date(plan.createdAt).toLocaleDateString('es-AR')}`,
                   plan.indexacion === 'CAC' &&
                     `Índice: CAC ${cacTipoLabel}${plan.cac_valor_base ? ` (base = ${Number(plan.cac_valor_base).toLocaleString('es-AR')})` : ''}`,
@@ -345,17 +394,17 @@ const DetallePlanPage = () => {
                   >
                     Confirmar plan
                   </Button>
-                  <Button
-                    variant="outlined"
-                    color="error"
-                    size="small"
-                    startIcon={<DeleteIcon />}
-                    onClick={() => setConfirmEliminar(true)}
-                  >
-                    Eliminar
-                  </Button>
                 </>
               )}
+              <Button
+                variant="outlined"
+                color="error"
+                size="small"
+                startIcon={<DeleteIcon />}
+                onClick={() => setConfirmEliminar(true)}
+              >
+                Eliminar
+              </Button>
             </Stack>
           </Stack>
 
@@ -364,10 +413,10 @@ const DetallePlanPage = () => {
             {[
               {
                 label: 'TOTAL DEL PLAN',
-                value: formatCurrency(resumen.total || 0, monedaDisplay),
+                value: formatCurrency(totalAjustado ?? resumen.total ?? 0, monedaDisplay),
                 borderColor: '#1976D2',
-                subtitle: showCAC && plan.cac_valor_base
-                  ? `${Math.round((resumen.total || 0) / plan.cac_valor_base).toLocaleString('es-AR')} CAC al crear`
+                subtitle: showCAC && cacIndiceBase
+                  ? `${Math.round((resumen.total || 0) / cacIndiceBase).toLocaleString('es-AR')} CAC al crear`
                   : null,
               },
               {
@@ -378,7 +427,7 @@ const DetallePlanPage = () => {
               },
               {
                 label: 'PENDIENTE',
-                value: formatCurrency(resumen.pendiente || 0, monedaDisplay),
+                value: formatCurrency(pendienteAjustado ?? resumen.pendiente ?? 0, monedaDisplay),
                 borderColor: '#D32F2F',
                 subtitle: proximaFecha ? `Próxima: ${proximaFecha}` : null,
               },
@@ -466,7 +515,7 @@ const DetallePlanPage = () => {
                   : esVencida
                     ? '4px solid #F44336'
                     : '4px solid #2196F3';
-              const restante = esParcial ? cuota.monto - (cuota.monto_cobrado || 0) : 0;
+              const restante = esParcial ? getMontoCuota(cuota) - (cuota.monto_cobrado || 0) : 0;
 
               return (
                 <Paper
@@ -500,7 +549,7 @@ const DetallePlanPage = () => {
                         </Typography>
                         {(esParcial || esParcialVencida) && (
                           <Typography variant="caption" color="warning.main" fontWeight={500}>
-                            Cobrado parcialmente: {formatCurrency(cuota.monto_cobrado || 0, monedaDisplay)} de {formatCurrency(cuota.monto, monedaDisplay)}
+                            Cobrado parcialmente: {formatCurrency(cuota.monto_cobrado || 0, monedaDisplay)} de {formatCurrency(getMontoCuota(cuota), monedaDisplay)}
                             {' '}— Resta: {formatCurrency(restante, monedaDisplay)}
                           </Typography>
                         )}
@@ -510,12 +559,11 @@ const DetallePlanPage = () => {
                     {/* Monto + CAC */}
                     <Box textAlign="right" minWidth={160}>
                       <Typography variant="subtitle1" fontWeight={700}>
-                        {formatCurrency(cuota.monto, monedaDisplay)}
+                        {formatCurrency(getMontoCuota(cuota), monedaDisplay)}
                       </Typography>
-                      {showCAC && cuota.equivalencia_cac != null && (
+                      {showCAC && cuota.monto_cac != null && (
                         <Typography variant="caption" color="text.secondary">
-                          {Number(cuota.equivalencia_cac).toLocaleString('es-AR')} CAC
-                          {esCobrada ? ' al cobrar' : ''}
+                          {Number(cuota.monto_cac).toLocaleString('es-AR', { maximumFractionDigits: 1 })} CAC{esCobrada ? ' al cobrar' : ''}
                         </Typography>
                       )}
                     </Box>
@@ -640,12 +688,13 @@ const DetallePlanPage = () => {
         <DialogTitle>Registrar cobro</DialogTitle>
         <DialogContent>
           {(() => {
-            const montoRestante = (confirmCobrar?.monto || 0) - (confirmCobrar?.monto_cobrado || 0);
+            const montoActual = getMontoCuota(confirmCobrar);
+            const montoRestante = montoActual - (confirmCobrar?.monto_cobrado || 0);
             const yaParcial = confirmCobrar?.estado === 'cobrada_parcial';
             return (
               <>
                 <DialogContentText sx={{ mb: 2 }}>
-                  Cuota #{confirmCobrar?.numero} — Monto: <strong>{formatCurrency(confirmCobrar?.monto || 0, monedaDisplay)}</strong>
+                  Cuota #{confirmCobrar?.numero} — Monto: <strong>{formatCurrency(montoActual, monedaDisplay)}</strong>
                   {confirmCobrar?.fecha_vencimiento && (
                     <> (Vto: {new Date(confirmCobrar.fecha_vencimiento).toLocaleDateString('es-AR')})</>
                   )}
@@ -728,15 +777,53 @@ const DetallePlanPage = () => {
           </Stack>
 
           <Stack spacing={2}>
-            <TextField
-              label="Monto *"
-              value={formatNumberInput(editForm.monto)}
-              onChange={(e) => setEditForm((f) => ({ ...f, monto: parseNumberInput(e.target.value) }))}
-              fullWidth
-              size="small"
-              inputProps={{ inputMode: 'decimal' }}
-              InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment> }}
-            />
+            {plan?.indexacion === 'CAC' && editCuota?.monto_cac ? (
+              <Stack spacing={1.5}>
+                <TextField
+                  label="Unidades CAC *"
+                  value={editCacInput}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/[^\d.,]/g, '');
+                    setEditCacInput(raw);
+                    const num = parseFloat(raw.replace(',', '.'));
+                    if (!isNaN(num) && cacActual) {
+                      setEditForm((f) => ({ ...f, monto: String(Math.round(num * cacActual * 100) / 100) }));
+                    }
+                  }}
+                  fullWidth
+                  size="small"
+                  inputProps={{ inputMode: 'decimal' }}
+                  InputProps={{ endAdornment: <InputAdornment position="end">CAC</InputAdornment> }}
+                />
+                <TextField
+                  label={cacActual ? 'Equivalente en ARS (índice actual)' : 'Equivalente en ARS (nominal)'}
+                  value={formatNumberInput(editForm.monto)}
+                  onChange={(e) => {
+                    const raw = parseNumberInput(e.target.value);
+                    setEditForm((f) => ({ ...f, monto: raw }));
+                    const num = parseFloat(raw);
+                    if (!isNaN(num) && cacActual) {
+                      setEditCacInput(String(Math.round((num / cacActual) * 100) / 100));
+                    }
+                  }}
+                  fullWidth
+                  size="small"
+                  inputProps={{ inputMode: 'decimal' }}
+                  InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment> }}
+                  helperText={cacActual ? `Índice CAC actual: ${cacActual.toLocaleString('es-AR')}` : 'Índice CAC no cargado'}
+                />
+              </Stack>
+            ) : (
+              <TextField
+                label="Monto *"
+                value={formatNumberInput(editForm.monto)}
+                onChange={(e) => setEditForm((f) => ({ ...f, monto: parseNumberInput(e.target.value) }))}
+                fullWidth
+                size="small"
+                inputProps={{ inputMode: 'decimal' }}
+                InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment> }}
+              />
+            )}
             <TextField
               label="Fecha de vencimiento"
               type="date"
@@ -849,10 +936,16 @@ const DetallePlanPage = () => {
             ¿Estás seguro de que querés eliminar el plan &ldquo;{plan.nombre}&rdquo;? Esta acción no
             se puede deshacer.
           </DialogContentText>
+          {(plan.estado === 'activo' || plan.estado === 'completado') &&
+            (plan.cuotas || []).some((c) => c.estado === 'cobrada' || c.estado === 'cobrada_parcial') && (
+            <DialogContentText sx={{ mt: 1.5, color: 'error.main', fontWeight: 500 }}>
+              Este plan tiene cuotas cobradas. Se eliminarán también los movimientos de caja asociados.
+            </DialogContentText>
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setConfirmEliminar(false)}>Cancelar</Button>
-          <Button color="error" onClick={handleEliminar}>
+          <Button color="error" variant="contained" onClick={handleEliminar}>
             Eliminar
           </Button>
         </DialogActions>

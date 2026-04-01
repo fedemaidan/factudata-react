@@ -5,6 +5,11 @@ import {
   Box,
   Button,
   Container,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
   Grid,
   MenuItem,
   Select,
@@ -27,6 +32,7 @@ import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import { getProyectosFromUser } from 'src/services/proyectosService';
 import { usePlanesCobroList } from 'src/hooks/usePlanCobro';
 import PlanCobroCard from 'src/components/planCobro/PlanCobroCard';
+import planCobroService from 'src/services/planCobroService';
 
 const SORT_OPTIONS = [
   { value: 'reciente', label: 'Más recientes' },
@@ -61,6 +67,7 @@ const CobrosList = () => {
   const [sortBy, setSortBy] = useState('reciente');
   const [proyectos, setProyectos] = useState([]);
   const [alert, setAlert] = useState({ open: false, message: '', severity: 'info' });
+  const [confirmEliminar, setConfirmEliminar] = useState(null); // plan object or null
 
   useEffect(() => {
     if (!user) return;
@@ -71,7 +78,22 @@ const CobrosList = () => {
   }, [user]);
 
   const filterParams = filtroEstado ? { estado: filtroEstado } : {};
-  const { planes, loading, error } = usePlanesCobroList(empresaId, filterParams);
+  const { planes, loading, error, refresh } = usePlanesCobroList(empresaId, filterParams);
+
+  const handleEliminar = async () => {
+    if (!confirmEliminar) return;
+    const planId = confirmEliminar._id;
+    setConfirmEliminar(null);
+    try {
+      const res = await planCobroService.eliminarPlan(planId, empresaId);
+      const d = res?.data;
+      if (!d?.ok) throw new Error(d?.error || 'Error al eliminar');
+      setAlert({ open: true, message: 'Plan eliminado correctamente', severity: 'success' });
+      refresh();
+    } catch (err) {
+      setAlert({ open: true, message: err.message || 'Error al eliminar el plan', severity: 'error' });
+    }
+  };
 
   useEffect(() => {
     if (error) setAlert({ open: true, message: 'Error al cargar planes de cobro', severity: 'error' });
@@ -214,6 +236,7 @@ const CobrosList = () => {
                   <PlanCobroCard
                     plan={plan}
                     onClick={() => router.push(`/cobros/${plan._id}`)}
+                    onDelete={(p) => setConfirmEliminar(p)}
                   />
                 </Grid>
               ))}
@@ -232,6 +255,27 @@ const CobrosList = () => {
           {alert.message}
         </Alert>
       </Snackbar>
+
+      {/* Diálogo confirmar eliminación */}
+      <Dialog open={!!confirmEliminar} onClose={() => setConfirmEliminar(null)}>
+        <DialogTitle>Eliminar plan</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            ¿Estás seguro de que querés eliminar el plan &ldquo;{confirmEliminar?.nombre}&rdquo;?
+            Esta acción no se puede deshacer.
+          </DialogContentText>
+          {(confirmEliminar?.estado === 'activo' || confirmEliminar?.estado === 'completado') &&
+            (confirmEliminar?.cuotas || []).some((c) => c.estado === 'cobrada' || c.estado === 'cobrada_parcial') && (
+            <DialogContentText sx={{ mt: 1.5, color: 'error.main', fontWeight: 500 }}>
+              Este plan tiene cuotas cobradas. Se eliminarán también los movimientos de caja asociados.
+            </DialogContentText>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmEliminar(null)}>Cancelar</Button>
+          <Button color="error" variant="contained" onClick={handleEliminar}>Eliminar</Button>
+        </DialogActions>
+      </Dialog>
     </>
   );
 };

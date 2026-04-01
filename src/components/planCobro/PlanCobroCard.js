@@ -3,12 +3,15 @@ import {
   Card,
   CardContent,
   CardActionArea,
+  IconButton,
+  Tooltip,
   Typography,
   Box,
   Chip,
   LinearProgress,
   Stack,
 } from '@mui/material';
+import DeleteIcon from '@mui/icons-material/Delete';
 import { formatCurrency } from 'src/utils/formatters';
 
 const ESTADO_COLOR = {
@@ -29,7 +32,7 @@ const diasDesde = (fecha) => {
   return Math.floor(diff / (1000 * 60 * 60 * 24));
 };
 
-const PlanCobroCard = ({ plan, onClick }) => {
+const PlanCobroCard = ({ plan, onClick, onDelete }) => {
   const resumen = plan.resumen || {};
   const total = resumen.total || plan.monto_total || 0;
   const cobrado = resumen.cobrado || 0;
@@ -59,8 +62,21 @@ const PlanCobroCard = ({ plan, onClick }) => {
         height: '100%',
         transition: 'box-shadow 0.2s, transform 0.2s',
         '&:hover': { boxShadow: 6, transform: 'translateY(-2px)' },
+        position: 'relative',
       }}
     >
+      {onDelete && (
+        <Tooltip title="Eliminar plan">
+          <IconButton
+            size="small"
+            color="error"
+            onClick={(e) => { e.stopPropagation(); onDelete(plan); }}
+            sx={{ position: 'absolute', top: 6, right: 6, zIndex: 1, opacity: 0.6, '&:hover': { opacity: 1 } }}
+          >
+            <DeleteIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
+      )}
       <CardActionArea onClick={onClick} sx={{ height: '100%', p: 0 }}>
         <CardContent>
           <Stack direction="row" justifyContent="space-between" alignItems="flex-start" mb={1}>
@@ -133,4 +149,5 @@ export default PlanCobroCard;
 PlanCobroCard.propTypes = {
   plan: PropTypes.object.isRequired,
   onClick: PropTypes.func,
+  onDelete: PropTypes.func,
 };

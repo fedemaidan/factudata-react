@@ -36,6 +36,7 @@ import ReplayIcon from '@mui/icons-material/Replay';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
+import AutorenewIcon from '@mui/icons-material/Autorenew';
 import ViewListIcon from '@mui/icons-material/ViewList';
 import GridViewIcon from '@mui/icons-material/GridView';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
@@ -50,16 +51,16 @@ import { formatCurrency, formatNumberInput, parseNumberInput } from 'src/utils/f
 const STEPS = ['Datos del plan', 'Distribución', 'Ajustar montos', 'Confirmar'];
 
 const FRECUENCIAS = [
-  { value: 'mensual', label: 'Mensual', days: 30 },
-  { value: 'quincenal', label: 'Quincenal', days: 15 },
-  { value: 'semanal', label: 'Semanal', days: 7 },
-  { value: 'bimestral', label: 'Bimestral', days: 60 },
-  { value: 'avance_obra', label: 'Avance de obra', days: null },
+  { value: 'mensual',     label: 'Mensual',        meses: 1    },
+  { value: 'bimestral',   label: 'Bimestral',      meses: 2    },
+  { value: 'trimestral',  label: 'Trimestral',     meses: 3    },
+  { value: 'avance_obra', label: 'Avance de obra', meses: null },
+  { value: 'custom',      label: 'Cada X meses',   meses: null },
 ];
 
 const FRECUENCIA_LABELS = {
-  mensual: 'mensuales', quincenal: 'quincenales', semanal: 'semanales',
-  bimestral: 'bimestrales', avance_obra: 'por avance de obra',
+  mensual: 'mensuales', bimestral: 'bimestrales', trimestral: 'trimestrales',
+  avance_obra: 'por avance de obra', custom: 'cada X meses',
 };
 
 const defaultPlan = {
@@ -77,6 +78,12 @@ const defaultPlan = {
 const addDays = (dateStr, days) => {
   const d = new Date(dateStr);
   d.setDate(d.getDate() + days);
+  return d.toISOString().split('T')[0];
+};
+
+const addMonths = (dateStr, months) => {
+  const d = new Date(dateStr + 'T12:00:00');
+  d.setMonth(d.getMonth() + months);
   return d.toISOString().split('T')[0];
 };
 
@@ -98,7 +105,7 @@ const NuevoPlanPage = () => {
   const [cacLoading, setCacLoading] = useState(false);
 
   // Generador de cuotas
-  const [generador, setGenerador] = useState({ cantidad: '', frecuencia: 'mensual', fecha_inicio: '', monto_cuota: '' });
+  const [generador, setGenerador] = useState({ cantidad: '', frecuencia: 'mensual', fecha_inicio: '', monto_cuota: '', custom_meses: '2' });
   const [modoDistribucion, setModoDistribucion] = useState('iguales'); // 'iguales' | 'personalizados'
   const [cantPersonalizados, setCantPersonalizados] = useState('');
   const [usaPorcentaje, setUsaPorcentaje] = useState(false);
@@ -152,7 +159,8 @@ const NuevoPlanPage = () => {
     const cant = parseInt(generador.cantidad, 10);
     if (!cant || cant < 1) return;
     const freq = FRECUENCIAS.find((f) => f.value === generador.frecuencia);
-    if (freq.days !== null && !generador.fecha_inicio) return;
+    const mesesEfectivos = freq.value === 'custom' ? parseInt(generador.custom_meses, 10) || 1 : freq.meses;
+    if (mesesEfectivos !== null && !generador.fecha_inicio) return;
     const montoTotal = Number(planData.monto_total) || 0;
     const montoCuota = generador.monto_cuota
       ? Number(generador.monto_cuota)
@@ -161,8 +169,8 @@ const NuevoPlanPage = () => {
         : 0;
 
     const nuevas = Array.from({ length: cant }, (_, i) => ({
-      fecha_vencimiento: freq.days !== null && generador.fecha_inicio
-        ? addDays(generador.fecha_inicio, freq.days * i)
+      fecha_vencimiento: mesesEfectivos !== null && generador.fecha_inicio
+        ? addMonths(generador.fecha_inicio, mesesEfectivos * i)
         : '',
       monto: montoCuota > 0 ? String(montoCuota) : '',
       descripcion: `Cuota ${i + 1}`,
@@ -194,7 +202,8 @@ const NuevoPlanPage = () => {
       if (!generador.cantidad || parseInt(generador.cantidad, 10) < 1)
         errs.generador = 'Ingresá la cantidad de cuotas';
       const freq = FRECUENCIAS.find((f) => f.value === generador.frecuencia);
-      if (freq?.days !== null && !generador.fecha_inicio)
+      const mesesEff = freq?.value === 'custom' ? parseInt(generador.custom_meses, 10) || 1 : freq?.meses;
+      if (mesesEff !== null && !generador.fecha_inicio)
         errs.generador = 'Ingresá la fecha de la primera cuota';
     }
     return errs;
@@ -545,7 +554,7 @@ const NuevoPlanPage = () => {
                               </Typography>
                               <Typography variant="body2" fontWeight={700} color="primary.main">
                                 CAC {planData.cac_tipo === 'general' ? 'Promedio' : planData.cac_tipo === 'mano_obra' ? 'M. Obra' : 'Mat.'}{' '}
-                                {cacPreview.fecha_utilizada || ''} = {cacPreview.valor}
+                                {cacPreview.cac_fecha || ''} = {cacPreview.cac_indice}
                               </Typography>
                             </Stack>
                           )}
@@ -632,63 +641,92 @@ const NuevoPlanPage = () => {
               {/* Configuración según modo */}
               {modoDistribucion === 'iguales' && (
                 <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}>
-                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="flex-end">
-                    <TextField
-                      label="Cantidad de cuotas"
-                      type="number"
-                      size="small"
-                      value={generador.cantidad}
-                      onChange={(e) => setGenerador((g) => ({ ...g, cantidad: e.target.value }))}
-                      inputProps={{ min: 1, max: 120 }}
-                      sx={{ width: 140 }}
-                      error={!!errors.generador && !generador.cantidad}
-                    />
-                    <FormControl size="small" sx={{ minWidth: 150 }}>
-                      <InputLabel>Frecuencia</InputLabel>
-                      <Select
-                        value={generador.frecuencia}
-                        label="Frecuencia"
-                        onChange={(e) => setGenerador((g) => ({ ...g, frecuencia: e.target.value }))}
-                      >
-                        {FRECUENCIAS.map((f) => (
-                          <MenuItem key={f.value} value={f.value}>{f.label}</MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                    {generador.frecuencia !== 'avance_obra' && (
+                  <Stack spacing={2}>
+                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="flex-end" flexWrap="wrap">
                       <TextField
-                        label="Fecha primera cuota"
-                        type="date"
+                        label="Cantidad de cuotas"
+                        type="number"
                         size="small"
-                        value={generador.fecha_inicio}
-                        onChange={(e) => setGenerador((g) => ({ ...g, fecha_inicio: e.target.value }))}
-                        InputLabelProps={{ shrink: true }}
-                        sx={{ width: 190 }}
-                        error={!!errors.generador && !generador.fecha_inicio}
+                        value={generador.cantidad}
+                        onChange={(e) => setGenerador((g) => ({ ...g, cantidad: e.target.value }))}
+                        error={!!errors.generador}
+                        sx={{ width: 140 }}
+                        inputProps={{ min: 1 }}
                       />
-                    )}
-                  </Stack>
-                  {errors.generador && (
-                    <Typography variant="caption" color="error" mt={1} display="block">
-                      {errors.generador}
-                    </Typography>
-                  )}
-
-                  {/* Preview instantáneo */}
-                  {generador.cantidad && (generador.frecuencia === 'avance_obra' || generador.fecha_inicio) && montoTotal > 0 && (
-                    <Paper
-                      sx={{ mt: 2, p: 2, bgcolor: '#F0FAF7', border: '1px solid #B2DFDB', borderRadius: 1.5 }}
-                    >
-                      <Stack direction="row" alignItems="center" spacing={1}>
-                        <CalendarTodayIcon sx={{ fontSize: 18, color: '#1B9E85' }} />
-                        <Typography variant="body2">
-                          <strong>{generador.cantidad} cuotas {FRECUENCIA_LABELS[generador.frecuencia] || generador.frecuencia}</strong>{' '}
-                          de <strong>{formatCurrency(Math.round((montoTotal / parseInt(generador.cantidad, 10)) * 100) / 100, monedaDisplay)}</strong>
-                          {generador.fecha_inicio && (<>{' '}desde el <strong>{new Date(generador.fecha_inicio + 'T12:00:00').toLocaleDateString('es-AR')}</strong></>)}
-                        </Typography>
+                      <Stack spacing={0.5}>
+                        <Typography variant="caption" color="text.secondary">Frecuencia</Typography>
+                        <Stack direction="row" spacing={1} flexWrap="wrap">
+                          {FRECUENCIAS.map((f) => (
+                            <Button
+                              key={f.value}
+                              variant={generador.frecuencia === f.value ? 'contained' : 'outlined'}
+                              size="small"
+                              onClick={() => setGenerador((g) => ({ ...g, frecuencia: f.value }))}
+                              sx={{ borderRadius: 2, textTransform: 'none', minWidth: 0 }}
+                            >
+                              {f.label}
+                            </Button>
+                          ))}
+                        </Stack>
                       </Stack>
-                    </Paper>
-                  )}
+                      {generador.frecuencia === 'custom' && (
+                        <TextField
+                          label="Cada cuántos meses"
+                          type="number"
+                          size="small"
+                          value={generador.custom_meses}
+                          onChange={(e) => setGenerador((g) => ({ ...g, custom_meses: e.target.value }))}
+                          sx={{ width: 130 }}
+                          inputProps={{ min: 1, max: 24 }}
+                        />
+                      )}
+                      {generador.frecuencia !== 'avance_obra' && (
+                        <TextField
+                          label="Fecha primera cuota"
+                          type="date"
+                          size="small"
+                          value={generador.fecha_inicio}
+                          onChange={(e) => setGenerador((g) => ({ ...g, fecha_inicio: e.target.value }))}
+                          InputLabelProps={{ shrink: true }}
+                          sx={{ width: 180 }}
+                        />
+                      )}
+                    </Stack>
+                    {errors.generador && (
+                      <Typography color="error" variant="caption">{errors.generador}</Typography>
+                    )}
+                    {generador.cantidad && (generador.frecuencia === 'avance_obra' || generador.fecha_inicio) && montoTotal > 0 && (() => {
+                      const freq = FRECUENCIAS.find((f) => f.value === generador.frecuencia);
+                      const mesesEff = freq?.value === 'custom' ? parseInt(generador.custom_meses, 10) || 1 : freq?.meses;
+                      const cant = parseInt(generador.cantidad, 10);
+                      return (
+                        <Paper sx={{ p: 2, bgcolor: '#F0FAF7', border: '1px solid #B2DFDB', borderRadius: 1.5 }}>
+                          <Stack direction="row" alignItems="center" spacing={1}>
+                            <CalendarTodayIcon sx={{ fontSize: 18, color: '#1B9E85' }} />
+                            <Typography variant="body2">
+                              <strong>{cant} cuotas</strong>
+                              {freq?.value === 'custom'
+                                ? <> cada <strong>{mesesEff} mes{mesesEff !== 1 ? 'es' : ''}</strong></>
+                                : <> {FRECUENCIA_LABELS[generador.frecuencia] || generador.frecuencia}</>}
+                              {' '}de <strong>{formatCurrency(Math.round((montoTotal / cant) * 100) / 100, monedaDisplay)}</strong>
+                              {generador.fecha_inicio && (
+                                <>{' '}desde el <strong>{new Date(generador.fecha_inicio + 'T12:00:00').toLocaleDateString('es-AR')}</strong></>
+                              )}
+                            </Typography>
+                          </Stack>
+                        </Paper>
+                      );
+                    })()}
+                    <Button
+                      variant="contained"
+                      onClick={handleGenerar}
+                      disabled={!generador.cantidad || (!generador.fecha_inicio && generador.frecuencia !== 'avance_obra')}
+                      startIcon={<AutorenewIcon />}
+                      sx={{ alignSelf: 'flex-start', textTransform: 'none', borderRadius: 2 }}
+                    >
+                      Generar cuotas
+                    </Button>
+                  </Stack>
                 </Paper>
               )}
 
@@ -866,6 +904,7 @@ const NuevoPlanPage = () => {
                 moneda={monedaDisplay}
                 showCAC={planData.indexacion === 'CAC'}
                 cacPreview={cacPreview}
+                montoTotal={montoTotal}
               />
 
               {errors.cuotas && (
@@ -941,7 +980,7 @@ const NuevoPlanPage = () => {
                       <Typography variant="caption" color="text.secondary">Índice CAC</Typography>
                       <Typography variant="body2" fontWeight={600}>
                         {planData.cac_tipo === 'general' ? 'Promedio' : planData.cac_tipo === 'mano_obra' ? 'M. Obra' : 'Materiales'}{' '}
-                        = {cacPreview.valor}
+                        = {cacPreview.cac_indice}
                       </Typography>
                     </Grid>
                   )}
