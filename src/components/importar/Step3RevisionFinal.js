@@ -3,9 +3,10 @@ import {
   Box, Button, Stack, Typography, TextField, CircularProgress, 
   Autocomplete, MenuItem, Paper, Chip, Divider, IconButton, Tooltip,
   Accordion, AccordionSummary, AccordionDetails, Alert, Fab, Badge, Zoom,
-  Slider
+  Slider, Dialog, DialogTitle, DialogContent, DialogActions, LinearProgress
 } from '@mui/material';
 import { DataGrid, GridToolbarContainer, GridToolbarQuickFilter, GridToolbarColumnsButton, GridToolbarFilterButton } from '@mui/x-data-grid';
+import AcopioService from 'src/services/acopioService';
 import { toNumber } from 'src/utils/importar/numbers';
 import { fmtMoney } from 'src/utils/importar/money';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
@@ -30,6 +31,7 @@ import VisibilityIcon from '@mui/icons-material/Visibility';
 import TableChartIcon from '@mui/icons-material/TableChart';
 import SearchIcon from '@mui/icons-material/Search';
 import DoneAllIcon from '@mui/icons-material/DoneAll';
+import AutorenewIcon from '@mui/icons-material/Autorenew';
 import * as XLSX from 'xlsx';
 import PdfViewer from './PdfViewer';
 import TooltipHelp from 'src/components/TooltipHelp';
@@ -46,7 +48,8 @@ export default function Step3RevisionFinal({
   discrepanciasPendientes = 0,
   onResolveDiscrepancia,
   imageUrls = [], // URLs de las imágenes del documento
-  archivoPreview = null // Archivo local para preview
+  archivoPreview = null, // Archivo local para preview
+  onReprocesarRows = null // Callback para actualizar rows con resultado de reprocesamiento
 }) {
   const [porcentaje, setPorcentaje] = React.useState('');
   const [montoFijo, setMontoFijo] = React.useState('');
@@ -65,6 +68,18 @@ export default function Step3RevisionFinal({
   const [seleccionesDiscrepancia, setSeleccionesDiscrepancia] = React.useState({});
   // Estado para discrepancias ya confirmadas
   const [discrepanciasConfirmadas, setDiscrepanciasConfirmadas] = React.useState(new Set());
+  // Filtro de confianza para la grilla
+  const [filtroConfianza, setFiltroConfianza] = React.useState('todos');
+  // Vista agrupada por confianza
+  const [verGrupos, setVerGrupos] = React.useState(false);
+  // Items aprobados en bloque (Set de IDs)
+  const [itemsAprobados, setItemsAprobados] = React.useState(new Set());
+  // Estado del dialog de reprocesamiento con aclaración
+  const [dialogReprocesamientoOpen, setDialogReprocesamientoOpen] = React.useState(false);
+  const [aclaracionTexto, setAclaracionTexto] = React.useState('');
+  const [reprocesamientoStatus, setReprocesamientoStatus] = React.useState(null); // null | 'procesando' | 'completado' | 'error'
+  const [reprocesamientoError, setReprocesamientoError] = React.useState('');
+  const reprocesamientoPollingRef = React.useRef(null);
   
   const pdfIframeRef = React.useRef(null);
 
@@ -110,6 +125,41 @@ export default function Step3RevisionFinal({
   const materialesConDiscrepancia = React.useMemo(() => 
     withIds.filter(r => r._verificacion?.requiere_input), 
     [withIds]
+  );
+
+  // Cuentas por nivel de confianza (para los chips de filtro)
+  const cuentasConfianza = React.useMemo(() => ({
+    alta: withIds.filter(r => (r._verificacion?.confianza ?? 100) >= 80).length,
+    media: withIds.filter(r => { const s = r._verificacion?.confianza ?? 100; return s >= 50 && s < 80; }).length,
+    baja: withIds.filter(r => (r._verificacion?.confianza ?? 100) < 50).length,
+  }), [withIds]);
+
+  // Rows filtrados según el filtro de confianza activo
+  const withIdsFiltrados = React.useMemo(() => {
+    if (filtroConfianza === 'todos') return withIds;
+    return withIds.filter(r => {
+      const score = r._verificacion?.confianza ?? 100;
+      if (filtroConfianza === 'alta') return score >= 80;
+      if (filtroConfianza === 'media') return score >= 50 && score < 80;
+      if (filtroConfianza === 'baja') return score < 50;
+      return true;
+    });
+  }, [withIds, filtroConfianza]);
+
+  // Grupos para la vista de revisión por grupos
+  const grupos = React.useMemo(() => ({
+    alta:  withIds.filter(r => (r._verificacion?.confianza ?? 100) >= 80),
+    media: withIds.filter(r => { const s = r._verificacion?.confianza ?? 100; return s >= 50 && s < 80; }),
+    baja:  withIds.filter(r => (r._verificacion?.confianza ?? 100) < 50),
+  }), [withIds]);
+
+  const aprobarGrupo = (ids) => {
+    setItemsAprobados(prev => new Set([...prev, ...ids.map(String)]));
+  };
+
+  const itemsPendientesReview = React.useMemo(() =>
+    withIds.filter(r => (r._verificacion?.confianza ?? 100) < 80 && !itemsAprobados.has(String(r.id ?? ''))).length,
+    [withIds, itemsAprobados]
   );
 
   // Contar cuántas selecciones faltan (debe ir después de materialesConDiscrepancia)
@@ -169,6 +219,63 @@ export default function Step3RevisionFinal({
     discrepanciasRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
+  // ─── Reprocesamiento con aclaración ───────────────────────────────────────
+  // Limpieza de polling al desmontar
+  React.useEffect(() => {
+    return () => { if (reprocesamientoPollingRef.current) clearInterval(reprocesamientoPollingRef.current); };
+  }, []);
+
+  const iniciarReprocesamiento = async () => {
+    if (!aclaracionTexto.trim()) return;
+    if (!imageUrls?.length) return;
+
+    setReprocesamientoStatus('procesando');
+    setReprocesamientoError('');
+
+    try {
+      const taskId = await AcopioService.reprocesarConAclaracion(imageUrls, aclaracionTexto.trim(), {
+        tipoLista
+      });
+
+      reprocesamientoPollingRef.current = setInterval(async () => {
+        try {
+          const estado = await AcopioService.consultarEstadoExtraccion(taskId);
+          if (estado.status === 'completado') {
+            clearInterval(reprocesamientoPollingRef.current);
+            setReprocesamientoStatus('completado');
+            // Propagar los nuevos rows al padre via onReprocesarRows
+            if (onReprocesarRows && estado.materiales?.length) {
+              onReprocesarRows(estado.materiales);
+            }
+            // Limpiar estados de aprobación (las filas cambiaron)
+            setItemsAprobados(new Set());
+          } else if (estado.status === 'error') {
+            clearInterval(reprocesamientoPollingRef.current);
+            setReprocesamientoStatus('error');
+            setReprocesamientoError(estado.error || 'Error desconocido');
+          }
+        } catch (e) {
+          clearInterval(reprocesamientoPollingRef.current);
+          setReprocesamientoStatus('error');
+          setReprocesamientoError(e.message || 'Error al consultar estado');
+        }
+      }, 4000);
+    } catch (e) {
+      setReprocesamientoStatus('error');
+      setReprocesamientoError(e.message || 'Error al iniciar reprocesamiento');
+    }
+  };
+
+  const cerrarDialogReprocesamiento = () => {
+    if (reprocesamientoStatus === 'procesando') return; // No cerrar mientras procesa
+    if (reprocesamientoPollingRef.current) clearInterval(reprocesamientoPollingRef.current);
+    setDialogReprocesamientoOpen(false);
+    setReprocesamientoStatus(null);
+    setReprocesamientoError('');
+    if (reprocesamientoStatus !== 'completado') setAclaracionTexto('');
+  };
+  // ─────────────────────────────────────────────────────────────────────────
+
   // Manejar cambio de valor en edición de discrepancia
   const handleDiscrepanciaChange = (rowId, campo, valor) => {
     setValoresEditando(prev => ({
@@ -222,7 +329,11 @@ export default function Step3RevisionFinal({
           <Button
             size="small"
             startIcon={<AddIcon />}
-            onClick={() => handleAddItem('end')}
+            onClick={() => {
+              setFiltroConfianza('todos');
+              setVerGrupos(false);
+              handleAddItem('start');
+            }}
           >
             Agregar
           </Button>
@@ -1405,10 +1516,126 @@ export default function Step3RevisionFinal({
         </Accordion>
       </Stack>
 
+      {/* Filtros de confianza */}
+      {(cuentasConfianza.baja > 0 || cuentasConfianza.media > 0) && (
+        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+          <Typography variant="caption" color="text.secondary" sx={{ mr: 0.5 }}>Confianza:</Typography>
+          {[
+            { key: 'todos',  label: `Todos (${withIds.length})`,           color: 'default'  },
+            { key: 'alta',   label: `Alta (${cuentasConfianza.alta})`,     color: 'success'  },
+            { key: 'media',  label: `Media (${cuentasConfianza.media})`,   color: 'warning'  },
+            { key: 'baja',   label: `Baja (${cuentasConfianza.baja})`,     color: 'error'    },
+          ].map(({ key, label, color }) => (
+            <Chip
+              key={key}
+              label={label}
+              color={color}
+              variant={filtroConfianza === key ? 'filled' : 'outlined'}
+              onClick={() => { setFiltroConfianza(key); setVerGrupos(false); }}
+              size="small"
+              sx={{ cursor: 'pointer' }}
+            />
+          ))}
+          <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
+          <Chip
+            label={verGrupos ? 'Vista tabla' : `Vista grupos${itemsPendientesReview > 0 ? ` (${itemsPendientesReview} pendientes)` : ''}`}
+            color={verGrupos ? 'primary' : itemsPendientesReview > 0 ? 'warning' : 'default'}
+            variant={verGrupos ? 'filled' : 'outlined'}
+            onClick={() => setVerGrupos(v => !v)}
+            size="small"
+            sx={{ cursor: 'pointer' }}
+          />
+          {imageUrls?.length > 0 && onReprocesarRows && (
+            <Chip
+              label="Reprocesar con aclaración"
+              icon={<AutorenewIcon />}
+              color="secondary"
+              variant="outlined"
+              onClick={() => setDialogReprocesamientoOpen(true)}
+              size="small"
+              sx={{ cursor: 'pointer' }}
+            />
+          )}
+        </Stack>
+      )}
+
+      {/* Vista revisión por grupos */}
+      {verGrupos && (cuentasConfianza.baja > 0 || cuentasConfianza.media > 0) && (
+        <Stack spacing={1}>
+          {[
+            { key: 'alta',  label: 'Alta confianza (≥80%)',  color: 'success', items: grupos.alta,  bgColor: '#f1f8e9', borderColor: '#66bb6a', autoExpand: false },
+            { key: 'media', label: 'Confianza media (50–79%)', color: 'warning', items: grupos.media, bgColor: '#fffde7', borderColor: '#ffa726', autoExpand: true  },
+            { key: 'baja',  label: 'Confianza baja (<50%)',   color: 'error',   items: grupos.baja,  bgColor: '#fdecea', borderColor: '#ef5350', autoExpand: true  },
+          ].filter(g => g.items.length > 0).map(({ key, label, color, items, bgColor, borderColor, autoExpand }) => {
+            const todosAprobados = items.every(r => itemsAprobados.has(String(r.id ?? '')));
+            return (
+              <Accordion key={key} defaultExpanded={autoExpand} sx={{ border: `1px solid ${borderColor}`, bgcolor: bgColor, '&:before': { display: 'none' } }}>
+                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                  <Stack direction="row" spacing={1} alignItems="center" sx={{ width: '100%', pr: 1 }}>
+                    <Chip label={label} color={color} size="small" />
+                    <Typography variant="body2">{items.length} {items.length === 1 ? 'ítem' : 'ítems'}</Typography>
+                    {todosAprobados && <Chip label="✓ Aprobados" color="success" size="small" variant="outlined" />}
+                    <Box sx={{ flex: 1 }} />
+                    {!todosAprobados && (
+                      <Button
+                        size="small"
+                        variant="contained"
+                        color={color}
+                        startIcon={<DoneAllIcon />}
+                        onClick={(e) => { e.stopPropagation(); aprobarGrupo(items.map(r => r.id ?? '')); }}
+                        sx={{ flexShrink: 0 }}
+                      >
+                        Aprobar todos
+                      </Button>
+                    )}
+                  </Stack>
+                </AccordionSummary>
+                <AccordionDetails sx={{ p: 1 }}>
+                  <Stack spacing={0.5}>
+                    {items.map(r => {
+                      const aprobado = itemsAprobados.has(String(r.id ?? ''));
+                      const score = r._verificacion?.confianza ?? 100;
+                      return (
+                        <Stack key={r.id} direction="row" spacing={1} alignItems="center" sx={{ p: 0.75, borderRadius: 1, bgcolor: 'white', border: '1px solid #e0e0e0' }}>
+                          <Chip label={`${score}%`} size="small" color={key === 'alta' ? 'success' : key === 'media' ? 'warning' : 'error'} variant="outlined" sx={{ minWidth: 52 }} />
+                          <Typography variant="body2" sx={{ flex: 1 }} noWrap title={r.descripcion || r.nombre || r.codigo}>
+                            {r.descripcion || r.nombre || r.codigo || '—'}
+                          </Typography>
+                          {r.cantidad != null && <Chip label={`x${r.cantidad}`} size="small" variant="outlined" />}
+                          {r.valorUnitario != null && <Chip label={fmtMoney(r.valorUnitario)} size="small" variant="outlined" />}
+                          <IconButton
+                            size="small"
+                            color={aprobado ? 'success' : 'default'}
+                            onClick={() => aprobado
+                              ? setItemsAprobados(prev => { const n = new Set(prev); n.delete(String(r.id ?? '')); return n; })
+                              : setItemsAprobados(prev => new Set([...prev, String(r.id ?? '')]))
+                            }
+                          >
+                            <CheckCircleIcon fontSize="small" />
+                          </IconButton>
+                        </Stack>
+                      );
+                    })}
+                  </Stack>
+                </AccordionDetails>
+              </Accordion>
+            );
+          })}
+        </Stack>
+      )}
+
       {/* Grilla de datos - Altura expandida */}
-      <Paper sx={{ height: 'calc(100vh - 380px)', minHeight: 350, width: '100%' }}>
+      <Paper sx={{ 
+        height: 'calc(100vh - 380px)', minHeight: 350, width: '100%',
+        '& .confianza-aprobada': { bgcolor: '#e8f5e9 !important' },
+        '& .confianza-aprobada:hover': { bgcolor: '#c8e6c9 !important' },
+        '& .confianza-baja': { bgcolor: '#fdecea !important' },
+        '& .confianza-baja:hover': { bgcolor: '#f8d7d4 !important' },
+        '& .confianza-media': { bgcolor: '#fff9c4 !important' },
+        '& .confianza-media:hover': { bgcolor: '#fff59d !important' },
+      }}>
         <DataGrid
-          rows={withIds}
+          rows={withIdsFiltrados}
           columns={columns}
           checkboxSelection
           disableRowSelectionOnClick
@@ -1418,6 +1645,14 @@ export default function Step3RevisionFinal({
           experimentalFeatures={{ newEditingApi: true }}
           slots={{ toolbar: CustomToolbar }}
           density="compact"
+          getRowClassName={(params) => {
+            const id = String(params.row.id ?? '');
+            if (itemsAprobados.has(id)) return 'confianza-aprobada';
+            const score = params.row._verificacion?.confianza ?? 100;
+            if (score < 50) return 'confianza-baja';
+            if (score < 80) return 'confianza-media';
+            return '';
+          }}
           initialState={{
             columns: {
               columnVisibilityModel: {
@@ -1520,6 +1755,74 @@ export default function Step3RevisionFinal({
       </Paper>
         </>
       )}
+
+      {/* ========== DIALOG REPROCESAMIENTO CON ACLARACIÓN ========== */}
+      <Dialog open={dialogReprocesamientoOpen} onClose={cerrarDialogReprocesamiento} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <AutorenewIcon color="secondary" />
+            <Typography variant="h6">Reprocesar con aclaración</Typography>
+          </Stack>
+        </DialogTitle>
+        <DialogContent>
+          {reprocesamientoStatus === null && (
+            <Stack spacing={2} sx={{ pt: 1 }}>
+              <Typography variant="body2" color="text.secondary">
+                Describí qué está mal en la extracción actual. La IA volverá a leer el documento teniendo en cuenta tu aclaración.
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Ejemplos: "Los precios en la factura ya incluyen IVA", "El código del producto viene antes de la descripción", "La columna de cantidad es la tercera, no la cuarta"
+              </Typography>
+              <TextField
+                label="Aclaración para la IA"
+                multiline
+                minRows={3}
+                maxRows={8}
+                value={aclaracionTexto}
+                onChange={(e) => setAclaracionTexto(e.target.value)}
+                placeholder="Describí el problema o qué debería tener en cuenta..."
+                fullWidth
+                autoFocus
+              />
+            </Stack>
+          )}
+          {reprocesamientoStatus === 'procesando' && (
+            <Stack spacing={2} alignItems="center" sx={{ py: 3 }}>
+              <CircularProgress color="secondary" />
+              <Typography variant="body2" color="text.secondary">
+                Reprocesando el documento con tu aclaración...
+              </Typography>
+              <LinearProgress sx={{ width: '100%' }} color="secondary" />
+            </Stack>
+          )}
+          {reprocesamientoStatus === 'completado' && (
+            <Alert severity="success" sx={{ mt: 1 }}>
+              ✓ Reprocesamiento completado. Los datos de la grilla fueron actualizados.
+            </Alert>
+          )}
+          {reprocesamientoStatus === 'error' && (
+            <Alert severity="error" sx={{ mt: 1 }}>
+              Error: {reprocesamientoError || 'No se pudo completar el reprocesamiento.'}
+            </Alert>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={cerrarDialogReprocesamiento} disabled={reprocesamientoStatus === 'procesando'}>
+            {reprocesamientoStatus === 'completado' ? 'Cerrar' : 'Cancelar'}
+          </Button>
+          {reprocesamientoStatus === null && (
+            <Button
+              variant="contained"
+              color="secondary"
+              startIcon={<AutorenewIcon />}
+              onClick={iniciarReprocesamiento}
+              disabled={!aclaracionTexto.trim()}
+            >
+              Reprocesar
+            </Button>
+          )}
+        </DialogActions>
+      </Dialog>
     </Stack>
   );
 }

@@ -258,6 +258,11 @@ cambiarEstadoAcopio: async (acopioId, activo) => {
       if (meta.tipoLista) formData.append('tipoLista', meta.tipoLista);
       // Pasar modo de extracción: 'rapido', 'balanceado', 'preciso'
       if (meta.modo) formData.append('modo', meta.modo);
+      // Pasar proveedor y empresa para cargar memoria del proveedor
+      if (meta.proveedor) formData.append('proveedor', meta.proveedor);
+      if (meta.empresaId) formData.append('empresaId', meta.empresaId);
+      // Pasar instrucciones de preflight si las hay
+      if (meta.instrucciones_extraccion) formData.append('instrucciones_extraccion', meta.instrucciones_extraccion);
   
       const response = await api.post(`/acopio/compra/extraer/init`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
@@ -287,10 +292,10 @@ cambiarEstadoAcopio: async (acopioId, activo) => {
       return {
         ok: false,
         modos: [
-          { id: 'rapido', nombre: '⚡ Rápido', descripcion: 'OCR + IA estructuración', tiempoEstimado: '~15s' },
-          { id: 'agil', nombre: '🚀 Ágil', descripcion: 'OCR + IA + verificación completa', tiempoEstimado: '~25s' },
-          { id: 'balanceado', nombre: '⚖️ Balanceado', descripcion: 'GPT-4o paralelo + O3 verificación', tiempoEstimado: '~30s' },
-          { id: 'preciso', nombre: '🎯 Preciso', descripcion: 'O3 paralelo + O3 verificación', tiempoEstimado: '~1min' }
+          { id: 'rapido', nombre: '⚡ Rápido', descripcion: 'OCR + GPT-5.4 mini', tiempoEstimado: '~15s' },
+          { id: 'agil', nombre: '🚀 Ágil', descripcion: 'OCR + GPT-5.4 mini + verificación', tiempoEstimado: '~25s' },
+          { id: 'balanceado', nombre: '⚖️ Balanceado', descripcion: 'Gemini Flash + GPT-5.4', tiempoEstimado: '~30s' },
+          { id: 'preciso', nombre: '🎯 Preciso', descripcion: 'Gemini Flash + GPT-5.4 con verificación total', tiempoEstimado: '~1min' }
         ]
       };
     }
@@ -310,6 +315,48 @@ cambiarEstadoAcopio: async (acopioId, activo) => {
       };
     } catch (error) {
       console.error('❌ Error al consultar estado de extracción:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Corre A/B sampling en el documento para detectar cuál modelo extrae mejor.
+   * @param {string[]} urls - URLs del documento
+   * @param {Object} opciones - { muestraN?, instrucciones_extraccion? }
+   */
+  abSampling: async (urls, opciones = {}) => {
+    try {
+      const response = await api.post('/acopio/compra/ab-sampling', {
+        urls,
+        muestraN: opciones.muestraN,
+        instrucciones_extraccion: opciones.instrucciones_extraccion
+      });
+      return response.data;
+    } catch (error) {
+      console.error('❌ Error en A/B sampling:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Inicia un reprocesamiento de extracción usando las mismas imágenes pero con una aclaración extra.
+   * Retorna un taskId que se puede consultar con consultarEstadoExtraccion.
+   * @param {string[]} urls - URLs públicas de las imágenes ya subidas
+   * @param {string}   aclaracion - Texto con instrucciones adicionales para la IA
+   * @param {Object}   meta - { tipoLista?, modo? }
+   * @returns {Promise<string>} taskId
+   */
+  reprocesarConAclaracion: async (urls, aclaracion, meta = {}) => {
+    try {
+      const response = await api.post('/acopio/compra/reprocesar-aclaracion/init', {
+        urls,
+        aclaracion,
+        tipoLista: meta.tipoLista,
+        modo: meta.modo || 'balanceado'
+      });
+      return response.data.taskId;
+    } catch (error) {
+      console.error('❌ Error al iniciar reprocesamiento con aclaración:', error);
       throw error;
     }
   },

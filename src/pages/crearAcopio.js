@@ -29,6 +29,7 @@ import StepDesdeFactura from 'src/components/importar/StepDesdeFactura';
 import Step1SubirAjustar from 'src/components/importar/Step1SubirAjustar';
 import Step2AjustarColumnas from 'src/components/importar/Step2AjustarColumnas';
 import Step3RevisionFinal from 'src/components/importar/Step3RevisionFinal';
+import PreflightChatDialog from 'src/components/importar/PreflightChatDialog';
 import useExtractionProcess from 'src/hooks/importar/useExtractionProcess';
 import useColumnMapping from 'src/hooks/importar/useColumnMapping';
 import { fmtMoney } from 'src/utils/importar/money';
@@ -78,6 +79,10 @@ const ImportarPage = () => {
 
   // Estado para modo de extracción: 'rapido', 'balanceado', 'preciso'
   const [modoExtraccion, setModoExtraccion] = useState('balanceado');
+
+  // Estado para preflight chat (instrucciones antes de extraer)
+  const [preflightOpen, setPreflightOpen] = useState(false);
+  const [instruccionesExtraccion, setInstruccionesExtraccion] = useState('');
 
   // Estados para diálogo de discrepancias
   const [discrepanciasDialogOpen, setDiscrepanciasDialogOpen] = useState(false);
@@ -170,19 +175,27 @@ const onProcesar = async () => {
   if (!archivo) return;
 
   const nombre = archivo.name.toLowerCase();
-  // Si es Excel o CSV, procesamos directo desde frontend
+  // Si es Excel o CSV, procesamos directo desde frontend (sin preflight)
   if (nombre.endsWith('.xlsx') || nombre.endsWith('.csv')) {
-    await onProcesarTabla(archivo); // 👈 esta función ya la tenés más abajo
-    setActiveStep(6); // Ir a ajustar columnas
+    await onProcesarTabla(archivo);
+    setActiveStep(6);
     return;
   }
 
-  // Caso contrario, seguimos con el flujo OCR/imagen existente
+  // Abrir diálogo de preflight antes de enviar al backend
+  setPreflightOpen(true);
+};
+
+const onProcesarConInstrucciones = async (instrucciones) => {
+  setPreflightOpen(false);
+  setInstruccionesExtraccion(instrucciones);
+
+  // Continuar con el flujo OCR/imagen
   await procesar({
     archivo,
     rotation,
     guideY,
-    meta: { tipoLista, proveedor, proyecto, valorTotal, modo: modoExtraccion },
+    meta: { tipoLista, proveedor, proyecto, valorTotal, modo: modoExtraccion, empresaId, instrucciones_extraccion: instrucciones },
     onPreviewReady: ({ rawRows, cols, rows, mapping, urls, tieneDiscrepancias }) => {
       // Función para limpiar campos internos de los materiales
       const limpiarMateriales = (materiales) => materiales.map(mat => {
@@ -795,19 +808,20 @@ const onConfirmMapping = ({ includeHeaderAsRow } = {}) => {
     );
   };
 const handleAddItem = (position = 'end', datosDefecto = null) => {
-  setFinalRows((rows) => {
-    const nuevo = datosDefecto ? {
-      id: `nuevo-${Date.now()}`,
-      ...datosDefecto
-    } : {
-      id: `nuevo-${Date.now()}`,
-      codigo: '',
-      descripcion: '',
-      cantidad: tipoLista === 'materiales' ? 1 : undefined,
-      valorUnitario: 0,
-      valorTotal: tipoLista === 'materiales' ? 0 : undefined,
-    };
+  const nuevoId = `nuevo-${Date.now()}`;
+  const nuevo = datosDefecto ? {
+    id: nuevoId,
+    ...datosDefecto
+  } : {
+    id: nuevoId,
+    codigo: '',
+    descripcion: '',
+    cantidad: tipoLista === 'materiales' ? 1 : undefined,
+    valorUnitario: 0,
+    valorTotal: tipoLista === 'materiales' ? 0 : undefined,
+  };
 
+  setFinalRows((rows) => {
     if (position === 'start') return [nuevo, ...rows];
     if (typeof position === 'number') {
       const copy = [...rows];
@@ -816,6 +830,9 @@ const handleAddItem = (position = 'end', datosDefecto = null) => {
     }
     return [...rows, nuevo];
   });
+
+  setSelectionModel([String(nuevoId)]);
+  setAlert({ open: true, message: 'Se agregó un nuevo ítem al inicio de la lista.', severity: 'info' });
 };
   const renderStep = () => {
     // Step 0: Tipo de acopio (lista_precios o materiales)
@@ -1047,6 +1064,10 @@ const handleAddItem = (position = 'end', datosDefecto = null) => {
   // imágenes del documento
   imageUrls={urls}
   archivoPreview={archivo}
+  onReprocesarRows={(nuevasFilas) => {
+    // Actualizar rows con resultado del reprocesamiento
+    setFinalRows(nuevasFilas);
+  }}
 />
     );
   };
@@ -1186,6 +1207,13 @@ return (
 >
   <CircularProgress color="inherit" />
 </Backdrop>
+
+    {/* Diálogo de preflight: instrucciones antes de extraer */}
+    <PreflightChatDialog
+      open={preflightOpen}
+      onClose={() => setPreflightOpen(false)}
+      onConfirmar={onProcesarConInstrucciones}
+    />
 
     {/* Diálogo para confirmar discrepancias en cantidades y/o precios */}
     <Dialog 

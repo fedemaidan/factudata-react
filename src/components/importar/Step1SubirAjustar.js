@@ -18,7 +18,7 @@ const MODOS_INFO = {
     icon: <BoltIcon sx={{ fontSize: 28 }} />,
     label: 'Rápido',
     emoji: '⚡',
-    descripcion: 'Ideal para acopios cortos. Recomendamos revisión manual al final.',
+    descripcion: 'OCR + GPT-5.4 mini. Ideal para salir rápido y revisar al final.',
     tiempo: '~1 min/pág',
     color: '#f59e0b'
   },
@@ -26,7 +26,7 @@ const MODOS_INFO = {
     icon: <SpeedIcon sx={{ fontSize: 28 }} />,
     label: 'Ágil',
     emoji: '🚀',
-    descripcion: 'Ideal para acopios cortos. Más preciso, pero recomendamos revisión manual.',
+    descripcion: 'OCR + GPT-5.4 mini con verificación completa liviana.',
     tiempo: '~2 min/pág',
     color: '#10b981'
   },
@@ -34,7 +34,7 @@ const MODOS_INFO = {
     icon: <BalanceIcon sx={{ fontSize: 28 }} />,
     label: 'Balanceado',
     emoji: '⚖️',
-    descripcion: 'Ideal para acopios medios. Un asistente te ayuda a validar marcando dónde revisar.',
+    descripcion: 'Gemini Flash + GPT-5.4. Mejor balance para PDFs, fotos y listados raros.',
     tiempo: '~3 min/pág',
     color: '#6366f1'
   },
@@ -42,7 +42,7 @@ const MODOS_INFO = {
     icon: <GpsFixedIcon sx={{ fontSize: 28 }} />,
     label: 'Preciso',
     emoji: '🎯',
-    descripcion: 'Ideal para acopios medios o largos. Un poco más lento pero el asistente es mucho más preciso.',
+    descripcion: 'Gemini Flash + GPT-5.4 con verificación total. Máxima calidad.',
     tiempo: '~4 min/pág',
     color: '#ec4899'
   }
