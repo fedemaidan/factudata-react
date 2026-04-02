@@ -423,16 +423,7 @@ export const SideNav = (props) => {
         });
       }
 
-      if (permisosUsuario.includes("VER_CUENTAS_PENDIENTES")) {
-        baseItems.push({
-          title: "Cuentas pendientes",
-          path: "cuentasPendientes?empresaId=" + emp.id,
-          icon: (
-            <SvgIcon fontSize="small">
-              <SettingsIcon />
-            </SvgIcon>
-          ),
-        });
+      if (permisosUsuario.includes("VER_PLANES_COBRO")) {
         baseItems.push({
           title: "Plan de Cobros",
           path: "cobros",

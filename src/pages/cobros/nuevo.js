@@ -71,6 +71,8 @@ const defaultPlan = {
   moneda: 'ARS',
   indexacion: '',
   cac_tipo: 'general',
+  usd_fuente: 'blue',
+  usd_valor_manual: '',
   fecha_base: '',
   notas: '',
 };
@@ -86,6 +88,8 @@ const addMonths = (dateStr, months) => {
   d.setMonth(d.getMonth() + months);
   return d.toISOString().split('T')[0];
 };
+
+const todayIso = () => new Date().toISOString().split('T')[0];
 
 const NuevoPlanPage = () => {
   const { user } = useAuthContext();
@@ -103,6 +107,8 @@ const NuevoPlanPage = () => {
   // CAC preview state
   const [cacPreview, setCacPreview] = useState(null);
   const [cacLoading, setCacLoading] = useState(false);
+  const [usdPreview, setUsdPreview] = useState(null);
+  const [usdLoading, setUsdLoading] = useState(false);
 
   // Generador de cuotas
   const [generador, setGenerador] = useState({ cantidad: '', frecuencia: 'mensual', fecha_inicio: '', monto_cuota: '', custom_meses: '2' });
@@ -138,6 +144,22 @@ const NuevoPlanPage = () => {
       .catch(() => setCacPreview(null))
       .finally(() => setCacLoading(false));
   }, [planData.indexacion, planData.fecha_base, planData.cac_tipo]);
+
+  useEffect(() => {
+    if (planData.indexacion !== 'USD' || !planData.fecha_base) {
+      setUsdPreview(null);
+      return;
+    }
+    setUsdLoading(true);
+    planCobroService.previewUSD(planData.fecha_base, planData.usd_fuente)
+      .then((res) => {
+        const d = res?.data;
+        if (d?.ok) setUsdPreview(d.data);
+        else setUsdPreview(null);
+      })
+      .catch(() => setUsdPreview(null))
+      .finally(() => setUsdLoading(false));
+  }, [planData.indexacion, planData.fecha_base, planData.usd_fuente]);
 
   const handleFieldChange = (field) => (e) => {
     const val = field === 'monto_total' ? parseNumberInput(e.target.value) : e.target.value;
@@ -184,6 +206,23 @@ const NuevoPlanPage = () => {
   );
 
   const montoTotal = Number(planData.monto_total) || 0;
+  const usdIndiceEfectivo = (() => {
+    const manual = parseFloat(parseNumberInput(planData.usd_valor_manual || ''));
+    if (planData.indexacion === 'USD' && Number.isFinite(manual) && manual > 0) return manual;
+    const preview = Number(usdPreview?.dolar_indice);
+    return Number.isFinite(preview) && preview > 0 ? preview : null;
+  })();
+  const montoTotalEnCAC =
+    planData.indexacion === 'CAC' && cacPreview?.cac_indice && montoTotal > 0
+      ? Math.round((montoTotal / cacPreview.cac_indice) * 100) / 100
+      : null;
+  const montoTotalEnUSD =
+    planData.indexacion === 'USD' && usdIndiceEfectivo && montoTotal > 0
+      ? Math.round((montoTotal / usdIndiceEfectivo) * 100) / 100
+      : null;
+  const cuotasConFecha = cuotas.filter((c) => !!c.fecha_vencimiento).length;
+  const cuotasConMonto = cuotas.filter((c) => Number(c.monto) > 0).length;
+  const porcentajeDistribuido = montoTotal > 0 ? Math.round((sumaCuotas / montoTotal) * 1000) / 10 : 0;
   const sumaDiff = montoTotal > 0 ? Math.abs(sumaCuotas - montoTotal) : 0;
   const sumaOk = montoTotal > 0 && sumaDiff < 0.01;
 
@@ -191,8 +230,9 @@ const NuevoPlanPage = () => {
     const errs = {};
     if (!planData.nombre.trim()) errs.nombre = 'El nombre es requerido';
     if (!planData.moneda) errs.moneda = 'La moneda es requerida';
-    if (planData.indexacion === 'CAC' && !planData.fecha_base)
-      errs.fecha_base = 'La fecha base es requerida para indexación CAC';
+    if (!montoTotal || montoTotal <= 0) errs.monto_total = 'El monto total debe ser mayor a 0';
+    if (planData.indexacion && !planData.fecha_base)
+      errs.fecha_base = 'La fecha base es requerida para planes indexados';
     return errs;
   };
 
@@ -211,7 +251,7 @@ const NuevoPlanPage = () => {
 
   const validarStep3 = () => {
     if (cuotas.length === 0) return { cuotas: 'Agregá al menos una cuota' };
-    const requireFecha = modoDistribucion === 'iguales' && generador.frecuencia !== 'avance_obra';
+    const requireFecha = !!planData.indexacion || (modoDistribucion === 'iguales' && generador.frecuencia !== 'avance_obra');
     for (const c of cuotas) {
       if (requireFecha && !c.fecha_vencimiento) return { cuotas: 'Todas las cuotas deben tener fecha de vencimiento' };
       if (!c.monto || isNaN(c.monto) || Number(c.monto) <= 0)
@@ -274,6 +314,18 @@ const NuevoPlanPage = () => {
         moneda: planData.moneda,
         indexacion: planData.indexacion || null,
         cac_tipo: planData.indexacion === 'CAC' ? planData.cac_tipo : null,
+        usd_fuente: planData.indexacion === 'USD' ? planData.usd_fuente : null,
+        cotizacion_snapshot: planData.indexacion === 'USD' && usdIndiceEfectivo
+          ? {
+              fecha: planData.fecha_base || todayIso(),
+              dolar_blue: planData.usd_fuente === 'blue' ? usdIndiceEfectivo : null,
+              dolar_oficial: planData.usd_fuente === 'oficial' ? usdIndiceEfectivo : null,
+              dolar_indice: usdIndiceEfectivo,
+              dolar_fuente: planData.usd_fuente,
+              dolar_fecha: planData.fecha_base || todayIso(),
+              dolar_override: !!planData.usd_valor_manual,
+            }
+          : null,
         fecha_base: planData.fecha_base || null,
         notas: planData.notas.trim() || undefined,
       };
@@ -396,6 +448,7 @@ const NuevoPlanPage = () => {
                             ...prev,
                             moneda: val,
                             indexacion: val === 'USD' ? '' : prev.indexacion,
+                            fecha_base: val === 'USD' ? prev.fecha_base : prev.fecha_base,
                           }));
                           setErrors((prev) => ({ ...prev, moneda: '' }));
                         }}
@@ -411,6 +464,15 @@ const NuevoPlanPage = () => {
                         label="Monto total a cobrar *"
                         value={formatNumberInput(planData.monto_total)}
                         onChange={handleFieldChange('monto_total')}
+                        error={!!errors.monto_total}
+                        helperText={
+                          errors.monto_total ||
+                          (montoTotalEnCAC
+                            ? `Equivale a ${montoTotalEnCAC.toLocaleString('es-AR', { maximumFractionDigits: 2 })} CAC al índice seleccionado`
+                            : montoTotalEnUSD
+                              ? `Equivale a ${montoTotalEnUSD.toLocaleString('es-AR', { maximumFractionDigits: 2 })} USD al tipo de cambio seleccionado`
+                            : ' ')
+                        }
                         fullWidth
                         inputProps={{ inputMode: 'decimal' }}
                         InputProps={{
@@ -463,7 +525,11 @@ const NuevoPlanPage = () => {
                               key={opt.value}
                               variant="outlined"
                               onClick={() => {
-                                setPlanData((prev) => ({ ...prev, indexacion: opt.value }));
+                                setPlanData((prev) => ({
+                                  ...prev,
+                                  indexacion: opt.value,
+                                  fecha_base: opt.value && !prev.fecha_base ? todayIso() : prev.fecha_base,
+                                }));
                                 setErrors((prev) => ({ ...prev, moneda: '' }));
                               }}
                               sx={{
@@ -565,6 +631,117 @@ const NuevoPlanPage = () => {
                         </Paper>
                       </>
                     )}
+
+                    {planData.indexacion === 'USD' && (
+                      <>
+                        <Typography variant="body2" color="text.secondary" mb={1}>
+                          Cotización de dólar
+                        </Typography>
+                        <ToggleButtonGroup
+                          value={planData.usd_fuente}
+                          exclusive
+                          onChange={(_, val) => {
+                            if (val) setPlanData((prev) => ({ ...prev, usd_fuente: val }));
+                          }}
+                          size="small"
+                          sx={{ mb: 3 }}
+                        >
+                          <ToggleButton value="blue">USD Blue</ToggleButton>
+                          <ToggleButton value="oficial">USD Oficial</ToggleButton>
+                        </ToggleButtonGroup>
+
+                        <Paper
+                          variant="outlined"
+                          sx={{ p: 2, bgcolor: 'info.50', borderColor: 'info.200', borderRadius: 1.5 }}
+                        >
+                          <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
+                            <Typography variant="body2" color="text.secondary">
+                              Fecha base
+                            </Typography>
+                            <TextField
+                              type="date"
+                              size="small"
+                              value={planData.fecha_base}
+                              onChange={handleFieldChange('fecha_base')}
+                              InputLabelProps={{ shrink: true }}
+                              error={!!errors.fecha_base}
+                              sx={{ width: 170 }}
+                            />
+                          </Stack>
+                          {errors.fecha_base && (
+                            <Typography variant="caption" color="error" display="block" mb={1}>
+                              {errors.fecha_base}
+                            </Typography>
+                          )}
+
+                          {usdLoading && (
+                            <Stack direction="row" alignItems="center" spacing={1}>
+                              <CircularProgress size={14} />
+                              <Typography variant="caption" color="text.secondary">
+                                Consultando cotización...
+                              </Typography>
+                            </Stack>
+                          )}
+                          {usdPreview && !usdLoading && (
+                            <Stack direction="row" justifyContent="space-between" alignItems="center">
+                              <Typography variant="body2" color="text.secondary">
+                                Tipo de cambio aplicado
+                              </Typography>
+                              <Typography variant="body2" fontWeight={700} color="primary.main">
+                                USD {planData.usd_fuente === 'oficial' ? 'Oficial' : 'Blue'} {usdPreview.dolar_fecha || ''} = ${Number(usdPreview.dolar_indice).toLocaleString('es-AR')}
+                              </Typography>
+                            </Stack>
+                          )}
+                          {!planData.usd_valor_manual ? (
+                            <Typography
+                              variant="caption"
+                              color="text.disabled"
+                              sx={{ display: 'block', mt: 1, cursor: 'pointer', '&:hover': { color: 'text.secondary' } }}
+                              onClick={() => setPlanData((prev) => ({
+                                ...prev,
+                                usd_valor_manual: usdPreview?.dolar_indice ? String(usdPreview.dolar_indice) : '',
+                              }))}
+                            >
+                              Modificar valor base manualmente…
+                            </Typography>
+                          ) : (
+                            <Stack spacing={1} sx={{ mt: 1.5, p: 1.5, bgcolor: 'grey.50', borderRadius: 1 }}>
+                              <Stack direction="row" justifyContent="space-between" alignItems="center">
+                                <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                                  Dólar personalizado
+                                </Typography>
+                                <Typography
+                                  variant="caption"
+                                  color="primary"
+                                  sx={{ cursor: 'pointer' }}
+                                  onClick={() => setPlanData((prev) => ({ ...prev, usd_valor_manual: '' }))}
+                                >
+                                  Usar automático
+                                </Typography>
+                              </Stack>
+                              <TextField
+                                size="small"
+                                type="number"
+                                label={`USD ${planData.usd_fuente === 'oficial' ? 'Oficial' : 'Blue'} manual`}
+                                placeholder={`Ej: ${usdPreview?.dolar_indice || '1405'}`}
+                                value={planData.usd_valor_manual}
+                                onChange={(e) => setPlanData((prev) => ({ ...prev, usd_valor_manual: e.target.value }))}
+                                fullWidth
+                              />
+                              {usdIndiceEfectivo && (
+                                <Typography variant="caption" color="text.secondary">
+                                  Usando USD = ${Number(usdIndiceEfectivo).toLocaleString('es-AR')} en vez de {usdPreview?.dolar_indice != null ? `$${Number(usdPreview.dolar_indice).toLocaleString('es-AR')}` : '(no cargado)'}.
+                                </Typography>
+                              )}
+                            </Stack>
+                          )}
+                          <Typography variant="caption" color="text.secondary" display="block" mt={1}>
+                            <InfoOutlinedIcon sx={{ fontSize: 12, verticalAlign: 'middle', mr: 0.5 }} />
+                            Se usa esa cotización histórica como base para indexar las cuotas en ARS.
+                          </Typography>
+                        </Paper>
+                      </>
+                    )}
                       </>
                     )}
                   </Paper>
@@ -638,187 +815,264 @@ const NuevoPlanPage = () => {
                 ))}
               </Grid>
 
-              {/* Configuración según modo */}
-              {modoDistribucion === 'iguales' && (
-                <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}>
-                  <Stack spacing={2}>
-                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="flex-end" flexWrap="wrap">
-                      <TextField
-                        label="Cantidad de cuotas"
-                        type="number"
-                        size="small"
-                        value={generador.cantidad}
-                        onChange={(e) => setGenerador((g) => ({ ...g, cantidad: e.target.value }))}
-                        error={!!errors.generador}
-                        sx={{ width: 140 }}
-                        inputProps={{ min: 1 }}
-                      />
-                      <Stack spacing={0.5}>
-                        <Typography variant="caption" color="text.secondary">Frecuencia</Typography>
-                        <Stack direction="row" spacing={1} flexWrap="wrap">
-                          {FRECUENCIAS.map((f) => (
-                            <Button
-                              key={f.value}
-                              variant={generador.frecuencia === f.value ? 'contained' : 'outlined'}
-                              size="small"
-                              onClick={() => setGenerador((g) => ({ ...g, frecuencia: f.value }))}
-                              sx={{ borderRadius: 2, textTransform: 'none', minWidth: 0 }}
-                            >
-                              {f.label}
-                            </Button>
-                          ))}
-                        </Stack>
-                      </Stack>
-                      {generador.frecuencia === 'custom' && (
-                        <TextField
-                          label="Cada cuántos meses"
-                          type="number"
-                          size="small"
-                          value={generador.custom_meses}
-                          onChange={(e) => setGenerador((g) => ({ ...g, custom_meses: e.target.value }))}
-                          sx={{ width: 130 }}
-                          inputProps={{ min: 1, max: 24 }}
-                        />
-                      )}
-                      {generador.frecuencia !== 'avance_obra' && (
-                        <TextField
-                          label="Fecha primera cuota"
-                          type="date"
-                          size="small"
-                          value={generador.fecha_inicio}
-                          onChange={(e) => setGenerador((g) => ({ ...g, fecha_inicio: e.target.value }))}
-                          InputLabelProps={{ shrink: true }}
-                          sx={{ width: 180 }}
-                        />
-                      )}
-                    </Stack>
-                    {errors.generador && (
-                      <Typography color="error" variant="caption">{errors.generador}</Typography>
-                    )}
-                    {generador.cantidad && (generador.frecuencia === 'avance_obra' || generador.fecha_inicio) && montoTotal > 0 && (() => {
-                      const freq = FRECUENCIAS.find((f) => f.value === generador.frecuencia);
-                      const mesesEff = freq?.value === 'custom' ? parseInt(generador.custom_meses, 10) || 1 : freq?.meses;
-                      const cant = parseInt(generador.cantidad, 10);
-                      return (
-                        <Paper sx={{ p: 2, bgcolor: '#F0FAF7', border: '1px solid #B2DFDB', borderRadius: 1.5 }}>
-                          <Stack direction="row" alignItems="center" spacing={1}>
-                            <CalendarTodayIcon sx={{ fontSize: 18, color: '#1B9E85' }} />
-                            <Typography variant="body2">
-                              <strong>{cant} cuotas</strong>
-                              {freq?.value === 'custom'
-                                ? <> cada <strong>{mesesEff} mes{mesesEff !== 1 ? 'es' : ''}</strong></>
-                                : <> {FRECUENCIA_LABELS[generador.frecuencia] || generador.frecuencia}</>}
-                              {' '}de <strong>{formatCurrency(Math.round((montoTotal / cant) * 100) / 100, monedaDisplay)}</strong>
-                              {generador.fecha_inicio && (
-                                <>{' '}desde el <strong>{new Date(generador.fecha_inicio + 'T12:00:00').toLocaleDateString('es-AR')}</strong></>
-                              )}
-                            </Typography>
-                          </Stack>
-                        </Paper>
-                      );
-                    })()}
-                    <Button
-                      variant="contained"
-                      onClick={handleGenerar}
-                      disabled={!generador.cantidad || (!generador.fecha_inicio && generador.frecuencia !== 'avance_obra')}
-                      startIcon={<AutorenewIcon />}
-                      sx={{ alignSelf: 'flex-start', textTransform: 'none', borderRadius: 2 }}
-                    >
-                      Generar cuotas
-                    </Button>
-                  </Stack>
-                </Paper>
-              )}
-
-              {modoDistribucion === 'personalizados' && (
-                <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}>
-                  <Stack spacing={2.5}>
-                    <TextField
-                      label="Cantidad de cuotas"
-                      type="number"
-                      size="small"
-                      value={cantPersonalizados}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setCantPersonalizados(val);
-                        const n = parseInt(val, 10);
-                        if (n > 0) setPorcentajes(Array.from({ length: n }, () => ''));
-                      }}
-                      inputProps={{ min: 1, max: 120 }}
-                      sx={{ width: 200 }}
-                    />
-
-                    {cantPersonalizados && parseInt(cantPersonalizados, 10) > 0 && (
-                      <>
-                        <FormControlLabel
-                          control={
-                            <Switch
-                              checked={usaPorcentaje}
-                              onChange={(e) => setUsaPorcentaje(e.target.checked)}
-                            />
-                          }
-                          label="Distribuir por porcentaje"
-                        />
-
-                        {usaPorcentaje && (
-                          <Box>
-                            <Typography variant="body2" color="text.secondary" mb={1.5}>
-                              Ingresá el % de cada cuota (deben sumar 100%)
-                            </Typography>
-                            <Stack spacing={1}>
-                              {porcentajes.map((pct, i) => (
-                                <Stack key={i} direction="row" alignItems="center" spacing={1.5}>
-                                  <Typography variant="body2" sx={{ minWidth: 70 }}>Cuota {i + 1}</Typography>
-                                  <TextField
-                                    size="small"
-                                    type="number"
-                                    value={pct}
-                                    onChange={(e) => {
-                                      const newPcts = [...porcentajes];
-                                      newPcts[i] = e.target.value;
-                                      setPorcentajes(newPcts);
-                                    }}
-                                    InputProps={{
-                                      endAdornment: <InputAdornment position="end">%</InputAdornment>,
-                                    }}
-                                    inputProps={{ min: 0, max: 100, step: 0.1 }}
-                                    sx={{ width: 120 }}
-                                  />
-                                  {montoTotal > 0 && pct && (
-                                    <Typography variant="caption" color="text.secondary">
-                                      = {formatCurrency(Math.round(montoTotal * Number(pct) / 100 * 100) / 100, monedaDisplay)}
-                                    </Typography>
-                                  )}
-                                </Stack>
+              <Grid container spacing={3}>
+                <Grid item xs={12} xl={8}>
+                  {modoDistribucion === 'iguales' && (
+                    <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}>
+                      <Stack spacing={2}>
+                        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="flex-end" flexWrap="wrap">
+                          <TextField
+                            label="Cantidad de cuotas"
+                            type="number"
+                            size="small"
+                            value={generador.cantidad}
+                            onChange={(e) => setGenerador((g) => ({ ...g, cantidad: e.target.value }))}
+                            error={!!errors.generador}
+                            sx={{ width: 140 }}
+                            inputProps={{ min: 1 }}
+                          />
+                          <Stack spacing={0.5}>
+                            <Typography variant="caption" color="text.secondary">Frecuencia</Typography>
+                            <Stack direction="row" spacing={1} flexWrap="wrap">
+                              {FRECUENCIAS.map((f) => (
+                                <Button
+                                  key={f.value}
+                                  variant={generador.frecuencia === f.value ? 'contained' : 'outlined'}
+                                  size="small"
+                                  onClick={() => setGenerador((g) => ({ ...g, frecuencia: f.value }))}
+                                  sx={{ borderRadius: 2, textTransform: 'none', minWidth: 0 }}
+                                >
+                                  {f.label}
+                                </Button>
                               ))}
                             </Stack>
-                            <Typography
-                              variant="body2"
-                              sx={{ mt: 1.5 }}
-                              color={Math.abs(porcentajes.reduce((s, p) => s + (Number(p) || 0), 0) - 100) < 0.01 ? 'success.main' : 'warning.main'}
-                              fontWeight={600}
-                            >
-                              Total: {porcentajes.reduce((s, p) => s + (Number(p) || 0), 0).toFixed(1)}%
-                              {Math.abs(porcentajes.reduce((s, p) => s + (Number(p) || 0), 0) - 100) < 0.01 ? ' ✓' : ' (debe sumar 100%)'}
-                            </Typography>
-                          </Box>
+                          </Stack>
+                          {generador.frecuencia === 'custom' && (
+                            <TextField
+                              label="Cada cuántos meses"
+                              type="number"
+                              size="small"
+                              value={generador.custom_meses}
+                              onChange={(e) => setGenerador((g) => ({ ...g, custom_meses: e.target.value }))}
+                              sx={{ width: 130 }}
+                              inputProps={{ min: 1, max: 24 }}
+                            />
+                          )}
+                          {generador.frecuencia !== 'avance_obra' && (
+                            <TextField
+                              label="Fecha primera cuota"
+                              type="date"
+                              size="small"
+                              value={generador.fecha_inicio}
+                              onChange={(e) => setGenerador((g) => ({ ...g, fecha_inicio: e.target.value }))}
+                              InputLabelProps={{ shrink: true }}
+                              sx={{ width: 180 }}
+                            />
+                          )}
+                        </Stack>
+                        {errors.generador && (
+                          <Typography color="error" variant="caption">{errors.generador}</Typography>
                         )}
-                      </>
-                    )}
+                        {generador.cantidad && (generador.frecuencia === 'avance_obra' || generador.fecha_inicio) && montoTotal > 0 && (() => {
+                          const freq = FRECUENCIAS.find((f) => f.value === generador.frecuencia);
+                          const mesesEff = freq?.value === 'custom' ? parseInt(generador.custom_meses, 10) || 1 : freq?.meses;
+                          const cant = parseInt(generador.cantidad, 10);
+                          return (
+                            <Paper sx={{ p: 2, bgcolor: '#F0FAF7', border: '1px solid #B2DFDB', borderRadius: 1.5 }}>
+                              <Stack direction="row" alignItems="center" spacing={1}>
+                                <CalendarTodayIcon sx={{ fontSize: 18, color: '#1B9E85' }} />
+                                <Typography variant="body2">
+                                  <strong>{cant} cuotas</strong>
+                                  {freq?.value === 'custom'
+                                    ? <> cada <strong>{mesesEff} mes{mesesEff !== 1 ? 'es' : ''}</strong></>
+                                    : <> {FRECUENCIA_LABELS[generador.frecuencia] || generador.frecuencia}</>}
+                                  {' '}de <strong>{formatCurrency(Math.round((montoTotal / cant) * 100) / 100, monedaDisplay)}</strong>
+                                  {generador.fecha_inicio && (
+                                    <>{' '}desde el <strong>{new Date(generador.fecha_inicio + 'T12:00:00').toLocaleDateString('es-AR')}</strong></>
+                                  )}
+                                </Typography>
+                              </Stack>
+                            </Paper>
+                          );
+                        })()}
+                        <Button
+                          variant="contained"
+                          onClick={handleGenerar}
+                          disabled={!generador.cantidad || (!generador.fecha_inicio && generador.frecuencia !== 'avance_obra')}
+                          startIcon={<AutorenewIcon />}
+                          sx={{ alignSelf: 'flex-start', textTransform: 'none', borderRadius: 2 }}
+                        >
+                          Generar cuotas
+                        </Button>
+                      </Stack>
+                    </Paper>
+                  )}
 
-                    {(!usaPorcentaje || !cantPersonalizados) && (
-                      <Stack direction="row" alignItems="center" spacing={1}>
-                        <InfoOutlinedIcon sx={{ fontSize: 18, color: 'text.secondary' }} />
-                        <Typography variant="body2" color="text.secondary">
-                          {cantPersonalizados && parseInt(cantPersonalizados, 10) > 0
-                            ? 'En el siguiente paso vas a poder editar los montos y fechas de cada cuota.'
-                            : 'En el siguiente paso vas a poder agregar y editar cada cuota manualmente.'}
+                  {modoDistribucion === 'personalizados' && (
+                    <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}>
+                      <Stack spacing={2.5}>
+                        <TextField
+                          label="Cantidad de cuotas"
+                          type="number"
+                          size="small"
+                          value={cantPersonalizados}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setCantPersonalizados(val);
+                            const n = parseInt(val, 10);
+                            if (n > 0) setPorcentajes(Array.from({ length: n }, () => ''));
+                          }}
+                          inputProps={{ min: 1, max: 120 }}
+                          sx={{ width: 200 }}
+                        />
+
+                        {cantPersonalizados && parseInt(cantPersonalizados, 10) > 0 && (
+                          <>
+                            <FormControlLabel
+                              control={
+                                <Switch
+                                  checked={usaPorcentaje}
+                                  onChange={(e) => setUsaPorcentaje(e.target.checked)}
+                                />
+                              }
+                              label="Distribuir por porcentaje"
+                            />
+
+                            {usaPorcentaje && (
+                              <Box>
+                                <Typography variant="body2" color="text.secondary" mb={1.5}>
+                                  Ingresá el % de cada cuota (deben sumar 100%)
+                                </Typography>
+                                <Stack spacing={1}>
+                                  {porcentajes.map((pct, i) => (
+                                    <Stack key={i} direction="row" alignItems="center" spacing={1.5}>
+                                      <Typography variant="body2" sx={{ minWidth: 70 }}>Cuota {i + 1}</Typography>
+                                      <TextField
+                                        size="small"
+                                        type="number"
+                                        value={pct}
+                                        onChange={(e) => {
+                                          const newPcts = [...porcentajes];
+                                          newPcts[i] = e.target.value;
+                                          setPorcentajes(newPcts);
+                                        }}
+                                        InputProps={{
+                                          endAdornment: <InputAdornment position="end">%</InputAdornment>,
+                                        }}
+                                        inputProps={{ min: 0, max: 100, step: 0.1 }}
+                                        sx={{ width: 120 }}
+                                      />
+                                      {montoTotal > 0 && pct && (
+                                        <Typography variant="caption" color="text.secondary">
+                                          = {formatCurrency(Math.round(montoTotal * Number(pct) / 100 * 100) / 100, monedaDisplay)}
+                                        </Typography>
+                                      )}
+                                    </Stack>
+                                  ))}
+                                </Stack>
+                                <Typography
+                                  variant="body2"
+                                  sx={{ mt: 1.5 }}
+                                  color={Math.abs(porcentajes.reduce((s, p) => s + (Number(p) || 0), 0) - 100) < 0.01 ? 'success.main' : 'warning.main'}
+                                  fontWeight={600}
+                                >
+                                  Total: {porcentajes.reduce((s, p) => s + (Number(p) || 0), 0).toFixed(1)}%
+                                  {Math.abs(porcentajes.reduce((s, p) => s + (Number(p) || 0), 0) - 100) < 0.01 ? ' ✓' : ' (debe sumar 100%)'}
+                                </Typography>
+                              </Box>
+                            )}
+                          </>
+                        )}
+
+                        {(!usaPorcentaje || !cantPersonalizados) && (
+                          <Stack direction="row" alignItems="center" spacing={1}>
+                            <InfoOutlinedIcon sx={{ fontSize: 18, color: 'text.secondary' }} />
+                            <Typography variant="body2" color="text.secondary">
+                              {cantPersonalizados && parseInt(cantPersonalizados, 10) > 0
+                                ? 'En el siguiente paso vas a poder editar los montos y fechas de cada cuota.'
+                                : 'En el siguiente paso vas a poder agregar y editar cada cuota manualmente.'}
+                            </Typography>
+                          </Stack>
+                        )}
+                      </Stack>
+                    </Paper>
+                  )}
+                </Grid>
+
+                <Grid item xs={12} lg={4}>
+                  <Paper variant="outlined" sx={{ p: 3, borderRadius: 2, height: '100%' }}>
+                    <Typography variant="overline" color="text.secondary" display="block" mb={1.5}>
+                      Resumen de distribución
+                    </Typography>
+                    <Stack spacing={1.5}>
+                      <Stack direction="row" justifyContent="space-between" alignItems="center">
+                        <Typography variant="body2" color="text.secondary">Modo</Typography>
+                        <Chip
+                          size="small"
+                          color={modoDistribucion === 'iguales' ? 'primary' : 'default'}
+                          label={modoDistribucion === 'iguales' ? 'Cuotas iguales' : 'Personalizado'}
+                        />
+                      </Stack>
+                      <Stack direction="row" justifyContent="space-between" alignItems="center">
+                        <Typography variant="body2" color="text.secondary">Total</Typography>
+                        <Typography variant="body2" fontWeight={700}>
+                          {formatCurrency(montoTotal, monedaDisplay)}
                         </Typography>
                       </Stack>
-                    )}
-                  </Stack>
-                </Paper>
-              )}
+                      {montoTotalEnCAC && (
+                        <Stack direction="row" justifyContent="space-between" alignItems="center">
+                          <Typography variant="body2" color="text.secondary">Equiv. CAC</Typography>
+                          <Typography variant="body2" fontWeight={700} color="primary.main">
+                            {montoTotalEnCAC.toLocaleString('es-AR', { maximumFractionDigits: 2 })} CAC
+                          </Typography>
+                        </Stack>
+                      )}
+                      {planData.indexacion === 'CAC' && cacPreview && (
+                        <Stack direction="row" justifyContent="space-between" alignItems="center">
+                          <Typography variant="body2" color="text.secondary">Índice</Typography>
+                          <Typography variant="body2" fontWeight={600} color="text.primary">
+                            {cacPreview.cac_indice}
+                          </Typography>
+                        </Stack>
+                      )}
+
+                      <Divider sx={{ my: 0.5 }} />
+
+                      {modoDistribucion === 'iguales' ? (
+                        <>
+                          <Typography variant="body2" fontWeight={600}>Generación automática</Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            Definís cantidad, frecuencia y fecha inicial. Después en el siguiente paso podés corregir monto, CAC o fecha cuota por cuota.
+                          </Typography>
+                          {generador.cantidad && (
+                            <Typography variant="caption" color="text.secondary">
+                              Se generarán {generador.cantidad} cuota{parseInt(generador.cantidad, 10) !== 1 ? 's' : ''}
+                              {generador.frecuencia !== 'avance_obra' && generador.fecha_inicio
+                                ? ` desde ${new Date(generador.fecha_inicio + 'T12:00:00').toLocaleDateString('es-AR')}`
+                                : generador.frecuencia === 'avance_obra'
+                                  ? ' por avance de obra'
+                                  : ''}.
+                            </Typography>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <Typography variant="body2" fontWeight={600}>Edición manual</Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            Podés crear cuotas a medida y, si querés, repartir primero por porcentaje para arrancar con una base.
+                          </Typography>
+                          {!!cantPersonalizados && (
+                            <Typography variant="caption" color="text.secondary">
+                              {cantPersonalizados} cuota{parseInt(cantPersonalizados, 10) !== 1 ? 's' : ''}
+                              {usaPorcentaje ? ` · ${porcentajes.reduce((s, p) => s + (Number(p) || 0), 0).toFixed(1)}% cargado` : ''}
+                            </Typography>
+                          )}
+                        </>
+                      )}
+                    </Stack>
+                  </Paper>
+                </Grid>
+              </Grid>
 
               {/* Botones Paso 1 */}
               <Stack direction="row" justifyContent="flex-end" spacing={2} mt={4}>
@@ -844,89 +1098,160 @@ const NuevoPlanPage = () => {
                   : 'Agregá las cuotas con las fechas y montos que necesites.'}
               </Typography>
 
-              {/* Indicador suma vs total */}
-              {montoTotal > 0 && cuotas.length > 0 && (
-                <Paper
-                  variant="outlined"
-                  sx={{
-                    p: 2,
-                    mb: 3,
-                    borderColor: sumaOk ? 'success.main' : 'warning.main',
-                    bgcolor: sumaOk ? '#E8F5E9' : '#FFF8E1',
-                  }}
-                >
-                  <Stack
-                    direction={{ xs: 'column', sm: 'row' }}
-                    justifyContent="space-between"
-                    alignItems={{ sm: 'center' }}
-                    spacing={1}
-                  >
-                    <Typography variant="body2">
-                      Total del plan: <strong>{formatCurrency(montoTotal, monedaDisplay)}</strong>
-                    </Typography>
-                    <Stack direction="row" alignItems="center" spacing={1}>
-                      {sumaOk ? (
-                        <CheckCircleOutlineIcon sx={{ fontSize: 18, color: 'success.main' }} />
-                      ) : (
-                        <WarningAmberIcon sx={{ fontSize: 18, color: 'warning.main' }} />
-                      )}
-                      <Typography
-                        variant="body2"
-                        fontWeight={600}
-                        color={sumaOk ? 'success.main' : 'warning.main'}
+              <Grid container spacing={3}>
+                <Grid item xs={12}>
+                  {montoTotal > 0 && cuotas.length > 0 && (
+                    <Paper
+                      variant="outlined"
+                      sx={{
+                        p: 2,
+                        mb: 3,
+                        borderColor: sumaOk ? 'success.main' : 'warning.main',
+                        bgcolor: sumaOk ? '#E8F5E9' : '#FFF8E1',
+                        borderRadius: 2,
+                      }}
+                    >
+                      <Stack
+                        direction={{ xs: 'column', sm: 'row' }}
+                        justifyContent="space-between"
+                        alignItems={{ sm: 'center' }}
+                        spacing={1}
                       >
-                        Suma de cuotas: {formatCurrency(sumaCuotas, monedaDisplay)}
-                        {sumaOk ? ' — cuadra' : ` (dif: ${formatCurrency(sumaDiff, monedaDisplay)})`}
-                      </Typography>
-                    </Stack>
-                  </Stack>
-                </Paper>
-              )}
+                        <Typography variant="body2">
+                          Total del plan: <strong>{formatCurrency(montoTotal, monedaDisplay)}</strong>
+                        </Typography>
+                        <Stack direction="row" alignItems="center" spacing={1}>
+                          {sumaOk ? (
+                            <CheckCircleOutlineIcon sx={{ fontSize: 18, color: 'success.main' }} />
+                          ) : (
+                            <WarningAmberIcon sx={{ fontSize: 18, color: 'warning.main' }} />
+                          )}
+                          <Typography
+                            variant="body2"
+                            fontWeight={600}
+                            color={sumaOk ? 'success.main' : 'warning.main'}
+                          >
+                            Suma de cuotas: {formatCurrency(sumaCuotas, monedaDisplay)}
+                            {sumaOk ? ' — cuadra' : ` (dif: ${formatCurrency(sumaDiff, monedaDisplay)})`}
+                          </Typography>
+                        </Stack>
+                      </Stack>
+                    </Paper>
+                  )}
 
-              {/* Regenerar (solo modo iguales) */}
-              {modoDistribucion === 'iguales' && (
-                <Stack direction="row" justifyContent="flex-end" mb={2}>
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    startIcon={<ReplayIcon />}
-                    onClick={handleGenerar}
-                  >
-                    Regenerar cuotas
-                  </Button>
-                </Stack>
-              )}
+                  <CuotasTableEdit
+                    cuotas={cuotas}
+                    onChange={setCuotas}
+                    moneda={monedaDisplay}
+                    showCAC={planData.indexacion === 'CAC'}
+                    cacPreview={cacPreview}
+                    montoTotal={montoTotal}
+                  />
 
-              {/* Tabla de cuotas */}
-              <CuotasTableEdit
-                cuotas={cuotas}
-                onChange={setCuotas}
-                moneda={monedaDisplay}
-                showCAC={planData.indexacion === 'CAC'}
-                cacPreview={cacPreview}
-                montoTotal={montoTotal}
-              />
-
-              {errors.cuotas && (
-                <Typography variant="caption" color="error" mt={1} display="block">
-                  {errors.cuotas}
-                </Typography>
-              )}
-
-              {/* Warning banner */}
-              {montoTotal > 0 && cuotas.length > 0 && !sumaOk && (
-                <Paper
-                  sx={{ mt: 3, p: 2, bgcolor: '#FFF8E1', border: '1px solid #FFE082', borderRadius: 1.5 }}
-                >
-                  <Stack direction="row" spacing={1} alignItems="flex-start">
-                    <WarningAmberIcon sx={{ color: '#F9A825', mt: 0.2 }} />
-                    <Typography variant="body2">
-                      <strong>Aviso:</strong> los montos no suman exactamente el total del plan.{' '}
-                      <strong>No bloquea la creación</strong> — el total puede ser referencial.
+                  {errors.cuotas && (
+                    <Typography variant="caption" color="error" mt={1} display="block">
+                      {errors.cuotas}
                     </Typography>
+                  )}
+                </Grid>
+
+                <Grid item xs={12}>
+                  <Stack spacing={2}>
+                    <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}>
+                      <Typography variant="overline" color="text.secondary" display="block" mb={1.5}>
+                        Chequeo del plan
+                      </Typography>
+                      <Stack spacing={1.25}>
+                        <Stack direction="row" justifyContent="space-between">
+                          <Typography variant="body2" color="text.secondary">Total del plan</Typography>
+                          <Typography variant="body2" fontWeight={700}>{formatCurrency(montoTotal, monedaDisplay)}</Typography>
+                        </Stack>
+                        <Stack direction="row" justifyContent="space-between">
+                          <Typography variant="body2" color="text.secondary">Suma cargada</Typography>
+                          <Typography variant="body2" fontWeight={700}>{formatCurrency(sumaCuotas, monedaDisplay)}</Typography>
+                        </Stack>
+                        <Stack direction="row" justifyContent="space-between">
+                          <Typography variant="body2" color="text.secondary">Diferencia</Typography>
+                          <Typography variant="body2" fontWeight={700} color={sumaOk ? 'success.main' : 'warning.main'}>
+                            {formatCurrency(sumaDiff, monedaDisplay)}
+                          </Typography>
+                        </Stack>
+                        <Stack direction="row" justifyContent="space-between">
+                          <Typography variant="body2" color="text.secondary">Cuotas con monto</Typography>
+                          <Typography variant="body2" fontWeight={600}>{cuotasConMonto}/{cuotas.length}</Typography>
+                        </Stack>
+                        <Stack direction="row" justifyContent="space-between">
+                          <Typography variant="body2" color="text.secondary">Cuotas con fecha</Typography>
+                          <Typography variant="body2" fontWeight={600}>{cuotasConFecha}/{cuotas.length}</Typography>
+                        </Stack>
+                        {montoTotal > 0 && (
+                          <Stack direction="row" justifyContent="space-between">
+                            <Typography variant="body2" color="text.secondary">Distribuido</Typography>
+                            <Typography variant="body2" fontWeight={600}>{porcentajeDistribuido.toLocaleString('es-AR', { maximumFractionDigits: 1 })}%</Typography>
+                          </Stack>
+                        )}
+                        {montoTotalEnCAC && (
+                          <Stack direction="row" justifyContent="space-between">
+                            <Typography variant="body2" color="text.secondary">Total en CAC</Typography>
+                            <Typography variant="body2" fontWeight={600} color="primary.main">
+                              {montoTotalEnCAC.toLocaleString('es-AR', { maximumFractionDigits: 2 })} CAC
+                            </Typography>
+                          </Stack>
+                        )}
+                        {montoTotalEnUSD && (
+                          <Stack direction="row" justifyContent="space-between">
+                            <Typography variant="body2" color="text.secondary">Total en USD</Typography>
+                            <Typography variant="body2" fontWeight={600} color="primary.main">
+                              {montoTotalEnUSD.toLocaleString('es-AR', { maximumFractionDigits: 2 })} USD
+                            </Typography>
+                          </Stack>
+                        )}
+                      </Stack>
+                    </Paper>
+
+                    {modoDistribucion === 'iguales' && (
+                      <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 2 }}>
+                        <Typography variant="body2" fontWeight={600} mb={1}>
+                          Regeneración rápida
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" mb={2}>
+                          Si cambiás cantidad, frecuencia o fecha inicial, podés volver a generar la base y después retocar manualmente.
+                        </Typography>
+                        <Button
+                          variant="outlined"
+                          size="small"
+                          startIcon={<ReplayIcon />}
+                          onClick={handleGenerar}
+                        >
+                          Regenerar cuotas
+                        </Button>
+                      </Paper>
+                    )}
+
+                    <Paper
+                      sx={{
+                        p: 2.5,
+                        borderRadius: 2,
+                        bgcolor: sumaOk ? '#E8F5E9' : '#FFF8E1',
+                        border: `1px solid ${sumaOk ? '#A5D6A7' : '#FFE082'}`,
+                      }}
+                    >
+                      <Stack direction="row" spacing={1} alignItems="flex-start">
+                        {sumaOk ? (
+                          <CheckCircleOutlineIcon sx={{ color: 'success.main', mt: 0.1 }} />
+                        ) : (
+                          <WarningAmberIcon sx={{ color: '#F9A825', mt: 0.1 }} />
+                        )}
+                        <Typography variant="body2">
+                          {sumaOk
+                            ? 'La distribución ya cierra contra el total del plan.'
+                            : <>Los montos no suman exactamente el total. <strong>No bloquea la creación</strong>, pero conviene revisarlo antes de confirmar.</>}
+                        </Typography>
+                      </Stack>
+                    </Paper>
                   </Stack>
-                </Paper>
-              )}
+                </Grid>
+              </Grid>
 
               {/* Botones Paso 2 */}
               <Stack direction="row" justifyContent="flex-end" spacing={2} mt={4}>

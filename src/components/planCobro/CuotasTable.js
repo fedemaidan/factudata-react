@@ -1,20 +1,21 @@
 import PropTypes from 'prop-types';
 import {
+  Box,
+  Button,
+  Chip,
+  IconButton,
+  InputAdornment,
+  Paper,
+  Stack,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
-  Paper,
   TextField,
-  IconButton,
-  InputAdornment,
   Tooltip,
   Typography,
-  Box,
-  Button,
-  Chip,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -23,14 +24,25 @@ import { formatCurrency, formatNumberInput, parseNumberInput } from 'src/utils/f
 
 const estadoColor = {
   cobrada: 'success',
+  cobrada_parcial: 'warning',
+  cobrada_parcial_vencida: 'warning',
   vencida: 'error',
-  pendiente: 'default',
+  pendiente: 'info',
 };
 
 const estadoLabel = {
   cobrada: 'Cobrada',
+  cobrada_parcial: 'Cobrada parcial',
+  cobrada_parcial_vencida: 'Cobrada parcial vencida',
   vencida: 'Vencida',
   pendiente: 'Pendiente',
+};
+
+const round2 = (value) => Math.round((Number(value) || 0) * 100) / 100;
+
+const parseDecimalInput = (value) => {
+  const parsed = parseFloat(parseNumberInput(value));
+  return Number.isFinite(parsed) ? parsed : null;
 };
 
 const tiempoRelativo = (fecha) => {
@@ -44,8 +56,20 @@ const tiempoRelativo = (fecha) => {
   return `Hace ${meses} mes${meses > 1 ? 'es' : ''}`;
 };
 
-// Modo edición (para crear/confirmar plan)
-export const CuotasTableEdit = ({ cuotas, onChange, moneda = 'ARS', showCAC = false, cacPreview = null, montoTotal = 0 }) => {
+export const CuotasTableEdit = ({
+  cuotas,
+  onChange,
+  moneda = 'ARS',
+  showCAC = false,
+  cacPreview = null,
+  montoTotal = 0,
+}) => {
+  const cacIndice = Number(cacPreview?.cac_indice) || null;
+  const showPct = montoTotal > 0;
+  const totalPct = showPct
+    ? round2(cuotas.reduce((acc, cuota) => acc + ((Number(cuota.monto) || 0) / montoTotal) * 100, 0))
+    : 0;
+
   const add = () => {
     onChange([
       ...cuotas,
@@ -53,101 +77,145 @@ export const CuotasTableEdit = ({ cuotas, onChange, moneda = 'ARS', showCAC = fa
     ]);
   };
 
-  const remove = (i) => onChange(cuotas.filter((_, idx) => idx !== i));
+  const remove = (index) => onChange(cuotas.filter((_, idx) => idx !== index));
 
-  const update = (i, field, value) => {
-    const next = cuotas.map((c, idx) => (idx === i ? { ...c, [field]: value } : c));
+  const updateRow = (index, patch) => {
+    const next = cuotas.map((cuota, idx) => (idx === index ? { ...cuota, ...patch } : cuota));
     onChange(next);
   };
 
-  const showPct = montoTotal > 0;
+  const updateMonto = (index, raw) => {
+    updateRow(index, { monto: parseNumberInput(raw) });
+  };
+
+  const updateMontoDesdeCac = (index, raw) => {
+    const cacValue = parseDecimalInput(raw);
+    updateRow(index, { monto: cacValue == null || !cacIndice ? '' : String(round2(cacValue * cacIndice)) });
+  };
+
+  const updateMontoDesdePorcentaje = (index, raw) => {
+    const pctValue = parseDecimalInput(raw);
+    updateRow(index, {
+      monto: pctValue == null ? '' : String(round2(montoTotal * pctValue / 100)),
+    });
+  };
 
   return (
     <Box>
-      <TableContainer component={Paper} variant="outlined">
+      {showCAC && cacIndice && (
+        <Paper
+          variant="outlined"
+          sx={{
+            mb: 2,
+            p: 1.5,
+            borderRadius: 2,
+            bgcolor: 'info.50',
+            borderColor: 'info.light',
+          }}
+        >
+          <Stack
+            direction={{ xs: 'column', sm: 'row' }}
+            justifyContent="space-between"
+            spacing={1}
+          >
+            <Typography variant="body2" color="text.secondary">
+              Índice CAC aplicado para la edición
+            </Typography>
+            <Typography variant="body2" fontWeight={700} color="info.main">
+              {cacPreview?.cac_fecha ? `${cacPreview.cac_fecha} · ` : ''}CAC = {cacIndice.toLocaleString('es-AR')}
+            </Typography>
+          </Stack>
+        </Paper>
+      )}
+
+      <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
         <Table size="small">
           <TableHead>
             <TableRow sx={{ '& th': { fontWeight: 600, textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: 0.5, color: 'text.secondary' } }}>
               <TableCell>#</TableCell>
               <TableCell>Fecha</TableCell>
               <TableCell>Monto ({moneda})</TableCell>
-              {showPct && <TableCell align="right" sx={{ fontWeight: 600, width: 80 }}>%</TableCell>}
-              {showCAC && <TableCell>Equiv. CAC (solo lectura)</TableCell>}
-              <TableCell>Descripción (opcional)</TableCell>
+              {showCAC && <TableCell>CAC</TableCell>}
+              {showPct && <TableCell align="right" sx={{ width: 110 }}>%</TableCell>}
+              <TableCell>Descripción</TableCell>
               <TableCell />
             </TableRow>
           </TableHead>
           <TableBody>
-            {cuotas.map((c, i) => {
-              const cacEquiv = showCAC && cacPreview?.cac_indice && Number(c.monto)
-                ? (Number(c.monto) / cacPreview.cac_indice).toFixed(2)
+            {cuotas.map((cuota, index) => {
+              const cacEquiv = showCAC && cacIndice && Number(cuota.monto)
+                ? round2(Number(cuota.monto) / cacIndice)
+                : null;
+              const pctEquiv = showPct && montoTotal > 0 && Number(cuota.monto)
+                ? round2((Number(cuota.monto) / montoTotal) * 100)
                 : null;
 
               return (
-                <TableRow key={i}>
-                  <TableCell>{i + 1}</TableCell>
+                <TableRow key={index} sx={{ '& td': { verticalAlign: 'top' } }}>
+                  <TableCell sx={{ fontWeight: 700 }}>{index + 1}</TableCell>
                   <TableCell>
                     <TextField
                       type="date"
                       size="small"
-                      value={c.fecha_vencimiento}
-                      onChange={(e) => update(i, 'fecha_vencimiento', e.target.value)}
+                      value={cuota.fecha_vencimiento}
+                      onChange={(e) => updateRow(index, { fecha_vencimiento: e.target.value })}
                       InputLabelProps={{ shrink: true }}
-                      sx={{ width: 160 }}
+                      sx={{ width: 165 }}
                     />
                   </TableCell>
                   <TableCell>
                     <TextField
                       size="small"
-                      value={formatNumberInput(c.monto)}
-                      onChange={(e) => update(i, 'monto', parseNumberInput(e.target.value))}
+                      value={formatNumberInput(cuota.monto)}
+                      onChange={(e) => updateMonto(index, e.target.value)}
                       onFocus={(e) => e.target.select()}
-                      sx={{ width: 140 }}
+                      sx={{ width: 150 }}
                       inputProps={{ inputMode: 'decimal' }}
+                      InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment> }}
                     />
                   </TableCell>
+                  {showCAC && (
+                    <TableCell>
+                      {cacIndice ? (
+                        <TextField
+                          size="small"
+                          value={cacEquiv == null ? '' : formatNumberInput(cacEquiv)}
+                          onChange={(e) => updateMontoDesdeCac(index, e.target.value)}
+                          onFocus={(e) => e.target.select()}
+                          sx={{ width: 130 }}
+                          inputProps={{ inputMode: 'decimal' }}
+                          InputProps={{ endAdornment: <InputAdornment position="end">CAC</InputAdornment> }}
+                        />
+                      ) : (
+                        <Typography variant="body2" color="text.secondary">-</Typography>
+                      )}
+                    </TableCell>
+                  )}
                   {showPct && (
                     <TableCell align="right">
                       <TextField
                         size="small"
-                        type="text"
-                        value={montoTotal > 0 ? String(Math.round((Number(c.monto) / montoTotal) * 100)) : ''}
-                        onChange={(e) => {
-                          const raw = e.target.value.replace(/[^\d]/g, '');
-                          const pct = parseInt(raw, 10);
-                          if (raw === '') {
-                            onChange(cuotas.map((cu, j) => j === i ? { ...cu, monto: '' } : cu));
-                          } else if (!isNaN(pct) && pct >= 0 && pct <= 100) {
-                            const nuevo = String(Math.round(montoTotal * pct / 100));
-                            onChange(cuotas.map((cu, j) => j === i ? { ...cu, monto: nuevo } : cu));
-                          }
-                        }}
+                        value={pctEquiv == null ? '' : formatNumberInput(pctEquiv)}
+                        onChange={(e) => updateMontoDesdePorcentaje(index, e.target.value)}
                         onFocus={(e) => e.target.select()}
-                        InputProps={{ endAdornment: <InputAdornment position="end">%</InputAdornment> }}
                         sx={{ width: 100 }}
-                        inputProps={{ inputMode: 'numeric' }}
+                        inputProps={{ inputMode: 'decimal' }}
+                        InputProps={{ endAdornment: <InputAdornment position="end">%</InputAdornment> }}
                       />
-                    </TableCell>
-                  )}
-                  {showCAC && (
-                    <TableCell>
-                      <Typography variant="body2" color="text.secondary">
-                        {cacEquiv ? `${cacEquiv} CAC` : '-'}
-                      </Typography>
                     </TableCell>
                   )}
                   <TableCell>
                     <TextField
                       size="small"
-                      value={c.descripcion || ''}
-                      onChange={(e) => update(i, 'descripcion', e.target.value)}
-                      sx={{ width: 200 }}
+                      value={cuota.descripcion || ''}
+                      onChange={(e) => updateRow(index, { descripcion: e.target.value })}
+                      sx={{ minWidth: 200 }}
                       placeholder="Opcional"
                     />
                   </TableCell>
-                  <TableCell>
+                  <TableCell align="right">
                     <Tooltip title="Eliminar cuota">
-                      <IconButton size="small" onClick={() => remove(i)} color="error">
+                      <IconButton size="small" onClick={() => remove(index)} color="error">
                         <DeleteIcon fontSize="small" />
                       </IconButton>
                     </Tooltip>
@@ -157,7 +225,7 @@ export const CuotasTableEdit = ({ cuotas, onChange, moneda = 'ARS', showCAC = fa
             })}
             {cuotas.length === 0 && (
               <TableRow>
-                <TableCell colSpan={showCAC ? 6 : 5}>
+                <TableCell colSpan={showCAC ? (showPct ? 7 : 6) : (showPct ? 6 : 5)}>
                   <Typography variant="body2" color="text.secondary" textAlign="center">
                     Agregá al menos una cuota
                   </Typography>
@@ -167,14 +235,21 @@ export const CuotasTableEdit = ({ cuotas, onChange, moneda = 'ARS', showCAC = fa
           </TableBody>
         </Table>
       </TableContainer>
-      <Button startIcon={<AddIcon />} onClick={add} sx={{ mt: 1 }} size="small">
-        Agregar cuota
-      </Button>
+
+      <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ sm: 'center' }} spacing={1} sx={{ mt: 1.5 }}>
+        <Button startIcon={<AddIcon />} onClick={add} size="small">
+          Agregar cuota
+        </Button>
+        {showPct && (
+          <Typography variant="caption" color={Math.abs(totalPct - 100) < 0.01 ? 'success.main' : 'text.secondary'}>
+            Distribuido: {totalPct.toLocaleString('es-AR', { maximumFractionDigits: 2 })}%
+          </Typography>
+        )}
+      </Stack>
     </Box>
   );
 };
 
-// Modo sólo lectura (para ver el detalle del plan)
 export const CuotasTableReadonly = ({
   cuotas = [],
   moneda = 'ARS',
@@ -202,29 +277,32 @@ export const CuotasTableReadonly = ({
           </TableRow>
         </TableHead>
         <TableBody>
-          {cuotas.map((c) => {
-            const estadoUi = c.estado_ui || c.estado;
-            const cacDisplay = c.cotizacion_snapshot?.valor
-              ? (c.monto / c.cotizacion_snapshot.valor).toFixed(2)
-              : null;
+          {cuotas.map((cuota) => {
+            const estadoUi = cuota.estado_ui || cuota.estado;
+            const cacDisplay = cuota.monto_cac != null ? round2(Number(cuota.monto_cac)) : null;
+            const montoDisplay = estadoUi === 'cobrada' && typeof cuota.monto_cobrado === 'number'
+              ? cuota.monto_cobrado
+              : cuota.monto;
+            const puedeCobrar = cuota.estado === 'pendiente' || cuota.estado === 'cobrada_parcial';
+            const puedeRevertir = cuota.estado === 'cobrada' || cuota.estado === 'cobrada_parcial';
 
             return (
-              <TableRow key={c._id}>
-                <TableCell>{c.numero}</TableCell>
+              <TableRow key={cuota._id}>
+                <TableCell>{cuota.numero}</TableCell>
                 <TableCell>
-                  {c.fecha_vencimiento
-                    ? new Date(c.fecha_vencimiento).toLocaleDateString('es-AR')
+                  {cuota.fecha_vencimiento
+                    ? new Date(cuota.fecha_vencimiento).toLocaleDateString('es-AR')
                     : '-'}
                 </TableCell>
-                <TableCell>{formatCurrency(c.monto, monedaDisplay)}</TableCell>
+                <TableCell>{formatCurrency(montoDisplay, monedaDisplay)}</TableCell>
                 {showCAC && (
                   <TableCell>
                     <Typography variant="body2" color="text.secondary">
-                      {cacDisplay ? `${cacDisplay} CAC` : '-'}
+                      {cacDisplay != null ? `${formatNumberInput(cacDisplay)} CAC` : '-'}
                     </Typography>
                   </TableCell>
                 )}
-                <TableCell>{c.descripcion || '-'}</TableCell>
+                <TableCell>{cuota.descripcion || '-'}</TableCell>
                 <TableCell>
                   <Chip
                     label={estadoLabel[estadoUi] || estadoUi}
@@ -233,28 +311,29 @@ export const CuotasTableReadonly = ({
                   />
                 </TableCell>
                 <TableCell>
-                  {c.fecha_cobrado ? tiempoRelativo(c.fecha_cobrado) : '-'}
+                  {cuota.fecha_cobrado ? tiempoRelativo(cuota.fecha_cobrado) : '-'}
                 </TableCell>
                 {(onMarcarCobrada || onRevertirCobro) && (
                   <TableCell>
-                    {c.estado === 'pendiente' && onMarcarCobrada && (
+                    {puedeCobrar && onMarcarCobrada && (
                       <Button
                         size="small"
                         variant="outlined"
                         color="success"
-                        onClick={() => onMarcarCobrada(c._id)}
-                        disabled={loadingId === c._id}
+                        onClick={() => onMarcarCobrada(cuota._id)}
+                        disabled={loadingId === cuota._id}
+                        sx={{ mr: 1 }}
                       >
-                        {loadingId === c._id ? 'Guardando...' : 'Cobrar'}
+                        {loadingId === cuota._id ? 'Guardando...' : cuota.estado === 'cobrada_parcial' ? 'Cobrar resto' : 'Cobrar'}
                       </Button>
                     )}
-                    {c.estado === 'cobrada' && onRevertirCobro && (
+                    {puedeRevertir && onRevertirCobro && (
                       <Tooltip title="Revertir cobro">
                         <IconButton
                           size="small"
                           color="warning"
-                          onClick={() => onRevertirCobro(c._id)}
-                          disabled={revertingId === c._id}
+                          onClick={() => onRevertirCobro(cuota._id)}
+                          disabled={revertingId === cuota._id}
                         >
                           <UndoIcon fontSize="small" />
                         </IconButton>
@@ -277,6 +356,7 @@ CuotasTableEdit.propTypes = {
   moneda: PropTypes.string,
   showCAC: PropTypes.bool,
   cacPreview: PropTypes.object,
+  montoTotal: PropTypes.number,
 };
 
 CuotasTableReadonly.propTypes = {

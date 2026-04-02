@@ -66,12 +66,14 @@ const DetallePlanPage = () => {
 
   // Delete cuota dialog
   const [deleteCuota, setDeleteCuota] = useState(null);
+  const [showAdelantarCuota, setShowAdelantarCuota] = useState(false);
 
   // Add cuota dialog
   const [showAddCuota, setShowAddCuota] = useState(false);
   const [addForm, setAddForm] = useState({ monto: '', fecha_vencimiento: '', descripcion: '' });
   // CAC actual para planes indexados — se usa para calcular el valor en pesos ajustado
   const [cacActual, setCacActual] = useState(null);
+  const [usdActual, setUsdActual] = useState(null);
 
   useEffect(() => {
     if (!user) return;
@@ -89,23 +91,34 @@ const DetallePlanPage = () => {
     if (error) setAlert({ open: true, message: 'Error al cargar el plan', severity: 'error' });
   }, [error]);
 
-  // Fetch CAC del momento (2 meses atrás, lógica estándar) para mostrar ARS actualizado
+  // Fetch del índice actual para mostrar ARS actualizado en planes indexados.
   useEffect(() => {
-    if (!plan || plan.indexacion !== 'CAC') return;
+    if (!plan || !plan.indexacion) return;
     const hoy = new Date().toISOString().split('T')[0];
-    planCobroService.previewCAC(hoy, plan.cac_tipo || 'general')
+    const request = plan.indexacion === 'CAC'
+      ? planCobroService.previewCAC(hoy, plan.cac_tipo || 'general')
+      : planCobroService.previewUSD(hoy, plan.usd_fuente || plan.cotizacion_snapshot?.dolar_fuente || 'blue');
+
+    request
       .then((res) => {
-        const cac = res?.data?.data?.cac_indice;
-        if (cac) setCacActual(cac);
+        const data = res?.data?.data;
+        setCacActual(data?.cac_indice || null);
+        setUsdActual(data?.dolar_indice || null);
       })
-      .catch(() => {});
-  }, [plan?.indexacion, plan?.cac_tipo]);
+      .catch(() => {
+        setCacActual(null);
+        setUsdActual(null);
+      });
+  }, [plan?.indexacion, plan?.cac_tipo, plan?.usd_fuente, plan?.cotizacion_snapshot?.dolar_fuente]);
 
   // Para planes CAC con monto ajustable: valor actual en ARS = monto_cac × cac_actual
   const getMontoCuota = (cuota) => {
     if (!cuota) return 0;
     if (plan?.indexacion === 'CAC' && cuota.monto_cac && cacActual) {
       return Math.round(cuota.monto_cac * cacActual * 100) / 100;
+    }
+    if (plan?.indexacion === 'USD' && cuota.monto_usd && usdActual) {
+      return Math.round(cuota.monto_usd * usdActual * 100) / 100;
     }
     return cuota.monto || 0;
   };
@@ -287,7 +300,8 @@ const DetallePlanPage = () => {
   const resumen = plan.resumen || {};
   const monedaDisplay = plan.moneda === 'CAC' ? 'ARS' : plan.moneda || 'ARS';
   const cacTipoLabel = plan.cac_tipo === 'general' ? 'Promedio' : plan.cac_tipo === 'mano_obra' ? 'M. Obra' : 'Materiales';
-  const indexacionLabel = plan.indexacion === 'CAC' ? `CAC ${cacTipoLabel}` : plan.indexacion === 'USD' ? 'Dólar' : '';
+  const usdFuenteLabel = (plan.usd_fuente || plan.cotizacion_snapshot?.dolar_fuente) === 'oficial' ? 'Oficial' : 'Blue';
+  const indexacionLabel = plan.indexacion === 'CAC' ? `CAC ${cacTipoLabel}` : plan.indexacion === 'USD' ? `Dólar ${usdFuenteLabel}` : '';
   const allCuotas = plan.cuotas || [];
   const totalCuotas = allCuotas.length;
   const cuotasCobradas = allCuotas.filter((c) => c.estado === 'cobrada').length;
@@ -299,6 +313,24 @@ const DetallePlanPage = () => {
     resumen.total > 0 ? Math.round(((resumen.cobrado || 0) / resumen.total) * 100) : 0;
   const showCAC = !!plan.indexacion;
   const cacIndiceBase = plan.cotizacion_snapshot?.cac_indice || null;
+  const isCuotaVencida = (cuota) => cuota?.estado_ui === 'vencida' || cuota?.estado_ui === 'cobrada_parcial_vencida';
+  const cuotasOrdenadas = [...allCuotas].sort((a, b) => {
+    const numeroA = Number(a?.numero || 0);
+    const numeroB = Number(b?.numero || 0);
+    if (numeroA !== numeroB) return numeroA - numeroB;
+    const fechaA = new Date(a?.fecha_vencimiento || 0).getTime();
+    const fechaB = new Date(b?.fecha_vencimiento || 0).getTime();
+    return fechaA - fechaB;
+  });
+  const cuotasAbiertas = cuotasOrdenadas.filter((c) => c.estado !== 'cobrada');
+  const cuotasVencidas = cuotasAbiertas.filter(isCuotaVencida);
+  const cuotaProximaVisible = cuotasAbiertas.find((c) => !isCuotaVencida(c)) || null;
+  const cuotasResto = cuotasOrdenadas.filter((c) => {
+    if (cuotasVencidas.some((v) => v._id === c._id)) return false;
+    if (cuotaProximaVisible?._id === c._id) return false;
+    return true;
+  });
+  const cuotasAdelantables = cuotasResto.filter((c) => c.estado !== 'cobrada');
 
   // Totales ajustados por CAC actual (cuando el plan es indexado y cacActual está disponible)
   const totalAjustado = (showCAC && cacActual)
@@ -475,211 +507,294 @@ const DetallePlanPage = () => {
             />
           </Box>
 
-          {/* Cuotas como tarjetas */}
+          {/* Estado de cuenta */}
           <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
             <Typography variant="subtitle1" fontWeight={600}>
-              Cuotas
+              Estado de cuenta
             </Typography>
-            {plan.estado === 'activo' && (
-              <Button
-                variant="outlined"
-                size="small"
-                startIcon={<AddIcon />}
-                onClick={() => {
-                  setAddForm({ monto: '', fecha_vencimiento: '', descripcion: '' });
-                  setShowAddCuota(true);
-                }}
-              >
-                Agregar cuota
-              </Button>
-            )}
+            <Stack direction="row" spacing={1}>
+              {plan.estado === 'activo' && cuotasAdelantables.length > 0 && (
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={() => setShowAdelantarCuota(true)}
+                >
+                  Adelantar cuota
+                </Button>
+              )}
+              {plan.estado === 'activo' && (
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={<AddIcon />}
+                  onClick={() => {
+                    setAddForm({ monto: '', fecha_vencimiento: '', descripcion: '' });
+                    setShowAddCuota(true);
+                  }}
+                >
+                  Agregar cuota
+                </Button>
+              )}
+            </Stack>
           </Stack>
 
-          <Stack spacing={1.5}>
-            {allCuotas.map((cuota, idx) => {
-              const esCobrada = cuota.estado === 'cobrada';
-              const esParcial = cuota.estado === 'cobrada_parcial';
-              const esVencida = cuota.estado_ui === 'vencida';
-              const esParcialVencida = cuota.estado_ui === 'cobrada_parcial_vencida';
-              const bgColor = esCobrada
-                ? '#E8F5E9'
-                : esParcial || esParcialVencida
-                  ? '#FFF8E1'
-                  : esVencida
-                    ? '#FFEBEE'
-                    : 'transparent';
-              const leftBorder = esCobrada
-                ? '4px solid #4CAF50'
-                : esParcial || esParcialVencida
-                  ? '4px solid #FF9800'
-                  : esVencida
-                    ? '4px solid #F44336'
-                    : '4px solid #2196F3';
-              const restante = esParcial ? getMontoCuota(cuota) - (cuota.monto_cobrado || 0) : 0;
-
-              return (
-                <Paper
-                  key={cuota._id || idx}
-                  variant="outlined"
-                  sx={{ p: 2, bgcolor: bgColor, borderLeft: leftBorder }}
-                >
-                  <Stack
-                    direction={{ xs: 'column', sm: 'row' }}
-                    alignItems={{ sm: 'center' }}
-                    justifyContent="space-between"
-                    spacing={1}
-                  >
-                    {/* Icon + Info */}
-                    <Stack direction="row" alignItems="center" spacing={1.5} flex={1}>
-                      {esCobrada ? (
-                        <CheckCircleIcon sx={{ color: '#4CAF50', fontSize: 28 }} />
-                      ) : esParcial || esParcialVencida ? (
-                        <FiberManualRecordIcon sx={{ color: '#FF9800', fontSize: 28 }} />
-                      ) : esVencida ? (
-                        <ErrorOutlineIcon sx={{ color: '#F44336', fontSize: 28 }} />
-                      ) : (
-                        <FiberManualRecordIcon sx={{ color: '#2196F3', fontSize: 28 }} />
-                      )}
-                      <Box>
-                        <Typography variant="subtitle2" fontWeight={600} sx={{ letterSpacing: 0.3 }}>
-                          CUOTA {cuota.numero || idx + 1}
-                          {cuota.fecha_vencimiento &&
-                            ` / ${new Date(cuota.fecha_vencimiento).toLocaleDateString('es-AR')}`}
-                          {cuota.descripcion && ` / ${cuota.descripcion}`}
-                        </Typography>
-                        {(esParcial || esParcialVencida) && (
-                          <Typography variant="caption" color="warning.main" fontWeight={500}>
-                            Cobrado parcialmente: {formatCurrency(cuota.monto_cobrado || 0, monedaDisplay)} de {formatCurrency(getMontoCuota(cuota), monedaDisplay)}
-                            {' '}— Resta: {formatCurrency(restante, monedaDisplay)}
-                          </Typography>
-                        )}
-                      </Box>
-                    </Stack>
-
-                    {/* Monto + CAC */}
-                    <Box textAlign="right" minWidth={160}>
-                      <Typography variant="subtitle1" fontWeight={700}>
-                        {formatCurrency(getMontoCuota(cuota), monedaDisplay)}
+          <Stack spacing={2}>
+            {cuotasVencidas.length > 0 && (
+              <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 2, bgcolor: '#FFF5F5', borderColor: '#F2B8B5' }}>
+                <Stack spacing={1.5}>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" spacing={1}>
+                    <Box>
+                      <Typography variant="overline" color="error.main">Cuotas vencidas</Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Estas cuotas necesitan atención primero.
                       </Typography>
-                      {showCAC && cuota.monto_cac != null && (
-                        <Typography variant="caption" color="text.secondary">
-                          {Number(cuota.monto_cac).toLocaleString('es-AR', { maximumFractionDigits: 1 })} CAC{esCobrada ? ' al cobrar' : ''}
+                    </Box>
+                    <Chip color="error" label={`${cuotasVencidas.length} vencida${cuotasVencidas.length > 1 ? 's' : ''}`} size="small" />
+                  </Stack>
+
+                  <Stack spacing={1.25}>
+                    {cuotasVencidas.map((cuota) => {
+                      const esParcial = cuota.estado === 'cobrada_parcial';
+                      const montoActual = getMontoCuota(cuota);
+                      const restante = esParcial ? montoActual - (cuota.monto_cobrado || 0) : montoActual;
+                      return (
+                        <Paper key={cuota._id} variant="outlined" sx={{ p: 2, borderRadius: 2, bgcolor: 'background.paper' }}>
+                          <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={1.5}>
+                            <Box>
+                              <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                                <Typography variant="subtitle1" fontWeight={700}>Cuota {cuota.numero}</Typography>
+                                <Chip size="small" color="error" label={esParcial ? 'Parcial vencida' : 'Vencida'} />
+                              </Stack>
+                              <Typography variant="body2" color="text.secondary" mt={0.5}>
+                                Vencimiento: {cuota.fecha_vencimiento ? new Date(cuota.fecha_vencimiento).toLocaleDateString('es-AR') : 'Sin fecha'}
+                                {cuota.descripcion ? ` · ${cuota.descripcion}` : ''}
+                              </Typography>
+                              {esParcial && (
+                                <Typography variant="caption" color="warning.main" display="block" mt={0.5}>
+                                  Ya cobrado: {formatCurrency(cuota.monto_cobrado || 0, monedaDisplay)} · Restante: {formatCurrency(restante, monedaDisplay)}
+                                </Typography>
+                              )}
+                            </Box>
+
+                            <Stack alignItems={{ xs: 'flex-start', md: 'flex-end' }} spacing={1}>
+                              <Typography variant="h6" fontWeight={700}>{formatCurrency(montoActual, monedaDisplay)}</Typography>
+                              <Stack direction="row" spacing={1} flexWrap="wrap" justifyContent={{ md: 'flex-end' }}>
+                                <Button
+                                  variant="contained"
+                                  color="error"
+                                  size="small"
+                                  onClick={() => handleCobrarClick(cuota._id)}
+                                  disabled={cobrandoId === cuota._id}
+                                >
+                                  {esParcial ? 'Cobrar resto' : 'Cobrar ahora'}
+                                </Button>
+                                {esParcial && (
+                                  <Button
+                                    variant="text"
+                                    size="small"
+                                    color="warning"
+                                    onClick={() => handleRevertir(cuota._id)}
+                                    disabled={reverting === cuota._id}
+                                  >
+                                    {reverting === cuota._id ? 'Revirtiendo...' : 'Revertir'}
+                                  </Button>
+                                )}
+                                {!esParcial && (
+                                  <Button
+                                    variant="outlined"
+                                    size="small"
+                                    startIcon={<EditIcon fontSize="small" />}
+                                    onClick={() => handleEditClick(cuota)}
+                                  >
+                                    Editar
+                                  </Button>
+                                )}
+                              </Stack>
+                            </Stack>
+                          </Stack>
+                        </Paper>
+                      );
+                    })}
+                  </Stack>
+                </Stack>
+              </Paper>
+            )}
+
+            {cuotaProximaVisible ? (
+              <Paper variant="outlined" sx={{ p: 3, borderRadius: 2, borderColor: '#C9D7FF', bgcolor: '#F8FAFF' }}>
+                <Stack spacing={1.5}>
+                  <Typography variant="overline" color="primary.main">Próxima cuota</Typography>
+                  <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={2}>
+                    <Box>
+                      <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                        <Typography variant="h6" fontWeight={700}>Cuota {cuotaProximaVisible.numero}</Typography>
+                        <Chip
+                          size="small"
+                          color={cuotaProximaVisible.estado === 'cobrada_parcial' ? 'warning' : 'info'}
+                          label={cuotaProximaVisible.estado === 'cobrada_parcial' ? 'Pago parcial' : 'Pendiente'}
+                        />
+                      </Stack>
+                      <Typography variant="body1" color="text.secondary" mt={0.5}>
+                        {cuotaProximaVisible.fecha_vencimiento
+                          ? `Vence el ${new Date(cuotaProximaVisible.fecha_vencimiento).toLocaleDateString('es-AR')}`
+                          : 'Sin fecha definida'}
+                        {cuotaProximaVisible.descripcion ? ` · ${cuotaProximaVisible.descripcion}` : ''}
+                      </Typography>
+                      {cuotaProximaVisible.estado === 'cobrada_parcial' && (
+                        <Typography variant="caption" color="warning.main" display="block" mt={0.75}>
+                          Ya cobrado: {formatCurrency(cuotaProximaVisible.monto_cobrado || 0, monedaDisplay)}
                         </Typography>
                       )}
                     </Box>
 
-                    {/* Estado + Acción */}
-                    <Stack direction="row" alignItems="center" spacing={1} minWidth={200} justifyContent="flex-end">
-                      {esCobrada && cuota.fecha_cobrado && (
-                        <Typography variant="body2" color="success.main" fontWeight={500}>
-                          Cobrada el {new Date(cuota.fecha_cobrado).toLocaleDateString('es-AR')}
-                        </Typography>
-                      )}
-                      {(esParcial || esParcialVencida) && plan.estado === 'activo' && (
-                        <>
-                          <Button
-                            variant="outlined"
-                            size="small"
-                            color="warning"
-                            onClick={() => handleCobrarClick(cuota._id)}
-                            disabled={cobrandoId === cuota._id}
-                            startIcon={
-                              cobrandoId === cuota._id ? (
-                                <CircularProgress size={14} color="inherit" />
-                              ) : (
-                                <CheckCircleIcon fontSize="small" />
-                              )
-                            }
-                          >
-                            Cobrar resto
-                          </Button>
-                          <Button
-                            variant="text"
-                            size="small"
-                            color="warning"
-                            onClick={() => handleRevertir(cuota._id)}
-                            disabled={reverting === cuota._id}
-                          >
-                            {reverting === cuota._id ? 'Revertiendo...' : 'Revertir'}
-                          </Button>
-                        </>
-                      )}
-                      {!esCobrada && !esParcial && !esParcialVencida && plan.estado === 'activo' && (
-                        <>
-                          <Button
-                            variant="outlined"
-                            size="small"
-                            color={esVencida ? 'error' : 'success'}
-                            onClick={() => handleCobrarClick(cuota._id)}
-                            disabled={cobrandoId === cuota._id}
-                            startIcon={
-                              cobrandoId === cuota._id ? (
-                                <CircularProgress size={14} color="inherit" />
-                              ) : (
-                                <CheckCircleIcon fontSize="small" />
-                              )
-                            }
-                          >
-                            Cobrar
-                          </Button>
-                          <Button
-                            variant="text"
-                            size="small"
-                            onClick={() => handleEditClick(cuota)}
-                            sx={{ minWidth: 'auto', px: 0.5 }}
-                          >
-                            <EditIcon fontSize="small" />
-                          </Button>
-                          <Button
-                            variant="text"
-                            size="small"
-                            color="error"
-                            onClick={() => setDeleteCuota(cuota)}
-                            sx={{ minWidth: 'auto', px: 0.5 }}
-                          >
-                            <DeleteIcon fontSize="small" />
-                          </Button>
-                        </>
-                      )}
-                      {esCobrada && plan.estado === 'activo' && (
+                    <Stack alignItems={{ xs: 'flex-start', md: 'flex-end' }} spacing={1}>
+                      <Typography variant="h4" fontWeight={800}>
+                        {formatCurrency(getMontoCuota(cuotaProximaVisible), monedaDisplay)}
+                      </Typography>
+                      <Stack direction="row" spacing={1} flexWrap="wrap" justifyContent={{ md: 'flex-end' }}>
                         <Button
-                          variant="text"
-                          size="small"
-                          color="warning"
-                          onClick={() => handleRevertir(cuota._id)}
-                          disabled={reverting === cuota._id}
+                          variant="contained"
+                          color="success"
+                          onClick={() => handleCobrarClick(cuotaProximaVisible._id)}
+                          disabled={cobrandoId === cuotaProximaVisible._id}
+                          startIcon={cobrandoId === cuotaProximaVisible._id ? <CircularProgress size={14} color="inherit" /> : <CheckCircleIcon fontSize="small" />}
                         >
-                          {reverting === cuota._id ? 'Revertiendo...' : 'Revertir'}
+                          {cuotaProximaVisible.estado === 'cobrada_parcial' ? 'Cobrar resto' : 'Cobrar cuota'}
                         </Button>
-                      )}
+                        {cuotaProximaVisible.estado === 'cobrada_parcial' ? (
+                          <Button
+                            variant="text"
+                            color="warning"
+                            onClick={() => handleRevertir(cuotaProximaVisible._id)}
+                            disabled={reverting === cuotaProximaVisible._id}
+                          >
+                            {reverting === cuotaProximaVisible._id ? 'Revirtiendo...' : 'Revertir'}
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="outlined"
+                            startIcon={<EditIcon fontSize="small" />}
+                            onClick={() => handleEditClick(cuotaProximaVisible)}
+                          >
+                            Editar
+                          </Button>
+                        )}
+                      </Stack>
                     </Stack>
                   </Stack>
+                </Stack>
+              </Paper>
+            ) : (
+              cuotasVencidas.length === 0 && (
+                <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 2, bgcolor: '#F6FFF8', borderColor: '#B7E1C0' }}>
+                  <Typography variant="body1" fontWeight={700} color="success.main">
+                    No hay cuotas pendientes para cobrar.
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    El plan no tiene vencimientos próximos en este momento.
+                  </Typography>
                 </Paper>
-              );
-            })}
-          </Stack>
+              )
+            )}
 
-          {/* Leyenda */}
-          {allCuotas.length > 0 && (
-            <Stack direction="row" spacing={3} mt={2}>
-              <Stack direction="row" alignItems="center" spacing={0.5}>
-                <CheckCircleIcon sx={{ fontSize: 16, color: '#4CAF50' }} />
-                <Typography variant="caption" color="text.secondary">Cobrada</Typography>
+            <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 2 }}>
+              <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" spacing={1.5} mb={1.5}>
+                <Box>
+                  <Typography variant="subtitle2" fontWeight={700}>Resto del cronograma</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Vista compacta del resto de cuotas del plan.
+                  </Typography>
+                </Box>
+                {plan.estado === 'activo' && cuotasAdelantables.length > 0 && (
+                  <Button variant="outlined" size="small" onClick={() => setShowAdelantarCuota(true)}>
+                    Adelantar cuota
+                  </Button>
+                )}
               </Stack>
-              <Stack direction="row" alignItems="center" spacing={0.5}>
-                <FiberManualRecordIcon sx={{ fontSize: 16, color: '#FF9800' }} />
-                <Typography variant="caption" color="text.secondary">Cobrada parcialmente</Typography>
+
+              <Stack spacing={1}>
+                {cuotasResto.length === 0 ? (
+                  <Typography variant="body2" color="text.secondary">
+                    No quedan más cuotas para mostrar.
+                  </Typography>
+                ) : cuotasResto.map((cuota) => {
+                  const estadoUi = cuota.estado_ui || cuota.estado;
+                  const esCobrada = cuota.estado === 'cobrada';
+                  const esParcial = cuota.estado === 'cobrada_parcial';
+                  const estadoLabel = estadoUi === 'cobrada'
+                    ? 'Cobrada'
+                    : estadoUi === 'cobrada_parcial'
+                      ? 'Parcial'
+                      : estadoUi === 'cobrada_parcial_vencida'
+                        ? 'Parcial vencida'
+                        : estadoUi === 'vencida'
+                          ? 'Vencida'
+                          : 'Pendiente';
+                  const estadoColor = estadoUi === 'cobrada'
+                    ? 'success'
+                    : estadoUi === 'cobrada_parcial' || estadoUi === 'cobrada_parcial_vencida'
+                      ? 'warning'
+                      : estadoUi === 'vencida'
+                        ? 'error'
+                        : 'default';
+                  return (
+                    <Paper key={cuota._id} variant="outlined" sx={{ p: 1.5, borderRadius: 1.5, bgcolor: 'grey.50' }}>
+                      <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" spacing={1} alignItems={{ sm: 'center' }}>
+                        <Box>
+                          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                            <Typography variant="body2" fontWeight={700}>Cuota {cuota.numero}</Typography>
+                            <Chip size="small" color={estadoColor} label={estadoLabel} />
+                          </Stack>
+                          <Typography variant="caption" color="text.secondary">
+                            {cuota.fecha_vencimiento ? new Date(cuota.fecha_vencimiento).toLocaleDateString('es-AR') : 'Sin fecha'}
+                            {cuota.descripcion ? ` · ${cuota.descripcion}` : ''}
+                          </Typography>
+                        </Box>
+                        <Stack alignItems={{ xs: 'flex-start', sm: 'flex-end' }} spacing={0.75}>
+                          <Typography variant="body2" fontWeight={700}>
+                            {formatCurrency(getMontoCuota(cuota), monedaDisplay)}
+                          </Typography>
+                          {plan.estado === 'activo' && (
+                            <Stack direction="row" spacing={1} flexWrap="wrap" justifyContent={{ sm: 'flex-end' }}>
+                              {esCobrada || esParcial ? (
+                                <Button
+                                  variant="text"
+                                  size="small"
+                                  color="warning"
+                                  onClick={() => handleRevertir(cuota._id)}
+                                  disabled={reverting === cuota._id}
+                                >
+                                  {reverting === cuota._id ? 'Revirtiendo...' : 'Revertir'}
+                                </Button>
+                              ) : (
+                                <>
+                                  <Button
+                                    variant="text"
+                                    size="small"
+                                    onClick={() => handleEditClick(cuota)}
+                                  >
+                                    Editar
+                                  </Button>
+                                  <Button
+                                    variant="text"
+                                    size="small"
+                                    color="error"
+                                    onClick={() => setDeleteCuota(cuota)}
+                                  >
+                                    Eliminar
+                                  </Button>
+                                </>
+                              )}
+                            </Stack>
+                          )}
+                        </Stack>
+                      </Stack>
+                    </Paper>
+                  );
+                })}
               </Stack>
-              <Stack direction="row" alignItems="center" spacing={0.5}>
-                <FiberManualRecordIcon sx={{ fontSize: 16, color: '#2196F3' }} />
-                <Typography variant="caption" color="text.secondary">Pendiente</Typography>
-              </Stack>
-              <Stack direction="row" alignItems="center" spacing={0.5}>
-                <ErrorOutlineIcon sx={{ fontSize: 16, color: '#F44336' }} />
-                <Typography variant="caption" color="text.secondary">Vencida</Typography>
-              </Stack>
-            </Stack>
-          )}
+            </Paper>
+          </Stack>
         </Container>
       </Box>
 
@@ -757,6 +872,54 @@ const DetallePlanPage = () => {
           >
             {tipoCobro === 'parcial' ? 'Cobrar parcial' : 'Confirmar cobro'}
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={showAdelantarCuota} onClose={() => setShowAdelantarCuota(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Adelantar cuota</DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ mb: 2 }}>
+            Elegí qué cuota futura querés cobrar ahora. Después vas a poder registrar el cobro total o parcial.
+          </DialogContentText>
+          <Stack spacing={1.25}>
+            {cuotasAdelantables.length === 0 ? (
+              <Typography variant="body2" color="text.secondary">
+                No hay cuotas disponibles para adelantar.
+              </Typography>
+            ) : cuotasAdelantables.map((cuota) => (
+              <Paper key={cuota._id} variant="outlined" sx={{ p: 1.5, borderRadius: 1.5 }}>
+                <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" spacing={1.5} alignItems={{ sm: 'center' }}>
+                  <Box>
+                    <Typography variant="subtitle2" fontWeight={700}>
+                      Cuota {cuota.numero}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {cuota.fecha_vencimiento ? new Date(cuota.fecha_vencimiento).toLocaleDateString('es-AR') : 'Sin fecha'}
+                      {cuota.descripcion ? ` · ${cuota.descripcion}` : ''}
+                    </Typography>
+                  </Box>
+                  <Stack alignItems={{ xs: 'flex-start', sm: 'flex-end' }} spacing={0.75}>
+                    <Typography variant="body2" fontWeight={700}>
+                      {formatCurrency(getMontoCuota(cuota), monedaDisplay)}
+                    </Typography>
+                    <Button
+                      variant="contained"
+                      size="small"
+                      onClick={() => {
+                        setShowAdelantarCuota(false);
+                        handleCobrarClick(cuota._id);
+                      }}
+                    >
+                      Seleccionar
+                    </Button>
+                  </Stack>
+                </Stack>
+              </Paper>
+            ))}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowAdelantarCuota(false)}>Cerrar</Button>
         </DialogActions>
       </Dialog>
 

@@ -24,6 +24,9 @@ const planCobroService = {
   previewCAC: (fecha_base, cac_tipo = 'general') =>
     api.get('/cobros/cac-preview', { params: { fecha_base, cac_tipo } }),
 
+  previewUSD: (fecha_base, usd_fuente = 'blue') =>
+    api.get('/cobros/usd-preview', { params: { fecha_base, usd_fuente } }),
+
   exportarPDF: (id, empresaId) =>
     api.get(`/cobros/${id}/pdf`, { params: { empresa_id: empresaId }, responseType: 'blob' }),
 
