@@ -122,11 +122,28 @@ const NuevoPlanPage = () => {
     getEmpresaDetailsFromUser(user).then((empresa) => {
       if (empresa?.id) {
         setEmpresaId(empresa.id);
-        PresupuestoService.listarPresupuestos(empresa.id).then((list) => setPresupuestos(list || [])).catch(() => {});
+        PresupuestoService.listarPresupuestos(empresa.id)
+          .then((response) => {
+            const lista = Array.isArray(response)
+              ? response
+              : Array.isArray(response?.presupuestos)
+                ? response.presupuestos
+                : [];
+            setPresupuestos(lista.filter((presupuesto) => (presupuesto.tipo || 'egreso') === 'ingreso'));
+          })
+          .catch(() => {});
       }
     });
     getProyectosFromUser(user).then((list) => setProyectos(list || []));
   }, [user]);
+
+  const presupuestosDelProyecto = useMemo(() => {
+    if (!planData.proyecto_id) return [];
+    return presupuestos.filter((presupuesto) => {
+      const proyectoPresupuesto = presupuesto.proyecto_id || presupuesto.proyectoId || presupuesto.proyecto?.id || null;
+      return String(proyectoPresupuesto || '') === String(planData.proyecto_id);
+    });
+  }, [presupuestos, planData.proyecto_id]);
 
   // Fetch CAC preview when fecha_base or cac_tipo change
   useEffect(() => {
@@ -167,13 +184,27 @@ const NuevoPlanPage = () => {
     setErrors((prev) => ({ ...prev, [field]: '' }));
   };
 
+  const handleProyectoChange = (e) => {
+    const proyectoId = e.target.value;
+    setPlanData((prev) => ({
+      ...prev,
+      proyecto_id: proyectoId,
+      presupuesto_id: '',
+    }));
+    setErrors((prev) => ({ ...prev, proyecto_id: '' }));
+  };
+
   const handlePresupuestoChange = (e) => {
     const id = e.target.value;
-    const found = presupuestos.find((p) => p._id === id || p.id === id);
+    const found = presupuestosDelProyecto.find((p) => p._id === id || p.id === id);
+    const montoPresupuesto = found?.monto_ingresado ?? found?.monto_presupuestado ?? found?.monto ?? null;
+    const monedaPresupuesto = found?.moneda_display || found?.moneda || null;
     setPlanData((prev) => ({
       ...prev,
       presupuesto_id: id,
-      monto_total: found?.monto_total ? String(found.monto_total) : prev.monto_total,
+      monto_total: montoPresupuesto != null ? String(montoPresupuesto) : prev.monto_total,
+      moneda: monedaPresupuesto || prev.moneda,
+      indexacion: monedaPresupuesto === 'USD' ? '' : prev.indexacion,
     }));
   };
 
@@ -393,11 +424,11 @@ const NuevoPlanPage = () => {
                     />
 
                     <FormControl fullWidth error={!!errors.proyecto_id}>
-                      <InputLabel>Proyecto asociado *</InputLabel>
+                      <InputLabel>Proyecto asociado</InputLabel>
                       <Select
                         value={planData.proyecto_id}
-                        label="Proyecto asociado *"
-                        onChange={handleFieldChange('proyecto_id')}
+                        label="Proyecto asociado"
+                        onChange={handleProyectoChange}
                       >
                         <MenuItem value="">Sin proyecto</MenuItem>
                         {proyectos.map((p) => (
@@ -411,7 +442,7 @@ const NuevoPlanPage = () => {
 
                     {presupuestos.length > 0 && (
                       <Box>
-                        <FormControl fullWidth>
+                        <FormControl fullWidth disabled={!planData.proyecto_id}>
                           <InputLabel>Presupuesto de ingreso (opcional)</InputLabel>
                           <Select
                             value={planData.presupuesto_id}
@@ -419,13 +450,23 @@ const NuevoPlanPage = () => {
                             onChange={handlePresupuestoChange}
                           >
                             <MenuItem value="">Sin presupuesto</MenuItem>
-                            {presupuestos.map((p) => (
+                            {presupuestosDelProyecto.map((p) => (
                               <MenuItem key={p._id || p.id} value={p._id || p.id}>
                                 {p.nombre || p.codigo || `Presupuesto #${p._id?.slice(-4)}`}
-                                {p.monto_total ? ` — ${formatCurrency(p.monto_total, monedaDisplay)}` : ''}
+                                {p.codigo ? ` #${p.codigo}` : ''}
+                                {(p.monto_ingresado ?? p.monto_presupuestado ?? p.monto) != null
+                                  ? ` — ${formatCurrency(p.monto_ingresado ?? p.monto_presupuestado ?? p.monto, p.moneda_display || p.moneda || monedaDisplay)}`
+                                  : ''}
                               </MenuItem>
                             ))}
                           </Select>
+                          <FormHelperText>
+                            {!planData.proyecto_id
+                              ? 'Seleccioná un proyecto para ver sus presupuestos.'
+                              : presupuestosDelProyecto.length === 0
+                                ? 'No hay presupuestos de ingreso para este proyecto.'
+                                : 'Solo se muestran presupuestos del proyecto seleccionado.'}
+                          </FormHelperText>
                         </FormControl>
                         {planData.presupuesto_id && (
                           <Stack direction="row" alignItems="center" spacing={0.5} mt={0.5}>

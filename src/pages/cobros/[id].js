@@ -126,13 +126,7 @@ const DetallePlanPage = () => {
   const handleCobrarClick = (cuotaId) => {
     const cuota = (plan.cuotas || []).find((c) => c._id === cuotaId);
     setConfirmCobrar(cuota || { _id: cuotaId });
-    const restante = cuota ? cuota.monto - (cuota.monto_cobrado || 0) : 0;
-    // If cuota is partially paid, default to paying the rest in full
-    if (cuota && cuota.estado === 'cobrada_parcial') {
-      setTipoCobro('total');
-    } else {
-      setTipoCobro('total');
-    }
+    setTipoCobro('total');
     setMontoParcial('');
   };
 
@@ -332,11 +326,16 @@ const DetallePlanPage = () => {
   });
   const cuotasAdelantables = cuotasResto.filter((c) => c.estado !== 'cobrada');
 
-  // Totales ajustados por CAC actual (cuando el plan es indexado y cacActual está disponible)
-  const totalAjustado = (showCAC && cacActual)
+  // Totales ajustados por índice actual (CAC o USD, según corresponda)
+  const hasIndiceActual =
+    showCAC && (
+      (plan.indexacion === 'USD' && !!usdActual) ||
+      (plan.indexacion !== 'USD' && !!cacActual)
+    );
+  const totalAjustado = hasIndiceActual
     ? allCuotas.reduce((acc, c) => acc + getMontoCuota(c), 0)
     : null;
-  const pendienteAjustado = (showCAC && cacActual)
+  const pendienteAjustado = hasIndiceActual
     ? allCuotas.filter((c) => c.estado !== 'cobrada').reduce((acc, c) => acc + getMontoCuota(c), 0)
     : null;
 
