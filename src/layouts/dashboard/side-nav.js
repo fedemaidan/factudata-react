@@ -43,13 +43,8 @@ import ScheduleIcon from "@mui/icons-material/Schedule";
 import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
 import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
 import ContactsIcon from "@mui/icons-material/Contacts";
-import AccountTreeIcon from "@mui/icons-material/AccountTree";
 import AssessmentIcon from "@mui/icons-material/Assessment";
-import FilterListIcon from "@mui/icons-material/FilterList";
-import WhatsAppIcon from "@mui/icons-material/WhatsApp";
 import ConstructionIcon from "@mui/icons-material/Construction";
-import HistoryIcon from "@mui/icons-material/History";
-import AutorenewIcon from "@mui/icons-material/Autorenew";
 
 export const SideNav = (props) => {
   const { open, onClose, collapsed = false, onToggleCollapsed, width = 280 } = props;
@@ -319,51 +314,6 @@ export const SideNav = (props) => {
             </SvgIcon>
           ),
         });
-        baseItems.push({
-          title: "Mis Reuniones",
-          path: "/sdr/reuniones",
-          icon: (
-            <SvgIcon fontSize="small">
-              <TodayIcon />
-            </SvgIcon>
-          ),
-        });
-        baseItems.push({
-          title: "Cadencias",
-          path: "/sdr/cadencias",
-          icon: (
-            <SvgIcon fontSize="small">
-              <AccountTreeIcon />
-            </SvgIcon>
-          ),
-        });
-        baseItems.push({
-          title: "Funnel",
-          path: "/funnel",
-          icon: (
-            <SvgIcon fontSize="small">
-              <FilterListIcon />
-            </SvgIcon>
-          ),
-        });
-        baseItems.push({
-          title: "Admin SDR",
-          path: "/sdr/admin",
-          icon: (
-            <SvgIcon fontSize="small">
-              <SettingsIcon />
-            </SvgIcon>
-          ),
-        });
-        baseItems.push({
-          title: "Follow-Up Auto",
-          path: "/followUpAutoConfig",
-          icon: (
-            <SvgIcon fontSize="small">
-              <AutorenewIcon />
-            </SvgIcon>
-          ),
-        });
       }
 
       if (user?.admin) {
@@ -390,26 +340,7 @@ export const SideNav = (props) => {
         });
       }
 
-      if (user?.admin) {
-        baseItems.push({
-          title: "Templates WhatsApp",
-          path: "/templatesMeta",
-          icon: (
-            <SvgIcon fontSize="small">
-              <WhatsAppIcon />
-            </SvgIcon>
-          ),
-        });
-        baseItems.push({
-          title: "Eventos",
-          path: "/eventos",
-          icon: (
-            <SvgIcon fontSize="small">
-              <HistoryIcon />
-            </SvgIcon>
-          ),
-        });
-      }
+      // Templates WhatsApp y Eventos movidos al Panel de Control
 
       if (permisosUsuario.includes("ADMIN_USUARIOS")) {
         baseItems.push({

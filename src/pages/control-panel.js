@@ -9,92 +9,68 @@ import {
   CardActionArea,
   Stack,
   Chip,
-  CircularProgress,
   Alert,
-  Divider
+  Divider,
 } from '@mui/material';
 import { useRouter } from 'next/router';
-import BusinessIcon from '@mui/icons-material/Business';
-import LeaderboardIcon from '@mui/icons-material/Leaderboard';
-import SmartToyIcon from '@mui/icons-material/SmartToy';
-import ChatIcon from '@mui/icons-material/Chat';
-import PsychologyIcon from '@mui/icons-material/Psychology';
-import TrendingUpIcon from '@mui/icons-material/TrendingUp';
-import CurrencyExchangeIcon from '@mui/icons-material/CurrencyExchange';
-import ContactsIcon from '@mui/icons-material/Contacts';
-import SupportAgentIcon from '@mui/icons-material/SupportAgent';
 import AnalyticsIcon from '@mui/icons-material/Analytics';
+import BusinessIcon from '@mui/icons-material/Business';
+import ChatIcon from '@mui/icons-material/Chat';
+import ContactsIcon from '@mui/icons-material/Contacts';
+import CurrencyExchangeIcon from '@mui/icons-material/CurrencyExchange';
+import HistoryIcon from '@mui/icons-material/History';
+import LeaderboardIcon from '@mui/icons-material/Leaderboard';
+import PsychologyIcon from '@mui/icons-material/Psychology';
 import RocketLaunchIcon from '@mui/icons-material/RocketLaunch';
-import AssessmentIcon from '@mui/icons-material/Assessment';
+import SettingsIcon from '@mui/icons-material/Settings';
 import ScienceIcon from '@mui/icons-material/Science';
+import SmartToyIcon from '@mui/icons-material/SmartToy';
+import SupportAgentIcon from '@mui/icons-material/SupportAgent';
+import TodayIcon from '@mui/icons-material/Today';
+import TrendingUpIcon from '@mui/icons-material/TrendingUp';
+import WhatsAppIcon from '@mui/icons-material/WhatsApp';
+import AccountTreeIcon from '@mui/icons-material/AccountTree';
+import AutorenewIcon from '@mui/icons-material/Autorenew';
+import FilterListIcon from '@mui/icons-material/FilterList';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import BotService from 'src/services/botService';
 import ChatGptUsageService from 'src/services/chatGptUsageService';
 
-const PanelCard = ({ 
-  title, 
-  description, 
-  icon: Icon, 
-  color = 'primary', 
-  onClick, 
-  metric, 
-  metricLabel,
-  loading = false 
-}) => (
-  <Card 
-    sx={{ 
+const CompactCard = ({ title, description, icon: Icon, color = 'primary', onClick, badge }) => (
+  <Card
+    sx={{
       height: '100%',
-      transition: 'all 0.3s ease-in-out',
-      '&:hover': {
-        transform: 'translateY(-8px)',
-        boxShadow: 6
-      }
+      transition: 'all 0.2s ease-in-out',
+      '&:hover': { transform: 'translateY(-3px)', boxShadow: 4 },
     }}
   >
     <CardActionArea onClick={onClick} sx={{ height: '100%' }}>
-      <CardContent sx={{ p: 3 }}>
-        <Stack spacing={2}>
+      <CardContent sx={{ p: 1.5 }}>
+        <Stack direction="row" spacing={1.5} alignItems="flex-start">
           <Box
             sx={{
-              backgroundColor: `${color}.lightest`,
-              borderRadius: 3,
-              p: 2,
-              display: 'inline-flex',
+              bgcolor: `${color}.lightest`,
+              borderRadius: 1.5,
+              p: 0.75,
+              display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              width: 'fit-content'
+              flexShrink: 0,
             }}
           >
-            <Icon sx={{ color: `${color}.main`, fontSize: 40 }} />
+            <Icon sx={{ color: `${color}.main`, fontSize: 22 }} />
           </Box>
-          
-          <Box>
-            <Typography variant="h5" fontWeight="bold" gutterBottom>
+          <Box sx={{ minWidth: 0, flex: 1 }}>
+            <Typography variant="subtitle2" fontWeight="bold" noWrap>
               {title}
             </Typography>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', lineHeight: 1.3 }}>
               {description}
             </Typography>
+            {badge != null && (
+              <Chip label={badge} size="small" color={color} sx={{ mt: 0.5, height: 18, fontSize: '0.65rem' }} />
+            )}
           </Box>
-
-          {loading ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', py: 1 }}>
-              <CircularProgress size={24} />
-            </Box>
-          ) : metric !== undefined && (
-            <Box>
-              <Stack direction="row" spacing={1} alignItems="baseline">
-                <Typography variant="h3" color={`${color}.main`} fontWeight="bold">
-                  {metric}
-                </Typography>
-                {metricLabel && (
-                  <Typography variant="body2" color="text.secondary">
-                    {metricLabel}
-                  </Typography>
-                )}
-              </Stack>
-            </Box>
-          )}
         </Stack>
       </CardContent>
     </CardActionArea>
@@ -104,11 +80,7 @@ const PanelCard = ({
 const ControlPanelPage = () => {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState({
-    botUsers: null,
-    chatgptToday: null,
-    chatgptMonth: null
-  });
+  const [stats, setStats] = useState({ botUsers: null, chatgptToday: null, chatgptMonth: null });
   const [error, setError] = useState(null);
 
   useEffect(() => {
@@ -117,13 +89,12 @@ const ControlPanelPage = () => {
       try {
         const [botUsers, chatgptSummary] = await Promise.all([
           BotService.listarUsuarios().catch(() => []),
-          ChatGptUsageService.getSummary().catch(() => null)
+          ChatGptUsageService.getSummary().catch(() => null),
         ]);
-
         setStats({
           botUsers: botUsers?.length || 0,
           chatgptToday: chatgptSummary?.today?.costUsd || 0,
-          chatgptMonth: chatgptSummary?.month?.costUsd || 0
+          chatgptMonth: chatgptSummary?.month?.costUsd || 0,
         });
       } catch (err) {
         console.error('Error cargando estadísticas:', err);
@@ -132,260 +103,112 @@ const ControlPanelPage = () => {
         setLoading(false);
       }
     };
-
     fetchStats();
   }, []);
 
-  // Paneles organizados por categorías
-  const panelCategories = [
+  const categories = [
     {
-      title: '📊 Analytics y Métricas',
-      description: 'Análisis de uso y adopción del sistema',
+      title: 'Control clientes',
       panels: [
-        {
-          title: 'Analytics Empresas',
-          description: 'Métricas de uso por empresa y usuarios',
-          icon: AnalyticsIcon,
-          color: 'primary',
-          path: '/analyticsEmpresas',
-          metric: null,
-          metricLabel: null
-        },
-        {
-          title: 'Analytics Onboarding',
-          description: 'Análisis de adopción en primeros días',
-          icon: RocketLaunchIcon,
-          color: 'success',
-          path: '/analyticsOnboarding',
-          metric: null,
-          metricLabel: null
-        },
-        {
-          title: 'A/B Test Activación',
-          description: 'Resultados del test de activación rápida vs flow normal',
-          icon: ScienceIcon,
-          color: 'warning',
-          path: '/abTestContactActivation',
-          metric: null,
-          metricLabel: null
-        }
-      ]
+        { title: 'Analytics Empresas', description: 'Uso y engagement por empresa', icon: AnalyticsIcon, color: 'primary', path: '/analyticsEmpresas' },
+        { title: 'Analytics Onboarding', description: 'Adopción en primeros días', icon: RocketLaunchIcon, color: 'success', path: '/analyticsOnboarding' },
+        { title: 'Empresas', description: 'Gestión y configuraciones', icon: BusinessIcon, color: 'primary', path: '/empresas' },
+        { title: 'Usuarios del Bot', description: 'Estados activos en WhatsApp', icon: SmartToyIcon, color: 'info', path: '/bot-users', badge: !loading && stats.botUsers !== null ? `${stats.botUsers} activos` : null },
+        { title: 'Conversaciones', description: 'Historial de mensajes', icon: ChatIcon, color: 'secondary', path: '/conversaciones' },
+        { title: 'Monedas', description: 'Dólar, Blue, MEP e índices CAC', icon: CurrencyExchangeIcon, color: 'error', path: '/monedas' },
+      ],
     },
     {
-      title: '🏢 Gestión de Empresas',
-      description: 'Administración de clientes y configuraciones',
+      title: 'Control ventas',
       panels: [
-        {
-          title: 'Empresas',
-          description: 'Gestión de empresas y configuraciones',
-          icon: BusinessIcon,
-          color: 'primary',
-          path: '/empresas',
-          metric: null,
-          metricLabel: null
-        }
-      ]
+        { title: 'Gestión SDR', description: 'Métricas y seguimiento SDR', icon: SupportAgentIcon, color: 'success', path: '/gestionSDR' },
+        { title: 'Contactos SDR', description: 'Pipeline comercial', icon: ContactsIcon, color: 'info', path: '/contactosSDR' },
+        { title: 'Reuniones', description: 'Agenda y seguimiento de reuniones', icon: TodayIcon, color: 'primary', path: '/sdr/reuniones' },
+        { title: 'Funnel', description: 'Embudo y estado del pipeline', icon: FilterListIcon, color: 'warning', path: '/funnel' },
+        { title: 'A/B Landing Agenda', description: 'WhatsApp vs agendar reunión', icon: ScienceIcon, color: 'secondary', path: '/abTestLandingAgenda' },
+      ],
     },
     {
-      title: '💼 Ventas y CRM',
-      description: 'Gestión comercial y prospectos',
+      title: 'Conf extra',
       panels: [
-        {
-          title: 'Contactos SDR',
-          description: 'Gestión de contactos y prospectos comerciales',
-          icon: ContactsIcon,
-          color: 'info',
-          path: '/contactosSDR',
-          metric: null,
-          metricLabel: null
-        },
-        {
-          title: 'Panel SDR',
-          description: 'Dashboard de seguimiento y métricas SDR',
-          icon: SupportAgentIcon,
-          color: 'success',
-          path: '/gestionSDR',
-          metric: null,
-          metricLabel: null
-        },
-        {
-          title: 'Leads',
-          description: 'Seguimiento de prospectos y oportunidades',
-          icon: LeaderboardIcon,
-          color: 'success',
-          path: '/leads',
-          metric: null,
-          metricLabel: null
-        }
-      ]
+        { title: 'Leads', description: 'Prospectos y oportunidades', icon: LeaderboardIcon, color: 'success', path: '/leads' },
+        { title: 'Cadencias', description: 'Secuencias y tareas comerciales', icon: AccountTreeIcon, color: 'secondary', path: '/sdr/cadencias' },
+        { title: 'Admin SDR', description: 'Configuración operativa SDR', icon: SettingsIcon, color: 'info', path: '/sdr/admin' },
+        { title: 'Follow-Up Auto Config', description: 'Automatización de follow-ups', icon: AutorenewIcon, color: 'success', path: '/followUpAutoConfig' },
+        { title: 'Templates WhatsApp', description: 'Gestión de templates Meta', icon: WhatsAppIcon, color: 'success', path: '/templatesMeta' },
+        { title: 'Eventos', description: 'Historial de eventos del sistema', icon: HistoryIcon, color: 'primary', path: '/eventos' },
+        { title: 'ChatGPT Usage', description: 'Costos y consumo de API', icon: PsychologyIcon, color: 'warning', path: '/chatgpt-usage', badge: !loading && stats.chatgptMonth !== null ? `$${stats.chatgptMonth.toFixed(2)}/mes` : null },
+      ],
     },
     {
-      title: '🤖 Bot y Conversaciones',
-      description: 'Gestión del bot de WhatsApp',
+      title: 'Otros A/B testing',
       panels: [
-        {
-          title: 'Usuarios del Bot',
-          description: 'Estados activos y gestión de usuarios',
-          icon: SmartToyIcon,
-          color: 'info',
-          path: '/bot-users',
-          metric: stats.botUsers,
-          metricLabel: 'activos'
-        },
-        {
-          title: 'Conversaciones',
-          description: 'Historial y búsqueda de mensajes',
-          icon: ChatIcon,
-          color: 'secondary',
-          path: '/conversaciones',
-          metric: null,
-          metricLabel: null
-        }
-      ]
+        { title: 'A/B Activación', description: 'IA vs demo directa en onboarding', icon: ScienceIcon, color: 'warning', path: '/abTestContactActivation' },
+      ],
     },
-    {
-      title: '⚙️ Sistema y Configuración',
-      description: 'Monitoreo y configuración del sistema',
-      panels: [
-        {
-          title: 'Uso de ChatGPT',
-          description: 'Monitoreo de costos y consumo de API',
-          icon: PsychologyIcon,
-          color: 'warning',
-          path: '/chatgpt-usage',
-          metric: stats.chatgptMonth !== null ? `$${stats.chatgptMonth.toFixed(2)}` : null,
-          metricLabel: 'este mes'
-        },
-        {
-          title: 'Monedas',
-          description: 'Valores de dólar (Oficial, Blue, MEP) e índices CAC',
-          icon: CurrencyExchangeIcon,
-          color: 'error',
-          path: '/monedas',
-          metric: null,
-          metricLabel: null
-        }
-      ]
-    }
   ];
 
-  // Flatten para compatibilidad con métricas rápidas
-  const allPanels = panelCategories.flatMap(cat => cat.panels);
 
   return (
-    <Box component="main" sx={{ flexGrow: 1, py: 8 }}>
+    <Box component="main" sx={{ flexGrow: 1, py: 4 }}>
       <Container maxWidth="xl">
-        <Stack spacing={4}>
+        <Stack spacing={3}>
           {/* Header */}
           <Box>
-            <Typography variant="h3" fontWeight="bold" gutterBottom>
-              Panel de Control
-            </Typography>
-            <Typography variant="body1" color="text.secondary">
-              Acceso rápido a las herramientas de administración y monitoreo del sistema
-            </Typography>
+            <Typography variant="h4" fontWeight="bold">Panel de Control</Typography>
+            {!loading && (
+              <Stack direction="row" spacing={1.5} alignItems="center" mt={0.75} flexWrap="wrap">
+                <Chip
+                  icon={<TrendingUpIcon sx={{ fontSize: 14 }} />}
+                  label={`ChatGPT hoy: $${(stats.chatgptToday || 0).toFixed(4)}`}
+                  size="small"
+                  color="primary"
+                  variant="outlined"
+                />
+                <Chip
+                  icon={<SmartToyIcon sx={{ fontSize: 14 }} />}
+                  label={`Bot activos: ${stats.botUsers ?? '—'}`}
+                  size="small"
+                  color="info"
+                  variant="outlined"
+                />
+              </Stack>
+            )}
           </Box>
 
           {error && (
-            <Alert severity="warning" onClose={() => setError(null)}>
-              {error}
-            </Alert>
+            <Alert severity="warning" onClose={() => setError(null)}>{error}</Alert>
           )}
 
-          {/* Métricas Rápidas */}
-          {!loading && stats.chatgptToday !== null && (
-            <Card sx={{ bgcolor: 'primary.lightest' }}>
-              <CardContent>
-                <Stack direction="row" spacing={4} alignItems="center" flexWrap="wrap">
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <TrendingUpIcon color="primary" />
-                    <Typography variant="body2" color="text.secondary">
-                      ChatGPT hoy:
-                    </Typography>
-                    <Chip 
-                      label={`$${stats.chatgptToday.toFixed(4)}`}
-                      color="primary"
-                      size="small"
-                    />
-                  </Box>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <SmartToyIcon color="info" />
-                    <Typography variant="body2" color="text.secondary">
-                      Usuarios activos:
-                    </Typography>
-                    <Chip 
-                      label={stats.botUsers}
-                      color="info"
-                      size="small"
-                    />
-                  </Box>
-                </Stack>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Grid de Paneles por Categoría */}
-          {panelCategories.map((category, catIndex) => (
-            <Box key={category.title}>
-              {catIndex > 0 && <Divider sx={{ my: 2 }} />}
-              <Box sx={{ mb: 2 }}>
-                <Typography variant="h5" fontWeight="bold" gutterBottom>
-                  {category.title}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  {category.description}
-                </Typography>
-              </Box>
-              <Grid container spacing={3}>
-                {category.panels.map((panel) => (
+          {/* Categorías */}
+          {categories.map((cat, i) => (
+            <Box key={cat.title}>
+              {i > 0 && <Divider sx={{ mb: 2 }} />}
+              <Typography
+                variant="overline"
+                color="text.secondary"
+                fontWeight="bold"
+                display="block"
+                sx={{ mb: 1 }}
+              >
+                {cat.title}
+              </Typography>
+              <Grid container spacing={1.5}>
+                {cat.panels.map((panel) => (
                   <Grid item xs={12} sm={6} md={4} lg={3} key={panel.path}>
-                    <PanelCard
+                    <CompactCard
                       title={panel.title}
                       description={panel.description}
                       icon={panel.icon}
                       color={panel.color}
                       onClick={() => router.push(panel.path)}
-                      metric={panel.metric}
-                      metricLabel={panel.metricLabel}
-                      loading={loading && panel.metric !== null}
+                      badge={panel.badge}
                     />
                   </Grid>
                 ))}
               </Grid>
             </Box>
           ))}
-
-          {/* Información Adicional */}
-          <Card variant="outlined">
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Accesos Rápidos
-              </Typography>
-              <Typography variant="body2" color="text.secondary" paragraph>
-                Este panel te permite acceder rápidamente a las principales herramientas del sistema:
-              </Typography>
-              <Stack spacing={1}>
-                <Typography variant="body2">
-                  <strong>• Empresas:</strong> Configura y gestiona las empresas del sistema
-                </Typography>
-                <Typography variant="body2">
-                  <strong>• Leads:</strong> Visualiza y gestiona los prospectos comerciales
-                </Typography>
-                <Typography variant="body2">
-                  <strong>• Bot Users:</strong> Administra los usuarios activos del bot de WhatsApp
-                </Typography>
-                <Typography variant="body2">
-                  <strong>• Conversaciones:</strong> Accede al historial completo de mensajes
-                </Typography>
-                <Typography variant="body2">
-                  <strong>• ChatGPT Usage:</strong> Monitorea costos y uso de la API de OpenAI
-                </Typography>
-                <Typography variant="body2">
-                  <strong>• Monedas:</strong> Administra valores históricos del dólar e índices CAC
-                </Typography>
-              </Stack>
-            </CardContent>
-          </Card>
         </Stack>
       </Container>
     </Box>
