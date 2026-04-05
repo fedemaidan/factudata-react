@@ -25,6 +25,7 @@ import {
 import WhatsAppIcon from '@mui/icons-material/WhatsApp';
 import EditCalendarIcon from '@mui/icons-material/EditCalendar';
 import PersonOffIcon from '@mui/icons-material/PersonOff';
+import DeleteIcon from '@mui/icons-material/Delete';
 import DescriptionIcon from '@mui/icons-material/Description';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useAuthContext } from 'src/contexts/auth-context';
@@ -112,7 +113,7 @@ const getCalificacionChip = (calificacion) => {
 
 // ==================== COMPONENTE CARD DE REUNIÓN ====================
 
-const ReunionCard = ({ reunion, variant = 'hoy', onMarcarRealizada, onMarcarNoShow, onCancelar, onVerContacto, onCopiarLink, mostrarSnackbar, mostrarSDR = false }) => {
+const ReunionCard = ({ reunion, variant = 'hoy', onMarcarRealizada, onMarcarNoShow, onCancelar, onEliminar, onVerContacto, onCopiarLink, mostrarSnackbar, mostrarSDR = false }) => {
     const contacto = reunion.contactoId || {};
     const fechaReunion = reunion.fecha || reunion.fechaHora;
     const countdown = getCountdown(fechaReunion);
@@ -293,6 +294,11 @@ const ReunionCard = ({ reunion, variant = 'hoy', onMarcarRealizada, onMarcarNoSh
                 >
                     Ver contacto
                 </Button>
+                <Tooltip title="Eliminar reunión">
+                    <IconButton size="small" color="error" onClick={() => onEliminar(reunion)} sx={{ ml: 'auto' }}>
+                        <DeleteIcon fontSize="small" />
+                    </IconButton>
+                </Tooltip>
             </CardActions>
         </Card>
     );
@@ -451,6 +457,30 @@ const ReunionesSDRPage = () => {
         }
     };
 
+    const [deleteDialog, setDeleteDialog] = useState(false);
+    const [reunionAEliminar, setReunionAEliminar] = useState(null);
+
+    const handleEliminar = (reunion) => {
+        setReunionAEliminar(reunion);
+        setDeleteDialog(true);
+    };
+
+    const handleConfirmarEliminar = async () => {
+        if (!reunionAEliminar) return;
+        setActionLoading(true);
+        try {
+            await SDRService.eliminarReunion(reunionAEliminar._id);
+            mostrarSnackbar('Reunión eliminada');
+            setDeleteDialog(false);
+            setReunionAEliminar(null);
+            cargarReuniones();
+        } catch (error) {
+            mostrarSnackbar(error.response?.data?.error || 'Error al eliminar', 'error');
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
     const handleCancelar = async (reunion) => {
         setActionLoading(true);
         try {
@@ -565,6 +595,7 @@ const ReunionesSDRPage = () => {
                 onMarcarRealizada={handleMarcarRealizada}
                 onMarcarNoShow={handleMarcarNoShow}
                 onCancelar={handleCancelar}
+                onEliminar={handleEliminar}
                 onVerContacto={handleVerContacto}
                 onCopiarLink={handleCopiarLink}
                 mostrarSnackbar={mostrarSnackbar}
@@ -743,6 +774,22 @@ const ReunionesSDRPage = () => {
                     <Button onClick={() => setNoShowDialog(false)}>Cancelar</Button>
                     <Button variant="contained" color="error" onClick={handleConfirmarNoShow} disabled={actionLoading}>
                         {actionLoading ? <CircularProgress size={20} /> : 'Confirmar'}
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            {/* Dialog Eliminar reunión */}
+            <Dialog open={deleteDialog} onClose={() => setDeleteDialog(false)} maxWidth="xs" fullWidth>
+                <DialogTitle>¿Eliminar reunión?</DialogTitle>
+                <DialogContent>
+                    <Typography variant="body2" color="text.secondary">
+                        Esta acción es irreversible. La reunión se eliminará permanentemente.
+                    </Typography>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setDeleteDialog(false)}>Cancelar</Button>
+                    <Button variant="contained" color="error" onClick={handleConfirmarEliminar} disabled={actionLoading}>
+                        {actionLoading ? <CircularProgress size={20} /> : 'Eliminar'}
                     </Button>
                 </DialogActions>
             </Dialog>
