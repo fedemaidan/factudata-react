@@ -154,6 +154,7 @@ const MovementFormPage = () => {
   const isEditMode = Boolean(movimientoId);
 
   const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [modoIngreso, setModoIngreso] = useState(null); // null=pantalla selección, 'manual'
   const [movimiento, setMovimiento] = useState(null);
   const [isExtractingData, setIsExtractingData] = useState(false);
   const [categorias, setCategorias] = useState([]);
@@ -177,6 +178,7 @@ const MovementFormPage = () => {
   const [urlTemporal, setUrlTemporal] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
   const fileInputRef = useRef(null);
+  const pendingExtraccionRef = useRef(false);
   const [createdUser, setCreatedUser] = useState(null);
   const [viewerHeightVh, setViewerHeightVh] = useState(70);
   const [isWide, setIsWide] = useState(false);
@@ -293,6 +295,47 @@ const MovementFormPage = () => {
     const url = URL.createObjectURL(nuevoArchivo);
     setPreviewUrl(url);
     return () => URL.revokeObjectURL(url);
+  }, [nuevoArchivo]);
+
+  // Auto-extracción cuando hay extracción pendiente al seleccionar archivo
+  useEffect(() => {
+    if (!nuevoArchivo || !pendingExtraccionRef.current) return;
+    pendingExtraccionRef.current = false;
+    if (!isEditMode) {
+      // Nuevo movimiento: subir y extraer en paralelo
+      (async () => {
+        setIsExtractingData(true);
+        try {
+          const [uploadRes, result] = await Promise.all([
+            movimientosService.subirImagenTemporal(nuevoArchivo).catch(() => null),
+            movimientosService.extraerDatosDesdeImagen(null, nuevoArchivo, {
+              proyecto_id: effectiveProyectoId,
+              proyecto_nombre: effectiveProyectoName,
+            }),
+          ]);
+          if (uploadRes) {
+            const nuevaUrl = uploadRes?.url_imagen || uploadRes?.url;
+            const sep = nuevaUrl.includes('?') ? '&' : '?';
+            const urlFinal = `${nuevaUrl}${sep}t=${Date.now()}`;
+            setMovimiento(m => ({ ...m, url_imagen: urlFinal }));
+            setUrlTemporal(urlFinal);
+            formik.setFieldValue('url_imagen', urlFinal);
+            setNuevoArchivo(null);
+            if (fileInputRef.current) fileInputRef.current.value = '';
+          }
+          formik.setValues(prev => ({ ...prev, ...result }));
+          setAlert({ open: true, message: '¡Datos extraídos con éxito!', severity: 'success' });
+        } catch {
+          setAlert({ open: true, message: 'No se pudieron extraer los datos.', severity: 'warning' });
+        } finally {
+          setIsExtractingData(false);
+          setModoIngreso('manual');
+        }
+      })();
+    } else {
+      handleExtraerDatos(nuevoArchivo);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nuevoArchivo]);
 
   // Función para cargar todos los datos iniciales
@@ -477,22 +520,23 @@ const MovementFormPage = () => {
     }
   };
 
-  const handleExtraerDatos = async () => {
+  const handleExtraerDatos = async (archivoOverride = null) => {
+    // Edit mode sin imagen ni archivo: pedir archivo primero
+    if (isEditMode && !movimiento?.url_imagen && !nuevoArchivo && !archivoOverride) {
+      pendingExtraccionRef.current = true;
+      fileInputRef.current?.click();
+      return;
+    }
+    const archivo = archivoOverride || nuevoArchivo;
     const urlImagen = isEditMode ? movimiento?.url_imagen : urlTemporal;
-    if (!urlImagen || !empresa) return;
+    if (!urlImagen && !archivo) return;
+    if (!empresa) return;
     setIsExtractingData(true);
     try {
       const result = await movimientosService.extraerDatosDesdeImagen(
         urlImagen,
-        nuevoArchivo,
-        {
-          proveedores,
-          categorias,
-          medios_pago: empresa.medios_pago?.length ? empresa.medios_pago : mediosPago,
-          medio_pago_default: 'Efectivo',
-          proyecto_id: effectiveProyectoId,
-          proyecto_nombre: effectiveProyectoName
-        }
+        archivo,
+        { proyecto_id: effectiveProyectoId, proyecto_nombre: effectiveProyectoName }
       );
       formik.setValues({ ...formik.values, ...result });
       setAlert({ open: true, message: 'Datos extraídos con éxito!', severity: 'success' });
@@ -719,6 +763,15 @@ const createdAtStr = (() => {
       <Head><title>{titulo}</title></Head>
 
       <Container maxWidth="xl" sx={{ pt: 0, pb: 6 }}>
+        {/* File input siempre montado para uso programático */}
+        <input
+          ref={fileInputRef}
+          accept="image/*,application/pdf"
+          type="file"
+          style={{ display: 'none' }}
+          onClick={handleFileInputClick}
+          onChange={handleFileChange}
+        />
         {/* CABECERA */}
         <Paper sx={{ p: 2, mb: 2 }}>
           <Stack direction={{ xs: 'column', md: 'row' }} alignItems={{ xs: 'flex-start', md: 'center' }} justifyContent="space-between" spacing={1}>
@@ -770,15 +823,17 @@ const createdAtStr = (() => {
 
             <Stack direction="row" spacing={1} flexWrap="wrap" alignItems="center">
               {/* Acciones principales */}
+              {(isEditMode || modoIngreso === 'manual') && (
               <Button
                 variant="outlined"
                 color="secondary"
                 startIcon={isExtractingData ? <CircularProgress size={16} /> : <DocumentScannerIcon />}
-                onClick={handleExtraerDatos}
-                disabled={isExtractingData || !hasComprobante}
+                onClick={() => handleExtraerDatos()}
+                disabled={isExtractingData || (!isEditMode && !hasComprobante)}
               >
-                {isExtractingData ? 'Extrayendo...' : 'Extraer datos'}
+                {isExtractingData ? 'Extrayendo...' : 'Extraer datos de archivo'}
               </Button>
+              )}
 
               {/* Menú de acciones avanzadas */}
               <Button
@@ -918,6 +973,41 @@ const createdAtStr = (() => {
               </Stack>
             </Alert>
           </Box>
+        ) : modoIngreso === null && !isEditMode ? (
+          <Box display="flex" flexDirection="column" alignItems="center" justifyContent="center" minHeight="60vh">
+            <Paper sx={{ p: 4, maxWidth: 460, width: '100%', textAlign: 'center' }}>
+              <Typography variant="h6" gutterBottom>¿Cómo querés cargar el movimiento?</Typography>
+              {effectiveProyectoName && (
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                  Proyecto: {effectiveProyectoName}
+                </Typography>
+              )}
+              <Stack spacing={2} sx={{ mt: 3 }}>
+                <Button
+                  variant="contained"
+                  size="large"
+                  startIcon={isExtractingData ? <CircularProgress size={18} /> : <DocumentScannerIcon />}
+                  onClick={() => {
+                    pendingExtraccionRef.current = true;
+                    fileInputRef.current?.click();
+                  }}
+                  disabled={isExtractingData}
+                  sx={{ py: 2 }}
+                >
+                  {isExtractingData ? 'Extrayendo datos...' : 'Tengo una factura o comprobante'}
+                </Button>
+                <Button
+                  variant="outlined"
+                  size="large"
+                  onClick={() => setModoIngreso('manual')}
+                  disabled={isExtractingData}
+                  sx={{ py: 2 }}
+                >
+                  Carga manual
+                </Button>
+              </Stack>
+            </Paper>
+          </Box>
         ) : (
           <Grid container spacing={3}>
             {/* COLUMNA IZQUIERDA */}
@@ -1005,21 +1095,17 @@ const createdAtStr = (() => {
                         <Button size="small" variant="outlined" startIcon={<RemoveIcon />} onClick={decreaseHeight}>Alto</Button>
                         <Button size="small" variant="outlined" startIcon={<AddIcon />} onClick={increaseHeight}>Alto</Button>
                         <Button size="small" variant="contained" startIcon={<OpenInFullIcon />} onClick={() => setFullOpen(true)} disabled={!hasComprobante}>Full</Button>
-                        <Button variant="outlined" size="small" onClick={handleExtraerDatos} disabled={isExtractingData || !hasComprobante}>
-                          {isExtractingData ? <CircularProgress size={18} /> : 'Extraer datos'}
+                        <Button variant="outlined" size="small" onClick={() => handleExtraerDatos()} disabled={isExtractingData || (!isEditMode && !hasComprobante)}>
+                          {isExtractingData ? <CircularProgress size={18} /> : 'Extraer datos de archivo'}
                         </Button>
                       </Stack>
                     </Stack>
 
-                    <input
-                      ref={fileInputRef}
-                      accept="image/*,application/pdf"
-                      type="file"
-                      onClick={handleFileInputClick}
-                      onChange={handleFileChange}
-                    />
+                    <Button variant="outlined" size="small" onClick={() => fileInputRef.current?.click()} sx={{ mb: 1 }}>
+                      Seleccionar archivo
+                    </Button>
                     {!isEditMode && (
-                      <Button variant="contained" onClick={handleUploadImage} disabled={!nuevoArchivo || isReemplazandoImagen} sx={{ mt: 2 }}>
+                      <Button variant="contained" onClick={handleUploadImage} disabled={!nuevoArchivo || isReemplazandoImagen} sx={{ mt: 2, ml: 1 }}>
                         {isReemplazandoImagen ? <CircularProgress size={22} /> : 'Subir comprobante'}
                       </Button>
                     )}
