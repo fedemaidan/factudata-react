@@ -21,6 +21,7 @@ import {
   getCamposVisibles,
   GROUP_SECTIONS,
   getOptionsFromContext,
+  isSubtotalFieldEnabled,
 } from './movementFieldsConfig';
 
 const parseAmountInput = (value) => {
@@ -186,6 +187,8 @@ const MovementFields = ({
     const permitidas = new Set(GROUP_SECTIONS[group] || GROUP_SECTIONS.general);
     return visibles.filter(c => permitidas.has(c.section));
   }, [group, comprobante_info, ingreso_info, empresa, tipoMovimiento]);
+
+  const usaSubtotal = isSubtotalFieldEnabled(comprobante_info, ingreso_info, tipoMovimiento);
 
   const renderCampo = (campo) => {
     const value = formik.values[campo.name] ?? (campo.type === 'boolean' ? false : '');
@@ -377,7 +380,7 @@ const MovementFields = ({
             const impTotal  = (formik.values.impuestos || []).reduce((a, i) => a + (Number(i.monto) || 0), 0);
             const total     = Number(formik.values.total) || 0;
             const diff = Math.abs((subtotal + impTotal) - total);
-            if ((formik.values.impuestos?.length || subtotal > 0) && diff > 0.01) {
+            if (usaSubtotal && (formik.values.impuestos?.length || subtotal > 0) && diff > 0.01) {
               return (
                 <Alert severity="warning" sx={{ mt: 2 }}>
                   Subtotal ({subtotal.toFixed(2)}) + Impuestos ({impTotal.toFixed(2)}) ≠ Total ({total.toFixed(2)}).
