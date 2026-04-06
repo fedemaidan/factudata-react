@@ -251,6 +251,9 @@ const ProyectoMovimientosPage = () => {
   const { user } = useAuthContext();
   const { setBreadcrumbs } = useBreadcrumbs();
   const authUserUid = user?.user_id || user?.uid || null;
+  // Ref estable para acceder al user actual sin re-disparar effects
+  const userRef = useRef(user);
+  useEffect(() => { userRef.current = user; }, [user]);
   const [movimientos, setMovimientos] = useState([]);
   const [movimientosUSD, setMovimientosUSD] = useState([]);
   const [tablaActiva, setTablaActiva] = useState('ARS');
@@ -925,7 +928,7 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
 
       // Cargar empresa, proyecto y movimientos en paralelo
       const [empresa, proyecto] = await Promise.all([
-        getEmpresaDetailsFromUser(user),
+        getEmpresaDetailsFromUser(userRef.current),
         getProyectoById(proyectoId),
       ]);
       logCajaDebug('Empresa y proyecto cargados', {
@@ -1044,7 +1047,7 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
     };
 
     fetchData();
-  }, [proyectoId, user]);
+  }, [proyectoId, authUserUid]);
 
   useEffect(() => {
     if (movimientos.length === 0 && movimientosUSD.length === 0) return;
@@ -1078,10 +1081,14 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
   };
 
   const activeCaja = useMemo(() => filters.caja || cajaSeleccionada || null, [filters.caja, cajaSeleccionada]);
-  const activeTotalsCurrency = useMemo(
-    () => activeCaja?.moneda || tablaActiva || 'ARS',
-    [activeCaja, tablaActiva]
-  );
+  const activeTotalsCurrency = useMemo(() => {
+    // Para cajas con equivalencia (usd_blue, etc.), la moneda visible es la de salida
+    if (activeCaja?.equivalencia && activeCaja.equivalencia !== 'none') {
+      const meta = EQUIV_META[activeCaja.equivalencia];
+      if (meta?.out) return meta.out;
+    }
+    return activeCaja?.moneda || tablaActiva || 'ARS';
+  }, [activeCaja, tablaActiva]);
 
   const cajaCellCtx = useMemo(() => ({
     empresa,
@@ -1118,16 +1125,32 @@ const getTime = (v) => {
       ARS: { ingreso: 0, egreso: 0 },
       USD: { ingreso: 0, egreso: 0 },
     };
+
+    // Si la caja activa tiene equivalencia, convertir montos a la moneda de salida
+    const equiv = activeCaja?.equivalencia && activeCaja.equivalencia !== 'none'
+      ? EQUIV_META[activeCaja.equivalencia]
+      : null;
   
     movimientosFiltrados.forEach((m) => {
-      const moneda = (m.moneda || 'ARS').toUpperCase();
       const tipo = m.type === 'ingreso' ? 'ingreso' : 'egreso';
-      if (!base[moneda]) base[moneda] = { ingreso: 0, egreso: 0 };
-      base[moneda][tipo] += m.total || 0;
+
+      if (equiv?.out && equiv.path) {
+        // Usar valor convertido por equivalencia
+        const converted = equiv.path(m.equivalencias);
+        const val = typeof converted === 'number' ? converted : 0;
+        const outKey = equiv.out.toUpperCase();
+        if (!base[outKey]) base[outKey] = { ingreso: 0, egreso: 0 };
+        base[outKey][tipo] += val;
+      } else {
+        // Sin equivalencia: monto nativo
+        const moneda = (m.moneda || 'ARS').toUpperCase();
+        if (!base[moneda]) base[moneda] = { ingreso: 0, egreso: 0 };
+        base[moneda][tipo] += m.total || 0;
+      }
     });
   
     return base;
-  }, [movimientosFiltrados]);
+  }, [movimientosFiltrados, activeCaja]);
 
   useEffect(() => {
     logCajaDebug('Diagnóstico de fuente para totales', {
