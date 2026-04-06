@@ -183,6 +183,7 @@ const MovementFormPage = () => {
   const [viewerHeightVh, setViewerHeightVh] = useState(70);
   const [isWide, setIsWide] = useState(false);
   const [fullOpen, setFullOpen] = useState(false);
+  const [parcialMonto, setParcialMonto] = useState('');
 
   // En edit mode, priorizar datos del movimiento sobre query params
   const effectiveProyectoId = (isEditMode && movimiento?.proyecto_id) || proyectoId || null;
@@ -403,6 +404,7 @@ const MovementFormPage = () => {
           setCreatedUser(null);
         }
         
+        const isParcialPagado = data.estado === 'Parcialmente Pagado';
         formik.setValues({
           ...formik.values,
           ...data,
@@ -416,8 +418,13 @@ const MovementFormPage = () => {
           obra: data.obra || '',
           cliente: data.cliente || '',
           factura_cliente: typeof data.factura_cliente === 'boolean' ? data.factura_cliente : false,
-          dolar_referencia_manual: data.dolar_referencia_manual ?? false
+          dolar_referencia_manual: data.dolar_referencia_manual ?? false,
+          total: data.total,
         });
+        if (isParcialPagado) {
+          const montoPagado = data.monto_pagado;
+          setParcialMonto(montoPagado != null ? String(montoPagado) : '');
+        }
       }
       
       // Éxito: resetear contador de reintentos
@@ -610,10 +617,17 @@ const createdAtStr = (() => {
         tags_extra: values.tags_extra || [],
         url_imagen: movimiento?.url_imagen ?? values.url_imagen,
         impuestos: values.impuestos || [],
-        obra: values.obra || '',         // <-- NUEVO
-        cliente: values.cliente || '',   // <-- NUEVO
+        obra: values.obra || '',
+        cliente: values.cliente || '',
         factura_cliente: values.factura_cliente === true
       };
+
+      // Pago parcial: total = importe completo; monto_pagado = parte abonada (informativo)
+      if (values.estado === 'Parcialmente Pagado' && values.type === 'egreso') {
+        payload.monto_pagado = Number(parcialMonto) || 0;
+      } else if (values.type === 'egreso') {
+        payload.monto_pagado = null;
+      }
 
       const subtotal  = Number(values.subtotal) || 0;
       const impTotal  = (values.impuestos || []).reduce((a, i) => a + (Number(i.monto) || 0), 0);
@@ -658,6 +672,16 @@ const createdAtStr = (() => {
   }, [formik.values.categoria, categorias]);
 
   const titulo = isEditMode ? `Editar Movimiento (${movimiento?.codigo_operacion || '-'})` : 'Agregar Movimiento';
+
+  useEffect(() => {
+    if (formik.values.estado !== 'Parcialmente Pagado' || formik.values.type !== 'egreso') {
+      setParcialMonto('');
+    }
+  }, [formik.values.estado, formik.values.type]);
+
+  const handleParcialMontoChange = (value) => {
+    setParcialMonto(value);
+  };
 
   const handleCloseStockPopup = () => {
     setStockPopupOpen(false);
@@ -1057,6 +1081,7 @@ const createdAtStr = (() => {
                         obrasOptions={obrasOptions}
                         clientesOptions={clientesOptions}
                       />
+
                     </form>
                   </Box>
                 )}
@@ -1082,6 +1107,8 @@ const createdAtStr = (() => {
                         lastPageUrl={lastPageUrl}
                         lastPageName={lastPageName}
                         movimiento={movimiento}
+                        parcialMonto={parcialMonto}
+                        onParcialMontoChange={handleParcialMontoChange}
                       />
                     </form>
                   </Box>
@@ -1181,6 +1208,8 @@ const createdAtStr = (() => {
                       const rawInfo = tipoMov === 'ingreso' ? ingreso_info : comprobante_info;
                       const defaults = tipoMov === 'ingreso' ? ingresoDefaults : comprobanteDefaults;
                       const camposCfg = { ...defaults, ...(rawInfo || {}) };
+                      const shouldShowMontoPagado = V.type === 'egreso' && V.estado === 'Parcialmente Pagado';
+                      const montoPagadoResumen = Number(parcialMonto || V.monto_pagado || 0);
 
                       // configKey: clave en comprobante_info/ingreso_info. null = siempre visible.
                       const summaryConfig = [
@@ -1203,7 +1232,12 @@ const createdAtStr = (() => {
                         { key: 'total',            label: 'Total', configKey: null, format: (v)=>formatCurrency(v,2) },
                         { key: 'estado',           label: 'Estado', configKey: null,
                           render: () => (
-                            <Chip size="small" color={V.estado === 'Pagado' ? 'success' : 'warning'} label={V.estado || 'Pendiente'} sx={{ ml: 0.5 }} />
+                            <Chip
+                              size="small"
+                              color={V.estado === 'Pagado' ? 'success' : V.estado === 'Parcialmente Pagado' ? 'info' : 'warning'}
+                              label={V.estado || 'Pendiente'}
+                              sx={{ ml: 0.5 }}
+                            />
                           )
                         },
                         { key: 'caja_chica',       label: 'Caja Chica', configKey: 'caja_chica', format: yesNo },
@@ -1222,6 +1256,20 @@ const createdAtStr = (() => {
                             ) : null
                         },
                       ];
+
+                      if (shouldShowMontoPagado) {
+                        const totalIndex = summaryConfig.findIndex((item) => item.key === 'total');
+                        summaryConfig.splice(totalIndex + 1, 0, {
+                          key: '__monto_pagado',
+                          label: 'Monto ya pagado',
+                          configKey: null,
+                          render: () => (
+                            <Typography variant="body2" color="success.main" sx={{ fontWeight: 600 }}>
+                              {formatCurrency(montoPagadoResumen, 2)}
+                            </Typography>
+                          )
+                        });
+                      }
 
                       const rows = summaryConfig
                         // Filtrar por configuración: si tiene configKey, solo mostrar si está habilitado
