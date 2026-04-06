@@ -158,6 +158,7 @@ const MovementFormPage = () => {
   const isEditMode = Boolean(movimientoId);
 
   const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [modoIngreso, setModoIngreso] = useState(null); // null=pantalla selección, 'manual'
   const [movimiento, setMovimiento] = useState(null);
   const [isExtractingData, setIsExtractingData] = useState(false);
   const [categorias, setCategorias] = useState([]);
@@ -181,10 +182,12 @@ const MovementFormPage = () => {
   const [urlTemporal, setUrlTemporal] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
   const fileInputRef = useRef(null);
+  const pendingExtraccionRef = useRef(false);
   const [createdUser, setCreatedUser] = useState(null);
   const [viewerHeightVh, setViewerHeightVh] = useState(70);
   const [isWide, setIsWide] = useState(false);
   const [fullOpen, setFullOpen] = useState(false);
+  const [parcialMonto, setParcialMonto] = useState('');
 
   // En edit mode, priorizar datos del movimiento sobre query params
   const effectiveProyectoId = (isEditMode && movimiento?.proyecto_id) || proyectoId || null;
@@ -299,6 +302,47 @@ const MovementFormPage = () => {
     return () => URL.revokeObjectURL(url);
   }, [nuevoArchivo]);
 
+  // Auto-extracción cuando hay extracción pendiente al seleccionar archivo
+  useEffect(() => {
+    if (!nuevoArchivo || !pendingExtraccionRef.current) return;
+    pendingExtraccionRef.current = false;
+    if (!isEditMode) {
+      // Nuevo movimiento: subir y extraer en paralelo
+      (async () => {
+        setIsExtractingData(true);
+        try {
+          const [uploadRes, result] = await Promise.all([
+            movimientosService.subirImagenTemporal(nuevoArchivo).catch(() => null),
+            movimientosService.extraerDatosDesdeImagen(null, nuevoArchivo, {
+              proyecto_id: effectiveProyectoId,
+              proyecto_nombre: effectiveProyectoName,
+            }),
+          ]);
+          if (uploadRes) {
+            const nuevaUrl = uploadRes?.url_imagen || uploadRes?.url;
+            const sep = nuevaUrl.includes('?') ? '&' : '?';
+            const urlFinal = `${nuevaUrl}${sep}t=${Date.now()}`;
+            setMovimiento(m => ({ ...m, url_imagen: urlFinal }));
+            setUrlTemporal(urlFinal);
+            formik.setFieldValue('url_imagen', urlFinal);
+            setNuevoArchivo(null);
+            if (fileInputRef.current) fileInputRef.current.value = '';
+          }
+          formik.setValues(prev => ({ ...prev, ...result }));
+          setAlert({ open: true, message: '¡Datos extraídos con éxito!', severity: 'success' });
+        } catch {
+          setAlert({ open: true, message: 'No se pudieron extraer los datos.', severity: 'warning' });
+        } finally {
+          setIsExtractingData(false);
+          setModoIngreso('manual');
+        }
+      })();
+    } else {
+      handleExtraerDatos(nuevoArchivo);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nuevoArchivo]);
+
   // Función para cargar todos los datos iniciales
   const loadInitialData = async (attempt = 1) => {
     const maxRetries = 3;
@@ -364,6 +408,7 @@ const MovementFormPage = () => {
           setCreatedUser(null);
         }
         
+        const isParcialPagado = data.estado === 'Parcialmente Pagado';
         formik.setValues({
           ...formik.values,
           ...data,
@@ -377,8 +422,13 @@ const MovementFormPage = () => {
           obra: data.obra || '',
           cliente: data.cliente || '',
           factura_cliente: typeof data.factura_cliente === 'boolean' ? data.factura_cliente : false,
-          dolar_referencia_manual: data.dolar_referencia_manual ?? false
+          dolar_referencia_manual: data.dolar_referencia_manual ?? false,
+          total: data.total,
         });
+        if (isParcialPagado) {
+          const montoPagado = data.monto_pagado;
+          setParcialMonto(montoPagado != null ? String(montoPagado) : '');
+        }
       }
       
       // Éxito: resetear contador de reintentos
@@ -481,22 +531,23 @@ const MovementFormPage = () => {
     }
   };
 
-  const handleExtraerDatos = async () => {
+  const handleExtraerDatos = async (archivoOverride = null) => {
+    // Edit mode sin imagen ni archivo: pedir archivo primero
+    if (isEditMode && !movimiento?.url_imagen && !nuevoArchivo && !archivoOverride) {
+      pendingExtraccionRef.current = true;
+      fileInputRef.current?.click();
+      return;
+    }
+    const archivo = archivoOverride || nuevoArchivo;
     const urlImagen = isEditMode ? movimiento?.url_imagen : urlTemporal;
-    if (!urlImagen || !empresa) return;
+    if (!urlImagen && !archivo) return;
+    if (!empresa) return;
     setIsExtractingData(true);
     try {
       const result = await movimientosService.extraerDatosDesdeImagen(
         urlImagen,
-        nuevoArchivo,
-        {
-          proveedores,
-          categorias,
-          medios_pago: empresa.medios_pago?.length ? empresa.medios_pago : mediosPago,
-          medio_pago_default: 'Efectivo',
-          proyecto_id: effectiveProyectoId,
-          proyecto_nombre: effectiveProyectoName
-        }
+        archivo,
+        { proyecto_id: effectiveProyectoId, proyecto_nombre: effectiveProyectoName }
       );
       formik.setValues({ ...formik.values, ...result });
       setAlert({ open: true, message: 'Datos extraídos con éxito!', severity: 'success' });
@@ -570,10 +621,17 @@ const createdAtStr = (() => {
         tags_extra: values.tags_extra || [],
         url_imagen: movimiento?.url_imagen ?? values.url_imagen,
         impuestos: values.impuestos || [],
-        obra: values.obra || '',         // <-- NUEVO
-        cliente: values.cliente || '',   // <-- NUEVO
+        obra: values.obra || '',
+        cliente: values.cliente || '',
         factura_cliente: values.factura_cliente === true
       };
+
+      // Pago parcial: total = importe completo; monto_pagado = parte abonada (informativo)
+      if (values.estado === 'Parcialmente Pagado' && values.type === 'egreso') {
+        payload.monto_pagado = Number(parcialMonto) || 0;
+      } else if (values.type === 'egreso') {
+        payload.monto_pagado = null;
+      }
 
       const tipoMov = values.type || 'egreso';
       const usaSubtotal = isSubtotalFieldEnabled(comprobante_info, ingreso_info, tipoMov);
@@ -647,6 +705,16 @@ const createdAtStr = (() => {
   }, [formik.values.categoria, categorias]);
 
   const titulo = isEditMode ? `Editar Movimiento (${movimiento?.codigo_operacion || '-'})` : 'Agregar Movimiento';
+
+  useEffect(() => {
+    if (formik.values.estado !== 'Parcialmente Pagado' || formik.values.type !== 'egreso') {
+      setParcialMonto('');
+    }
+  }, [formik.values.estado, formik.values.type]);
+
+  const handleParcialMontoChange = (value) => {
+    setParcialMonto(value);
+  };
 
   const handleCloseStockPopup = () => {
     setStockPopupOpen(false);
@@ -752,6 +820,15 @@ const createdAtStr = (() => {
       <Head><title>{titulo}</title></Head>
 
       <Container maxWidth="xl" sx={{ pt: 0, pb: 6 }}>
+        {/* File input siempre montado para uso programático */}
+        <input
+          ref={fileInputRef}
+          accept="image/*,application/pdf"
+          type="file"
+          style={{ display: 'none' }}
+          onClick={handleFileInputClick}
+          onChange={handleFileChange}
+        />
         {/* CABECERA */}
         <Paper sx={{ p: 2, mb: 2 }}>
           <Stack direction={{ xs: 'column', md: 'row' }} alignItems={{ xs: 'flex-start', md: 'center' }} justifyContent="space-between" spacing={1}>
@@ -803,15 +880,17 @@ const createdAtStr = (() => {
 
             <Stack direction="row" spacing={1} flexWrap="wrap" alignItems="center">
               {/* Acciones principales */}
+              {(isEditMode || modoIngreso === 'manual') && (
               <Button
                 variant="outlined"
                 color="secondary"
                 startIcon={isExtractingData ? <CircularProgress size={16} /> : <DocumentScannerIcon />}
-                onClick={handleExtraerDatos}
-                disabled={isExtractingData || !hasComprobante}
+                onClick={() => handleExtraerDatos()}
+                disabled={isExtractingData || (!isEditMode && !hasComprobante)}
               >
-                {isExtractingData ? 'Extrayendo...' : 'Extraer datos'}
+                {isExtractingData ? 'Extrayendo...' : 'Extraer datos de archivo'}
               </Button>
+              )}
 
               {/* Menú de acciones avanzadas */}
               <Button
@@ -951,6 +1030,41 @@ const createdAtStr = (() => {
               </Stack>
             </Alert>
           </Box>
+        ) : modoIngreso === null && !isEditMode ? (
+          <Box display="flex" flexDirection="column" alignItems="center" justifyContent="center" minHeight="60vh">
+            <Paper sx={{ p: 4, maxWidth: 460, width: '100%', textAlign: 'center' }}>
+              <Typography variant="h6" gutterBottom>¿Cómo querés cargar el movimiento?</Typography>
+              {effectiveProyectoName && (
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                  Proyecto: {effectiveProyectoName}
+                </Typography>
+              )}
+              <Stack spacing={2} sx={{ mt: 3 }}>
+                <Button
+                  variant="contained"
+                  size="large"
+                  startIcon={isExtractingData ? <CircularProgress size={18} /> : <DocumentScannerIcon />}
+                  onClick={() => {
+                    pendingExtraccionRef.current = true;
+                    fileInputRef.current?.click();
+                  }}
+                  disabled={isExtractingData}
+                  sx={{ py: 2 }}
+                >
+                  {isExtractingData ? 'Extrayendo datos...' : 'Tengo una factura o comprobante'}
+                </Button>
+                <Button
+                  variant="outlined"
+                  size="large"
+                  onClick={() => setModoIngreso('manual')}
+                  disabled={isExtractingData}
+                  sx={{ py: 2 }}
+                >
+                  Carga manual
+                </Button>
+              </Stack>
+            </Paper>
+          </Box>
         ) : (
           <Grid container spacing={3}>
             {/* COLUMNA IZQUIERDA */}
@@ -1000,6 +1114,7 @@ const createdAtStr = (() => {
                         obrasOptions={obrasOptions}
                         clientesOptions={clientesOptions}
                       />
+
                     </form>
                   </Box>
                 )}
@@ -1025,6 +1140,8 @@ const createdAtStr = (() => {
                         lastPageUrl={lastPageUrl}
                         lastPageName={lastPageName}
                         movimiento={movimiento}
+                        parcialMonto={parcialMonto}
+                        onParcialMontoChange={handleParcialMontoChange}
                       />
                     </form>
                   </Box>
@@ -1038,21 +1155,17 @@ const createdAtStr = (() => {
                         <Button size="small" variant="outlined" startIcon={<RemoveIcon />} onClick={decreaseHeight}>Alto</Button>
                         <Button size="small" variant="outlined" startIcon={<AddIcon />} onClick={increaseHeight}>Alto</Button>
                         <Button size="small" variant="contained" startIcon={<OpenInFullIcon />} onClick={() => setFullOpen(true)} disabled={!hasComprobante}>Full</Button>
-                        <Button variant="outlined" size="small" onClick={handleExtraerDatos} disabled={isExtractingData || !hasComprobante}>
-                          {isExtractingData ? <CircularProgress size={18} /> : 'Extraer datos'}
+                        <Button variant="outlined" size="small" onClick={() => handleExtraerDatos()} disabled={isExtractingData || (!isEditMode && !hasComprobante)}>
+                          {isExtractingData ? <CircularProgress size={18} /> : 'Extraer datos de archivo'}
                         </Button>
                       </Stack>
                     </Stack>
 
-                    <input
-                      ref={fileInputRef}
-                      accept="image/*,application/pdf"
-                      type="file"
-                      onClick={handleFileInputClick}
-                      onChange={handleFileChange}
-                    />
+                    <Button variant="outlined" size="small" onClick={() => fileInputRef.current?.click()} sx={{ mb: 1 }}>
+                      Seleccionar archivo
+                    </Button>
                     {!isEditMode && (
-                      <Button variant="contained" onClick={handleUploadImage} disabled={!nuevoArchivo || isReemplazandoImagen} sx={{ mt: 2 }}>
+                      <Button variant="contained" onClick={handleUploadImage} disabled={!nuevoArchivo || isReemplazandoImagen} sx={{ mt: 2, ml: 1 }}>
                         {isReemplazandoImagen ? <CircularProgress size={22} /> : 'Subir comprobante'}
                       </Button>
                     )}
@@ -1128,6 +1241,8 @@ const createdAtStr = (() => {
                       const rawInfo = tipoMov === 'ingreso' ? ingreso_info : comprobante_info;
                       const defaults = tipoMov === 'ingreso' ? ingresoDefaults : comprobanteDefaults;
                       const camposCfg = { ...defaults, ...(rawInfo || {}) };
+                      const shouldShowMontoPagado = V.type === 'egreso' && V.estado === 'Parcialmente Pagado';
+                      const montoPagadoResumen = Number(parcialMonto || V.monto_pagado || 0);
 
                       // configKey: clave en comprobante_info/ingreso_info. null = siempre visible.
                       const summaryConfig = [
@@ -1150,7 +1265,12 @@ const createdAtStr = (() => {
                         { key: 'total',            label: 'Total', configKey: null, format: (v)=>formatCurrency(v,2) },
                         { key: 'estado',           label: 'Estado', configKey: null,
                           render: () => (
-                            <Chip size="small" color={V.estado === 'Pagado' ? 'success' : 'warning'} label={V.estado || 'Pendiente'} sx={{ ml: 0.5 }} />
+                            <Chip
+                              size="small"
+                              color={V.estado === 'Pagado' ? 'success' : V.estado === 'Parcialmente Pagado' ? 'info' : 'warning'}
+                              label={V.estado || 'Pendiente'}
+                              sx={{ ml: 0.5 }}
+                            />
                           )
                         },
                         { key: 'caja_chica',       label: 'Caja Chica', configKey: 'caja_chica', format: yesNo },
@@ -1169,6 +1289,20 @@ const createdAtStr = (() => {
                             ) : null
                         },
                       ];
+
+                      if (shouldShowMontoPagado) {
+                        const totalIndex = summaryConfig.findIndex((item) => item.key === 'total');
+                        summaryConfig.splice(totalIndex + 1, 0, {
+                          key: '__monto_pagado',
+                          label: 'Monto ya pagado',
+                          configKey: null,
+                          render: () => (
+                            <Typography variant="body2" color="success.main" sx={{ fontWeight: 600 }}>
+                              {formatCurrency(montoPagadoResumen, 2)}
+                            </Typography>
+                          )
+                        });
+                      }
 
                       const rows = summaryConfig
                         // Filtrar por configuración: si tiene configKey, solo mostrar si está habilitado

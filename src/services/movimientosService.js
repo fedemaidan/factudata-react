@@ -185,13 +185,9 @@ const movimientosService = {
       } else if (archivoUrl) {
         formData.append('archivo_url', archivoUrl);
       }
-  
-      formData.append('proveedores', JSON.stringify(datosContexto.proveedores));
-      formData.append('categorias', JSON.stringify(datosContexto.categorias));
-      formData.append('medios_pago', JSON.stringify(datosContexto.medios_pago));
-      formData.append('medio_pago_default', datosContexto.medio_pago_default);
-      formData.append('proyecto_id', datosContexto.proyecto_id);
-      formData.append('proyecto_nombre', datosContexto.proyecto_nombre);
+
+      if (datosContexto?.proyecto_id) formData.append('proyecto_id', datosContexto.proyecto_id);
+      if (datosContexto?.proyecto_nombre) formData.append('proyecto_nombre', datosContexto.proyecto_nombre);
       
       const response = await api.post(`/movimiento/extraer`, formData, {
         headers: {
