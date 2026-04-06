@@ -361,7 +361,7 @@ const MovementFormPage = () => {
           setCreatedUser(null);
         }
         
-        const isParcialPagado = data.estado === 'Parcialmente Pagado' && data.monto_total;
+        const isParcialPagado = data.estado === 'Parcialmente Pagado';
         formik.setValues({
           ...formik.values,
           ...data,
@@ -376,12 +376,11 @@ const MovementFormPage = () => {
           cliente: data.cliente || '',
           factura_cliente: typeof data.factura_cliente === 'boolean' ? data.factura_cliente : false,
           dolar_referencia_manual: data.dolar_referencia_manual ?? false,
-          total: isParcialPagado ? data.monto_total : data.total,
-          monto_total: data.monto_total || '',
+          total: data.total,
         });
         if (isParcialPagado) {
-          const montoPagado = data.total;
-          setParcialMonto(String(montoPagado));
+          const montoPagado = data.monto_pagado;
+          setParcialMonto(montoPagado != null ? String(montoPagado) : '');
         }
       }
       
@@ -541,7 +540,6 @@ const createdAtStr = (() => {
       categoria: '',
       subcategoria: '',
       estado: 'Pendiente',
-      monto_total: '',
       url_imagen: null,
       tags_extra: [],
       caja_chica: false,
@@ -580,10 +578,11 @@ const createdAtStr = (() => {
         factura_cliente: values.factura_cliente === true
       };
 
-      // Pago parcial: total en DB = monto pagado; monto_total = importe completo de la factura
+      // Pago parcial: total = importe completo; monto_pagado = parte abonada (informativo)
       if (values.estado === 'Parcialmente Pagado' && values.type === 'egreso') {
-        payload.monto_total = Number(values.total) || 0;
-        payload.total = Number(parcialMonto) || 0;
+        payload.monto_pagado = Number(parcialMonto) || 0;
+      } else if (values.type === 'egreso') {
+        payload.monto_pagado = null;
       }
 
       const subtotal  = Number(values.subtotal) || 0;
@@ -636,8 +635,8 @@ const createdAtStr = (() => {
     }
   }, [formik.values.estado, formik.values.type]);
 
-  const handleParcialMontoChange = (e) => {
-    setParcialMonto(e.target.value);
+  const handleParcialMontoChange = (value) => {
+    setParcialMonto(value);
   };
 
   const handleCloseStockPopup = () => {
@@ -1123,6 +1122,8 @@ const createdAtStr = (() => {
                       const rawInfo = tipoMov === 'ingreso' ? ingreso_info : comprobante_info;
                       const defaults = tipoMov === 'ingreso' ? ingresoDefaults : comprobanteDefaults;
                       const camposCfg = { ...defaults, ...(rawInfo || {}) };
+                      const shouldShowMontoPagado = V.type === 'egreso' && V.estado === 'Parcialmente Pagado';
+                      const montoPagadoResumen = Number(parcialMonto || V.monto_pagado || 0);
 
                       // configKey: clave en comprobante_info/ingreso_info. null = siempre visible.
                       const summaryConfig = [
@@ -1169,6 +1170,20 @@ const createdAtStr = (() => {
                             ) : null
                         },
                       ];
+
+                      if (shouldShowMontoPagado) {
+                        const totalIndex = summaryConfig.findIndex((item) => item.key === 'total');
+                        summaryConfig.splice(totalIndex + 1, 0, {
+                          key: '__monto_pagado',
+                          label: 'Monto ya pagado',
+                          configKey: null,
+                          render: () => (
+                            <Typography variant="body2" color="success.main" sx={{ fontWeight: 600 }}>
+                              {formatCurrency(montoPagadoResumen, 2)}
+                            </Typography>
+                          )
+                        });
+                      }
 
                       const rows = summaryConfig
                         // Filtrar por configuración: si tiene configKey, solo mostrar si está habilitado

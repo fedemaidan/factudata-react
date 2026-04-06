@@ -82,6 +82,13 @@ const CajaTablaCell = ({ colKey, mov, amountColor, ctx, isProrrateo = false }) =
         { ...cellBase, minWidth: COLS.total, textAlign: 'right', fontWeight: 700, color: amountColor },
         formatCurrency(mov.total)
       );
+    case 'montoPagado':
+      return cell(
+        { ...cellBase, minWidth: COLS.montoPagado, textAlign: 'right' },
+        mov.monto_pagado != null && mov.monto_pagado !== ''
+          ? formatCurrency(mov.monto_pagado)
+          : '—'
+      );
     case 'categoria':
       return cell(
         { ...cellBase, minWidth: COLS.categoria },

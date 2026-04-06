@@ -23,6 +23,27 @@ import {
   getOptionsFromContext,
 } from './movementFieldsConfig';
 
+const parseAmountInput = (value) => {
+  if (value == null) return '';
+  const cleaned = String(value).replace(/[^\d.,]/g, '').replace(/\./g, '').replace(',', '.');
+  if (!cleaned) return '';
+  const [intPart, ...decParts] = cleaned.split('.');
+  const intNormalized = String(Number(intPart || 0));
+  const decimal = decParts.join('').slice(0, 2);
+  if (!decimal) return intNormalized;
+  return `${intNormalized}.${decimal}`;
+};
+
+const formatAmountInput = (value) => {
+  if (value == null || value === '') return '';
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return '';
+  return numeric.toLocaleString('es-AR', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
+};
+
 const MovementFields = ({
   formik,
   comprobante_info,
@@ -69,26 +90,31 @@ const MovementFields = ({
       <Box sx={{ mt: 2 }}>
         <TextField
           label="Monto pagado"
-          type="number"
+          type="text"
           size="small"
           fullWidth
-          value={parcialMonto}
-          onChange={onParcialMontoChange}
-          inputProps={{ min: 0, step: 0.01 }}
+          value={formatAmountInput(parcialMonto)}
+          onChange={(event) => {
+            const parsed = parseAmountInput(event.target.value);
+            onParcialMontoChange(parsed);
+          }}
+          inputProps={{ inputMode: 'decimal' }}
         />
         {totalFactura > 0 && (
-          <Stack direction="row" spacing={1} sx={{ mt: 1, flexWrap: 'wrap' }}>
+          <Stack spacing={1} sx={{ mt: 1.5, alignItems: 'flex-start' }}>
             <Chip
               size="small"
               color="success"
               variant="outlined"
               label={`Pagado: ${formatCurrency(pagado, 2)}`}
+              sx={{ '& .MuiChip-label': { px: 1.5, py: 0.4 }, borderRadius: 2 }}
             />
             <Chip
               size="small"
               color="warning"
               variant="outlined"
               label={`Saldo pendiente: ${formatCurrency(pendiente, 2)}`}
+              sx={{ '& .MuiChip-label': { px: 1.5, py: 0.4 }, borderRadius: 2 }}
             />
           </Stack>
         )}
@@ -215,9 +241,29 @@ const MovementFields = ({
       );
 
       if (campo.name === 'total') {
+        const handleTotalChange = (event) => {
+          const parsed = parseAmountInput(event.target.value);
+          formik.setFieldValue('total', parsed);
+        };
+
+        const totalField = (
+          <TextField
+            key={campo.name}
+            fullWidth
+            type="text"
+            name={campo.name}
+            label={campo.label}
+            value={formatAmountInput(value)}
+            onChange={handleTotalChange}
+            inputProps={{ inputMode: 'decimal' }}
+            InputProps={campo.readonly ? { readOnly: true } : undefined}
+            disabled={campo.readonly}
+          />
+        );
+
         return (
           <>
-            {regularField}
+            {totalField}
             {renderPagoParcialDetalle()}
           </>
         );
