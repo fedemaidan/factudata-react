@@ -25,6 +25,11 @@ import PreguntasContextoStep from './steps/PreguntasContextoStep';
 import ValidacionLoteStep from './steps/ValidacionLoteStep';
 import { mapExtractedToForm, emptyForm } from './cargaMasivaMap';
 import { buildMovimientoPayloadFromBatchItem } from './buildBatchMovimientoPayload';
+import {
+  pickRandomFiles,
+  buildContextoCuestionarioTexto,
+  preguntasEstanCompletas,
+} from './cargaMasivaPreguntasUtils';
 
 const STEPS = ['Archivos', 'Contexto', 'Validación'];
 
@@ -33,8 +38,8 @@ const initialContexto = () => ({
   proyecto_nombre: '',
   default_type: 'egreso',
   default_moneda: 'ARS',
-  default_categoria: '',
-  default_medio_pago: '',
+  default_categorias: [],
+  default_medios_pago: [],
   default_etapa: '',
   notas_lote: '',
 });
@@ -70,6 +75,10 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [confirmError, setConfirmError] = useState('');
   const [analyzeError, setAnalyzeError] = useState('');
+  const [preguntasGpt, setPreguntasGpt] = useState([]);
+  const [respuestasGpt, setRespuestasGpt] = useState({});
+  const [preguntasLoading, setPreguntasLoading] = useState(false);
+  const [preguntasError, setPreguntasError] = useState('');
 
   const resetWizard = useCallback(() => {
     setActiveStep(0);
@@ -79,6 +88,10 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
     setAnalyzeError('');
     setConfirmError('');
     setConfirmOpen(false);
+    setPreguntasGpt([]);
+    setRespuestasGpt({});
+    setPreguntasError('');
+    setPreguntasLoading(false);
   }, []);
 
   useEffect(() => {
@@ -137,12 +150,17 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
       proyecto_nombre: contexto.proyecto_nombre,
       default_type: contexto.default_type,
       default_moneda: contexto.default_moneda,
-      default_categoria: contexto.default_categoria,
-      default_medio_pago: contexto.default_medio_pago,
+      default_categorias: contexto.default_categorias,
+      default_medios_pago: contexto.default_medios_pago,
       default_subcategoria: contexto.default_subcategoria,
       default_etapa: contexto.default_etapa,
     }),
     [contexto],
+  );
+
+  const textoCuestionario = useMemo(
+    () => buildContextoCuestionarioTexto(preguntasGpt, respuestasGpt),
+    [preguntasGpt, respuestasGpt],
   );
 
   const payloadContextoLote = useMemo(
@@ -151,12 +169,19 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
       proyecto_nombre: contexto.proyecto_nombre || undefined,
       default_type: contexto.default_type,
       default_moneda: contexto.default_moneda,
-      default_categoria: contexto.default_categoria || undefined,
-      default_medio_pago: contexto.default_medio_pago || undefined,
+      ...(Array.isArray(contexto.default_categorias) && contexto.default_categorias.length > 0
+        ? { default_categorias: contexto.default_categorias }
+        : {}),
+      ...(Array.isArray(contexto.default_medios_pago) && contexto.default_medios_pago.length > 0
+        ? { default_medios_pago: contexto.default_medios_pago }
+        : {}),
       default_etapa: contexto.default_etapa || undefined,
       notas_lote: contexto.notas_lote || undefined,
+      ...(textoCuestionario.trim()
+        ? { contexto_cuestionario_texto: textoCuestionario.trim() }
+        : {}),
     }),
-    [contexto],
+    [contexto, textoCuestionario],
   );
 
   const canConfirm = useMemo(() => {
@@ -171,6 +196,38 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
     if (confirmLoading || analyzeLoading) return;
     onClose();
   };
+
+  const fetchPreguntasYAvanzar = useCallback(async () => {
+    if (files.length === 0) return;
+    setPreguntasError('');
+    setPreguntasLoading(true);
+    try {
+      const muestra = pickRandomFiles(files, 5);
+      const metadata_lote = {
+        total: files.length,
+        archivos: files.map((f) => ({ name: f.name, type: f.type, size: f.size })),
+      };
+      const res = await movimientosService.sugerirPreguntasCargaMasiva(muestra, metadata_lote);
+      if (res.error) {
+        throw new Error(res.message || 'Error al generar preguntas');
+      }
+      const preguntas = Array.isArray(res.data?.preguntas) ? res.data.preguntas : [];
+      setPreguntasGpt(preguntas);
+      setRespuestasGpt({});
+      setActiveStep(1);
+    } catch (e) {
+      setPreguntasError(e.message || 'Error al generar preguntas');
+    } finally {
+      setPreguntasLoading(false);
+    }
+  }, [files]);
+
+  const handleRespuestasGptPatch = useCallback((qid, patch) => {
+    setRespuestasGpt((prev) => ({
+      ...prev,
+      [qid]: { ...prev[qid], ...patch },
+    }));
+  }, []);
 
   const handleRunAnalyze = async () => {
     setAnalyzeError('');
@@ -203,18 +260,23 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
 
   const handleNext = async () => {
     if (activeStep === 0) {
-      if (files.length === 0) return;
-      setActiveStep(1);
+      await fetchPreguntasYAvanzar();
       return;
     }
     if (activeStep === 1) {
       if (!contexto.proyecto_id) return;
+      if (!preguntasEstanCompletas(preguntasGpt, respuestasGpt)) return;
       await handleRunAnalyze();
     }
   };
 
   const handleBack = () => {
     if (activeStep === 2) return;
+    if (activeStep === 1) {
+      setPreguntasGpt([]);
+      setRespuestasGpt({});
+      setPreguntasError('');
+    }
     setActiveStep((s) => Math.max(0, s - 1));
   };
 
@@ -276,8 +338,9 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
   const stepProgress = ((activeStep + 1) / STEPS.length) * 100;
 
   const nextDisabled =
-    (activeStep === 0 && files.length === 0) ||
-    (activeStep === 1 && !contexto.proyecto_id) ||
+    (activeStep === 0 && (files.length === 0 || preguntasLoading)) ||
+    (activeStep === 1 &&
+      (!contexto.proyecto_id || !preguntasEstanCompletas(preguntasGpt, respuestasGpt))) ||
     analyzeLoading;
 
   return (
@@ -307,13 +370,55 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
               {analyzeError}
             </Alert>
           )}
-          {activeStep === 0 && <CargaArchivosStep files={files} onFilesChange={setFiles} />}
+          {activeStep === 0 && (
+            <Box sx={{ position: 'relative' }}>
+              {preguntasError && (
+                <Alert
+                  severity="error"
+                  sx={{ mb: 2 }}
+                  action={
+                    <Button color="inherit" size="small" onClick={fetchPreguntasYAvanzar} disabled={preguntasLoading}>
+                      Reintentar
+                    </Button>
+                  }
+                >
+                  {preguntasError}
+                </Alert>
+              )}
+              {preguntasLoading && (
+                <Stack
+                  alignItems="center"
+                  justifyContent="center"
+                  spacing={2}
+                  sx={{
+                    position: 'absolute',
+                    inset: 0,
+                    zIndex: 2,
+                    minHeight: 240,
+                    bgcolor: (theme) => theme.palette.background.paper,
+                    opacity: 0.96,
+                  }}
+                >
+                  <CircularProgress />
+                  <Typography variant="body2" color="text.secondary" textAlign="center" px={2}>
+                    Analizando la muestra del lote (preguntas extra solo si hace falta)…
+                  </Typography>
+                </Stack>
+              )}
+              <CargaArchivosStep files={files} onFilesChange={setFiles} />
+            </Box>
+          )}
           {activeStep === 1 && (
             <PreguntasContextoStep
               contexto={contexto}
               onChange={setContexto}
               proyectos={proyectos}
               files={files}
+              categorias={drawerCatalogos.categorias}
+              mediosPago={drawerCatalogos.mediosPago}
+              preguntasGpt={preguntasGpt}
+              respuestasGpt={respuestasGpt}
+              onRespuestasChange={handleRespuestasGptPatch}
             />
           )}
           {activeStep === 2 && !analyzeLoading && (

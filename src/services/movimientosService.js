@@ -361,6 +361,34 @@ const movimientosService = {
   },
 
   /**
+   * Genera preguntas dinámicas con GPT (muestra de archivos + metadata del lote).
+   * @param {File[]} archivosMuestra - hasta 5 archivos
+   * @param {object} metadata_lote - { total, archivos: [{ name, type, size }] }
+   */
+  sugerirPreguntasCargaMasiva: async (archivosMuestra, metadata_lote = {}) => {
+    try {
+      const formData = new FormData();
+      (archivosMuestra || []).forEach((f) => {
+        formData.append('muestra', f);
+      });
+      formData.append('metadata_lote', JSON.stringify(metadata_lote || {}));
+      const response = await api.post('/movimiento/carga-masiva/sugerir-preguntas', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      if (response.status === 200) {
+        return { error: false, data: response.data };
+      }
+      return { error: true, message: 'Error al generar preguntas' };
+    } catch (err) {
+      console.error('sugerirPreguntasCargaMasiva:', err);
+      return {
+        error: true,
+        message: err.response?.data?.error || err.response?.data?.details || err.message,
+      };
+    }
+  },
+
+  /**
    * Analiza un lote de archivos (imágenes/PDF) sin crear borradores.
    * @param {File[]} archivos
    * @param {object} contexto_lote - proyecto_id, proyecto_nombre, default_type, default_moneda, etc.
