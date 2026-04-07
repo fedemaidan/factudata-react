@@ -22,7 +22,7 @@ const ESTADOS_OPCIONES = [
   { value: 'completado', label: 'Listo' },
   { value: 'error', label: 'Error' },
   { value: 'confirmado', label: 'Confirmado' },
-  { value: 'duplicado', label: 'Duplicado' },
+  { value: 'rechazado', label: 'Rechazado' },
 ];
 
 const PanelValidacionFiltersBar = ({

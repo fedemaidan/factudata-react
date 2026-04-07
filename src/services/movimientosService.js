@@ -277,6 +277,7 @@ const movimientosService = {
       if (filters.sin_proyecto) params.append('sin_proyecto', 'true');
       if (filters.estado_procesamiento) params.append('estado_procesamiento', filters.estado_procesamiento);
       if (filters.estado_borrador) params.append('estado_borrador', filters.estado_borrador);
+      if (filters.rechazados) params.append('rechazados', filters.rechazados);
       if (filters.limit) params.append('limit', filters.limit);
       if (filters.offset) params.append('offset', filters.offset);
       const response = await api.get(`panel-validacion/borradores?${params.toString()}`);
@@ -310,13 +311,13 @@ const movimientosService = {
     }
   },
 
-  // Panel de validación: marcar como duplicado (no crea movimiento)
-  marcarBorradoresDuplicado: async (ids) => {
+  // Panel de validación: rechazar borradores (no contabiliza; desaparecen del listado)
+  rechazarBorradores: async (ids) => {
     try {
-      const response = await api.post('panel-validacion/marcar-duplicado', { ids });
+      const response = await api.post('panel-validacion/rechazar', { ids });
       return { error: false, data: response.data };
     } catch (err) {
-      console.error('Error marcando duplicado:', err);
+      console.error('Error rechazando borradores:', err);
       return { error: true, message: err.response?.data?.error || err.message };
     }
   },
