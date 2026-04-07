@@ -19,7 +19,7 @@ export const DEFINICION_CAMPOS = [
   { section: 'importes', name: 'subtotal_dolar', label: 'Subtotal USD', type: 'number', readonly: true },
   { section: 'importes', name: 'total_dolar', label: 'Total USD', type: 'number', readonly: true },
   { section: 'pago', name: 'medio_pago', label: 'Medio de Pago', type: 'select', optionsKey: 'mediosPago', visibleIf: (info) => info.medio_pago },
-  { section: 'pago', name: 'estado', label: 'Estado', type: 'select', options: ['Pendiente', 'Pagado'], visibleIf: (_, empresa) => empresa?.con_estados },
+  { section: 'pago', name: 'estado', label: 'Estado', type: 'select', options: ['Pendiente', 'Parcialmente Pagado', 'Pagado'], visibleIf: (_, empresa) => empresa?.con_estados },
   { section: 'pago', name: 'caja_chica', label: 'Caja Chica', type: 'boolean', visibleIf: (info) => info.caja_chica },
   { section: 'pago', name: 'empresa_facturacion', label: 'Empresa de facturacion', type: 'select', optionsKey: 'subempresas', visibleIf: (info) => info.empresa_facturacion },
   { section: 'pago', name: 'factura_cliente', label: 'Factura de cliente', type: 'boolean', visibleIf: (info) => info.factura_cliente },
@@ -81,6 +81,22 @@ export const getCamposConfig = (comprobanteInfo, ingresoInfo, tipoMovimiento) =>
   const rawInfo = tipoMovimiento === 'ingreso' ? ingresoInfo : comprobanteInfo;
   const defaults = tipoMovimiento === 'ingreso' ? INGRESO_INFO_DEFAULT : COMPROBANTE_INFO_DEFAULT;
   return { ...defaults, ...(rawInfo || {}) };
+};
+
+export const isSubtotalFieldEnabled = (comprobanteInfo, ingresoInfo, tipoMovimiento) =>
+  Boolean(getCamposConfig(comprobanteInfo, ingresoInfo, tipoMovimiento).subtotal);
+
+const sumImpuestos = (impuestos) =>
+  (Array.isArray(impuestos) ? impuestos : []).reduce((a, i) => a + (Number(i?.monto) || 0), 0);
+
+/**
+ * Neto imponible coherente con total e impuestos cuando el usuario no edita Subtotal.
+ * Si impuestos > total (datos incoherentes), evita persistir subtotal negativo.
+ */
+export const computeNetSubtotalFromTotalImpuestos = (total, impuestos) => {
+  const t = Number(total) || 0;
+  const imp = sumImpuestos(impuestos);
+  return Math.max(0, t - imp);
 };
 
 export const getOptionsFromContext = (key, context = {}) => {

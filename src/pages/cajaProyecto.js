@@ -60,6 +60,7 @@ const COLS = {
   obra: 200,
   cliente: 200,
   total: 160,
+  montoPagado: 170,
   categoria: 160,
   subcategoria: 160,
   medioPago: 150,
@@ -474,6 +475,7 @@ const handleSaveCols = async () => {
     fechaCreacion: !compactCols,
     tipo: !compactCols,
     total: true,
+    montoPagado: false,
     categoria: true,
     subcategoria: !compactCols && !!empresa?.comprobante_info?.subcategoria,
     medioPago: !!empresa?.comprobante_info?.medio_pago,
@@ -2161,6 +2163,7 @@ useEffect(() => {
       <FormControlLabel control={<Checkbox size="small" checked={visibleCols.tipo} onChange={() => toggleCol('tipo')} />} label="Tipo" />
     )}
     <FormControlLabel control={<Checkbox size="small" checked={visibleCols.total}        onChange={() => toggleCol('total')} />}        label="Total" />
+    <FormControlLabel control={<Checkbox size="small" checked={visibleCols.montoPagado}  onChange={() => toggleCol('montoPagado')} />}  label="Monto pagado" />
     <FormControlLabel control={<Checkbox size="small" checked={visibleCols.categoria}    onChange={() => toggleCol('categoria')} />}    label={compactCols ? "Categoría / Subcat." : "Categoría"} />
     {!compactCols && empresa?.comprobante_info?.subcategoria && (
       <FormControlLabel control={<Checkbox size="small" checked={visibleCols.subcategoria} onChange={() => toggleCol('subcategoria')} />} label="Subcategoría" />
