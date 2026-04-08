@@ -103,6 +103,10 @@ function normalizeFilterText(value) {
     .replace(/\s+/g, ' ');
 }
 
+function toNormalizedSet(values = []) {
+  return new Set((values || []).map((v) => normalizeFilterText(v)).filter(Boolean));
+}
+
 function getMovimientoUserCandidates(m) {
   const values = [];
 
@@ -266,8 +270,8 @@ export function filterMovimientos(movimientos, filters = {}, extraContext = {}) 
 
   // Proyectos (multi-select)
   if (filters.proyectos?.length > 0) {
-    const ids = new Set(filters.proyectos);
-    result = result.filter((m) => ids.has(m.proyecto_id));
+    const ids = new Set(filters.proyectos.map((id) => String(id)));
+    result = result.filter((m) => ids.has(String(m.proyecto_id)));
   }
 
   // Tipo (egreso/ingreso)
@@ -277,28 +281,28 @@ export function filterMovimientos(movimientos, filters = {}, extraContext = {}) 
 
   // Categorías
   if (filters.categorias?.length > 0) {
-    const set = new Set(filters.categorias.map((c) => c.toLowerCase()));
-    result = result.filter((m) => m.categoria && set.has(m.categoria.toLowerCase()));
+    const set = toNormalizedSet(filters.categorias);
+    result = result.filter((m) => set.has(normalizeFilterText(m.categoria)));
   }
 
   // Proveedores
   if (filters.proveedores?.length > 0) {
-    const set = new Set(filters.proveedores.map((p) => p.toLowerCase()));
+    const set = toNormalizedSet(filters.proveedores);
     result = result.filter(
-      (m) => m.nombre_proveedor && set.has(m.nombre_proveedor.toLowerCase()),
+      (m) => set.has(normalizeFilterText(m.nombre_proveedor)),
     );
   }
 
   // Etapas
   if (filters.etapas?.length > 0) {
-    const set = new Set(filters.etapas.map((e) => e.toLowerCase()));
-    result = result.filter((m) => m.etapa && set.has(m.etapa.toLowerCase()));
+    const set = toNormalizedSet(filters.etapas);
+    result = result.filter((m) => set.has(normalizeFilterText(m.etapa)));
   }
 
   // Medio de pago
   if (filters.medio_pago?.length > 0) {
-    const set = new Set(filters.medio_pago.map((mp) => mp.toLowerCase()));
-    result = result.filter((m) => m.medio_pago && set.has(m.medio_pago.toLowerCase()));
+    const set = toNormalizedSet(filters.medio_pago);
+    result = result.filter((m) => set.has(normalizeFilterText(m.medio_pago)));
   }
 
   // Usuarios
@@ -325,9 +329,9 @@ export function filterMovimientos(movimientos, filters = {}, extraContext = {}) 
 
   // Moneda original
   if (filters.moneda_movimiento?.length > 0) {
-    const set = new Set(filters.moneda_movimiento.map((mon) => mon.toLowerCase()));
+    const set = toNormalizedSet(filters.moneda_movimiento);
     result = result.filter(
-      (m) => m.moneda && set.has(m.moneda.toLowerCase()),
+      (m) => set.has(normalizeFilterText(m.moneda)),
     );
   }
 
@@ -354,18 +358,18 @@ export function applyBlockFilters(movimientos, block) {
   const fe = block.filtros_extra;
   if (fe) {
     if (fe.categorias?.length > 0) {
-      const set = new Set(fe.categorias.map((c) => c.toLowerCase()));
-      result = result.filter((m) => m.categoria && set.has(m.categoria.toLowerCase()));
+      const set = toNormalizedSet(fe.categorias);
+      result = result.filter((m) => set.has(normalizeFilterText(m.categoria)));
     }
     if (fe.proveedores?.length > 0) {
-      const set = new Set(fe.proveedores.map((p) => p.toLowerCase()));
+      const set = toNormalizedSet(fe.proveedores);
       result = result.filter(
-        (m) => m.nombre_proveedor && set.has(m.nombre_proveedor.toLowerCase()),
+        (m) => set.has(normalizeFilterText(m.nombre_proveedor)),
       );
     }
     if (fe.etapas?.length > 0) {
-      const set = new Set(fe.etapas.map((e) => e.toLowerCase()));
-      result = result.filter((m) => m.etapa && set.has(m.etapa.toLowerCase()));
+      const set = toNormalizedSet(fe.etapas);
+      result = result.filter((m) => set.has(normalizeFilterText(m.etapa)));
     }
   }
 
@@ -373,16 +377,16 @@ export function applyBlockFilters(movimientos, block) {
   const ex = block.excluir;
   if (ex) {
     if (ex.categorias?.length > 0) {
-      const set = new Set(ex.categorias.map((c) => c.toLowerCase()));
-      result = result.filter((m) => !m.categoria || !set.has(m.categoria.toLowerCase()));
+      const set = toNormalizedSet(ex.categorias);
+      result = result.filter((m) => !set.has(normalizeFilterText(m.categoria)));
     }
     if (ex.proveedores?.length > 0) {
-      const set = new Set(ex.proveedores.map((p) => p.toLowerCase()));
-      result = result.filter((m) => !m.nombre_proveedor || !set.has(m.nombre_proveedor.toLowerCase()));
+      const set = toNormalizedSet(ex.proveedores);
+      result = result.filter((m) => !set.has(normalizeFilterText(m.nombre_proveedor)));
     }
     if (ex.etapas?.length > 0) {
-      const set = new Set(ex.etapas.map((e) => e.toLowerCase()));
-      result = result.filter((m) => !m.etapa || !set.has(m.etapa.toLowerCase()));
+      const set = toNormalizedSet(ex.etapas);
+      result = result.filter((m) => !set.has(normalizeFilterText(m.etapa)));
     }
     if (ex.usuarios?.length > 0) {
       const set = new Set(ex.usuarios.map((u) => normalizeFilterText(u)).filter(Boolean));
@@ -477,18 +481,18 @@ export function processMetricCards(block, movimientos, _presupuestos, currencies
     const fe = metrica.filtros_extra;
     if (fe) {
       if (fe.categorias?.length > 0) {
-        const set = new Set(fe.categorias.map((c) => c.toLowerCase()));
-        data = data.filter((m) => m.categoria && set.has(m.categoria.toLowerCase()));
+        const set = toNormalizedSet(fe.categorias);
+        data = data.filter((m) => set.has(normalizeFilterText(m.categoria)));
       }
       if (fe.proveedores?.length > 0) {
-        const set = new Set(fe.proveedores.map((p) => p.toLowerCase()));
+        const set = toNormalizedSet(fe.proveedores);
         data = data.filter(
-          (m) => m.nombre_proveedor && set.has(m.nombre_proveedor.toLowerCase()),
+          (m) => set.has(normalizeFilterText(m.nombre_proveedor)),
         );
       }
       if (fe.etapas?.length > 0) {
-        const set = new Set(fe.etapas.map((e) => e.toLowerCase()));
-        data = data.filter((m) => m.etapa && set.has(m.etapa.toLowerCase()));
+        const set = toNormalizedSet(fe.etapas);
+        data = data.filter((m) => set.has(normalizeFilterText(m.etapa)));
       }
     }
 
@@ -678,10 +682,11 @@ export function processMovementsTable(block, movimientos, _presupuestos, currenc
  * Cruza presupuestos de control con movimientos reales agrupados por categoría
  * @returns {{ headers, rows }}
  */
-export function processBudgetVsActual(block, movimientos, presupuestos, currencies, cotizaciones) {
+export function processBudgetVsActual(block, movimientos, presupuestos, currencies, cotizaciones, extraContext = {}) {
   const displayCurrency = currencies[0];
   const data = applyBlockFilters(movimientos, block);
   const agruparPor = block.agrupar_por || 'categoria';
+  const runtimeProjectIds = new Set((extraContext?.filters?.proyectos || []).map((id) => String(id)));
 
   // Filtrar presupuestos por tipo si corresponde
   let presFiltered = presupuestos || [];
@@ -697,6 +702,11 @@ export function processBudgetVsActual(block, movimientos, presupuestos, currenci
       if (campoReq === 'proveedor') return !!(p.proveedor || p.nombre_proveedor);
       return true;
     });
+  }
+
+  // Respetar filtro global de proyectos en bloques que usan presupuestos
+  if (runtimeProjectIds.size > 0) {
+    presFiltered = presFiltered.filter((p) => runtimeProjectIds.has(getPresupuestoProjectInfo(p).id));
   }
 
   // Excluir presupuestos específicos
@@ -725,6 +735,17 @@ export function processBudgetVsActual(block, movimientos, presupuestos, currenci
       default: return p.categoria || p.rubro || 'Sin categoría';
     }
   };
+
+  const exclusionFieldByGroup = {
+    categoria: 'categorias',
+    etapa: 'etapas',
+    proveedor: 'proveedores',
+  };
+  const exclusionField = exclusionFieldByGroup[agruparPor];
+  const exclusionSet = exclusionField ? toNormalizedSet(block.excluir?.[exclusionField] || []) : new Set();
+  if (exclusionSet.size > 0) {
+    presFiltered = presFiltered.filter((p) => !exclusionSet.has(normalizeFilterText(getPresNombre(p))));
+  }
 
   // Mapear presupuestos por campo de agrupación
   const presMap = new Map();
@@ -807,10 +828,11 @@ export function processBudgetVsActual(block, movimientos, presupuestos, currenci
  * - Recibido/Ejecutado
  * - Saldo
  */
-export function processCategoryBudgetMatrix(block, movimientos, presupuestos, currencies, cotizaciones) {
+export function processCategoryBudgetMatrix(block, movimientos, presupuestos, currencies, cotizaciones, extraContext = {}) {
   const displayCurrency = currencies[0];
   const list = Array.isArray(presupuestos) ? presupuestos : [];
   const movs = Array.isArray(movimientos) ? movimientos : [];
+  const runtimeProjectIds = new Set((extraContext?.filters?.proyectos || []).map((id) => String(id)));
 
   // Mapa proyecto_id -> nombre para fallback en reportes públicos
   const projectNameById = new Map();
@@ -833,6 +855,11 @@ export function processCategoryBudgetMatrix(block, movimientos, presupuestos, cu
   const projectTiposCreacion = new Map(); // Guardar tipos de creación por proyecto
 
   for (const p of list) {
+    if (runtimeProjectIds.size > 0) {
+      const { id: runtimeProjectId } = getPresupuestoProjectInfo(p, projectNameById);
+      if (!runtimeProjectIds.has(runtimeProjectId)) continue;
+    }
+
     // Filtrar por tipo de presupuesto
     if (tipoTarget !== 'ambos' && (p.tipo || 'egreso') !== tipoTarget) {
       continue;

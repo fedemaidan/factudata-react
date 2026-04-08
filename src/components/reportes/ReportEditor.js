@@ -98,6 +98,34 @@ const ReportEditor = ({
     return [config.display_currency || 'ARS'];
   }, [config]);
 
+  const excludeOptions = useMemo(() => {
+    const normalize = (value) => String(value || '')
+      .trim()
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/\s+/g, ' ');
+
+    const collect = (values = []) => {
+      const labelsByKey = new Map();
+      for (const value of values) {
+        const label = String(value || '').trim();
+        if (!label) continue;
+        const key = normalize(label);
+        if (!key || labelsByKey.has(key)) continue;
+        labelsByKey.set(key, label);
+      }
+      return [...labelsByKey.values()].sort((a, b) => a.localeCompare(b, 'es'));
+    };
+
+    const categorias = collect([
+      ...movimientos.map((m) => m.categoria),
+      ...presupuestos.map((p) => p.categoria || p.rubro),
+    ]);
+
+    return { categorias };
+  }, [movimientos, presupuestos]);
+
   // Config general
   const updateField = (field, value) => {
     setConfig((prev) => ({ ...prev, [field]: value }));
@@ -668,6 +696,7 @@ const ReportEditor = ({
         initialBlock={editingBlockIdx !== null ? config.layout[editingBlockIdx] : null}
         proyectos={proyectos}
         sociosOptions={usuariosEmpresa}
+        excludeOptions={excludeOptions}
       />
     </Box>
   );

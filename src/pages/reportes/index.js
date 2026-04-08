@@ -157,7 +157,7 @@ const TEMPLATES = [
       fecha: { enabled: true, default_range: 'current_year' },
       proyectos: { enabled: true },
       tipo: { enabled: false },
-      categorias: { enabled: true },
+      categorias: { enabled: false },
     },
     layout: [
       {

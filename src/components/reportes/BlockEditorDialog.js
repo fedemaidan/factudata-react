@@ -183,9 +183,40 @@ function defaultBlock(type) {
   }
 }
 
+function normalizeOptionText(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ');
+}
+
+function sanitizeExcludeValues(values = []) {
+  const out = [];
+  const seen = new Set();
+  for (const value of values || []) {
+    const label = String(value || '').trim();
+    if (!label) continue;
+    const key = normalizeOptionText(label);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(label);
+  }
+  return out;
+}
+
 // ─── Componente Principal ───
 
-const BlockEditorDialog = ({ open, onClose, onSave, initialBlock, proyectos = [], sociosOptions = [] }) => {
+const BlockEditorDialog = ({
+  open,
+  onClose,
+  onSave,
+  initialBlock,
+  proyectos = [],
+  sociosOptions = [],
+  excludeOptions = {},
+}) => {
   const isEditing = !!initialBlock;
   const [step, setStep] = useState(isEditing ? 1 : 0); // 0=elegir tipo, 1=configurar
   const [block, setBlock] = useState(null);
@@ -311,22 +342,22 @@ const BlockEditorDialog = ({ open, onClose, onSave, initialBlock, proyectos = []
             <MetricCardsConfig block={block} onChange={updateBlock} />
           )}
           {block.type === 'summary_table' && (
-            <SummaryTableConfig block={block} onChange={updateBlock} />
+            <SummaryTableConfig block={block} onChange={updateBlock} excludeOptions={excludeOptions} />
           )}
           {block.type === 'movements_table' && (
             <MovementsTableConfig block={block} onChange={updateBlock} />
           )}
           {block.type === 'budget_vs_actual' && (
-            <BudgetVsActualConfig block={block} onChange={updateBlock} />
+            <BudgetVsActualConfig block={block} onChange={updateBlock} excludeOptions={excludeOptions} />
           )}
           {block.type === 'category_budget_matrix' && (
             <CategoryBudgetMatrixConfig block={block} onChange={updateBlock} proyectos={proyectos} />
           )}
           {block.type === 'chart' && (
-            <ChartConfig block={block} onChange={updateBlock} />
+            <ChartConfig block={block} onChange={updateBlock} excludeOptions={excludeOptions} />
           )}
           {block.type === 'grouped_detail' && (
-            <GroupedDetailConfig block={block} onChange={updateBlock} />
+            <GroupedDetailConfig block={block} onChange={updateBlock} excludeOptions={excludeOptions} />
           )}
           {block.type === 'balance_between_partners' && (
             <BalanceBetweenPartnersConfig block={block} onChange={updateBlock} sociosOptions={sociosOptions} />
@@ -478,7 +509,7 @@ function MetricCardsConfig({ block, onChange }) {
   );
 }
 
-function SummaryTableConfig({ block, onChange }) {
+function SummaryTableConfig({ block, onChange, excludeOptions = {} }) {
   const columnas = block.columnas || [];
 
   const updateColumna = (idx, field, value) => {
@@ -601,9 +632,10 @@ function SummaryTableConfig({ block, onChange }) {
         multiple
         freeSolo
         size="small"
-            options={[]}
+        options={excludeOptions.categorias || []}
+        filterSelectedOptions
         value={block.excluir?.categorias || []}
-        onChange={(_, val) => onChange('excluir', { ...(block.excluir || {}), categorias: val })}
+        onChange={(_, val) => onChange('excluir', { ...(block.excluir || {}), categorias: sanitizeExcludeValues(val) })}
         renderTags={(value, getTagProps) =>
           value.map((option, index) => (
             <Chip key={option} label={option} size="small" color="error" variant="outlined" {...getTagProps({ index })} />
@@ -692,7 +724,7 @@ function MovementsTableConfig({ block, onChange }) {
   );
 }
 
-function BudgetVsActualConfig({ block, onChange }) {
+function BudgetVsActualConfig({ block, onChange, excludeOptions = {} }) {
   return (
     <Stack spacing={2}>
       <FormControl size="small" fullWidth>
@@ -767,9 +799,10 @@ function BudgetVsActualConfig({ block, onChange }) {
         multiple
         freeSolo
         size="small"
-        options={[]}
+        options={excludeOptions.categorias || []}
+        filterSelectedOptions
         value={block.excluir?.categorias || []}
-        onChange={(_, val) => onChange('excluir', { ...(block.excluir || {}), categorias: val })}
+        onChange={(_, val) => onChange('excluir', { ...(block.excluir || {}), categorias: sanitizeExcludeValues(val) })}
         renderTags={(value, getTagProps) =>
           value.map((option, index) => (
             <Chip key={option} label={option} size="small" color="error" variant="outlined" {...getTagProps({ index })} />
@@ -800,7 +833,7 @@ function BudgetVsActualConfig({ block, onChange }) {
   );
 }
 
-function ChartConfig({ block, onChange }) {
+function ChartConfig({ block, onChange, excludeOptions = {} }) {
   const columnas = block.columnas || [];
 
   const updateColumna = (idx, field, value) => {
@@ -915,9 +948,10 @@ function ChartConfig({ block, onChange }) {
         multiple
         freeSolo
         size="small"
-        options={[]}
+        options={excludeOptions.categorias || []}
+        filterSelectedOptions
         value={block.excluir?.categorias || []}
-        onChange={(_, val) => onChange('excluir', { ...(block.excluir || {}), categorias: val })}
+        onChange={(_, val) => onChange('excluir', { ...(block.excluir || {}), categorias: sanitizeExcludeValues(val) })}
         renderTags={(value, getTagProps) =>
           value.map((option, index) => (
             <Chip key={option} label={option} size="small" color="error" variant="outlined" {...getTagProps({ index })} />
@@ -1093,7 +1127,7 @@ function CategoryBudgetMatrixConfig({ block, onChange, proyectos = [] }) {
   );
 }
 
-function GroupedDetailConfig({ block, onChange }) {
+function GroupedDetailConfig({ block, onChange, excludeOptions = {} }) {
   const selected = block.columnas_visibles || [];
 
   return (
@@ -1161,9 +1195,10 @@ function GroupedDetailConfig({ block, onChange }) {
         multiple
         freeSolo
         size="small"
-        options={[]}
+        options={excludeOptions.categorias || []}
+        filterSelectedOptions
         value={block.excluir?.categorias || []}
-        onChange={(_, val) => onChange('excluir', { ...(block.excluir || {}), categorias: val })}
+        onChange={(_, val) => onChange('excluir', { ...(block.excluir || {}), categorias: sanitizeExcludeValues(val) })}
         renderTags={(value, getTagProps) =>
           value.map((option, index) => (
             <Chip key={option} label={option} size="small" color="error" variant="outlined" {...getTagProps({ index })} />
