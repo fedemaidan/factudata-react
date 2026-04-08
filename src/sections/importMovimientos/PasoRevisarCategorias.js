@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, forwardRef, useImperativeHandle, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -30,15 +30,16 @@ import {
 } from '@mui/icons-material';
 import importMovimientosService from 'src/services/importMovimientosService';
 
-const PasoRevisarCategorias = ({ 
-  empresa, 
-  wizardData, 
-  updateWizardData, 
-  onNext, 
-  onBack, 
-  setLoading, 
-  setError 
-}) => {
+const PasoRevisarCategorias = forwardRef(({
+  empresa,
+  wizardData,
+  updateWizardData,
+  onNext,
+  onBack,
+  setLoading,
+  setError,
+  hideNavigation = false,
+}, ref) => {
   const [mapeosCategorias, setMapeosCategorias] = useState([]);
   const [mapeosSubcategorias, setMapeosSubcategorias] = useState([]);
   const [editandoCategoria, setEditandoCategoria] = useState(null);
@@ -372,7 +373,7 @@ const PasoRevisarCategorias = ({
     }
   };
 
-  const handleContinuar = async () => {
+  const handleContinuar = useCallback(async ({ skipOnNext = false } = {}) => {
     try {
       setLoading(true);
       console.log('[PasoRevisarCategorias] Persistiendo categorías y subcategorías');
@@ -424,16 +425,30 @@ const PasoRevisarCategorias = ({
         mapeosFinaleCategorias: resultadoPersistencia.mapeos_finales
       });
       
-      // Ir al siguiente paso
-      onNext();
-      
+      if (!skipOnNext) {
+        onNext();
+      }
     } catch (error) {
       console.error('[PasoRevisarCategorias] Error persistiendo:', error);
       setError(`Error persistiendo categorías: ${error.message}`);
+      throw error;
     } finally {
       setLoading(false);
     }
-  };
+  }, [
+    mapeosCategorias,
+    mapeosSubcategorias,
+    wizardData,
+    empresa,
+    updateWizardData,
+    onNext,
+    setLoading,
+    setError,
+  ]);
+
+  useImperativeHandle(ref, () => ({
+    submitStep: () => handleContinuar({ skipOnNext: true }),
+  }), [handleContinuar]);
 
   const getEstadoColor = (estado) => {
     switch (estado) {
@@ -868,26 +883,20 @@ const PasoRevisarCategorias = ({
         </CardContent>
       </Card>
 
-      {/* Navegación */}
-      <Box sx={{ mt: 4, display: 'flex', justifyContent: 'space-between' }}>
-        <Button
-          variant="outlined"
-          onClick={onBack}
-          size="large"
-        >
-          Volver
-        </Button>
-        
-        <Button
-          variant="contained"
-          onClick={handleContinuar}
-          size="large"
-        >
-          Continuar con Proveedores
-        </Button>
-      </Box>
+      {!hideNavigation && (
+        <Box sx={{ mt: 4, display: 'flex', justifyContent: 'space-between' }}>
+          <Button variant="outlined" onClick={onBack} size="large">
+            Volver
+          </Button>
+          <Button variant="contained" onClick={() => handleContinuar({ skipOnNext: false })} size="large">
+            Continuar con Proveedores
+          </Button>
+        </Box>
+      )}
     </Box>
   );
-};
+});
+
+PasoRevisarCategorias.displayName = 'PasoRevisarCategorias';
 
 export default PasoRevisarCategorias;

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import PropTypes from 'prop-types';
 import {
   Box,
@@ -15,8 +15,12 @@ import {
   Typography,
   Alert,
   CircularProgress,
+  ToggleButton,
+  ToggleButtonGroup,
 } from '@mui/material';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
+import TableChartIcon from '@mui/icons-material/TableChart';
+import ImageIcon from '@mui/icons-material/Image';
 import proveedorService from 'src/services/proveedorService';
 import movimientosService from 'src/services/movimientosService';
 import { getCamposConfig } from 'src/components/movementFieldsConfig';
@@ -30,8 +34,14 @@ import {
   buildContextoCuestionarioTexto,
   preguntasEstanCompletas,
 } from './cargaMasivaPreguntasUtils';
+import ImportPlanillaStep from 'src/components/importMovimientos/ImportPlanillaStep';
+import PasoRevisarCategorias from 'src/sections/importMovimientos/PasoRevisarCategorias';
+import PasoRevisarProveedores from 'src/sections/importMovimientos/PasoRevisarProveedores';
+import PasoAclaracionesMovimientos from 'src/sections/importMovimientos/PasoAclaracionesMovimientos';
+import PasoResumen from 'src/sections/importMovimientos/PasoResumen';
 
-const STEPS = ['Archivos', 'Contexto', 'Validación'];
+const STEPS_OCR = ['Archivos', 'Contexto', 'Validación'];
+const STEPS_TABULAR = ['Planilla', 'Categorías', 'Proveedores', 'Aclaraciones', 'Resumen'];
 
 const initialContexto = () => ({
   proyecto_id: '',
@@ -42,6 +52,19 @@ const initialContexto = () => ({
   default_medios_pago: [],
   default_etapa: '',
   notas_lote: '',
+});
+
+const initialImportWizardData = () => ({
+  archivos: [],
+  analisisCsv: null,
+  proyectoSeleccionado: null,
+  tipoImportacion: 'general',
+  mapeosCategorias: [],
+  mapeosSubcategorias: [],
+  mapeosProveedores: [],
+  aclaracionesUsuario: '',
+  entidadesResueltas: null,
+  resultadoFinal: null,
 });
 
 function itemFormIsValid(form, comprobanteInfo, ingresoInfo) {
@@ -55,6 +78,7 @@ function itemFormIsValid(form, comprobanteInfo, ingresoInfo) {
 }
 
 const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess }) => {
+  const [cargaModo, setCargaModo] = useState(null);
   const [activeStep, setActiveStep] = useState(0);
   const [files, setFiles] = useState([]);
   const [contexto, setContexto] = useState(initialContexto);
@@ -79,8 +103,20 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
   const [respuestasGpt, setRespuestasGpt] = useState({});
   const [preguntasLoading, setPreguntasLoading] = useState(false);
   const [preguntasError, setPreguntasError] = useState('');
+  const [importWizardData, setImportWizardData] = useState(initialImportWizardData);
+  const [tabularLoading, setTabularLoading] = useState(false);
+  const [tabularError, setTabularError] = useState('');
+
+  const categoriasRef = useRef(null);
+  const proveedoresRef = useRef(null);
+  const aclaracionesRef = useRef(null);
+
+  const updateImportWizardData = useCallback((patch) => {
+    setImportWizardData((prev) => ({ ...prev, ...patch }));
+  }, []);
 
   const resetWizard = useCallback(() => {
+    setCargaModo(null);
     setActiveStep(0);
     setFiles([]);
     setContexto(initialContexto());
@@ -92,6 +128,9 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
     setRespuestasGpt({});
     setPreguntasError('');
     setPreguntasLoading(false);
+    setImportWizardData(initialImportWizardData());
+    setTabularError('');
+    setTabularLoading(false);
   }, []);
 
   useEffect(() => {
@@ -135,6 +174,17 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
       cancelled = true;
     };
   }, [open, empresa]);
+
+  const empresaConProyectos = useMemo(
+    () => (empresa ? { ...empresa, proyectos: proyectos || [] } : null),
+    [empresa, proyectos],
+  );
+
+  const steps = useMemo(() => {
+    if (cargaModo === 'tabular') return STEPS_TABULAR;
+    if (cargaModo === 'ocr') return STEPS_OCR;
+    return [];
+  }, [cargaModo]);
 
   const proyectoNombreById = useMemo(() => {
     const m = {};
@@ -193,8 +243,24 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
   }, [batchItems, drawerCatalogos.comprobanteInfo, drawerCatalogos.ingresoInfo]);
 
   const handleClose = () => {
-    if (confirmLoading || analyzeLoading) return;
+    if (confirmLoading || analyzeLoading || tabularLoading) return;
     onClose();
+  };
+
+  const handleModoChange = (_e, value) => {
+    if (value === null) return;
+    setActiveStep(0);
+    setTabularError('');
+    if (value === 'ocr') {
+      setImportWizardData(initialImportWizardData());
+    } else {
+      setFiles([]);
+      setPreguntasGpt([]);
+      setRespuestasGpt({});
+      setPreguntasError('');
+      setBatchItems([]);
+    }
+    setCargaModo(value);
   };
 
   const fetchPreguntasYAvanzar = useCallback(async () => {
@@ -258,7 +324,7 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
     }
   };
 
-  const handleNext = async () => {
+  const handleOcrNext = async () => {
     if (activeStep === 0) {
       await fetchPreguntasYAvanzar();
       return;
@@ -270,14 +336,71 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
     }
   };
 
-  const handleBack = () => {
-    if (activeStep === 2) return;
-    if (activeStep === 1) {
-      setPreguntasGpt([]);
-      setRespuestasGpt({});
-      setPreguntasError('');
+  const handleTabularNext = async () => {
+    setTabularError('');
+    if (activeStep === 0) {
+      if (!importWizardData.analisisCsv) return;
+      if (
+        importWizardData.tipoImportacion === 'proyecto_especifico' &&
+        !importWizardData.proyectoSeleccionado
+      ) {
+        return;
+      }
+      setActiveStep(1);
+      return;
     }
-    setActiveStep((s) => Math.max(0, s - 1));
+    try {
+      if (activeStep === 1) {
+        await categoriasRef.current?.submitStep();
+        setActiveStep(2);
+        return;
+      }
+      if (activeStep === 2) {
+        await proveedoresRef.current?.submitStep();
+        setActiveStep(3);
+        return;
+      }
+      if (activeStep === 3) {
+        await aclaracionesRef.current?.submitStep();
+        setActiveStep(4);
+      }
+    } catch {
+      /* error ya en setTabularError vía Pasos */
+    }
+  };
+
+  const handleNext = async () => {
+    if (cargaModo === 'ocr') {
+      await handleOcrNext();
+    } else if (cargaModo === 'tabular') {
+      await handleTabularNext();
+    }
+  };
+
+  const handleBack = () => {
+    if (cargaModo === 'ocr') {
+      if (activeStep === 2) return;
+      if (activeStep === 1) {
+        setPreguntasGpt([]);
+        setRespuestasGpt({});
+        setPreguntasError('');
+      }
+      if (activeStep === 0) {
+        setCargaModo(null);
+        setFiles([]);
+        return;
+      }
+      setActiveStep((s) => Math.max(0, s - 1));
+      return;
+    }
+    if (cargaModo === 'tabular') {
+      if (activeStep === 0) {
+        setCargaModo(null);
+        setImportWizardData(initialImportWizardData());
+        return;
+      }
+      setActiveStep((s) => Math.max(0, s - 1));
+    }
   };
 
   const updateItem = useCallback((clientId, updater) => {
@@ -335,13 +458,120 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
     }
   };
 
-  const stepProgress = ((activeStep + 1) / STEPS.length) * 100;
+  const handleImportFinish = (resultadoImport) => {
+    onSuccess?.({
+      tabularImport: true,
+      resultado: resultadoImport,
+      wizardSnapshot: importWizardData,
+    });
+    onClose();
+  };
 
-  const nextDisabled =
+  const stepProgress = cargaModo
+    ? ((activeStep + 1) / steps.length) * 100
+    : 0;
+
+  const nextDisabledOcr =
     (activeStep === 0 && (files.length === 0 || preguntasLoading)) ||
     (activeStep === 1 &&
       (!contexto.proyecto_id || !preguntasEstanCompletas(preguntasGpt, respuestasGpt))) ||
     analyzeLoading;
+
+  const nextDisabledTabular =
+    (activeStep === 0 &&
+      (!importWizardData.analisisCsv ||
+        (importWizardData.tipoImportacion === 'proyecto_especifico' &&
+          !importWizardData.proyectoSeleccionado))) ||
+    tabularLoading;
+
+  const showPrimaryNext =
+    cargaModo === 'ocr'
+      ? activeStep < 2
+      : cargaModo === 'tabular'
+        ? activeStep < 4
+        : false;
+
+  const primaryNextDisabled =
+    cargaModo === 'ocr' ? nextDisabledOcr : cargaModo === 'tabular' ? nextDisabledTabular : true;
+
+  const primaryNextLabel =
+    cargaModo === 'ocr' && activeStep === 1
+      ? analyzeLoading
+        ? 'Analizando…'
+        : 'Analizar y continuar'
+      : 'Siguiente';
+
+  const backDisabled =
+    cargaModo === 'ocr'
+      ? activeStep === 2 || analyzeLoading
+      : cargaModo === 'tabular'
+        ? tabularLoading
+        : false;
+
+  const renderTabularStep = () => {
+    if (!empresaConProyectos) return null;
+    const common = {
+      empresa: empresaConProyectos,
+      wizardData: importWizardData,
+      updateWizardData: updateImportWizardData,
+      setLoading: setTabularLoading,
+      setError: setTabularError,
+    };
+    switch (activeStep) {
+      case 0:
+        return (
+          <ImportPlanillaStep
+            {...common}
+            hideNavigation
+            title="Planilla CSV o Excel"
+            subtitle="Subí los archivos y elegí cómo se asignan los proyectos. Luego usá «Siguiente»."
+          />
+        );
+      case 1:
+        return (
+          <PasoRevisarCategorias
+            ref={categoriasRef}
+            {...common}
+            onNext={() => {}}
+            onBack={() => {}}
+            hideNavigation
+          />
+        );
+      case 2:
+        return (
+          <PasoRevisarProveedores
+            ref={proveedoresRef}
+            {...common}
+            onNext={() => {}}
+            onBack={() => {}}
+            hideNavigation
+          />
+        );
+      case 3:
+        return (
+          <PasoAclaracionesMovimientos
+            ref={aclaracionesRef}
+            wizardData={importWizardData}
+            updateWizardData={updateImportWizardData}
+            onNext={() => {}}
+            onBack={() => {}}
+            hideNavigation
+          />
+        );
+      case 4:
+        return (
+          <PasoResumen
+            {...common}
+            updateWizardData={updateImportWizardData}
+            onFinish={handleImportFinish}
+            onBack={() => {}}
+            hideNavigation
+          />
+        );
+      default:
+        return null;
+    }
+  };
 
   return (
     <>
@@ -355,121 +585,187 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
           </Stack>
         </DialogTitle>
         <Box sx={{ px: 3, pt: 0 }}>
-          <LinearProgress variant="determinate" value={stepProgress} sx={{ height: 4, borderRadius: 1, mb: 2 }} />
-          <Stepper activeStep={activeStep} alternativeLabel sx={{ mb: 2 }}>
-            {STEPS.map((label) => (
-              <Step key={label}>
-                <StepLabel>{label}</StepLabel>
-              </Step>
-            ))}
-          </Stepper>
+          {cargaModo && (
+            <>
+              <LinearProgress variant="determinate" value={stepProgress} sx={{ height: 4, borderRadius: 1, mb: 2 }} />
+              <Stepper activeStep={activeStep} alternativeLabel sx={{ mb: 2 }}>
+                {steps.map((label) => (
+                  <Step key={label}>
+                    <StepLabel>{label}</StepLabel>
+                  </Step>
+                ))}
+              </Stepper>
+            </>
+          )}
         </Box>
         <DialogContent dividers sx={{ minHeight: 420 }}>
-          {analyzeError && (
-            <Alert severity="error" sx={{ mb: 2 }} onClose={() => setAnalyzeError('')}>
-              {analyzeError}
+          {tabularError && cargaModo === 'tabular' && (
+            <Alert severity="error" sx={{ mb: 2 }} onClose={() => setTabularError('')}>
+              {tabularError}
             </Alert>
           )}
-          {activeStep === 0 && (
-            <Box sx={{ position: 'relative' }}>
-              {preguntasError && (
-                <Alert
-                  severity="error"
-                  sx={{ mb: 2 }}
-                  action={
-                    <Button color="inherit" size="small" onClick={fetchPreguntasYAvanzar} disabled={preguntasLoading}>
-                      Reintentar
-                    </Button>
-                  }
-                >
-                  {preguntasError}
+          {!cargaModo && (
+            <Stack spacing={2} alignItems="stretch">
+              <Typography variant="body2" color="text.secondary">
+                Elegí un tipo de carga. No se pueden mezclar comprobantes y planillas en la misma sesión.
+              </Typography>
+              <ToggleButtonGroup
+                exclusive
+                value={cargaModo}
+                onChange={handleModoChange}
+                fullWidth
+                sx={{ flexWrap: 'wrap' }}
+              >
+                <ToggleButton value="ocr" sx={{ py: 1.5, flex: 1, minWidth: 160 }}>
+                  <Stack direction="row" alignItems="center" spacing={1}>
+                    <ImageIcon fontSize="small" />
+                    <Typography variant="body2">Comprobantes (imagen / PDF)</Typography>
+                  </Stack>
+                </ToggleButton>
+                <ToggleButton value="tabular" sx={{ py: 1.5, flex: 1, minWidth: 160 }}>
+                  <Stack direction="row" alignItems="center" spacing={1}>
+                    <TableChartIcon fontSize="small" />
+                    <Typography variant="body2">Planilla (CSV / Excel)</Typography>
+                  </Stack>
+                </ToggleButton>
+              </ToggleButtonGroup>
+            </Stack>
+          )}
+
+          {cargaModo === 'ocr' && (
+            <>
+              {analyzeError && (
+                <Alert severity="error" sx={{ mb: 2 }} onClose={() => setAnalyzeError('')}>
+                  {analyzeError}
                 </Alert>
               )}
-              {preguntasLoading && (
+              {activeStep === 0 && (
+                <Box sx={{ position: 'relative' }}>
+                  {preguntasError && (
+                    <Alert
+                      severity="error"
+                      sx={{ mb: 2 }}
+                      action={
+                        <Button color="inherit" size="small" onClick={fetchPreguntasYAvanzar} disabled={preguntasLoading}>
+                          Reintentar
+                        </Button>
+                      }
+                    >
+                      {preguntasError}
+                    </Alert>
+                  )}
+                  {preguntasLoading && (
+                    <Stack
+                      alignItems="center"
+                      justifyContent="center"
+                      spacing={2}
+                      sx={{
+                        position: 'absolute',
+                        inset: 0,
+                        zIndex: 2,
+                        minHeight: 240,
+                        bgcolor: (theme) => theme.palette.background.paper,
+                        opacity: 0.96,
+                      }}
+                    >
+                      <CircularProgress />
+                      <Typography variant="body2" color="text.secondary" textAlign="center" px={2}>
+                        Analizando la muestra del lote (preguntas extra solo si hace falta)…
+                      </Typography>
+                    </Stack>
+                  )}
+                  <CargaArchivosStep files={files} onFilesChange={setFiles} />
+                </Box>
+              )}
+              {activeStep === 1 && (
+                <PreguntasContextoStep
+                  contexto={contexto}
+                  onChange={setContexto}
+                  proyectos={proyectos}
+                  files={files}
+                  categorias={drawerCatalogos.categorias}
+                  mediosPago={drawerCatalogos.mediosPago}
+                  preguntasGpt={preguntasGpt}
+                  respuestasGpt={respuestasGpt}
+                  onRespuestasChange={handleRespuestasGptPatch}
+                />
+              )}
+              {activeStep === 2 && !analyzeLoading && (
+                <Stack spacing={2}>
+                  <Stack direction="row" flexWrap="wrap" useFlexGap spacing={1} alignItems="center">
+                    <Button size="small" variant="outlined" onClick={handleApplyProyectoToAll}>
+                      Aplicar proyecto por defecto a todos
+                    </Button>
+                    <Typography variant="caption" color="text.secondary">
+                      {batchItems.filter((i) => i.omitido).length} omitidos ·{' '}
+                      {batchItems.filter((i) => !i.omitido).length} a confirmar
+                    </Typography>
+                  </Stack>
+                  <ValidacionLoteStep
+                    items={batchItems}
+                    onUpdateItem={updateItem}
+                    empresa={empresa}
+                    proyectos={proyectos}
+                    comprobanteInfo={drawerCatalogos.comprobanteInfo}
+                    ingresoInfo={drawerCatalogos.ingresoInfo}
+                    proveedores={drawerCatalogos.proveedores}
+                    categorias={drawerCatalogos.categorias}
+                    tagsExtra={drawerCatalogos.tagsExtra}
+                    mediosPago={drawerCatalogos.mediosPago}
+                    etapas={drawerCatalogos.etapas}
+                    obrasOptions={drawerCatalogos.obrasOptions}
+                    clientesOptions={drawerCatalogos.clientesOptions}
+                    onRequestConfirm={handleOpenConfirm}
+                    canConfirm={canConfirm}
+                  />
+                </Stack>
+              )}
+              {analyzeLoading && (
+                <Stack alignItems="center" spacing={2} sx={{ py: 6 }}>
+                  <CircularProgress />
+                  <Typography>Analizando comprobantes…</Typography>
+                </Stack>
+              )}
+            </>
+          )}
+
+          {cargaModo === 'tabular' && empresaConProyectos && (
+            <Box sx={{ position: 'relative' }}>
+              {tabularLoading && (
                 <Stack
                   alignItems="center"
                   justifyContent="center"
-                  spacing={2}
+                  spacing={1}
                   sx={{
                     position: 'absolute',
                     inset: 0,
                     zIndex: 2,
-                    minHeight: 240,
-                    bgcolor: (theme) => theme.palette.background.paper,
-                    opacity: 0.96,
+                    bgcolor: (t) => t.palette.background.paper,
+                    opacity: 0.85,
                   }}
                 >
-                  <CircularProgress />
-                  <Typography variant="body2" color="text.secondary" textAlign="center" px={2}>
-                    Analizando la muestra del lote (preguntas extra solo si hace falta)…
+                  <CircularProgress size={28} />
+                  <Typography variant="body2" color="text.secondary">
+                    Procesando…
                   </Typography>
                 </Stack>
               )}
-              <CargaArchivosStep files={files} onFilesChange={setFiles} />
+              {renderTabularStep()}
             </Box>
-          )}
-          {activeStep === 1 && (
-            <PreguntasContextoStep
-              contexto={contexto}
-              onChange={setContexto}
-              proyectos={proyectos}
-              files={files}
-              categorias={drawerCatalogos.categorias}
-              mediosPago={drawerCatalogos.mediosPago}
-              preguntasGpt={preguntasGpt}
-              respuestasGpt={respuestasGpt}
-              onRespuestasChange={handleRespuestasGptPatch}
-            />
-          )}
-          {activeStep === 2 && !analyzeLoading && (
-            <Stack spacing={2}>
-              <Stack direction="row" flexWrap="wrap" useFlexGap spacing={1} alignItems="center">
-                <Button size="small" variant="outlined" onClick={handleApplyProyectoToAll}>
-                  Aplicar proyecto por defecto a todos
-                </Button>
-                <Typography variant="caption" color="text.secondary">
-                  {batchItems.filter((i) => i.omitido).length} omitidos · {batchItems.filter((i) => !i.omitido).length}{' '}
-                  a confirmar
-                </Typography>
-              </Stack>
-              <ValidacionLoteStep
-                items={batchItems}
-                onUpdateItem={updateItem}
-                empresa={empresa}
-                proyectos={proyectos}
-                comprobanteInfo={drawerCatalogos.comprobanteInfo}
-                ingresoInfo={drawerCatalogos.ingresoInfo}
-                proveedores={drawerCatalogos.proveedores}
-                categorias={drawerCatalogos.categorias}
-                tagsExtra={drawerCatalogos.tagsExtra}
-                mediosPago={drawerCatalogos.mediosPago}
-                etapas={drawerCatalogos.etapas}
-                obrasOptions={drawerCatalogos.obrasOptions}
-                clientesOptions={drawerCatalogos.clientesOptions}
-                onRequestConfirm={handleOpenConfirm}
-                canConfirm={canConfirm}
-              />
-            </Stack>
-          )}
-          {analyzeLoading && (
-            <Stack alignItems="center" spacing={2} sx={{ py: 6 }}>
-              <CircularProgress />
-              <Typography>Analizando comprobantes…</Typography>
-            </Stack>
           )}
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
-          <Button onClick={handleClose} disabled={analyzeLoading || confirmLoading}>
+          <Button onClick={handleClose} disabled={analyzeLoading || confirmLoading || tabularLoading}>
             Cancelar
           </Button>
-          {activeStep < 2 && (
-            <Button onClick={handleBack} disabled={activeStep === 0 || analyzeLoading}>
+          {cargaModo && (
+            <Button onClick={handleBack} disabled={backDisabled}>
               Atrás
             </Button>
           )}
-          {activeStep < 2 && (
-            <Button variant="contained" onClick={handleNext} disabled={nextDisabled}>
-              {activeStep === 1 ? (analyzeLoading ? 'Analizando…' : 'Analizar y continuar') : 'Siguiente'}
+          {showPrimaryNext && (
+            <Button variant="contained" onClick={handleNext} disabled={primaryNextDisabled}>
+              {primaryNextLabel}
             </Button>
           )}
         </DialogActions>

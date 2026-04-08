@@ -1215,7 +1215,20 @@ const TodosProyectosPage = () => {
             empresa={empresa}
             proyectos={proyectos}
             user={user}
-            onSuccess={({ ok, errores }) => {
+            onSuccess={({ ok, errores, tabularImport, resultado }) => {
+              if (tabularImport) {
+                const exitosos = resultado?.exitosos ?? resultado?.total;
+                setAlert({
+                  open: true,
+                  severity: resultado?.fallidos > 0 ? 'warning' : 'success',
+                  message:
+                    exitosos != null
+                      ? `Planilla: ${exitosos} movimiento(s) importados${resultado?.fallidos ? `. ${resultado.fallidos} con error.` : '.'}`
+                      : 'Importación por planilla finalizada.',
+                });
+                fetchData();
+                return;
+              }
               const nOk = ok?.length ?? 0;
               const nErr = errores?.length ?? 0;
               setAlert({

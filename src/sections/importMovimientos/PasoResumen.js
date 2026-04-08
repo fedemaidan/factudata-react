@@ -43,14 +43,15 @@ import importMovimientosService from 'src/services/importMovimientosService';
 import { useAuthContext } from 'src/contexts/auth-context';
 import { getProyectosByEmpresa } from 'src/services/proyectosService';
 
-const PasoResumen = ({ 
-  empresa, 
-  wizardData, 
-  updateWizardData, 
-  onFinish, 
-  onBack, 
-  setLoading, 
-  setError 
+const PasoResumen = ({
+  empresa,
+  wizardData,
+  updateWizardData,
+  onFinish,
+  onBack,
+  setLoading,
+  setError,
+  hideNavigation = false,
 }) => {
   const { user } = useAuthContext();
   const [importando, setImportando] = useState(false);
@@ -445,7 +446,7 @@ const PasoResumen = ({
           <Button
             variant="contained"
             size="large"
-            onClick={onFinish}
+            onClick={() => onFinish?.(resultadoImport)}
           >
             Finalizar
           </Button>
@@ -578,16 +579,18 @@ const PasoResumen = ({
         </Alert>
       )}
 
-      {/* Navegación */}
-      <Box sx={{ mt: 4, display: 'flex', justifyContent: 'space-between' }}>
-        <Button
-          variant="outlined"
-          onClick={onBack}
-          size="large"
-        >
-          Volver
-        </Button>
-        
+      <Box
+        sx={{
+          mt: 4,
+          display: 'flex',
+          justifyContent: hideNavigation ? 'flex-end' : 'space-between',
+        }}
+      >
+        {!hideNavigation && (
+          <Button variant="outlined" onClick={onBack} size="large">
+            Volver
+          </Button>
+        )}
         <Button
           variant="contained"
           color="primary"
@@ -595,7 +598,7 @@ const PasoResumen = ({
           size="large"
           startIcon={<CloudUploadIcon />}
         >
-          Importar Movimientos
+          Importar movimientos
         </Button>
       </Box>
 
