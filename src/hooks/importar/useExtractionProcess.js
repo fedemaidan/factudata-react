@@ -27,20 +27,30 @@ export default function useExtractionProcess() {
   const procesar = async ({
     archivo, rotation, guideY, meta, onPreviewReady,
   }) => {
-    if (!archivo) return;
+    if (!archivo && !meta?.archivo_urls?.length) return;
 
     try {
       setCargando(true); setProgreso(0);
-      let toSend = archivo;
 
-      if (archivo.type.startsWith('image/')) {
-        setProgreso(10);
-        toSend = (Math.abs(rotation) > 0.01) ? await rotateImageFile(archivo, rotation) : archivo;
+      let resp;
+
+      // Si ya tenemos URLs del pre-análisis, enviar directamente sin re-upload
+      if (meta?.archivo_urls?.length) {
         setProgreso(25);
-      } else { setProgreso(15); }
+        resp = await AcopioService.extraerCompraInit(null, { ...meta, archivo_url: meta.archivo_urls });
+        setProgreso(35);
+      } else {
+        let toSend = archivo;
 
-      const resp = await AcopioService.extraerCompraInit(toSend, meta);
-      setProgreso(35);
+        if (archivo.type.startsWith('image/')) {
+          setProgreso(10);
+          toSend = (Math.abs(rotation) > 0.01) ? await rotateImageFile(archivo, rotation) : archivo;
+          setProgreso(25);
+        } else { setProgreso(15); }
+
+        resp = await AcopioService.extraerCompraInit(toSend, meta);
+        setProgreso(35);
+      }
 
       if (Array.isArray(resp?.materiales)) {
         setProgreso(100);

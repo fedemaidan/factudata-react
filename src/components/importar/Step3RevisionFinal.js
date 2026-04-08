@@ -49,6 +49,7 @@ export default function Step3RevisionFinal({
   onResolveDiscrepancia,
   imageUrls = [], // URLs de las imágenes del documento
   archivoPreview = null, // Archivo local para preview
+  contextoPreanalisis = '', // Contexto de pre-análisis (preguntas y respuestas)
   onReprocesarRows = null // Callback para actualizar rows con resultado de reprocesamiento
 }) {
   const [porcentaje, setPorcentaje] = React.useState('');
@@ -234,7 +235,9 @@ export default function Step3RevisionFinal({
 
     try {
       const taskId = await AcopioService.reprocesarConAclaracion(imageUrls, aclaracionTexto.trim(), {
-        tipoLista
+        tipoLista,
+        contexto_preanalisis: contextoPreanalisis,
+        materiales_actuales: rows
       });
 
       reprocesamientoPollingRef.current = setInterval(async () => {
@@ -1741,17 +1744,31 @@ export default function Step3RevisionFinal({
           zIndex: 10
         }}
       >
-        <Button
-          variant="contained"
-          color="primary"
-          size="large"
-          fullWidth
-          onClick={onGuardarAcopio}
-          disabled={guardando || hayDiferenciaQueAjustar}
-          startIcon={guardando ? <CircularProgress size={20} color="inherit" /> : <SaveIcon />}
-        >
-          {guardando ? 'Guardando...' : hayDiferenciaQueAjustar ? 'Ajustá la diferencia' : editando ? 'Guardar Cambios' : 'Guardar Acopio'}
-        </Button>
+        <Stack direction="row" spacing={1.5}>
+          {imageUrls?.length > 0 && onReprocesarRows && (
+            <Button
+              variant="outlined"
+              color="secondary"
+              size="large"
+              onClick={() => setDialogReprocesamientoOpen(true)}
+              startIcon={<AutorenewIcon />}
+              sx={{ minWidth: 200 }}
+            >
+              Reprocesar con aclaración
+            </Button>
+          )}
+          <Button
+            variant="contained"
+            color="primary"
+            size="large"
+            fullWidth
+            onClick={onGuardarAcopio}
+            disabled={guardando || hayDiferenciaQueAjustar}
+            startIcon={guardando ? <CircularProgress size={20} color="inherit" /> : <SaveIcon />}
+          >
+            {guardando ? 'Guardando...' : hayDiferenciaQueAjustar ? 'Ajustá la diferencia' : editando ? 'Guardar Cambios' : 'Guardar Acopio'}
+          </Button>
+        </Stack>
       </Paper>
         </>
       )}
