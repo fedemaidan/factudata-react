@@ -282,10 +282,6 @@ const PasoResumen = ({
   if (importando) {
     return (
       <Box>
-        <Typography variant="h5" gutterBottom>
-          Importando movimientos...
-        </Typography>
-        
         <Card>
           <CardContent>
             <Box sx={{ textAlign: 'center', py: 4 }}>
@@ -488,14 +484,6 @@ const PasoResumen = ({
 
   return (
     <Box>
-      <Typography variant="h5" gutterBottom>
-        Resumen de Importación
-      </Typography>
-      
-      <Typography variant="body1" color="text.secondary" paragraph>
-        Revisa los datos detectados antes de confirmar la importación.
-      </Typography>
-
       {/* Resumen compacto */}
       <Grid container spacing={2} sx={{ mb: 3 }}>
         <Grid item xs={12} sm={6}>

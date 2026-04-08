@@ -272,8 +272,7 @@ const BatchValidationForm = ({
     form.total === '' ||
     form.total === undefined ||
     form.total === null ||
-    !form.fecha_factura ||
-    (Boolean(camposConfig.fecha_pago) && !form.fecha_pago);
+    !form.fecha_factura;
 
   return (
     <Stack spacing={1.5}>

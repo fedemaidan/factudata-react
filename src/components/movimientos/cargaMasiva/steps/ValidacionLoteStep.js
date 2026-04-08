@@ -45,8 +45,7 @@ const ValidacionLoteStep = ({
       f.total === '' ||
       f.total === undefined ||
       f.total === null ||
-      !f.fecha_factura ||
-      (Boolean(camposConfig.fecha_pago) && !f.fecha_pago)
+      !f.fecha_factura
     );
   }, [current, comprobanteInfo, ingresoInfo]);
 

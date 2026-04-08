@@ -73,7 +73,6 @@ function itemFormIsValid(form, comprobanteInfo, ingresoInfo) {
   if (camposConfig.proyecto && !form.proyecto_id) return false;
   if (form.total === '' || form.total === undefined || form.total === null) return false;
   if (!form.fecha_factura) return false;
-  if (camposConfig.fecha_pago && !form.fecha_pago) return false;
   return true;
 }
 

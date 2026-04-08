@@ -280,14 +280,6 @@ const PasoRevisarProveedores = forwardRef(({
 
   return (
     <Box>
-      <Typography variant="h5" gutterBottom>
-        Paso 3: Revisar Proveedores
-      </Typography>
-      
-      <Typography variant="body1" color="text.secondary" paragraph>
-        Revisa los proveedores detectados en el CSV y decide si usar proveedores existentes o crear nuevos.
-      </Typography>
-
       {/* Debug / Cargar manualmente si no se cargó automáticamente */}
       {!cargaInicial && (
         <Alert severity="warning" sx={{ mb: 3 }}>

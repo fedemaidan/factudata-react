@@ -476,14 +476,6 @@ const PasoRevisarCategorias = forwardRef(({
 
   return (
     <Box>
-      <Typography variant="h5" gutterBottom>
-        Paso 2: Revisar Categorías
-      </Typography>
-      
-      <Typography variant="body1" color="text.secondary" paragraph>
-        Las categorías detectadas se comparan con las existentes en Sorby. Las nuevas categorías se crearán automáticamente.
-      </Typography>
-
       {/* Campo de especificaciones del usuario */}
       <Card sx={{ mb: 3 }}>
         <CardContent>

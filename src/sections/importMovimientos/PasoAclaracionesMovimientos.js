@@ -58,15 +58,6 @@ const PasoAclaracionesMovimientos = forwardRef(({
 
   return (
     <Box>
-      <Typography variant="h5" gutterBottom>
-        Aclaraciones para el Análisis
-      </Typography>
-      
-      <Typography variant="body1" color="text.secondary" paragraph>
-        Agrega instrucciones especiales que el sistema debe seguir al analizar cada movimiento.
-        Estas aclaraciones tienen <strong>prioridad máxima</strong> sobre las reglas del sistema.
-      </Typography>
-
       {/* Alert informativo */}
       <Alert 
         severity="info" 
