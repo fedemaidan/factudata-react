@@ -68,6 +68,13 @@ export const GROUP_SECTIONS = {
   montos: ['importes', 'impuestos'],
 };
 
+/** Bloques numerados del formulario (Stitch / layout unificado) */
+export const STITCH_GROUP_SECTIONS = {
+  details: ['basicos'],
+  classification: ['pago', 'extras'],
+  financial: ['importes', 'impuestos'],
+};
+
 export const getCamposVisibles = (comprobanteInfo, empresa, ingresoInfo, tipoMovimiento) => {
   const info = getCamposConfig(comprobanteInfo, ingresoInfo, tipoMovimiento);
 

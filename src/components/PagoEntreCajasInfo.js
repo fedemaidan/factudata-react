@@ -1,23 +1,11 @@
 import React from 'react';
-import {
-  Paper,
-  Typography,
-  Box,
-  Chip,
-  Stack,
-  Divider,
-  Alert
-} from '@mui/material';
-import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
-import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
+import { WalletIcon, ArrowsRightLeftIcon } from '@heroicons/react/24/outline';
 import { formatCurrencyWithCode } from 'src/utils/formatters';
 
 /**
- * Componente para mostrar información cuando un movimiento fue pagado desde otra caja
- * Muestra los detalles de la transferencia automática y el flujo contable
+ * Información cuando un movimiento fue pagado desde otra caja
  */
 const PagoEntreCajasInfo = ({ movimiento }) => {
-  // Solo mostrar si el movimiento tiene los flags correspondientes
   if (!movimiento?.es_pago_entre_cajas) {
     return null;
   }
@@ -26,87 +14,68 @@ const PagoEntreCajasInfo = ({ movimiento }) => {
   const esTransferencia = movimiento.movimiento_relacionado_tipo === 'transferencia_pago';
 
   return (
-    <Paper sx={{ p: 3, mt: 3, backgroundColor: '#fff3e0', border: '2px solid #ff9800' }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-        <Chip 
-          label="💳 PAGO ENTRE CAJAS" 
-          color="warning" 
-          variant="filled" 
-          sx={{ fontSize: '0.875rem', fontWeight: 'bold' }}
-          icon={<AccountBalanceWalletIcon />}
-        />
-      </Box>
+    <div className="mt-2 rounded-xl border-2 border-warning-main/50 bg-warning-main/10 p-3">
+      <div className="mb-2 flex items-center gap-1">
+        <WalletIcon className="h-4 w-4 text-warning-dark" aria-hidden />
+        <span className="rounded-full bg-warning-main px-2 py-0.5 text-xs font-bold text-white">
+          PAGO ENTRE CAJAS
+        </span>
+      </div>
 
       {esEgresoOperativo && (
         <>
-          <Typography variant="h6" gutterBottom color="warning.main" sx={{ mb: 2 }}>
-            🏛️ Gasto pagado desde otra caja
-          </Typography>
-          
-          <Box sx={{ mb: 3, bgcolor: 'white', p: 2, borderRadius: 1, border: '1px solid #ffcc02' }}>
-            <Typography variant="body1" sx={{ fontWeight: 'bold', mb: 1, color: 'warning.main' }}>
-              💰 Este gasto: {formatCurrencyWithCode(movimiento.total, movimiento.moneda)} 
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+          <h3 className="mb-2 text-sm font-semibold text-warning-dark">Gasto pagado desde otra caja</h3>
+          <div className="mb-2 rounded-lg border border-warning-main/40 bg-white p-2">
+            <p className="text-xs font-bold text-warning-dark">
+              Este gasto: {formatCurrencyWithCode(movimiento.total, movimiento.moneda)}
+            </p>
+            <p className="mt-1 text-xs text-neutral-600">
               <strong>Pagado desde:</strong> {movimiento.caja_pagadora_nombre}
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
+            </p>
+            <p className="text-xs text-neutral-600">
               <strong>Proyecto del gasto:</strong> {movimiento.proyecto}
-            </Typography>
-          </Box>
-
-          <Alert 
-            severity="info" 
-            sx={{ borderRadius: 2 }}
-          >
-            <Typography variant="body2" sx={{ mb: 1, fontWeight: 'medium' }}>
-              💡 ¿Cómo funciona el pago entre cajas?
-            </Typography>
-            <Typography variant="body2" component="div">
-              Este gasto se registró automáticamente junto con:
-              <Box component="ol" sx={{ mt: 1, pl: 2, mb: 0 }}>
-                <li>
-                  <strong>Transferencia</strong> desde <em>{movimiento.caja_pagadora_nombre}</em> hacia <em>{movimiento.proyecto}</em>
-                </li>
-                <li>
-                  <strong>Este egreso operativo</strong> en <em>{movimiento.proyecto}</em>
-                </li>
-              </Box>
-            </Typography>
-          </Alert>
+            </p>
+          </div>
+          <div className="rounded-lg border border-info-main/30 bg-info-main/10 p-2 text-xs text-neutral-800">
+            <p className="mb-1 font-semibold text-info-dark">¿Cómo funciona el pago entre cajas?</p>
+            <p>Este gasto se registró automáticamente junto con:</p>
+            <ol className="mt-1 list-decimal pl-4">
+              <li>
+                <strong>Transferencia</strong> desde <em>{movimiento.caja_pagadora_nombre}</em> hacia{' '}
+                <em>{movimiento.proyecto}</em>
+              </li>
+              <li>
+                <strong>Este egreso operativo</strong> en <em>{movimiento.proyecto}</em>
+              </li>
+            </ol>
+          </div>
         </>
       )}
 
       {esTransferencia && (
         <>
-          <Typography variant="h6" gutterBottom color="warning.main" sx={{ mb: 2 }}>
-            🔄 Transferencia para financiar gasto
-          </Typography>
-          
-          <Box sx={{ mb: 3, bgcolor: 'white', p: 2, borderRadius: 1, border: '1px solid #ffcc02' }}>
-            <Typography variant="body1" sx={{ fontWeight: 'bold', mb: 1, color: 'warning.main' }}>
-              💸 Transferencia: {formatCurrencyWithCode(movimiento.total, movimiento.moneda)} 
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+          <div className="mb-2 flex items-center gap-1">
+            <ArrowsRightLeftIcon className="h-4 w-4 text-warning-dark" aria-hidden />
+            <h3 className="text-sm font-semibold text-warning-dark">Transferencia para financiar gasto</h3>
+          </div>
+          <div className="mb-2 rounded-lg border border-warning-main/40 bg-white p-2">
+            <p className="text-xs font-bold text-warning-dark">
+              Transferencia: {formatCurrencyWithCode(movimiento.total, movimiento.moneda)}
+            </p>
+            <p className="mt-1 text-xs text-neutral-600">
               <strong>De:</strong> {movimiento.proyecto}
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
+            </p>
+            <p className="text-xs text-neutral-600">
               <strong>Para:</strong> {movimiento.subcategoria}
-            </Typography>
-          </Box>
-
-          <Alert 
-            severity="info" 
-            sx={{ borderRadius: 2 }}
-          >
-            <Typography variant="body2">
-              Esta transferencia se creó automáticamente para financiar un gasto en otro proyecto.
-              Permite mantener la trazabilidad de los fondos entre diferentes cajas/proyectos.
-            </Typography>
-          </Alert>
+            </p>
+          </div>
+          <div className="rounded-lg border border-info-main/30 bg-info-main/10 p-2 text-xs text-neutral-800">
+            Esta transferencia se creó automáticamente para financiar un gasto en otro proyecto. Permite mantener la
+            trazabilidad de los fondos entre diferentes cajas/proyectos.
+          </div>
         </>
       )}
-    </Paper>
+    </div>
   );
 };
 

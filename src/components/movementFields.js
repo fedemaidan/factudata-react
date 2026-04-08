@@ -1,27 +1,18 @@
-// src/components/MovementFields.js
 import React, { useMemo } from 'react';
-import {
-  TextField,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Autocomplete,
-  Box,
-  Button,
-  Paper,
-  Grid,
-  Chip,
-  Stack
-} from '@mui/material';
-import { Alert } from '@mui/material';
 import { formatCurrency } from 'src/utils/formatters';
 import ImpuestosEditor from './impuestosEditor';
 import {
   getCamposVisibles,
   GROUP_SECTIONS,
+  STITCH_GROUP_SECTIONS,
   getOptionsFromContext,
 } from './movementFieldsConfig';
+
+const inputCls =
+  'w-full rounded-lg border border-neutral-200 bg-white px-2.5 py-1.5 text-sm text-neutral-900 shadow-sm focus:border-primary-main focus:outline-none focus:ring-1 focus:ring-primary-main';
+const inputReadonlyCls =
+  'w-full rounded-lg border border-neutral-200 bg-neutral-100 px-2.5 py-1.5 text-sm text-neutral-700';
+const labelCls = 'mb-0.5 block text-xs font-medium text-neutral-600';
 
 const parseAmountInput = (value) => {
   if (value == null) return '';
@@ -62,12 +53,13 @@ const MovementFields = ({
   lastPageName,
   movimiento,
   group = 'general',
+  block,
   obrasOptions = [],
   clientesOptions = [],
   parcialMonto = '',
   onParcialMontoChange,
+  hideFooterButtons = false,
 }) => {
-
   const renderPagoParcialDetalle = () => {
     if (
       formik.values.type !== 'egreso' ||
@@ -78,7 +70,7 @@ const MovementFields = ({
       return null;
     }
 
-    if (group !== 'montos') {
+    if (block !== 'financial' && group !== 'montos') {
       return null;
     }
 
@@ -87,42 +79,34 @@ const MovementFields = ({
     const pendiente = Math.max(0, totalFactura - pagado);
 
     return (
-      <Box sx={{ mt: 2 }}>
-        <TextField
-          label="Monto pagado"
-          type="text"
-          size="small"
-          fullWidth
-          value={formatAmountInput(parcialMonto)}
-          onChange={(event) => {
-            const parsed = parseAmountInput(event.target.value);
-            onParcialMontoChange(parsed);
-          }}
-          inputProps={{ inputMode: 'decimal' }}
-        />
+      <div className="mt-2 space-y-2">
+        <div>
+          <label className={labelCls}>Monto pagado</label>
+          <input
+            className={inputCls}
+            type="text"
+            inputMode="decimal"
+            value={formatAmountInput(parcialMonto)}
+            onChange={(event) => {
+              const parsed = parseAmountInput(event.target.value);
+              onParcialMontoChange(parsed);
+            }}
+          />
+        </div>
         {totalFactura > 0 && (
-          <Stack spacing={1} sx={{ mt: 1.5, alignItems: 'flex-start' }}>
-            <Chip
-              size="small"
-              color="success"
-              variant="outlined"
-              label={`Pagado: ${formatCurrency(pagado, 2)}`}
-              sx={{ '& .MuiChip-label': { px: 1.5, py: 0.4 }, borderRadius: 2 }}
-            />
-            <Chip
-              size="small"
-              color="warning"
-              variant="outlined"
-              label={`Saldo pendiente: ${formatCurrency(pendiente, 2)}`}
-              sx={{ '& .MuiChip-label': { px: 1.5, py: 0.4 }, borderRadius: 2 }}
-            />
-          </Stack>
+          <div className="flex flex-col items-start gap-1">
+            <span className="rounded-full border border-success-main/40 bg-success-main/5 px-2 py-0.5 text-xs font-medium text-success-dark">
+              Pagado: {formatCurrency(pagado, 2)}
+            </span>
+            <span className="rounded-full border border-warning-main/40 bg-warning-main/5 px-2 py-0.5 text-xs font-medium text-warning-dark">
+              Saldo pendiente: {formatCurrency(pendiente, 2)}
+            </span>
+          </div>
         )}
-      </Box>
+      </div>
     );
   };
 
-  // Efecto para calcular valores en dólares cuando cambian los campos relevantes
   React.useEffect(() => {
     const dolarRef = Number(formik.values.dolar_referencia) || 0;
     const subtotal = Number(formik.values.subtotal) || 0;
@@ -132,7 +116,6 @@ const MovementFields = ({
       const subtotalDolar = Number((subtotal / dolarRef).toFixed(2));
       const totalDolar = Number((total / dolarRef).toFixed(2));
 
-      // Solo actualizar si los valores son diferentes (evitar loops)
       if (Math.abs(Number(formik.values.subtotal_dolar) - subtotalDolar) > 0.01) {
         formik.setFieldValue('subtotal_dolar', subtotalDolar);
       }
@@ -140,7 +123,6 @@ const MovementFields = ({
         formik.setFieldValue('total_dolar', totalDolar);
       }
     } else if (formik.values.moneda === 'USD') {
-      // Si la moneda es USD, los valores en dólares son iguales a los originales
       if (Number(formik.values.subtotal_dolar) !== subtotal) {
         formik.setFieldValue('subtotal_dolar', subtotal);
       }
@@ -148,7 +130,6 @@ const MovementFields = ({
         formik.setFieldValue('total_dolar', total);
       }
     } else {
-      // Si no hay dólar de referencia o la moneda no es ARS, limpiar valores USD
       if (formik.values.subtotal_dolar !== '' && formik.values.subtotal_dolar !== 0) {
         formik.setFieldValue('subtotal_dolar', '');
       }
@@ -159,33 +140,39 @@ const MovementFields = ({
   }, [formik.values.dolar_referencia, formik.values.subtotal, formik.values.total, formik.values.moneda, formik.setFieldValue]);
 
   const tipoMovimiento = formik.values.type || 'egreso';
-  const optionsContext = useMemo(() => ({
-    proveedores,
-    categorias,
-    categoriaSeleccionada,
-    tagsExtra,
-    mediosPago,
-    empresa,
-    etapas,
-    obrasOptions,
-    clientesOptions,
-  }), [
-    proveedores,
-    categorias,
-    categoriaSeleccionada,
-    tagsExtra,
-    mediosPago,
-    empresa,
-    etapas,
-    obrasOptions,
-    clientesOptions,
-  ]);
+  const optionsContext = useMemo(
+    () => ({
+      proveedores,
+      categorias,
+      categoriaSeleccionada,
+      tagsExtra,
+      mediosPago,
+      empresa,
+      etapas,
+      obrasOptions,
+      clientesOptions,
+    }),
+    [
+      proveedores,
+      categorias,
+      categoriaSeleccionada,
+      tagsExtra,
+      mediosPago,
+      empresa,
+      etapas,
+      obrasOptions,
+      clientesOptions,
+    ]
+  );
 
   const camposGrupo = useMemo(() => {
     const visibles = getCamposVisibles(comprobante_info, empresa, ingreso_info, tipoMovimiento);
-    const permitidas = new Set(GROUP_SECTIONS[group] || GROUP_SECTIONS.general);
-    return visibles.filter(c => permitidas.has(c.section));
-  }, [group, comprobante_info, ingreso_info, empresa, tipoMovimiento]);
+    const sections = block && STITCH_GROUP_SECTIONS[block]
+      ? STITCH_GROUP_SECTIONS[block]
+      : GROUP_SECTIONS[group] || GROUP_SECTIONS.general;
+    const permitidas = new Set(sections);
+    return visibles.filter((c) => permitidas.has(c.section));
+  }, [block, group, comprobante_info, ingreso_info, empresa, tipoMovimiento]);
 
   const renderCampo = (campo) => {
     const value = formik.values[campo.name] ?? (campo.type === 'boolean' ? false : '');
@@ -193,13 +180,15 @@ const MovementFields = ({
       if (campo.name === 'dolar_referencia') {
         const isManual = Boolean(formik.values.dolar_referencia_manual);
         return (
-          <Box key={campo.name} sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-            <TextField
-              fullWidth
+          <div key={campo.name} className="flex flex-col gap-1">
+            <label className={labelCls}>{campo.label}</label>
+            <input
+              className={isManual ? `${inputCls} bg-warning-main/10` : inputCls}
               type={campo.type}
               name={campo.name}
-              label={campo.label}
               value={value}
+              readOnly={campo.readonly}
+              disabled={campo.readonly}
               onChange={(e) => {
                 const nextValue = e.target.value;
                 formik.setFieldValue('dolar_referencia', nextValue);
@@ -208,35 +197,33 @@ const MovementFields = ({
                 const manual = hasChanged ? Number(nextValue) > 0 : Boolean(formik.initialValues?.dolar_referencia_manual);
                 formik.setFieldValue('dolar_referencia_manual', manual);
               }}
-              InputProps={campo.readonly ? { readOnly: true } : undefined}
-              disabled={campo.readonly}
-              sx={isManual ? { backgroundColor: 'rgba(255, 193, 7, 0.08)' } : undefined}
             />
             {(isManual || Number(value) > 0) && (
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Chip
-                  size="small"
-                  label={isManual ? 'Manual' : 'Automático'}
-                  color={isManual ? 'warning' : 'default'}
-                  variant="outlined"
-                />
-              </Box>
+              <span
+                className={`inline-flex w-fit rounded-full border px-2 py-0.5 text-xs ${
+                  isManual
+                    ? 'border-warning-main text-warning-dark'
+                    : 'border-neutral-200 text-neutral-600'
+                }`}
+              >
+                {isManual ? 'Manual' : 'Automático'}
+              </span>
             )}
-          </Box>
+          </div>
         );
       }
 
-      const regularField = (
-        <TextField
+      const strVal = value === undefined || value === null ? '' : String(value);
+      const commonInput = (
+        <input
           key={campo.name}
-          fullWidth
+          className={campo.readonly ? inputReadonlyCls : inputCls}
           type={campo.type}
           name={campo.name}
-          label={campo.label}
-          value={value}
-          onChange={formik.handleChange}
-          InputProps={campo.readonly ? { readOnly: true } : undefined}
+          value={strVal}
+          readOnly={campo.readonly}
           disabled={campo.readonly}
+          onChange={formik.handleChange}
         />
       );
 
@@ -246,148 +233,190 @@ const MovementFields = ({
           formik.setFieldValue('total', parsed);
         };
 
-        const totalField = (
-          <TextField
-            key={campo.name}
-            fullWidth
-            type="text"
-            name={campo.name}
-            label={campo.label}
-            value={formatAmountInput(value)}
-            onChange={handleTotalChange}
-            inputProps={{ inputMode: 'decimal' }}
-            InputProps={campo.readonly ? { readOnly: true } : undefined}
-            disabled={campo.readonly}
-          />
-        );
-
         return (
-          <>
-            {totalField}
+          <div key={campo.name}>
+            <label className={labelCls}>{campo.label}</label>
+            <input
+              className={campo.readonly ? inputReadonlyCls : inputCls}
+              type="text"
+              name={campo.name}
+              inputMode="decimal"
+              value={formatAmountInput(value)}
+              readOnly={campo.readonly}
+              disabled={campo.readonly}
+              onChange={handleTotalChange}
+            />
             {renderPagoParcialDetalle()}
-          </>
+          </div>
         );
       }
 
-      return regularField;
+      return (
+        <div key={campo.name}>
+          <label className={labelCls}>{campo.label}</label>
+          {commonInput}
+        </div>
+      );
     }
 
     if (campo.type === 'textarea') {
       return (
-        <TextField
-          key={campo.name}
-          fullWidth
-          multiline
-          rows={4}
-          name={campo.name}
-          label={campo.label}
-          value={value}
-          onChange={formik.handleChange}
-        />
+        <div key={campo.name}>
+          <label className={labelCls}>{campo.label}</label>
+          <textarea
+            className={`${inputCls} min-h-[2.5rem] resize-none`}
+            rows={2}
+            name={campo.name}
+            value={value}
+            onChange={formik.handleChange}
+          />
+        </div>
       );
     }
 
     if (campo.type === 'select') {
       const options = campo.options || getOptionsFromContext(campo.optionsKey, optionsContext);
       return (
-        <FormControl fullWidth key={campo.name}>
-          <InputLabel>{campo.label}</InputLabel>
-          <Select
+        <div key={campo.name}>
+          <label className={labelCls}>{campo.label}</label>
+          <select
+            className={inputCls}
             name={campo.name}
-            label={campo.label}
             value={value}
             onChange={formik.handleChange}
           >
-            <MenuItem value="">
-              <em>Seleccionar</em>
-            </MenuItem>
+            <option value="">Seleccionar</option>
             {options.map((opt) => (
-              <MenuItem key={`${campo.name}-${opt}`} value={opt}>{opt}</MenuItem>
+              <option key={`${campo.name}-${opt}`} value={opt}>
+                {opt}
+              </option>
             ))}
-          </Select>
-        </FormControl>
+          </select>
+        </div>
       );
     }
 
     if (campo.type === 'autocomplete') {
       const acOptions = getOptionsFromContext(campo.optionsKey, optionsContext);
+      const listId = `dl-${campo.name}`;
       return (
-        <Autocomplete
-          key={campo.name}
-          freeSolo
-          options={acOptions}
-          value={value || ''}
-          onChange={(_, val) => formik.setFieldValue(campo.name, val || '')}
-          onInputChange={(_, val, reason) => {
-            if (reason === 'input') {
-              formik.setFieldValue(campo.name, val || '');
-            }
-          }}
-          renderInput={(params) => (
-            <TextField {...params} label={campo.label} fullWidth />
-          )}
-        />
+        <div key={campo.name}>
+          <label className={labelCls} htmlFor={campo.name}>
+            {campo.label}
+          </label>
+          <input
+            id={campo.name}
+            className={inputCls}
+            list={listId}
+            value={value || ''}
+            onChange={(e) => formik.setFieldValue(campo.name, e.target.value)}
+          />
+          <datalist id={listId}>
+            {acOptions.map((opt) => (
+              <option key={opt} value={opt} />
+            ))}
+          </datalist>
+        </div>
       );
     }
 
     if (campo.type === 'tags') {
       const tagOptions = getOptionsFromContext(campo.optionsKey, optionsContext);
+      const tags = Array.isArray(value) ? value : [];
+      const listId = `dl-tags-${campo.name}`;
       return (
-        <Autocomplete
-          key={campo.name}
-          multiple
-          freeSolo
-          options={tagOptions}
-          value={Array.isArray(value) ? value : []}
-          onChange={(_, val) => formik.setFieldValue(campo.name, val)}
-          renderInput={(params) => (
-            <TextField {...params} label={campo.label} fullWidth />
-          )}
-        />
+        <div key={campo.name} className="sm:col-span-2">
+          <label className={labelCls}>{campo.label}</label>
+          <div className="mb-1 flex flex-wrap gap-1">
+            {tags.map((t) => (
+              <span
+                key={t}
+                className="inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-xs text-neutral-800"
+              >
+                {t}
+                <button
+                  type="button"
+                  className="text-neutral-500 hover:text-error-main"
+                  onClick={() => formik.setFieldValue(
+                    campo.name,
+                    tags.filter((x) => x !== t)
+                  )}
+                  aria-label={`Quitar ${t}`}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+          <input
+            className={inputCls}
+            list={listId}
+            placeholder="Agregar tag…"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                const v = e.target.value.trim();
+                if (v && !tags.includes(v)) {
+                  formik.setFieldValue(campo.name, [...tags, v]);
+                }
+                e.target.value = '';
+              }
+            }}
+          />
+          <datalist id={listId}>
+            {tagOptions.map((opt) => (
+              <option key={opt} value={opt} />
+            ))}
+          </datalist>
+        </div>
       );
     }
 
     if (campo.type === 'boolean') {
+      const strVal = value === true || value === 'true' ? 'true' : 'false';
       return (
-        <FormControl fullWidth key={campo.name}>
-          <InputLabel>{campo.label}</InputLabel>
-          <Select
+        <div key={campo.name}>
+          <label className={labelCls}>{campo.label}</label>
+          <select
+            className={inputCls}
             name={campo.name}
-            label={campo.label}
-            value={Boolean(value)}
-            onChange={(e) => formik.setFieldValue(campo.name, e.target.value === 'true' ? true : e.target.value === true)}
+            value={strVal}
+            onChange={(e) => formik.setFieldValue(campo.name, e.target.value === 'true')}
           >
-            <MenuItem value={true}>Sí</MenuItem>
-            <MenuItem value={false}>No</MenuItem>
-          </Select>
-        </FormControl>
+            <option value="true">Sí</option>
+            <option value="false">No</option>
+          </select>
+        </div>
       );
     }
 
     if (campo.type === 'impuestos') {
       return (
-        <Box key={campo.name} sx={{ width: '100%' }}>
+        <div key={campo.name} className="sm:col-span-2">
           <ImpuestosEditor
             formik={formik}
-            impuestosDisponibles={(empresa?.impuestos_data || []).filter(i => i.activo)}
+            impuestosDisponibles={(empresa?.impuestos_data || []).filter((i) => i.activo)}
             subtotal={formik.values.subtotal}
           />
           {(() => {
-            const subtotal  = Number(formik.values.subtotal) || 0;
-            const impTotal  = (formik.values.impuestos || []).reduce((a, i) => a + (Number(i.monto) || 0), 0);
-            const total     = Number(formik.values.total) || 0;
-            const diff = Math.abs((subtotal + impTotal) - total);
-            if ((formik.values.impuestos?.length || subtotal > 0) && diff > 0.01) {
+            const subtotalN = Number(formik.values.subtotal) || 0;
+            const impTotal = (formik.values.impuestos || []).reduce((a, i) => a + (Number(i.monto) || 0), 0);
+            const totalN = Number(formik.values.total) || 0;
+            const diff = Math.abs(subtotalN + impTotal - totalN);
+            if ((formik.values.impuestos?.length || subtotalN > 0) && diff > 0.01) {
               return (
-                <Alert severity="warning" sx={{ mt: 2 }}>
-                  Subtotal ({subtotal.toFixed(2)}) + Impuestos ({impTotal.toFixed(2)}) ≠ Total ({total.toFixed(2)}).
-                  Se permitirá guardar, pero se pedirá confirmación.
-                </Alert>
+                <div
+                  className="mt-2 rounded-lg border border-warning-main/40 bg-warning-main/10 px-2 py-1.5 text-xs text-warning-dark"
+                  role="status"
+                >
+                  Subtotal ({subtotalN.toFixed(2)}) + Impuestos ({impTotal.toFixed(2)}) ≠ Total (
+                  {totalN.toFixed(2)}). Se permitirá guardar con confirmación.
+                </div>
               );
             }
             return null;
           })()}
-        </Box>
+        </div>
       );
     }
 
@@ -395,44 +424,41 @@ const MovementFields = ({
   };
 
   return (
-    <Paper sx={{ p: 2 }}>
-      <Grid container spacing={2}>
+    <div className="rounded-xl border border-transparent bg-white p-0">
+      <div className="grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-2">
         {camposGrupo.map((campo) => (
-          <Grid
-            item
-            xs={12}
-            sm={['textarea', 'impuestos'].includes(campo.type) ? 12 : 6}
+          <div
             key={campo.name}
+            className={['textarea', 'impuestos'].includes(campo.type) ? 'sm:col-span-2' : ''}
           >
             {renderCampo(campo)}
-          </Grid>
+          </div>
         ))}
-      </Grid>
+      </div>
 
-      {/* Botones locales opcionales (si guardás arriba, podés quitarlos) */}
-      <Box sx={{ pt: 2 }}>
-        <Button
-          color="primary"
-          variant="contained"
-          type="submit"
-          disabled={isLoading}
-          fullWidth
-        >
-          {isLoading ? 'Guardando...' : isEditMode ? 'Guardar Cambios' : 'Agregar Movimiento'}
-        </Button>
-        <Button
-          variant="text"
-          fullWidth
-          sx={{ mt: 1 }}
-          onClick={() => {
-            const url = lastPageUrl || '/cajaProyecto?proyectoId=' + (movimiento ? movimiento.proyecto_id : '');
-            router.push(url);
-          }}
-        >
-          Volver a {lastPageName || (movimiento ? movimiento.proyecto_nombre : '')}
-        </Button>
-      </Box>
-    </Paper>
+      {!hideFooterButtons && (
+        <div className="pt-3">
+          <button
+            type="submit"
+            disabled={isLoading}
+            className="w-full rounded-lg bg-primary-main py-2 text-sm font-semibold text-white shadow hover:bg-primary-dark disabled:opacity-50"
+          >
+            {isLoading ? 'Guardando...' : isEditMode ? 'Guardar Cambios' : 'Agregar Movimiento'}
+          </button>
+          <button
+            type="button"
+            className="mt-2 w-full py-1.5 text-sm text-primary-dark hover:underline"
+            onClick={() => {
+              const url =
+                lastPageUrl || '/cajaProyecto?proyectoId=' + (movimiento ? movimiento.proyecto_id : '');
+              router.push(url);
+            }}
+          >
+            Volver a {lastPageName || (movimiento ? movimiento.proyecto_nombre : '')}
+          </button>
+        </div>
+      )}
+    </div>
   );
 };
 
