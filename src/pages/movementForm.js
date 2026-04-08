@@ -18,6 +18,7 @@ import {
   GlobeAltIcon,
   ArrowPathRoundedSquareIcon,
   CheckCircleIcon,
+  DocumentMagnifyingGlassIcon,
 } from '@heroicons/react/24/outline';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import movimientosService from 'src/services/movimientosService';
@@ -27,6 +28,10 @@ import proveedorService from 'src/services/proveedorService';
 import { useBreadcrumbs } from 'src/contexts/breadcrumbs-context';
 import { dateToTimestamp, formatCurrency, formatTimestamp } from 'src/utils/formatters';
 import MovementFields from 'src/components/movementFields';
+import {
+  computeNetSubtotalFromTotalImpuestos,
+  isSubtotalFieldEnabled,
+} from 'src/components/movementFieldsConfig';
 import profileService from 'src/services/profileService';
 import MaterialesFacturaActions from 'src/components/stock/MaterialesFacturaActions';
 import { getProyectosByEmpresa } from 'src/services/proyectosService';
@@ -132,6 +137,8 @@ const MovementFormPage = () => {
   const isEditMode = Boolean(movimientoId);
 
   const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [modoIngreso, setModoIngreso] = useState(null); // null=pantalla selección, 'manual'
+  const [isExtractingData, setIsExtractingData] = useState(false);
   const [movimiento, setMovimiento] = useState(null);
   const [categorias, setCategorias] = useState([]);
   const [proveedores, setProveedores] = useState([]);
@@ -156,6 +163,7 @@ const MovementFormPage = () => {
   const [urlTemporal, setUrlTemporal] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
   const fileInputRef = useRef(null);
+  const pendingExtraccionRef = useRef(false);
   const [createdUser, setCreatedUser] = useState(null);
   const [fullOpen, setFullOpen] = useState(false);
   const [parcialMonto, setParcialMonto] = useState('');
@@ -278,6 +286,47 @@ const MovementFormPage = () => {
     const url = URL.createObjectURL(nuevoArchivo);
     setPreviewUrl(url);
     return () => URL.revokeObjectURL(url);
+  }, [nuevoArchivo]);
+
+  // Auto-extracción cuando hay extracción pendiente al seleccionar archivo
+  useEffect(() => {
+    if (!nuevoArchivo || !pendingExtraccionRef.current) return;
+    pendingExtraccionRef.current = false;
+    if (!isEditMode) {
+      // Nuevo movimiento: subir y extraer en paralelo
+      (async () => {
+        setIsExtractingData(true);
+        try {
+          const [uploadRes, result] = await Promise.all([
+            movimientosService.subirImagenTemporal(nuevoArchivo).catch(() => null),
+            movimientosService.extraerDatosDesdeImagen(null, nuevoArchivo, {
+              proyecto_id: effectiveProyectoId,
+              proyecto_nombre: effectiveProyectoName,
+            }),
+          ]);
+          if (uploadRes) {
+            const nuevaUrl = uploadRes?.url_imagen || uploadRes?.url;
+            const sep = nuevaUrl.includes('?') ? '&' : '?';
+            const urlFinal = `${nuevaUrl}${sep}t=${Date.now()}`;
+            setMovimiento(m => ({ ...m, url_imagen: urlFinal }));
+            setUrlTemporal(urlFinal);
+            formik.setFieldValue('url_imagen', urlFinal);
+            setNuevoArchivo(null);
+            if (fileInputRef.current) fileInputRef.current.value = '';
+          }
+          formik.setValues(prev => ({ ...prev, ...result }));
+          setAlert({ open: true, message: '¡Datos extraídos con éxito!', severity: 'success' });
+        } catch {
+          setAlert({ open: true, message: 'No se pudieron extraer los datos.', severity: 'warning' });
+        } finally {
+          setIsExtractingData(false);
+          setModoIngreso('manual');
+        }
+      })();
+    } else {
+      handleExtraerDatos(nuevoArchivo);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nuevoArchivo]);
 
   // Función para cargar todos los datos iniciales
@@ -468,6 +517,33 @@ const MovementFormPage = () => {
     }
   };
 
+  const handleExtraerDatos = async (archivoOverride = null) => {
+    // Edit mode sin imagen ni archivo: pedir archivo primero
+    if (isEditMode && !movimiento?.url_imagen && !nuevoArchivo && !archivoOverride) {
+      pendingExtraccionRef.current = true;
+      fileInputRef.current?.click();
+      return;
+    }
+    const archivo = archivoOverride || nuevoArchivo;
+    const urlImagen = isEditMode ? movimiento?.url_imagen : urlTemporal;
+    if (!urlImagen && !archivo) return;
+    if (!empresa) return;
+    setIsExtractingData(true);
+    try {
+      const result = await movimientosService.extraerDatosDesdeImagen(
+        urlImagen,
+        archivo,
+        { proyecto_id: effectiveProyectoId, proyecto_nombre: effectiveProyectoName }
+      );
+      formik.setValues({ ...formik.values, ...result });
+      setAlert({ open: true, message: 'Datos extraídos con éxito!', severity: 'success' });
+    } catch {
+      setAlert({ open: true, message: 'No se pudieron extraer los datos.', severity: 'warning' });
+    } finally {
+      setIsExtractingData(false);
+    }
+  };
+
   const creatorLabel =
   createdUser?.firstName ? createdUser?.firstName + " " +  createdUser?.lastName :
   createdUser?.alias ||
@@ -545,6 +621,15 @@ const createdAtStr = (() => {
         payload.monto_pagado = null;
       }
 
+      const tipoMov = values.type || 'egreso';
+      const usaSubtotal = isSubtotalFieldEnabled(comprobante_info, ingreso_info, tipoMov);
+
+      if (!usaSubtotal) {
+        payload.subtotal = computeNetSubtotalFromTotalImpuestos(values.total, values.impuestos);
+        await savePayload(payload);
+        return;
+      }
+
       const subtotal  = Number(values.subtotal) || 0;
       const impTotal  = (values.impuestos || []).reduce((a, i) => a + (Number(i.monto) || 0), 0);
       const total     = Number(values.total) || 0;
@@ -565,6 +650,26 @@ const createdAtStr = (() => {
     loadInitialData(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [movimientoId]);
+
+  // Subtotal oculto en config: mantener neto = total − impuestos para UI (USD, ImpuestosEditor) y coherencia al guardar
+  useEffect(() => {
+    if (isInitialLoading) return;
+    const tipoMov = formik.values.type || 'egreso';
+    if (isSubtotalFieldEnabled(comprobante_info, ingreso_info, tipoMov)) return;
+    const net = computeNetSubtotalFromTotalImpuestos(formik.values.total, formik.values.impuestos);
+    const cur = Number(formik.values.subtotal) || 0;
+    if (Math.abs(cur - net) > 0.005) {
+      formik.setFieldValue('subtotal', net);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- sincronizar solo ante total/impuestos/tipo/config
+  }, [
+    isInitialLoading,
+    formik.values.total,
+    formik.values.impuestos,
+    formik.values.type,
+    comprobante_info,
+    ingreso_info,
+  ]);
 
   // Abrir popup de stock automáticamente si viene showStockPopup=true y no fue procesado
   useEffect(() => {
@@ -888,6 +993,15 @@ const createdAtStr = (() => {
     <>
       <Head><title>{titulo}</title></Head>
 
+      <input
+        ref={fileInputRef}
+        accept="image/*,application/pdf"
+        type="file"
+        className="hidden"
+        onClick={handleFileInputClick}
+        onChange={handleFileChange}
+        aria-hidden
+      />
       <div className="flex h-[calc(100dvh-4.5rem)] max-h-[calc(100vh-4.5rem)] flex-col gap-2 overflow-hidden bg-neutral-50 px-2 pb-2 pt-1">
         <header className="shrink-0 rounded-xl border border-divider bg-white px-3 py-2 shadow-sm">
           <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
@@ -940,6 +1054,21 @@ const createdAtStr = (() => {
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              {(isEditMode || modoIngreso === 'manual') && (
+                <button
+                  type="button"
+                  onClick={() => handleExtraerDatos()}
+                  disabled={isExtractingData || (!isEditMode && !hasComprobante)}
+                  className="inline-flex items-center gap-1 rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium text-neutral-800 shadow-sm hover:bg-neutral-50 disabled:opacity-50"
+                >
+                  {isExtractingData ? (
+                    <ArrowPathIcon className="h-4 w-4 animate-spin" aria-hidden />
+                  ) : (
+                    <DocumentMagnifyingGlassIcon className="h-4 w-4" aria-hidden />
+                  )}
+                  {isExtractingData ? 'Extrayendo…' : 'Extraer datos de archivo'}
+                </button>
+              )}
               <div className="relative" ref={accionesRef}>
                 <button
                   type="button"
@@ -1068,6 +1197,41 @@ const createdAtStr = (() => {
               </div>
             </div>
           </div>
+        ) : modoIngreso === null && !isEditMode ? (
+          <div className="flex flex-1 flex-col items-center justify-center px-4 py-8">
+            <div className="w-full max-w-md rounded-xl border border-divider bg-white p-6 text-center shadow-sm">
+              <h2 className="text-lg font-semibold text-neutral-900">¿Cómo querés cargar el movimiento?</h2>
+              {effectiveProyectoName && (
+                <p className="mt-2 text-sm text-neutral-600">Proyecto: {effectiveProyectoName}</p>
+              )}
+              <div className="mt-6 flex flex-col gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    pendingExtraccionRef.current = true;
+                    fileInputRef.current?.click();
+                  }}
+                  disabled={isExtractingData}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary-main px-4 py-3 text-sm font-semibold text-white shadow hover:bg-primary-dark disabled:opacity-50"
+                >
+                  {isExtractingData ? (
+                    <ArrowPathIcon className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+                  ) : (
+                    <DocumentMagnifyingGlassIcon className="h-4 w-4 shrink-0" aria-hidden />
+                  )}
+                  {isExtractingData ? 'Extrayendo datos…' : 'Tengo una factura o comprobante'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setModoIngreso('manual')}
+                  disabled={isExtractingData}
+                  className="rounded-lg border border-neutral-300 bg-white px-4 py-3 text-sm font-medium text-neutral-800 hover:bg-neutral-50 disabled:opacity-50"
+                >
+                  Carga manual
+                </button>
+              </div>
+            </div>
+          </div>
         ) : (
           <div className="flex min-h-0 flex-1 flex-col gap-2 lg:flex-row lg:gap-3">
             <form
@@ -1086,14 +1250,6 @@ const createdAtStr = (() => {
                 </StitchBlock>
               </div>
               <footer className="flex shrink-0 flex-wrap items-center gap-2 border-t border-divider pt-2">
-                <input
-                  ref={fileInputRef}
-                  accept="image/*,application/pdf"
-                  type="file"
-                  className="hidden"
-                  onClick={handleFileInputClick}
-                  onChange={handleFileChange}
-                />
                 <button
                   type="button"
                   onClick={() => {

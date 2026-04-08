@@ -91,6 +91,33 @@ const ellipsis = (maxWidth) => ({
   textOverflow: 'ellipsis',
 });
 
+const DEBUG_CAJA = true;
+
+const formatDebugValue = (value) => {
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  if (Array.isArray(value)) {
+    return value.map(formatDebugValue);
+  }
+  if (value && typeof value === 'object') {
+    return Object.entries(value).reduce((acc, [key, current]) => {
+      acc[key] = formatDebugValue(current);
+      return acc;
+    }, {});
+  }
+  return value;
+};
+
+const logCajaDebug = (label, payload) => {
+  if (!DEBUG_CAJA) return;
+  if (typeof payload === 'undefined') {
+    console.log(`[CajaProyecto] ${label}`);
+    return;
+  }
+  console.log(`[CajaProyecto] ${label}`, formatDebugValue(payload));
+};
+
 
 const TotalesFiltrados = ({ t, fmt, moneda, showUsdBlue = false, usdBlue = null, chips = [], onOpenFilters, isMobile = false, showDetails = false, onToggleDetails }) => {
   const up = (moneda || '').toUpperCase();
@@ -224,6 +251,10 @@ const TotalesFiltrados = ({ t, fmt, moneda, showUsdBlue = false, usdBlue = null,
 const ProyectoMovimientosPage = () => {
   const { user } = useAuthContext();
   const { setBreadcrumbs } = useBreadcrumbs();
+  const authUserUid = user?.user_id || user?.uid || null;
+  // Ref estable para acceder al user actual sin re-disparar effects
+  const userRef = useRef(user);
+  useEffect(() => { userRef.current = user; }, [user]);
   const [movimientos, setMovimientos] = useState([]);
   const [movimientosUSD, setMovimientosUSD] = useState([]);
   const [tablaActiva, setTablaActiva] = useState('ARS');
@@ -585,8 +616,18 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
     movimientos,
     movimientosUSD,
     cajaSeleccionada,
-    userId: user?.user_id,
   });
+
+  useEffect(() => {
+    logCajaDebug('Contexto inicial usuario/router', {
+      proyectoId,
+      authUserUid,
+      userIdPerfil: user?.id || null,
+      userUidDirecto: user?.uid || null,
+      routerPath: router.asPath,
+      routerQuery: router.query,
+    });
+  }, [authUserUid, proyectoId, router.asPath, router.query, user?.id, user?.uid]);
 
   const columnasConfig = useMemo(
     () => getCajaColumnasConfig(visibleCols, compactCols, empresa, options),
@@ -619,6 +660,27 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
     handleCloseCajaMenu();
     setEquivalenciaCaja(caja.equivalencia || 'none');
   };
+
+  const applyCajaSelection = useCallback((caja) => {
+    const normalizedFilters = {
+      caja: caja || null,
+      moneda: caja?.moneda ? [caja.moneda] : [],
+      medioPago: caja?.medio_pago ? [caja.medio_pago] : [],
+      estados: caja?.estado ? [caja.estado] : [],
+      tipo: caja?.type ? [caja.type] : [],
+    };
+
+    logCajaDebug('Aplicando selección de caja', {
+      caja,
+      normalizedFilters,
+    });
+
+    setCajaSeleccionada(caja || null);
+    setFilters((f) => ({
+      ...f,
+      ...normalizedFilters,
+    }));
+  }, [setFilters]);
   
   const handleEliminarCaja = (index) => {
     const nuevas = cajasVirtuales.filter((_, i) => i !== index);
@@ -626,8 +688,7 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
     updateEmpresaDetails(empresa.id, { cajas_virtuales: nuevas });
     if (cajaSeleccionada === cajasVirtuales[index]) {
       const fallback = nuevas[0] || null;
-      setCajaSeleccionada(fallback);
-      setFilters((f) => ({ ...f, caja: fallback }));
+      applyCajaSelection(fallback);
     }
     handleCloseCajaMenu();
   };
@@ -783,12 +844,29 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
 
   // Fetch movimientos ARS+USD en paralelo e hidratar nombres de usuario
   const fetchAndHydrateMovimientos = useCallback(async (pid) => {
+    logCajaDebug('Iniciando carga de movimientos', {
+      proyectoId: pid,
+      authUserUid,
+    });
     const [movs, movsUsd] = await Promise.all([
       ticketService.getMovimientosForProyecto(pid, 'ARS'),
       ticketService.getMovimientosForProyecto(pid, 'USD'),
     ]);
     const allMovs = [...(movs || []), ...(movsUsd || [])];
     const idsSinNombre = [...new Set(allMovs.filter((m) => m.id_user && !m.nombre_user).map((m) => m.id_user))];
+    logCajaDebug('Movimientos cargados antes de hidratar usuarios', {
+      proyectoId: pid,
+      ars: movs?.length || 0,
+      usd: movsUsd?.length || 0,
+      total: allMovs.length,
+      idsSinNombre: idsSinNombre.length,
+      primerosCodigos: allMovs.slice(0, 5).map((m) => ({
+        id: m.id,
+        codigo: m.codigo_operacion || m.codigo || null,
+        moneda: m.moneda,
+        total: m.total,
+      })),
+    });
     if (idsSinNombre.length > 0) {
       const profiles = await Promise.all(
         idsSinNombre.map(async (id) => {
@@ -806,11 +884,21 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
           mov.nombre_user = usuariosMap[mov.id_user];
         }
       }
+      logCajaDebug('Usuarios hidratados para movimientos', {
+        proyectoId: pid,
+        perfilesEncontrados: Object.keys(usuariosMap).length,
+        idsSolicitados: idsSinNombre,
+      });
     }
     setMovimientos(movs || []);
     setMovimientosUSD(movsUsd || []);
+    logCajaDebug('Estados locales de movimientos actualizados', {
+      proyectoId: pid,
+      ars: movs?.length || 0,
+      usd: movsUsd?.length || 0,
+    });
     return { movs, movsUsd };
-  }, []);
+  }, [authUserUid]);
 
   const handleRefresh = async () => {
     if (!proyectoId) return;
@@ -830,6 +918,11 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
     }
     const fetchMovimientosData = async (proyectoId) => {
       setLoadingPage(true);
+      logCajaDebug('Inicio fetchMovimientosData', {
+        proyectoId,
+        routerQuery: router.query,
+        authUserUid,
+      });
       // Limpiar datos anteriores para no mostrar info de otro proyecto
       setMovimientos([]);
       setMovimientosUSD([]);
@@ -837,9 +930,18 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
 
       // Cargar empresa, proyecto y movimientos en paralelo
       const [empresa, proyecto] = await Promise.all([
-        getEmpresaDetailsFromUser(user),
+        getEmpresaDetailsFromUser(userRef.current),
         getProyectoById(proyectoId),
       ]);
+      logCajaDebug('Empresa y proyecto cargados', {
+        empresaId: empresa?.id,
+        empresaNombre: empresa?.nombre,
+        proyectoId: proyecto?.id,
+        proyectoNombre: proyecto?.nombre,
+        soloDolar: empresa?.solo_dolar,
+        conEstados: empresa?.con_estados,
+        mediosPago: empresa?.medios_pago?.length || 0,
+      });
 
       const cajasIniciales = empresa.cajas_virtuales?.length > 0 ? empresa.cajas_virtuales : [
         { nombre: 'Caja en Pesos', moneda: 'ARS', medio_pago: "" , equivalencia: 'none', type: '' },
@@ -856,9 +958,13 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
       const cajaDefault = (cajaFromUrl && cajasIniciales.find(c => c.moneda === cajaFromUrl.moneda && c.medio_pago === (cajaFromUrl.medio_pago || '')))
         || cajasIniciales[0]
         || null;
-      if (cajaDefault) {
-        setCajaSeleccionada(cajaDefault);
-      }
+      logCajaDebug('Resolución de cajas', {
+        empresaId: empresa?.id,
+        cajasIniciales,
+        cajaFromUrl,
+        cajaDefault,
+      });
+      applyCajaSelection(cajaDefault);
 
       // Cargar proyectos para transferencias (no bloquea la tabla)
       getProyectosByEmpresa(empresa).then(data => setProyectos(data || [])).catch(() => {});
@@ -870,6 +976,10 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
       setProyecto(proyecto);
       // --- hidratar preferencias guardadas ---
       const savedCols = proyecto?.ui_prefs?.columnas;
+      logCajaDebug('Preferencias guardadas de columnas', {
+        proyectoId: proyecto?.id,
+        savedCols: savedCols || null,
+      });
       if (savedCols) {
         if (typeof savedCols.compact === 'boolean') {
           setCompactCols(savedCols.compact);
@@ -886,12 +996,18 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
 
       // Aplicar filtro desde query params si existe, o limpiar si no está
       if (router.query.codigoSync) {
+        logCajaDebug('Aplicando codigoSync desde query', {
+          codigoSync: router.query.codigoSync,
+        });
         setFilters(prev => ({
           ...prev,
           codigoSync: router.query.codigoSync
         }));
       } else {
         // Si no hay codigoSync en la URL, limpiar el filtro
+        logCajaDebug('Sin codigoSync en query; limpiando filtro', {
+          routerQuery: router.query,
+        });
         setFilters(prev => ({
           ...prev,
           codigoSync: ''
@@ -912,16 +1028,52 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
 
         if (pid) {
           await fetchMovimientosData(pid);
+        } else {
+          logCajaDebug('No se resolvió proyectoId para cargar caja', {
+            proyectoId,
+            empresaId: empresa?.id || null,
+          });
         }
       } catch (err) {
         console.error('Error cargando datos de caja:', err);
+        logCajaDebug('Error en fetchData de caja', {
+          message: err?.message,
+          stack: err?.stack,
+        });
       } finally {
         setLoadingPage(false);
+        logCajaDebug('FetchData finalizado', {
+          proyectoId,
+        });
       }
     };
 
     fetchData();
-  }, [proyectoId, user]);
+  }, [proyectoId, authUserUid]);
+
+  useEffect(() => {
+    if (movimientos.length === 0 && movimientosUSD.length === 0) return;
+    logCajaDebug('Muestra de movimientos tras render', {
+      primerosARS: movimientos.slice(0, 3).map((m) => ({
+        id: m.id,
+        codigo: m.codigo_operacion || m.codigo || null,
+        fecha: m.fecha_factura || m.fecha || null,
+        total: m.total,
+        moneda: m.moneda,
+        medioPago: m.medio_pago,
+        estado: m.estado,
+      })),
+      primerosUSD: movimientosUSD.slice(0, 3).map((m) => ({
+        id: m.id,
+        codigo: m.codigo_operacion || m.codigo || null,
+        fecha: m.fecha_factura || m.fecha || null,
+        total: m.total,
+        moneda: m.moneda,
+        medioPago: m.medio_pago,
+        estado: m.estado,
+      })),
+    });
+  }, [movimientos, movimientosUSD]);
   
   const formatCurrency = (amount) => {
     if (amount)
@@ -929,6 +1081,16 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
     else
       return "$ 0";
   };
+
+  const activeCaja = useMemo(() => filters.caja || cajaSeleccionada || null, [filters.caja, cajaSeleccionada]);
+  const activeTotalsCurrency = useMemo(() => {
+    // Para cajas con equivalencia (usd_blue, etc.), la moneda visible es la de salida
+    if (activeCaja?.equivalencia && activeCaja.equivalencia !== 'none') {
+      const meta = EQUIV_META[activeCaja.equivalencia];
+      if (meta?.out) return meta.out;
+    }
+    return activeCaja?.moneda || tablaActiva || 'ARS';
+  }, [activeCaja, tablaActiva]);
 
   const cajaCellCtx = useMemo(() => ({
     empresa,
@@ -946,8 +1108,7 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
   }), [empresa, compactCols, deletingElement, openDetalle]);
 
   const onSelectCaja = (caja) => {
-    setCajaSeleccionada(caja);
-    setFilters((f) => ({ ...f, caja }));
+    applyCajaSelection(caja);
   };
 
   // helper para normalizar fecha (Timestamp/Date/string/number)
@@ -966,16 +1127,74 @@ const getTime = (v) => {
       ARS: { ingreso: 0, egreso: 0 },
       USD: { ingreso: 0, egreso: 0 },
     };
+
+    // Si la caja activa tiene equivalencia, convertir montos a la moneda de salida
+    const equiv = activeCaja?.equivalencia && activeCaja.equivalencia !== 'none'
+      ? EQUIV_META[activeCaja.equivalencia]
+      : null;
   
     movimientosFiltrados.forEach((m) => {
-      const moneda = (m.moneda || 'ARS').toUpperCase();
       const tipo = m.type === 'ingreso' ? 'ingreso' : 'egreso';
-      if (!base[moneda]) base[moneda] = { ingreso: 0, egreso: 0 };
-      base[moneda][tipo] += m.total || 0;
+
+      if (equiv?.out && equiv.path) {
+        // Usar valor convertido por equivalencia
+        const converted = equiv.path(m.equivalencias);
+        const val = typeof converted === 'number' ? converted : 0;
+        const outKey = equiv.out.toUpperCase();
+        if (!base[outKey]) base[outKey] = { ingreso: 0, egreso: 0 };
+        base[outKey][tipo] += val;
+      } else {
+        // Sin equivalencia: monto nativo
+        const moneda = (m.moneda || 'ARS').toUpperCase();
+        if (!base[moneda]) base[moneda] = { ingreso: 0, egreso: 0 };
+        base[moneda][tipo] += m.total || 0;
+      }
     });
   
     return base;
-  }, [movimientosFiltrados]);
+  }, [movimientosFiltrados, activeCaja]);
+
+  useEffect(() => {
+    logCajaDebug('Diagnóstico de fuente para totales', {
+      filtersCaja: filters.caja,
+      cajaSeleccionada,
+      activeCaja,
+      activeTotalsCurrency,
+      movimientosFiltradosPorMoneda: movimientosFiltrados.reduce((acc, mov) => {
+        const moneda = (mov.moneda || 'SIN_MONEDA').toUpperCase();
+        if (!acc[moneda]) acc[moneda] = { cantidad: 0, total: 0 };
+        acc[moneda].cantidad += 1;
+        acc[moneda].total += Number(mov.total) || 0;
+        return acc;
+      }, {}),
+      totalesDetallados,
+      netoVisible: (totalesDetallados[activeTotalsCurrency]?.ingreso || 0) - (totalesDetallados[activeTotalsCurrency]?.egreso || 0),
+    });
+  }, [filters.caja, cajaSeleccionada, activeCaja, activeTotalsCurrency, movimientosFiltrados, totalesDetallados]);
+
+  useEffect(() => {
+    if (!filters.caja || !cajaSeleccionada) return;
+    const filtersCajaKey = JSON.stringify({
+      moneda: filters.caja.moneda || null,
+      medio_pago: filters.caja.medio_pago || '',
+      estado: filters.caja.estado || '',
+      type: filters.caja.type || '',
+    });
+    const selectedCajaKey = JSON.stringify({
+      moneda: cajaSeleccionada.moneda || null,
+      medio_pago: cajaSeleccionada.medio_pago || '',
+      estado: cajaSeleccionada.estado || '',
+      type: cajaSeleccionada.type || '',
+    });
+    if (filtersCajaKey !== selectedCajaKey) {
+      logCajaDebug('Divergencia entre filters.caja y cajaSeleccionada', {
+        filtersCaja: filters.caja,
+        cajaSeleccionada,
+        activeCaja,
+        activeTotalsCurrency,
+      });
+    }
+  }, [filters.caja, cajaSeleccionada, activeCaja, activeTotalsCurrency]);
 
   // helper: normaliza la fecha al inicio del día (ignora hora)
 const getDayMs = (v) => {
@@ -1444,6 +1663,37 @@ const movimientosConProrrateo = useMemo(() => {
     if (filters.montoMax) add(`Monto max: ${filters.montoMax}`, () => setFilters((f) => ({ ...f, montoMax: '' })));
     return chips;
   }, [filters, setFilters]);
+
+  useEffect(() => {
+    logCajaDebug('Estado visible de filtros/caja/totales', {
+      proyectoId,
+      cajaSeleccionada,
+      filters,
+      movimientosARS: movimientos.length,
+      movimientosUSD: movimientosUSD.length,
+      movimientosFiltrados: movimientosFiltrados.length,
+      totalRows,
+      page,
+      rowsPerPage,
+      totalesDetallados,
+      totalesHook: totales,
+      filterChips: filterChips.map((chip) => chip.label),
+    });
+  }, [
+    proyectoId,
+    cajaSeleccionada,
+    filters,
+    movimientos.length,
+    movimientosUSD.length,
+    movimientosFiltrados.length,
+    totalRows,
+    page,
+    rowsPerPage,
+    totalesDetallados,
+    totales,
+    filterChips,
+  ]);
+
   const totalesUsdBlue = useMemo(() => {
     let ingreso = 0, egreso = 0;
     (movimientosFiltrados || []).forEach(m => {
@@ -1743,7 +1993,7 @@ useEffect(() => {
         onToggleExpanded={() => setFiltersOpen(false)}
         storageKey={proyectoId}
         empresaId={empresa?.id}
-        userId={user?.uid}
+        userId={authUserUid}
       />
       <Stack direction="row" justifyContent="flex-end" spacing={1} sx={{ mt: 2 }}>
         <Button variant="text" onClick={() => setFiltersOpen(false)}>Cancelar</Button>
@@ -1764,7 +2014,7 @@ useEffect(() => {
     onToggleExpanded={() => setFiltersOpen((o) => !o)}
     storageKey={proyectoId}
     empresaId={empresa?.id}
-    userId={user?.uid}
+    userId={authUserUid}
   />
 )}
             <Paper>
@@ -1779,7 +2029,7 @@ useEffect(() => {
               <TotalesFiltrados
                   t={totalesDetallados}
                   fmt={formatByCurrency}
-                  moneda={cajaSeleccionada?.moneda || filters.caja?.moneda || tablaActiva || 'ARS'}
+                  moneda={activeTotalsCurrency}
                   showUsdBlue={false}
                   usdBlue={totalesUsdBlue}
                   chips={[]}

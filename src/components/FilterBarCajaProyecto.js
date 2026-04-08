@@ -16,6 +16,29 @@ import DatePicker from 'react-datepicker';
 import { subDays, startOfMonth, endOfMonth } from 'date-fns';
 import FiltrosGuardadosService from 'src/services/filtrosGuardadosService';
 
+const DEBUG_CAJA_FILTERBAR = true;
+
+const formatDebugValue = (value) => {
+  if (value instanceof Date) return value.toISOString();
+  if (Array.isArray(value)) return value.map(formatDebugValue);
+  if (value && typeof value === 'object') {
+    return Object.entries(value).reduce((acc, [key, current]) => {
+      acc[key] = formatDebugValue(current);
+      return acc;
+    }, {});
+  }
+  return value;
+};
+
+const logFilterBar = (label, payload) => {
+  if (!DEBUG_CAJA_FILTERBAR) return;
+  if (typeof payload === 'undefined') {
+    console.log(`[CajaProyecto:filterBar] ${label}`);
+    return;
+  }
+  console.log(`[CajaProyecto:filterBar] ${label}`, formatDebugValue(payload));
+};
+
 /* ────────────────────────── constantes ────────────────────────── */
 
 const defaultFilters = {
@@ -297,15 +320,41 @@ export const FilterBarCajaProyecto = ({
     try {
       const data = await FiltrosGuardadosService.listar(empresaId);
       setSavedFilters(data);
+      logFilterBar('Filtros guardados cargados', {
+        empresaId,
+        total: data.length,
+        filtros: data.map((item) => ({
+          id: item._id || item.id,
+          nombre: item.nombre,
+          is_default: item.is_default,
+          creado_por: item.creado_por,
+          filtros: item.filtros,
+        })),
+      });
 
       // Aplicar default solo la primera vez
       if (!defaultAppliedRef.current) {
         defaultAppliedRef.current = true;
         const def = data.find((f) => f.is_default);
-        if (def) setFilters((prev) => ({ ...prev, ...deserializeFilters(def.filtros) }));
+        if (def) {
+          logFilterBar('Aplicando filtro guardado default', {
+            empresaId,
+            filtroId: def._id || def.id,
+            nombre: def.nombre,
+            filtros: def.filtros,
+          });
+          setFilters((prev) => ({ ...prev, ...deserializeFilters(def.filtros) }));
+        } else {
+          logFilterBar('No hay filtro guardado default', { empresaId });
+        }
       }
     } catch (err) {
       console.error('Error al cargar filtros guardados:', err);
+      logFilterBar('Error cargando filtros guardados', {
+        empresaId,
+        message: err?.message,
+        stack: err?.stack,
+      });
     }
   }, [empresaId]);
 
@@ -322,16 +371,33 @@ export const FilterBarCajaProyecto = ({
         filtros: serializeFilters(filters),
         creado_por: userId || null,
       });
+      logFilterBar('Filtro guardado creado', {
+        empresaId,
+        nombre: name,
+        creado_por: userId || null,
+        filtros: serializeFilters(filters),
+      });
       setSaveName('');
       await fetchSaved();
     } catch (err) {
       console.error('Error al guardar filtro:', err);
+      logFilterBar('Error guardando filtro', {
+        empresaId,
+        nombre: name,
+        message: err?.message,
+      });
     } finally {
       setSavingFilter(false);
     }
   };
 
   const handleApplySaved = (sf) => {
+    logFilterBar('Aplicando filtro guardado manualmente', {
+      empresaId,
+      filtroId: sf._id || sf.id,
+      nombre: sf.nombre,
+      filtros: sf.filtros,
+    });
     setFilters((prev) => ({ ...prev, ...defaultFilters, ...deserializeFilters(sf.filtros) }));
     setSavedAnchor(null);
   };
@@ -339,18 +405,36 @@ export const FilterBarCajaProyecto = ({
   const handleToggleDefault = async (id) => {
     try {
       await FiltrosGuardadosService.toggleDefault(id);
+      logFilterBar('Toggle default ejecutado', {
+        empresaId,
+        filtroId: id,
+      });
       await fetchSaved();
     } catch (err) {
       console.error('Error al cambiar default:', err);
+      logFilterBar('Error al cambiar default', {
+        empresaId,
+        filtroId: id,
+        message: err?.message,
+      });
     }
   };
 
   const handleDeleteSaved = async (id) => {
     try {
       await FiltrosGuardadosService.eliminar(id);
+      logFilterBar('Filtro guardado eliminado', {
+        empresaId,
+        filtroId: id,
+      });
       await fetchSaved();
     } catch (err) {
       console.error('Error al eliminar filtro:', err);
+      logFilterBar('Error eliminando filtro guardado', {
+        empresaId,
+        filtroId: id,
+        message: err?.message,
+      });
     }
   };
 

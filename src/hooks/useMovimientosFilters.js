@@ -3,6 +3,29 @@ import { subDays, addDays } from 'date-fns';
 import { useRouter } from 'next/router';
 import { toJsDate } from 'src/utils/dateSerde';
 
+const DEBUG_CAJA_FILTERS = true;
+
+const formatDebugValue = (value) => {
+  if (value instanceof Date) return value.toISOString();
+  if (Array.isArray(value)) return value.map(formatDebugValue);
+  if (value && typeof value === 'object') {
+    return Object.entries(value).reduce((acc, [key, current]) => {
+      acc[key] = formatDebugValue(current);
+      return acc;
+    }, {});
+  }
+  return value;
+};
+
+const logCajaFilters = (label, payload) => {
+  if (!DEBUG_CAJA_FILTERS) return;
+  if (typeof payload === 'undefined') {
+    console.log(`[CajaProyecto:filters] ${label}`);
+    return;
+  }
+  console.log(`[CajaProyecto:filters] ${label}`, formatDebugValue(payload));
+};
+
 const PERSIST_KEYS = [
   'fechaDesde','fechaHasta','palabras','observacion',
   'categorias','subcategorias','proveedores','medioPago',
@@ -44,7 +67,7 @@ const arrayFields = [
 ];
 
 export function useMovimientosFilters({
-  empresaId, proyectoId, userId, // <-- agrega userId
+  empresaId, proyectoId,
   movimientos, movimientosUSD, cajaSeleccionada
 }) {
   const router = useRouter();
@@ -162,18 +185,31 @@ export function useMovimientosFilters({
       if (!Array.isArray(merged[k])) merged[k] = [];
     });
     setFilters(merged);
+    logCajaFilters('Filtros rehidratados desde query', {
+      empresaId,
+      proyectoId,
+      routerQuery: router.query,
+      parsed,
+      merged,
+    });
     lastQueryHashRef.current = incomingHash;
     initializedRef.current = true;
-  }, [router.isReady, router.query]);
+  }, [empresaId, proyectoId, router.isReady, router.query]);
 
   useEffect(() => {
     if (!initializedRef.current || !router.isReady) return;
     const nextQuery = buildQueryFromFilters(filters, router.query || {});
     const qHash = stableStringify(nextQuery);
     if (qHash === lastQueryHashRef.current) return;
+    logCajaFilters('Sincronizando filtros hacia query', {
+      proyectoId,
+      filters,
+      previousQuery: router.query,
+      nextQuery,
+    });
     lastQueryHashRef.current = qHash;
     router.replace({ pathname: router.pathname, query: nextQuery }, undefined, { shallow: true, scroll: false });
-  }, [filters, router]);
+  }, [filters, proyectoId, router]);
 
 
   // opciones únicas (para selects múltiples)
@@ -326,6 +362,72 @@ export function useMovimientosFilters({
         : String(bv).localeCompare(String(av));
     });
   }, [filters, movimientos, movimientosUSD, cajaSeleccionada]);
+
+  useEffect(() => {
+    const base = (filters.caja?.moneda || cajaSeleccionada?.moneda) === 'USD'
+      ? (movimientosUSD || [])
+      : (movimientos || []);
+
+    const activeFilterKeys = Object.entries(filters).reduce((acc, [key, value]) => {
+      if (Array.isArray(value) && value.length > 0) acc.push(key);
+      else if (value instanceof Date) acc.push(key);
+      else if (value && typeof value === 'object') acc.push(key);
+      else if (typeof value === 'string' && value.trim() !== '') acc.push(key);
+      return acc;
+    }, []);
+
+    const checks = {
+      fecha: base.filter((mov) => insideRange(mov, filters.fechaDesde, filters.fechaHasta)).length,
+      fechaPago: base.filter((mov) => insideRangePago(mov, filters.fechaPagoDesde, filters.fechaPagoHasta)).length,
+      categoria: base.filter((mov) => filters.categorias.length === 0 || filters.categorias.includes(mov.categoria)).length,
+      subcategoria: base.filter((mov) => filters.subcategorias.length === 0 || filters.subcategorias.includes(mov.subcategoria)).length,
+      proveedor: base.filter((mov) => filters.proveedores.length === 0 || filters.proveedores.includes(mov.nombre_proveedor)).length,
+      medioPago: base.filter((mov) => filters.medioPago.length === 0 || filters.medioPago.includes(mov.medio_pago)).length,
+      tipo: base.filter((mov) => filters.tipo.length === 0 || filters.tipo.includes(mov.type)).length,
+      moneda: base.filter((mov) => filters.moneda.length === 0 || filters.moneda.includes(mov.moneda)).length,
+      estados: base.filter((mov) => filters.estados.length === 0 || filters.estados.includes(mov.estado)).length,
+      empresaFacturacion: base.filter((mov) => filters.empresaFacturacion.length === 0 || filters.empresaFacturacion.includes(mov.empresa_facturacion)).length,
+      codigoSync: base.filter((mov) => !filters.codigoSync || mov.codigo_sync === filters.codigoSync.trim()).length,
+      facturaCliente: base.filter((mov) => {
+        if (!filters.facturaCliente) return true;
+        const isCliente = mov.factura_cliente === true;
+        return filters.facturaCliente === 'cliente' ? isCliente : !isCliente;
+      }).length,
+      caja: base.filter((mov) => {
+        const caja = filters.caja || cajaSeleccionada;
+        if (!caja) return true;
+        const monedaOk = !caja.moneda || mov.moneda === caja.moneda;
+        const medioOk = !caja.medio_pago || mov.medio_pago === caja.medio_pago;
+        const estadoOk = !caja.estado || mov.estado === caja.estado;
+        return monedaOk && medioOk && estadoOk;
+      }).length,
+      monto: base.filter((mov) => {
+        const minOk = filters.montoMin ? mov.total >= Number(filters.montoMin) : true;
+        const maxOk = filters.montoMax ? mov.total <= Number(filters.montoMax) : true;
+        return minOk && maxOk;
+      }).length,
+    };
+
+    logCajaFilters('Resumen de filtrado', {
+      empresaId,
+      proyectoId,
+      tablaBase: (filters.caja?.moneda || cajaSeleccionada?.moneda) === 'USD' ? 'USD' : 'ARS',
+      baseCount: base.length,
+      filteredCount: movimientosFiltrados.length,
+      activeFilterKeys,
+      cajaSeleccionada,
+      filters,
+      checks,
+      primerasCoincidencias: movimientosFiltrados.slice(0, 5).map((mov) => ({
+        id: mov.id,
+        codigo: mov.codigo_operacion || mov.codigo || null,
+        moneda: mov.moneda,
+        total: mov.total,
+        medioPago: mov.medio_pago,
+        estado: mov.estado,
+      })),
+    });
+  }, [empresaId, proyectoId, filters, cajaSeleccionada, movimientos, movimientosUSD, movimientosFiltrados]);
 
   const totales = useMemo(() => {
     return movimientosFiltrados.reduce((acc, m) => {

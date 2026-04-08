@@ -90,6 +90,22 @@ export const getCamposConfig = (comprobanteInfo, ingresoInfo, tipoMovimiento) =>
   return { ...defaults, ...(rawInfo || {}) };
 };
 
+export const isSubtotalFieldEnabled = (comprobanteInfo, ingresoInfo, tipoMovimiento) =>
+  Boolean(getCamposConfig(comprobanteInfo, ingresoInfo, tipoMovimiento).subtotal);
+
+const sumImpuestos = (impuestos) =>
+  (Array.isArray(impuestos) ? impuestos : []).reduce((a, i) => a + (Number(i?.monto) || 0), 0);
+
+/**
+ * Neto imponible coherente con total e impuestos cuando el usuario no edita Subtotal.
+ * Si impuestos > total (datos incoherentes), evita persistir subtotal negativo.
+ */
+export const computeNetSubtotalFromTotalImpuestos = (total, impuestos) => {
+  const t = Number(total) || 0;
+  const imp = sumImpuestos(impuestos);
+  return Math.max(0, t - imp);
+};
+
 export const getOptionsFromContext = (key, context = {}) => {
   const {
     proveedores = [],

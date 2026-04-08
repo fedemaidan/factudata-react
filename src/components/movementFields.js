@@ -6,6 +6,7 @@ import {
   GROUP_SECTIONS,
   STITCH_GROUP_SECTIONS,
   getOptionsFromContext,
+  isSubtotalFieldEnabled,
 } from './movementFieldsConfig';
 
 const inputCls =
@@ -167,12 +168,9 @@ const MovementFields = ({
 
   const camposGrupo = useMemo(() => {
     const visibles = getCamposVisibles(comprobante_info, empresa, ingreso_info, tipoMovimiento);
-    const sections = block && STITCH_GROUP_SECTIONS[block]
-      ? STITCH_GROUP_SECTIONS[block]
-      : GROUP_SECTIONS[group] || GROUP_SECTIONS.general;
-    const permitidas = new Set(sections);
-    return visibles.filter((c) => permitidas.has(c.section));
-  }, [block, group, comprobante_info, ingreso_info, empresa, tipoMovimiento]);
+    const permitidas = new Set(GROUP_SECTIONS[group] || GROUP_SECTIONS.general);
+    return visibles.filter(c => permitidas.has(c.section));
+  }, [group, comprobante_info, ingreso_info, empresa, tipoMovimiento]);
 
   const renderCampo = (campo) => {
     const value = formik.values[campo.name] ?? (campo.type === 'boolean' ? false : '');
@@ -399,18 +397,18 @@ const MovementFields = ({
             subtotal={formik.values.subtotal}
           />
           {(() => {
-            const subtotalN = Number(formik.values.subtotal) || 0;
+            const subtotal = Number(formik.values.subtotal) || 0;
             const impTotal = (formik.values.impuestos || []).reduce((a, i) => a + (Number(i.monto) || 0), 0);
-            const totalN = Number(formik.values.total) || 0;
-            const diff = Math.abs(subtotalN + impTotal - totalN);
-            if ((formik.values.impuestos?.length || subtotalN > 0) && diff > 0.01) {
+            const total = Number(formik.values.total) || 0;
+            const diff = Math.abs(subtotal + impTotal - total);
+            if (usaSubtotal && (formik.values.impuestos?.length || subtotal > 0) && diff > 0.01) {
               return (
                 <div
                   className="mt-2 rounded-lg border border-warning-main/40 bg-warning-main/10 px-2 py-1.5 text-xs text-warning-dark"
                   role="status"
                 >
-                  Subtotal ({subtotalN.toFixed(2)}) + Impuestos ({impTotal.toFixed(2)}) ≠ Total (
-                  {totalN.toFixed(2)}). Se permitirá guardar con confirmación.
+                  Subtotal ({subtotal.toFixed(2)}) + Impuestos ({impTotal.toFixed(2)}) ≠ Total (
+                  {total.toFixed(2)}). Se permitirá guardar con confirmación.
                 </div>
               );
             }

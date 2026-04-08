@@ -95,6 +95,8 @@ export default function EditarAcopioPage() {
   const [valorTotal, setValorTotal] = useState(0);
   const [actualizacionAutomatica, setActualizacionAutomatica] = useState(false); // Por defecto manual
   const [productos, setProductos] = useState([]);
+  const productosRef = useRef(productos);
+  useEffect(() => { productosRef.current = productos; }, [productos]);
   const [urls, setUrls] = useState([]);
 
   const [selectionModel, setSelectionModel] = useState([]);
@@ -358,8 +360,16 @@ const goNext = () => setCurrentIdx((i) => (i + 1) % (urls?.length || 0));
 
   // 💾 Guardar cambios
   const guardarCambios = async () => {
+    // Forzar commit de celdas en edición del DataGrid antes de leer el estado
+    document.activeElement?.blur();
+    await new Promise((r) => setTimeout(r, 150));
+
     try {
       setGuardando(true);
+
+      // Leer desde el ref para obtener los productos más recientes
+      // (el blur puede haber disparado processRowUpdate que actualiza el ref sincrónicamente)
+      const productosActuales = productosRef.current;
 
       // 1. Actualizar proveedores si es necesario
       if (proveedor && !proveedoresOptions.includes(proveedor)) {
@@ -384,12 +394,12 @@ const goNext = () => setCurrentIdx((i) => (i + 1) % (urls?.length || 0));
       }
 
       // 3. Sincronizar productos (una sola llamada - el backend gestiona crear/actualizar/eliminar)
-      const productosParaSync = productos.map((p) => ({
+      const productosParaSync = productosActuales.map((p) => ({
         id: p.mongoId || p.id,
         codigo: p.codigo,
         descripcion: p.descripcion,
-        cantidad: Number(p.cantidad) || 0,
-        valorUnitario: Number(p.valorUnitario) || 0,
+        cantidad: toNumber(p.cantidad),
+        valorUnitario: toNumber(p.valorUnitario),
       }));
       
       console.log('2. Sincronizando productos:', productosParaSync.length);
@@ -436,6 +446,9 @@ const goNext = () => setCurrentIdx((i) => (i + 1) % (urls?.length || 0));
     const updated = { ...newRow };
     const cantidad = toNumber(updated.cantidad);
     const valorUnitario = toNumber(updated.valorUnitario);
+    // Normalizar a number para que no queden strings con coma (ej: "1500,50")
+    updated.cantidad = cantidad;
+    updated.valorUnitario = valorUnitario;
     if (tipoLista === 'materiales') {
       updated.valorTotal = cantidad * valorUnitario;
     }

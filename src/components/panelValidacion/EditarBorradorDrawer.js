@@ -44,10 +44,10 @@ function EditarBorradorFormContent({
   onFormChange,
   onSave,
   onClose,
-  onMarcarDuplicado,
   saving,
-  markingDuplicado = false,
   formatFecha,
+  onRechazar,
+  rechazando = false,
 }) {
   const categoriaSeleccionada = useMemo(
     () => (categorias || []).find((c) => c.name === form.categoria),
@@ -269,13 +269,13 @@ function EditarBorradorFormContent({
 
       {camposVisibles.map((campo) => renderCampo(campo))}
 
-      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mt: 2 }}>
+      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mt: 2 }} alignItems="center">
         <Button
           variant="contained"
           onClick={onSave}
           disabled={
             saving ||
-            markingDuplicado ||
+            rechazando ||
             (shouldShowProyecto && !form.proyecto_id) ||
             form.total === '' ||
             form.total === undefined ||
@@ -286,19 +286,19 @@ function EditarBorradorFormContent({
         >
           {saving ? 'Confirmando...' : 'Confirmar'}
         </Button>
-        {typeof onMarcarDuplicado === 'function' && (
+        <Button variant="outlined" onClick={onClose} disabled={saving || rechazando}>
+          Cancelar
+        </Button>
+        {typeof onRechazar === 'function' && (
           <Button
             variant="outlined"
             color="warning"
-            onClick={onMarcarDuplicado}
-            disabled={saving || markingDuplicado}
+            onClick={onRechazar}
+            disabled={saving || rechazando}
           >
-            {markingDuplicado ? 'Marcando...' : 'Duplicado'}
+            {rechazando ? 'Rechazando...' : 'Rechazar'}
           </Button>
         )}
-        <Button variant="outlined" onClick={onClose} disabled={saving || markingDuplicado}>
-          Cancelar
-        </Button>
       </Stack>
     </Stack>
   );
@@ -321,10 +321,10 @@ function EditarBorradorDrawer({
   clientesOptions = [],
   onClose,
   onSave,
-  onMarcarDuplicado,
   onFormChange,
   saving = false,
-  markingDuplicado = false,
+  onRechazar,
+  rechazando = false,
 }) {
   const urlImagen = mov?.url_imagen || mov?.url_image;
   const isPdf = Boolean(urlImagen && String(urlImagen).toLowerCase().includes('.pdf'));
@@ -352,10 +352,10 @@ function EditarBorradorDrawer({
       onFormChange={onFormChange}
       onSave={onSave}
       onClose={onClose}
-      onMarcarDuplicado={onMarcarDuplicado}
       saving={saving}
-      markingDuplicado={markingDuplicado}
       formatFecha={formatFecha}
+      onRechazar={onRechazar}
+      rechazando={rechazando}
     />
   );
 
