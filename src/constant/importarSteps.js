@@ -5,7 +5,7 @@ export const steps = [
   'Proyecto',
   'Identificación',
   'Método de carga',
-  'Subir archivo',
+  'Preguntas',
   'Ajustar columnas',
   'Revisión final'
 ];

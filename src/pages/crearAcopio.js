@@ -29,7 +29,6 @@ import StepDesdeFactura from 'src/components/importar/StepDesdeFactura';
 import Step1SubirAjustar from 'src/components/importar/Step1SubirAjustar';
 import Step2AjustarColumnas from 'src/components/importar/Step2AjustarColumnas';
 import Step3RevisionFinal from 'src/components/importar/Step3RevisionFinal';
-import PreflightChatDialog from 'src/components/importar/PreflightChatDialog';
 import useExtractionProcess from 'src/hooks/importar/useExtractionProcess';
 import useColumnMapping from 'src/hooks/importar/useColumnMapping';
 import { fmtMoney } from 'src/utils/importar/money';
@@ -57,6 +56,7 @@ const ImportarPage = () => {
   const { setBreadcrumbs } = useBreadcrumbs();
 
   const [alert, setAlert] = useState({ open: false, message: '', severity: 'info' });
+  const autoProcesoLanzado = React.useRef(false);
 
   const [proveedoresOptions, setProveedoresOptions] = useState([]);
   const [proyectosOptions, setProyectosOptions] = useState([]);
@@ -77,12 +77,16 @@ const ImportarPage = () => {
   const containerRef = useRef(null);
   const [draggingGuide, setDraggingGuide] = useState(false);
 
-  // Estado para modo de extracción: 'rapido', 'balanceado', 'preciso'
-  const [modoExtraccion, setModoExtraccion] = useState('balanceado');
+  // Modo de extracción fijo: siempre 'preciso'
+  const modoExtraccion = 'preciso';
 
-  // Estado para preflight chat (instrucciones antes de extraer)
-  const [preflightOpen, setPreflightOpen] = useState(false);
+  // Estado para pre-análisis inteligente
+  // Estado para pre-análisis inline
+  const [preAnalisisPreguntas, setPreAnalisisPreguntas] = useState([]);
+  const [preAnalisisResumen, setPreAnalisisResumen] = useState('');
+  const [preAnalisisUrls, setPreAnalisisUrls] = useState([]);
   const [instruccionesExtraccion, setInstruccionesExtraccion] = useState('');
+  const [fasePreAnalisis, setFasePreAnalisis] = useState(null);
 
   // Estados para diálogo de discrepancias
   const [discrepanciasDialogOpen, setDiscrepanciasDialogOpen] = useState(false);
@@ -182,20 +186,60 @@ const onProcesar = async () => {
     return;
   }
 
-  // Abrir diálogo de preflight antes de enviar al backend
-  setPreflightOpen(true);
+  // Lanzar pre-análisis inline (sin diálogo)
+  setFasePreAnalisis('cargando');
+  setPreAnalisisPreguntas([]);
+  setPreAnalisisResumen('');
+
+  try {
+    const resultado = await AcopioService.preAnalizarCompra(archivo, { tipoLista });
+    setPreAnalisisPreguntas(resultado.preguntas || []);
+    setPreAnalisisResumen(resultado.resumen_documento || '');
+    setPreAnalisisUrls(resultado.urls || []);
+    setFasePreAnalisis('preguntas');
+  } catch (err) {
+    console.error('Error en pre-análisis:', err);
+    const errorMsg = err?.response?.data?.error || 'No se pudo analizar el documento automáticamente.';
+    const esTamanio = err?.response?.data?.codigo === 'ARCHIVO_MUY_GRANDE';
+    if (esTamanio) {
+      setAlert({ open: true, message: errorMsg, severity: 'error' });
+      setFasePreAnalisis(null);
+    } else {
+      setPreAnalisisPreguntas([]);
+      setPreAnalisisResumen(errorMsg);
+      setFasePreAnalisis('preguntas');
+    }
+  }
 };
 
+// Auto-lanzar procesamiento cuando se selecciona un archivo en paso 5
+React.useEffect(() => {
+  if (archivo && activeStep === 5 && !autoProcesoLanzado.current) {
+    autoProcesoLanzado.current = true;
+    onProcesar();
+  }
+  if (!archivo) {
+    autoProcesoLanzado.current = false;
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [archivo, activeStep]);
+
 const onProcesarConInstrucciones = async (instrucciones) => {
-  setPreflightOpen(false);
+  setFasePreAnalisis(null);
   setInstruccionesExtraccion(instrucciones);
+
+  // Si tenemos URLs del pre-análisis, usarlas directamente (evita re-upload)
+  const metaBase = { tipoLista, proveedor, proyecto, valorTotal, modo: modoExtraccion, empresaId, instrucciones_extraccion: instrucciones };
+  if (preAnalisisUrls.length > 0) {
+    metaBase.archivo_urls = preAnalisisUrls;
+  }
 
   // Continuar con el flujo OCR/imagen
   await procesar({
-    archivo,
+    archivo: preAnalisisUrls.length > 0 ? null : archivo,
     rotation,
     guideY,
-    meta: { tipoLista, proveedor, proyecto, valorTotal, modo: modoExtraccion, empresaId, instrucciones_extraccion: instrucciones },
+    meta: metaBase,
     onPreviewReady: ({ rawRows, cols, rows, mapping, urls, tieneDiscrepancias }) => {
       // Función para limpiar campos internos de los materiales
       const limpiarMateriales = (materiales) => materiales.map(mat => {
@@ -995,8 +1039,12 @@ const handleAddItem = (position = 'end', datosDefecto = null) => {
           onContainerTouchMove={onContainerTouchMove}
           onGuideMouseDown={onGuideMouseDown}
           onProcesar={onProcesar}
-          modoExtraccion={modoExtraccion}
-          setModoExtraccion={setModoExtraccion}
+          fasePreAnalisis={fasePreAnalisis}
+          preAnalisisPreguntas={preAnalisisPreguntas}
+          preAnalisisResumen={preAnalisisResumen}
+          onConfirmarPreAnalisis={onProcesarConInstrucciones}
+          extrayendo={cargando}
+          progresoExtraccion={progreso}
         />
       );
     }
@@ -1064,9 +1112,20 @@ const handleAddItem = (position = 'end', datosDefecto = null) => {
   // imágenes del documento
   imageUrls={urls}
   archivoPreview={archivo}
+  contextoPreanalisis={instruccionesExtraccion}
   onReprocesarRows={(nuevasFilas) => {
-    // Actualizar rows con resultado del reprocesamiento
-    setFinalRows(nuevasFilas);
+    // Normalizar campos del backend a los que usa la grilla
+    const normalizadas = nuevasFilas.map((mat, idx) => ({
+      id: mat.id || `repro-${idx}`,
+      codigo: mat.codigo || '',
+      descripcion: mat.descripcion || mat.Nombre || mat.nombre || '',
+      cantidad: mat.cantidad || 0,
+      unidad: mat.unidad || '',
+      valorUnitario: mat.valorUnitario || mat.precio_unitario || 0,
+      valorTotal: mat.valorTotal || mat.precio_total || ((mat.cantidad || 0) * (mat.valorUnitario || mat.precio_unitario || 0)) || 0,
+      _verificacion: mat._verificacion || undefined
+    }));
+    setFinalRows(normalizadas);
   }}
 />
     );
@@ -1208,12 +1267,6 @@ return (
   <CircularProgress color="inherit" />
 </Backdrop>
 
-    {/* Diálogo de preflight: instrucciones antes de extraer */}
-    <PreflightChatDialog
-      open={preflightOpen}
-      onClose={() => setPreflightOpen(false)}
-      onConfirmar={onProcesarConInstrucciones}
-    />
 
     {/* Diálogo para confirmar discrepancias en cantidades y/o precios */}
     <Dialog 
