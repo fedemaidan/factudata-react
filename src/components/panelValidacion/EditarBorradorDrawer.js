@@ -12,6 +12,7 @@ import {
   Typography,
 } from '@mui/material';
 import React, { useMemo } from 'react';
+import PanelOutlineDateField from 'src/components/forms/PanelOutlineDateField';
 import ImagenModal from 'src/components/ImagenModal';
 import ImpuestosEditor from 'src/components/impuestosEditor';
 import {
@@ -89,24 +90,37 @@ function EditarBorradorFormContent({
   const renderCampo = (campo) => {
     const value = form[campo.name] ?? (campo.type === 'boolean' ? false : '');
 
-    if (campo.type === 'text' || campo.type === 'date' || campo.type === 'number') {
+    if (campo.type === 'date') {
+      const dateStr = formatFecha(value);
+      const isFechaPago = campo.name === 'fecha_pago';
+      return (
+        <PanelOutlineDateField
+          key={campo.name}
+          label={campo.label}
+          value={dateStr}
+          optional={isFechaPago}
+          onChange={(e) => handleFieldChange(campo.name, e.target.value)}
+          disabled={Boolean(campo.readonly)}
+          readOnly={Boolean(campo.readonly)}
+          name={campo.name}
+        />
+      );
+    }
+
+    if (campo.type === 'text' || campo.type === 'number') {
       const isMoneyField = MONEY_FIELDS.has(campo.name);
       const displayValue = isMoneyField && value !== '' && value !== null && value !== undefined
         ? formatNumberWithThousands(value)
-        : (campo.type === 'date' ? formatFecha(value) : value);
+        : value;
       return (
         <TextField
           key={campo.name}
           fullWidth
           size="small"
           label={campo.label}
-          type={campo.type === 'date' ? 'date' : (isMoneyField ? 'text' : campo.type)}
+          type={isMoneyField ? 'text' : campo.type}
           value={displayValue}
           onChange={(e) => {
-            if (campo.type === 'date') {
-              handleFieldChange(campo.name, e.target.value);
-              return;
-            }
             if (campo.type !== 'number') {
               handleFieldChange(campo.name, e.target.value);
               return;
@@ -126,7 +140,6 @@ function EditarBorradorFormContent({
               handleFieldChange(campo.name, parsed);
             }
           }}
-          InputLabelProps={campo.type === 'date' ? { shrink: true } : undefined}
           InputProps={campo.readonly ? { readOnly: true } : undefined}
           disabled={Boolean(campo.readonly)}
         />
@@ -280,8 +293,7 @@ function EditarBorradorFormContent({
             form.total === '' ||
             form.total === undefined ||
             form.total === null ||
-            !form.fecha_factura ||
-            (Boolean(camposConfig.fecha_pago) && !form.fecha_pago)
+            !form.fecha_factura
           }
         >
           {saving ? 'Confirmando...' : 'Confirmar'}
