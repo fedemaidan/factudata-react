@@ -4,7 +4,8 @@ import profileService from 'src/services/profileService';
 import {
   Typography, Button, Card, CardContent, CardActions, CardHeader, Divider, IconButton, LinearProgress, TextField, Select, MenuItem, InputLabel, FormControl,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Dialog, DialogActions, DialogContent, DialogTitle, Snackbar, Alert, Box, Autocomplete,
-  Checkbox, Toolbar, alpha, Chip, TableSortLabel, TablePagination, Stack, useMediaQuery, useTheme, Collapse
+  Checkbox, Toolbar, alpha, Chip, TableSortLabel, TablePagination, Stack, useMediaQuery, useTheme, Collapse,
+  FormControlLabel, Switch
 } from '@mui/material';
 import AddCircleIcon from '@mui/icons-material/AddCircle';
 import EditIcon from '@mui/icons-material/Edit';
@@ -39,6 +40,7 @@ import Tooltip from '@mui/material/Tooltip';
 import { green } from '@mui/material/colors';
 import templateService from 'src/services/templateService';
 import botService from 'src/services/botService';
+import numerosAgentesService from 'src/services/numerosAgentesService';
 
 const normalizePhone = (phone) => (phone || '').toString().replace(/[^\d]/g, '');
 
@@ -169,6 +171,9 @@ export const UsuariosDetails = ({ empresa }) => {
     enviarAhora: true
   });
 
+  const [agentePhones, setAgentePhones] = useState([]);
+  const [agenteToggleLoading, setAgenteToggleLoading] = useState(false);
+
   // Opciones de proveedores desde la API
   const [proveedoresOptions, setProveedoresOptions] = useState([]);
   useEffect(() => {
@@ -183,6 +188,8 @@ export const UsuariosDetails = ({ empresa }) => {
   }, [proyectos]);
 
   // Contadores para filtros rápidos
+  const agentePhoneSet = useMemo(() => new Set(agentePhones), [agentePhones]);
+
   const filterCounts = useMemo(() => ({
     sin_email: usuarios.filter(u => !u.confirmed).length,
     sin_proyectos: usuarios.filter(u => !u.proyectosData?.length || u.proyectosData.every(p => !p)).length,
@@ -310,6 +317,33 @@ export const UsuariosDetails = ({ empresa }) => {
     fetchProfiles();
     fetchProyectos();
   }, [empresa]);
+
+  useEffect(() => {
+    if (!empresa?.id) return undefined;
+
+    let cancelled = false;
+
+    const loadAgentePhones = async () => {
+      try {
+        const items = await numerosAgentesService.list();
+        if (!cancelled) {
+          setAgentePhones(items.map((i) => String(i.phone || '')).filter(Boolean));
+        }
+      } catch (error) {
+        console.error('Error al cargar números agente:', error);
+        if (!cancelled) {
+          setSnackbarMessage('No se pudo cargar el estado del asistente de movimientos');
+          setSnackbarSeverity('warning');
+          setSnackbarOpen(true);
+        }
+      }
+    };
+
+    loadAgentePhones();
+    return () => {
+      cancelled = true;
+    };
+  }, [empresa?.id]);
 
   const formik = useFormik({
     initialValues: {
@@ -931,6 +965,35 @@ export const UsuariosDetails = ({ empresa }) => {
     }
   };
 
+  const handleToggleAgente = async (event) => {
+    const nextOn = event.target.checked;
+    const p = normalizePhone(formik.values.phone);
+    if (!p) {
+      return;
+    }
+    setAgenteToggleLoading(true);
+    try {
+      if (nextOn) {
+        await numerosAgentesService.add(p);
+        setAgentePhones((prev) => (prev.includes(p) ? prev : [...prev, p].sort((a, b) => a.localeCompare(b))));
+        setSnackbarMessage('Asistente activado para este número');
+        setSnackbarSeverity('success');
+      } else {
+        await numerosAgentesService.remove(p);
+        setAgentePhones((prev) => prev.filter((x) => x !== p));
+        setSnackbarMessage('Asistente desactivado para este número');
+        setSnackbarSeverity('success');
+      }
+    } catch (error) {
+      console.error('Error al actualizar asistente:', error);
+      setSnackbarMessage(error.response?.data?.error || 'No se pudo actualizar el asistente');
+      setSnackbarSeverity('error');
+    } finally {
+      setSnackbarOpen(true);
+      setAgenteToggleLoading(false);
+    }
+  };
+
   return (
     <div>
       <Card>
@@ -1187,6 +1250,7 @@ export const UsuariosDetails = ({ empresa }) => {
               </Box>
             </Toolbar>
           )}
+
           <TableContainer component={Paper} sx={{ maxHeight: 600 }}>
             <Table stickyHeader size="small">
               <TableHead>
@@ -1435,6 +1499,29 @@ export const UsuariosDetails = ({ empresa }) => {
               error={formik.touched.phone && Boolean(formik.errors.phone)}
               helperText={formik.touched.phone && formik.errors.phone}
             />
+            {editingUsuario && (
+              <Box sx={{ mt: 0.5, mb: 0.5 }}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      size="small"
+                      checked={agentePhoneSet.has(normalizePhone(formik.values.phone))}
+                      onChange={handleToggleAgente}
+                      disabled={!normalizePhone(formik.values.phone) || agenteToggleLoading}
+                      inputProps={{ 'aria-label': 'Asistente de movimientos WhatsApp' }}
+                    />
+                  }
+                  label={
+                    <Typography component="span" variant="body2" color="text.secondary">
+                      Asistente de movimientos (WhatsApp)
+                    </Typography>
+                  }
+                />
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', ml: 4.25, mt: -0.5 }}>
+                  Desactivado: flujo clásico del bot. Activado: asistente por mensaje.
+                </Typography>
+              </Box>
+            )}
             <TextField
               fullWidth
               margin="dense"
