@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Box, TextField, Autocomplete, Chip, FormControl, InputLabel,
   Select, MenuItem, Button, Stack, Collapse, ToggleButton, ToggleButtonGroup,
@@ -25,8 +25,58 @@ const ReportFiltersBar = ({
   expanded = true,
   onToggle,
 }) => {
+  const [fechaFromDraft, setFechaFromDraft] = useState('');
+  const [fechaToDraft, setFechaToDraft] = useState('');
+
+  useEffect(() => {
+    setFechaFromDraft(filters.fecha_from ? formatDateInput(filters.fecha_from) : '');
+  }, [filters.fecha_from]);
+
+  useEffect(() => {
+    setFechaToDraft(filters.fecha_to ? formatDateInput(filters.fecha_to) : '');
+  }, [filters.fecha_to]);
+
   const handleChange = (key, value) => {
     onFiltersChange({ ...filters, [key]: value });
+  };
+
+  const commitDate = (key, draftValue, fallbackValue) => {
+    const normalized = String(draftValue || '').trim();
+    if (!normalized) {
+      handleChange(key, null);
+      return;
+    }
+
+    // El input date produce YYYY-MM-DD; si el usuario deja algo incompleto, restauramos valor previo.
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+      if (key === 'fecha_from') setFechaFromDraft(fallbackValue ? formatDateInput(fallbackValue) : '');
+      if (key === 'fecha_to') setFechaToDraft(fallbackValue ? formatDateInput(fallbackValue) : '');
+      return;
+    }
+
+    const m = normalized.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) {
+      if (key === 'fecha_from') setFechaFromDraft(fallbackValue ? formatDateInput(fallbackValue) : '');
+      if (key === 'fecha_to') setFechaToDraft(fallbackValue ? formatDateInput(fallbackValue) : '');
+      return;
+    }
+
+    const y = Number(m[1]);
+    const mm = Number(m[2]);
+    const dd = Number(m[3]);
+    const parsed = new Date(y, mm - 1, dd);
+    const isValid = (
+      parsed.getFullYear() === y
+      && parsed.getMonth() === mm - 1
+      && parsed.getDate() === dd
+    );
+    if (!isValid) {
+      if (key === 'fecha_from') setFechaFromDraft(fallbackValue ? formatDateInput(fallbackValue) : '');
+      if (key === 'fecha_to') setFechaToDraft(fallbackValue ? formatDateInput(fallbackValue) : '');
+      return;
+    }
+
+    handleChange(key, normalized);
   };
 
   const handleClear = () => {
@@ -66,8 +116,16 @@ const ReportFiltersBar = ({
                 type="date"
                 size="small"
                 InputLabelProps={{ shrink: true }}
-                value={filters.fecha_from ? formatDateInput(filters.fecha_from) : ''}
-                onChange={(e) => handleChange('fecha_from', e.target.value || null)}
+                value={fechaFromDraft}
+                onChange={(e) => setFechaFromDraft(e.target.value)}
+                onBlur={() => commitDate('fecha_from', fechaFromDraft, filters.fecha_from)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    commitDate('fecha_from', fechaFromDraft, filters.fecha_from);
+                    e.currentTarget.blur();
+                  }
+                }}
                 sx={{ width: 160 }}
               />
               <TextField
@@ -75,15 +133,23 @@ const ReportFiltersBar = ({
                 type="date"
                 size="small"
                 InputLabelProps={{ shrink: true }}
-                value={filters.fecha_to ? formatDateInput(filters.fecha_to) : ''}
-                onChange={(e) => handleChange('fecha_to', e.target.value || null)}
+                value={fechaToDraft}
+                onChange={(e) => setFechaToDraft(e.target.value)}
+                onBlur={() => commitDate('fecha_to', fechaToDraft, filters.fecha_to)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    commitDate('fecha_to', fechaToDraft, filters.fecha_to);
+                    e.currentTarget.blur();
+                  }
+                }}
                 sx={{ width: 160 }}
               />
             </>
           )}
 
           {/* Proyectos multi-select (OCULTO si viene de arriba) */}
-          {filtrosSchema.proyectos?.enabled && !filtrosSchema.proyectos?.fijos && !availableOptions.proyectos?.length && (
+          {filtrosSchema.proyectos?.enabled && !filtrosSchema.proyectos?.fijos && (
             <Autocomplete
               multiple
               size="small"
@@ -280,9 +346,18 @@ const ReportFiltersBar = ({
 
 function formatDateInput(d) {
   if (!d) return '';
+
+  if (typeof d === 'string') {
+    const raw = d.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  }
+
   const date = d instanceof Date ? d : new Date(d);
   if (isNaN(date.getTime())) return '';
-  return date.toISOString().split('T')[0];
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
 }
 
 export default ReportFiltersBar;

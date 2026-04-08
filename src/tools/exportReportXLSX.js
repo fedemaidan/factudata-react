@@ -45,6 +45,9 @@ export function exportReportToXLSX(reportConfig, results, movimientos = [], disp
       case 'category_budget_matrix':
         exportCategoryBudgetMatrix(wb, sheetName, block.data, displayCurrency);
         break;
+      case 'balance_between_partners':
+        exportBalanceBetweenPartners(wb, sheetName, block.data, displayCurrency);
+        break;
       default:
         break;
     }
@@ -216,6 +219,46 @@ function exportCategoryBudgetMatrix(wb, name, data, displayCurrency) {
       line.push(row.type === 'additional' && val === 0 ? '' : val);
     }
     aoa.push(line);
+  }
+
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  XLSX.utils.book_append_sheet(wb, ws, name);
+}
+
+function exportBalanceBetweenPartners(wb, name, data, displayCurrency) {
+  const { socios = [], saldoNetoTotal = 0, aporteIdeal = 0, transfers = [], isBalanced = false } = data || {};
+
+  const aoa = [
+    ['Balance entre socios'],
+    [],
+    ['Saldo neto total', saldoNetoTotal],
+    ['Saldo ideal por socio', aporteIdeal],
+    ['Estado', isBalanced ? 'Balanceado' : 'Con diferencias'],
+    [],
+    ['Socio', 'Telefono', 'Saldo', 'Saldo ideal', 'Diferencia', 'Estado'],
+  ];
+
+  for (const s of socios) {
+    aoa.push([
+      s.socio,
+      s.telefono,
+      Number(s.saldo || 0),
+      Number(s.aporteIdeal || 0),
+      Number(s.diferencia || 0),
+      s.estado,
+    ]);
+  }
+
+  aoa.push([]);
+  aoa.push(['Resumen de deudas']);
+  if (isBalanced || transfers.length === 0) {
+    aoa.push(['Balanceado']);
+  } else {
+    for (const t of transfers) {
+      aoa.push([
+        `${t.fromName} debe ${formatValue(t.amount, 'currency', displayCurrency)} a ${t.toName}`,
+      ]);
+    }
   }
 
   const ws = XLSX.utils.aoa_to_sheet(aoa);

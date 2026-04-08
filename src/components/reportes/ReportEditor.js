@@ -26,6 +26,7 @@ const BLOCK_TYPE_LABELS = {
   budget_vs_actual: 'Presupuesto vs Real',
   chart: 'Gráfico',
   grouped_detail: 'Detalle por Grupo',
+  balance_between_partners: 'Balance entre Socios',
 };
 
 const FILTRO_FIELDS = [
@@ -237,6 +238,9 @@ const ReportEditor = ({
         break;
       case 'grouped_detail':
         detail = 'Por ' + (block.agrupar_por || 'etapa') + ' · ' + (block.chips_style === 'chip' ? 'Chips' : 'Mini-cards') + ' · ' + (block.columnas_visibles?.length || 7) + ' col';
+        break;
+      case 'balance_between_partners':
+        detail = 'Movimientos por telefono · reparto equitativo · resumen de deudas';
         break;
       default:
         detail = '';
@@ -631,6 +635,7 @@ const ReportEditor = ({
             presupuestos={presupuestos}
             displayCurrencies={liveCurrencies}
             cotizaciones={cotizaciones}
+            reportContext={{ usuariosEmpresa }}
           />
         )}
       </Paper>
@@ -662,6 +667,7 @@ const ReportEditor = ({
         onSave={handleBlockSave}
         initialBlock={editingBlockIdx !== null ? config.layout[editingBlockIdx] : null}
         proyectos={proyectos}
+        sociosOptions={usuariosEmpresa}
       />
     </Box>
   );

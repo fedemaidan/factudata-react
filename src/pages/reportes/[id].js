@@ -84,6 +84,7 @@ const ReportDetailPage = () => {
     filteredMovimientos,
     presupuestos,
     proyectos,
+    usuariosEmpresa,
     filters,
     availableOptions,
     loadingData,
@@ -193,7 +194,14 @@ const ReportDetailPage = () => {
   const handleExport = () => {
     const hasBudgetDataset = !!selectedReport?.datasets?.presupuestos;
     if (!selectedReport || (filteredMovimientos.length === 0 && !hasBudgetDataset)) return;
-    const results = executeReport(selectedReport, filteredMovimientos, presupuestos, displayCurrencies, cotizaciones);
+    const results = executeReport(
+      selectedReport,
+      filteredMovimientos,
+      presupuestos,
+      displayCurrencies,
+      cotizaciones,
+      { usuariosEmpresa },
+    );
     exportReportToXLSX(selectedReport, results, filteredMovimientos, displayCurrencies);
   };
 
@@ -208,6 +216,7 @@ const ReportDetailPage = () => {
         displayCurrencies,
         cotizaciones,
         filters,
+        reportContext: { usuariosEmpresa },
       });
     } catch (err) {
       console.error('Error exportando PDF:', err);
@@ -428,6 +437,7 @@ const ReportDetailPage = () => {
                       presupuestos={presupuestos}
                       displayCurrencies={displayCurrencies}
                       cotizaciones={cotizaciones}
+                      reportContext={{ usuariosEmpresa, filters }}
                     />
                   )}
 
@@ -459,6 +469,7 @@ const ReportDetailPage = () => {
         onSave={handleAddBlock}
         initialBlock={null}
         proyectos={proyectos}
+        sociosOptions={usuariosEmpresa}
       />
 
       {/* Dialog para compartir reporte */}

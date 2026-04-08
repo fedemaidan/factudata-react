@@ -17,6 +17,7 @@ const BLOCK_TYPES = [
   { value: 'category_budget_matrix', label: 'Matriz de Presupuestos por Proyecto', desc: 'Para una categoría específica, muestra presupuesto inicial, adicionales, total, recibido y saldo por proyecto.' },
   { value: 'chart', label: 'Gráfico', desc: 'Muestra datos agrupados en gráficos de barras, torta, línea o área.' },
   { value: 'grouped_detail', label: 'Detalle por Grupo', desc: 'Muestra chips o mini-cards de grupos con tabla de movimientos filtrada al seleccionar.' },
+  { value: 'balance_between_partners', label: 'Balance entre Socios', desc: 'Calcula saldo neto por socio (telefono), diferencia contra saldo ideal y deudas entre socios.' },
 ];
 
 const OPERACIONES = [
@@ -171,6 +172,12 @@ function defaultBlock(type) {
         filtro_tipo: null,
         excluir: {},
       };
+    case 'balance_between_partners':
+      return {
+        ...base,
+        show_summary_cards: true,
+        socios_telefonos: [],
+      };
     default:
       return base;
   }
@@ -178,7 +185,7 @@ function defaultBlock(type) {
 
 // ─── Componente Principal ───
 
-const BlockEditorDialog = ({ open, onClose, onSave, initialBlock, proyectos = [] }) => {
+const BlockEditorDialog = ({ open, onClose, onSave, initialBlock, proyectos = [], sociosOptions = [] }) => {
   const isEditing = !!initialBlock;
   const [step, setStep] = useState(isEditing ? 1 : 0); // 0=elegir tipo, 1=configurar
   const [block, setBlock] = useState(null);
@@ -320,6 +327,9 @@ const BlockEditorDialog = ({ open, onClose, onSave, initialBlock, proyectos = []
           )}
           {block.type === 'grouped_detail' && (
             <GroupedDetailConfig block={block} onChange={updateBlock} />
+          )}
+          {block.type === 'balance_between_partners' && (
+            <BalanceBetweenPartnersConfig block={block} onChange={updateBlock} sociosOptions={sociosOptions} />
           )}
         </Stack>
       </DialogContent>
@@ -583,7 +593,7 @@ function SummaryTableConfig({ block, onChange }) {
       <Divider />
 
       {/* Excluir items específicos */}
-      <Typography variant="subtitle2" fontWeight={600}>Ocultar items</Typography>
+          <Typography variant="subtitle2" fontWeight={600}>Ocultar items</Typography>
       <Alert severity="info" variant="outlined" sx={{ py: 0.5 }}>
         Escribí los valores que querés excluir del resumen. Se aplican al campo de agrupación y a los datos.
       </Alert>
@@ -591,7 +601,7 @@ function SummaryTableConfig({ block, onChange }) {
         multiple
         freeSolo
         size="small"
-        options={[]}
+            options={[]}
         value={block.excluir?.categorias || []}
         onChange={(_, val) => onChange('excluir', { ...(block.excluir || {}), categorias: val })}
         renderTags={(value, getTagProps) =>
@@ -1202,6 +1212,86 @@ function GroupedDetailConfig({ block, onChange }) {
           ))
         }
         renderInput={(params) => <TextField {...params} label="Excluir usuarios" placeholder="Escribí y presioná Enter" />}
+      />
+    </Stack>
+  );
+}
+
+function BalanceBetweenPartnersConfig({ block, onChange, sociosOptions = [] }) {
+  const normalizePhone = (value) => String(value || '').replace(/\D/g, '');
+
+  const options = (Array.isArray(sociosOptions) ? sociosOptions : [])
+    .map((u) => {
+      const phone = normalizePhone(u.phone || u.telefono || u.numero_telefono || u.whatsapp);
+      if (!phone) return null;
+      const nombre = `${u.firstName || u.nombre || ''} ${u.lastName || u.apellido || ''}`.trim();
+      return {
+        phone,
+        label: nombre ? `${nombre} (${phone})` : phone,
+      };
+    })
+    .filter(Boolean)
+    .filter((opt, idx, arr) => arr.findIndex((x) => x.phone === opt.phone) === idx)
+    .sort((a, b) => a.label.localeCompare(b.label));
+
+  const selectedValues = (block.socios_telefonos || []).map((phone) => {
+    const normalized = normalizePhone(phone);
+    return options.find((opt) => opt.phone === normalized) || normalized;
+  });
+
+  return (
+    <Stack spacing={2}>
+      <Alert severity="info" variant="outlined" sx={{ py: 0.5 }}>
+        Este bloque calcula saldo neto entre socios usando movimientos de ingreso y egreso, agrupando por numero de telefono.
+      </Alert>
+
+      <FormControlLabel
+        control={
+          <Switch
+            checked={block.show_summary_cards !== false}
+            onChange={(e) => onChange('show_summary_cards', e.target.checked)}
+          />
+        }
+        label="Mostrar cards de resumen"
+      />
+
+      <Autocomplete
+        multiple
+        freeSolo
+        size="small"
+        options={options}
+        value={selectedValues}
+        getOptionLabel={(option) => (typeof option === 'string' ? option : option.label)}
+        isOptionEqualToValue={(option, value) => {
+          const a = typeof option === 'string' ? option : option.phone;
+          const b = typeof value === 'string' ? value : value.phone;
+          return normalizePhone(a) === normalizePhone(b);
+        }}
+        onChange={(_, val) => {
+          const phones = (val || [])
+            .map((item) => (typeof item === 'string' ? item : item.phone))
+            .map((phone) => normalizePhone(phone))
+            .filter(Boolean);
+          onChange('socios_telefonos', [...new Set(phones)]);
+        }}
+        renderTags={(value, getTagProps) =>
+          value.map((option, index) => (
+            <Chip
+              key={typeof option === 'string' ? option : option.phone}
+              label={typeof option === 'string' ? option : option.label}
+              size="small"
+              {...getTagProps({ index })}
+            />
+          ))
+        }
+        renderInput={(params) => (
+          <TextField
+            {...params}
+            label="Telefonos de socios (opcional)"
+            placeholder="Escribi y presiona Enter"
+            helperText="Si lo dejas vacio, incluye todos los socios detectados en los movimientos filtrados."
+          />
+        )}
       />
     </Stack>
   );
