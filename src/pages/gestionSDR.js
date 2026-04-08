@@ -144,6 +144,7 @@ const GestionSDRPage = () => {
     const [totalContactos, setTotalContactos] = useState(0);
     const [reuniones, setReuniones] = useState([]);
     const [metricas, setMetricas] = useState(null);
+    const [statsReuniones, setStatsReuniones] = useState({ realizadas: 0, noShow: 0, canceladas: 0, reagendadas: 0 });
     const [contactoSeleccionado, setContactoSeleccionado] = useState(null);
     const [contactosSeleccionados, setContactosSeleccionados] = useState([]);
     
@@ -158,7 +159,7 @@ const GestionSDRPage = () => {
         planEstimado: '',
         intencionCompra: '',
         segmento: '',
-        proximoContactoHoy: false,
+        rangoProximoContacto: '',
         ordenarPor: 'updatedAt',
         ordenDir: 'desc'
     });
@@ -336,6 +337,12 @@ const GestionSDRPage = () => {
             
             const data = await SDRService.obtenerMetricasDiarias(null, null, null, desde, hasta);
             setMetricas(data);
+            setStatsReuniones({
+                realizadas: data.reunionesRealizadas || 0,
+                noShow: data.reunionesNoShow || 0,
+                canceladas: data.reunionesCanceladas || 0,
+                reagendadas: data.reunionesReagendadas || 0,
+            });
         } catch (error) {
             console.error('Error cargando métricas:', error);
         }
@@ -370,7 +377,7 @@ const GestionSDRPage = () => {
     // Resetear página a 1 cuando cambian los filtros
     useEffect(() => {
         setPage(1);
-    }, [filtros.estado, filtros.sdrAsignado, filtros.busqueda, filtros.soloSinAsignar, filtros.statusNotion, filtros.precalificacionBot, filtros.planEstimado, filtros.intencionCompra, filtros.segmento, filtros.proximoContactoHoy]);
+    }, [filtros.estado, filtros.sdrAsignado, filtros.busqueda, filtros.soloSinAsignar, filtros.statusNotion, filtros.precalificacionBot, filtros.planEstimado, filtros.intencionCompra, filtros.segmento, filtros.rangoProximoContacto]);
     
     // Cargar datos cuando el usuario esté listo
     useEffect(() => {
@@ -728,7 +735,44 @@ const GestionSDRPage = () => {
                     </Grid>
                 )}
             </Grid>
-            
+
+            {/* Desglose de resultados de reuniones en el período */}
+            {(statsReuniones.realizadas + statsReuniones.noShow + statsReuniones.canceladas + statsReuniones.reagendadas) > 0 && (
+                <Paper variant="outlined" sx={{ p: 1.5, mb: 3 }}>
+                    <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{ display: 'block', mb: 1 }}>
+                        Resultado de reuniones en el período
+                    </Typography>
+                    <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                        <Chip
+                            icon={<CheckCircleIcon />}
+                            label={`✅ Realizadas: ${statsReuniones.realizadas}`}
+                            size="small"
+                            color="success"
+                            variant="outlined"
+                        />
+                        <Chip
+                            label={`❌ No show: ${statsReuniones.noShow}`}
+                            size="small"
+                            color="error"
+                            variant="outlined"
+                        />
+                        <Chip
+                            label={`🚫 Canceladas: ${statsReuniones.canceladas}`}
+                            size="small"
+                            color="default"
+                            variant="outlined"
+                        />
+                        <Chip
+                            icon={<ScheduleIcon />}
+                            label={`🔁 Reagendadas: ${statsReuniones.reagendadas}`}
+                            size="small"
+                            color="warning"
+                            variant="outlined"
+                        />
+                    </Stack>
+                </Paper>
+            )}
+
             {/* Métricas por SDR */}
             {metricas?.metricasPorSDR?.length > 0 && (
                 <>
@@ -963,7 +1007,9 @@ const GestionSDRPage = () => {
                                 {Object.entries(INTENCIONES_COMPRA).map(([key, { label, icon }]) => (
                                     <Chip key={key} label={`${icon} ${label}`} size="small" color={filtros.intencionCompra === key ? 'warning' : 'default'} variant={filtros.intencionCompra === key ? 'filled' : 'outlined'} onClick={() => setFiltros({ ...filtros, intencionCompra: filtros.intencionCompra === key ? '' : key })} />
                                 ))}
-                                <Chip label="📅 Hoy" size="small" color={filtros.proximoContactoHoy ? 'error' : 'default'} variant={filtros.proximoContactoHoy ? 'filled' : 'outlined'} onClick={() => setFiltros({ ...filtros, proximoContactoHoy: !filtros.proximoContactoHoy })} />
+                                <Chip label="⏰ Vencidos" size="small" color={filtros.rangoProximoContacto === 'vencido' ? 'warning' : 'default'} variant={filtros.rangoProximoContacto === 'vencido' ? 'filled' : 'outlined'} onClick={() => setFiltros({ ...filtros, rangoProximoContacto: filtros.rangoProximoContacto === 'vencido' ? '' : 'vencido' })} />
+                                <Chip label="📅 Hoy" size="small" color={filtros.rangoProximoContacto === 'hoy' ? 'error' : 'default'} variant={filtros.rangoProximoContacto === 'hoy' ? 'filled' : 'outlined'} onClick={() => setFiltros({ ...filtros, rangoProximoContacto: filtros.rangoProximoContacto === 'hoy' ? '' : 'hoy' })} />
+                                <Chip label="📆 Mañana" size="small" color={filtros.rangoProximoContacto === 'manana' ? 'success' : 'default'} variant={filtros.rangoProximoContacto === 'manana' ? 'filled' : 'outlined'} onClick={() => setFiltros({ ...filtros, rangoProximoContacto: filtros.rangoProximoContacto === 'manana' ? '' : 'manana' })} />
                             </Stack>
                             {/* Segmento */}
                             <Stack direction="row" spacing={0.5} sx={{ overflowX: 'auto' }}>
@@ -1081,7 +1127,10 @@ const GestionSDRPage = () => {
                             </Select>
                         </FormControl>
                         <Chip label="Sin asignar" size="small" color={filtros.soloSinAsignar ? 'secondary' : 'default'} variant={filtros.soloSinAsignar ? 'filled' : 'outlined'} onClick={() => setFiltros({ ...filtros, soloSinAsignar: !filtros.soloSinAsignar })} />
-                        <Chip label="📅 Contactar hoy" size="small" color={filtros.proximoContactoHoy ? 'error' : 'default'} variant={filtros.proximoContactoHoy ? 'filled' : 'outlined'} onClick={() => setFiltros({ ...filtros, proximoContactoHoy: !filtros.proximoContactoHoy })} />
+                        <Chip label="⏰ Vencidos" size="small" color={filtros.rangoProximoContacto === 'vencido' ? 'warning' : 'default'} variant={filtros.rangoProximoContacto === 'vencido' ? 'filled' : 'outlined'} onClick={() => setFiltros({ ...filtros, rangoProximoContacto: filtros.rangoProximoContacto === 'vencido' ? '' : 'vencido' })} />
+                        <Chip label="📅 Hoy" size="small" color={filtros.rangoProximoContacto === 'hoy' ? 'error' : 'default'} variant={filtros.rangoProximoContacto === 'hoy' ? 'filled' : 'outlined'} onClick={() => setFiltros({ ...filtros, rangoProximoContacto: filtros.rangoProximoContacto === 'hoy' ? '' : 'hoy' })} />
+                        <Chip label="📆 Mañana" size="small" color={filtros.rangoProximoContacto === 'manana' ? 'success' : 'default'} variant={filtros.rangoProximoContacto === 'manana' ? 'filled' : 'outlined'} onClick={() => setFiltros({ ...filtros, rangoProximoContacto: filtros.rangoProximoContacto === 'manana' ? '' : 'manana' })} />
+                        <Chip label="📅 Esta semana" size="small" color={filtros.rangoProximoContacto === 'semana' ? 'info' : 'default'} variant={filtros.rangoProximoContacto === 'semana' ? 'filled' : 'outlined'} onClick={() => setFiltros({ ...filtros, rangoProximoContacto: filtros.rangoProximoContacto === 'semana' ? '' : 'semana' })} />
                     </Stack>
                     {/* Fila 3: Ordenamiento */}
                     <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1.5, pt: 1.5, borderTop: '1px solid', borderColor: 'divider' }}>

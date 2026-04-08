@@ -9,7 +9,8 @@ import {
     Dialog, DialogTitle, DialogContent, DialogActions,
     Select, MenuItem, FormControl, InputLabel, FormControlLabel, Switch,
     useTheme, useMediaQuery, Skeleton,
-    Menu, ListItemIcon, ListItemText
+    Menu, ListItemIcon, ListItemText,
+    Collapse
 } from '@mui/material';
 import {
     ArrowBack as ArrowBackIcon,
@@ -66,6 +67,7 @@ import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useAuthContext } from 'src/contexts/auth-context';
 import SDRService from 'src/services/sdrService';
+import { appendBrowserTimezoneOffset } from 'src/utils/sdrDateTime';
 import FollowUpAutoService from 'src/services/followUpAutoService';
 import { EstadoChip, EstadoChipEditable, ModalEditarContacto } from 'src/components/sdr/DrawerDetalleContactoSDR';
 import ModalRegistrarAccion from 'src/components/sdr/ModalRegistrarAccion';
@@ -85,6 +87,7 @@ import MiniChatViewer from 'src/components/sdr/MiniChatViewer';
 import useGrabadorAudio from 'src/hooks/useGrabadorAudio';
 import SendTemplateDialog from 'src/components/conversaciones/SendTemplateDialog';
 import config from 'src/config/config';
+import ReunionCardSDR from 'src/components/sdr/ReunionCardSDR';
 
 // Helper: convierte URL relativa de audio (/api/sdr/audios/...) a URL absoluta del backend
 const resolveAudioUrl = (url) => {
@@ -129,6 +132,10 @@ const getEventoColor = (tipo) => {
         'email_enviado': { bg: '#e8eaf6', border: '#3f51b5', icon: '#283593' },
         'linkedin_enviado': { bg: '#e1f5fe', border: '#0288d1', icon: '#01579b' },
         'reunion_coordinada': { bg: '#f3e5f5', border: '#9c27b0', icon: '#6a1b9a' },
+        'reunion_realizada': { bg: '#e8f5e9', border: '#4caf50', icon: '#2e7d32' },
+        'reunion_no_show': { bg: '#ffebee', border: '#ef5350', icon: '#c62828' },
+        'reunion_cancelada': { bg: '#fff3e0', border: '#fb8c00', icon: '#ef6c00' },
+        'reunion_actualizada': { bg: '#e3f2fd', border: '#42a5f5', icon: '#1565c0' },
         'reunion_aprobada': { bg: '#e8f5e9', border: '#4caf50', icon: '#2e7d32' },
         'reunion_rechazada': { bg: '#ffebee', border: '#f44336', icon: '#c62828' },
         'marcado_no_califica': { bg: '#fce4ec', border: '#e91e63', icon: '#880e4f' },
@@ -163,6 +170,10 @@ const getEventoIcon = (tipo) => {
         'email_enviado': <EmailIcon fontSize="small" />,
         'linkedin_enviado': <LinkedInIcon fontSize="small" />,
         'reunion_coordinada': <EventIcon fontSize="small" />,
+        'reunion_realizada': <CheckCircleIcon fontSize="small" />,
+        'reunion_no_show': <CancelIcon fontSize="small" />,
+        'reunion_cancelada': <CancelIcon fontSize="small" />,
+        'reunion_actualizada': <ScheduleIcon fontSize="small" />,
         'reunion_aprobada': <CheckCircleIcon fontSize="small" />,
         'reunion_rechazada': <CancelIcon fontSize="small" />,
         'marcado_no_califica': <DoNotDisturbIcon fontSize="small" />,
@@ -204,7 +215,7 @@ const FILTROS_HISTORIAL = [
     { key: 'llamadas', label: 'Llamadas', icon: '📞', tipos: ['llamada_atendida', 'llamada_no_atendida', 'llamada_atendio_y_corto'] },
     { key: 'whatsapp', label: 'WhatsApp', icon: '💬', tipos: ['whatsapp_enviado', 'whatsapp_respuesta_confirmada'] },
     { key: 'email', label: 'Email / LinkedIn', icon: '✉️', tipos: ['email_enviado', 'linkedin_enviado'] },
-    { key: 'reuniones', label: 'Reuniones', icon: '📅', tipos: ['reunion_coordinada', 'reunion_aprobada', 'reunion_rechazada'] },
+    { key: 'reuniones', label: 'Reuniones', icon: '📅', tipos: ['reunion_coordinada', 'reunion_realizada', 'reunion_no_show', 'reunion_cancelada', 'reunion_actualizada', 'reunion_aprobada', 'reunion_rechazada'] },
     { key: 'audio', label: 'Audios', icon: '🎙️', tipos: ['audio_grabado'] },
     { key: 'documentos', label: 'Documentos', icon: '📎', tipos: ['documento_adjunto'] },
     { key: 'sistema', label: 'Sistema', icon: '⚙️', tipos: ['contacto_creado', 'contacto_asignado', 'contacto_desasignado', 'contacto_reasignado', 'importado_excel', 'importado_notion', 'contacto_editado', 'estado_cambiado', 'plan_estimado_actualizado', 'intencion_compra_actualizada', 'proximo_contacto_programado', 'marcado_no_califica', 'marcado_no_responde', 'cadencia_iniciada', 'cadencia_paso_completado', 'cadencia_completada', 'cadencia_detenida'] },
@@ -232,19 +243,25 @@ const agruparEventosPorBloque = (eventos) => {
 
 /** Formatea la etiqueta temporal del grupo */
 const formatearEtiquetaGrupo = (fecha) => {
+    const eventoDate = new Date(fecha);
     const ahora = new Date();
-    const diff = ahora - fecha;
-    const dias = Math.floor(diff / 86400000);
-    const horas = fecha.getHours().toString().padStart(2, '0');
-    const mins = fecha.getMinutes().toString().padStart(2, '0');
 
-    if (dias === 0) return `Hoy ${horas}:${mins}`;
-    if (dias === 1) return `Ayer ${horas}:${mins}`;
-    if (dias < 7) {
-        const diasSemana = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
-        return `${diasSemana[fecha.getDay()]} ${horas}:${mins}`;
-    }
-    return fecha.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' }) + ` ${horas}:${mins}`;
+    const horas = eventoDate.getHours().toString().padStart(2, '0');
+    const mins = eventoDate.getMinutes().toString().padStart(2, '0');
+
+    // Comparar por día calendario (medianoche local), no por bloques de 24hs
+    const ahoraDia = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate());
+    const eventoDia = new Date(eventoDate.getFullYear(), eventoDate.getMonth(), eventoDate.getDate());
+    const diffDias = Math.round((ahoraDia - eventoDia) / 86400000);
+
+    const diasSemana = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+    const meses = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+    const diaSem = diasSemana[eventoDate.getDay()];
+    const dia = eventoDate.getDate();
+    const mes = meses[eventoDate.getMonth()];
+    if (diffDias < 7) return `${diaSem} ${dia} ${mes} · ${horas}:${mins}`;
+    if (ahora.getFullYear() === eventoDate.getFullYear()) return `${dia} ${mes} · ${horas}:${mins}`;
+    return `${dia} ${mes} ${eventoDate.getFullYear()} · ${horas}:${mins}`;
 };
 
 const calcularFecha = (cantidad, unidad) => {
@@ -282,17 +299,21 @@ const calcularFecha = (cantidad, unidad) => {
 const getFechaRelativa = (fecha) => {
     if (!fecha) return '—';
     const ahora = new Date();
-    const diff = ahora - new Date(fecha);
+    const fechaDate = new Date(fecha);
+    const diff = ahora - fechaDate;
     const mins = Math.floor(diff / 60000);
     const horas = Math.floor(diff / 3600000);
-    const dias = Math.floor(diff / 86400000);
     if (mins < 1) return 'ahora';
     if (mins < 60) return `hace ${mins} min`;
-    if (horas < 24) return `hace ${horas}h`;
+    // Comparar por día calendario para no mostrar 'hace Xh' en eventos de ayer
+    const ahoraDia = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate());
+    const fechaDia = new Date(fechaDate.getFullYear(), fechaDate.getMonth(), fechaDate.getDate());
+    const dias = Math.round((ahoraDia - fechaDia) / 86400000);
+    if (horas < 24 && dias === 0) return `hace ${horas}h`;
     if (dias === 1) return 'ayer';
     if (dias < 7) return `hace ${dias} días`;
     if (dias < 30) return `hace ${Math.floor(dias / 7)} sem`;
-    return new Date(fecha).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
+    return fechaDate.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
 };
 
 // ==================== PÁGINA ====================
@@ -1058,6 +1079,16 @@ const ContactoSDRDetailPage = () => {
         setModalEditarReunionOpen(true);
     };
 
+    const handleEditarNotasReunion = async (reunionId, data) => {
+        try {
+            await SDRService.actualizarReunion(reunionId, data);
+            mostrarSnackbar('Notas guardadas');
+            cargarContacto();
+        } catch (err) {
+            mostrarSnackbar(err.response?.data?.error || 'Error al guardar notas', 'error');
+        }
+    };
+
     const handleGuardarEdicionReunion = async (formData) => {
         if (!reunionEditando) return;
         setGuardandoReunion(true);
@@ -1141,7 +1172,7 @@ const ContactoSDRDetailPage = () => {
                 if (contactoId) {
                     await SDRService.actualizarProximoContacto(contactoId, null, null, {
                         tipo: data.proximoContacto.tipo,
-                        fecha: data.proximoContacto.fecha,
+                        fecha: appendBrowserTimezoneOffset(data.proximoContacto.fecha),
                         nota: data.proximoContacto.nota || ''
                     });
                 }
@@ -1296,11 +1327,19 @@ const ContactoSDRDetailPage = () => {
     /** Construye el objeto proximaTarea desde el estado del wizard */
     const buildProximaTarea = () => {
         if (!proximoContactoWizard) return undefined;
-        // Usar tipo auto-seleccionado del seguimiento, o el elegido manualmente, o 'recordatorio'
+        // 1. Selección manual del usuario (chips de tipo) tiene máxima prioridad
         let tipo = tipoTareaWizard;
-        if (seguimientoWizard === 'llamar_despues') tipo = 'llamada';
-        else if (seguimientoWizard === 'mensaje_despues') tipo = 'whatsapp';
-        else if (seguimientoWizard === 'coordinar_reunion') tipo = 'recordatorio';
+        // 2. Si no hay selección manual, derivar del seguimiento elegido
+        if (!tipo) {
+            if (seguimientoWizard === 'llamar_despues') tipo = 'llamada';
+            else if (seguimientoWizard === 'mensaje_despues') tipo = 'whatsapp';
+            else if (seguimientoWizard === 'coordinar_reunion') tipo = 'recordatorio';
+        }
+        // 3. Si aún no hay tipo, inferir del contexto de la acción que se está registrando
+        if (!tipo) {
+            if (resultadoLlamada !== null) tipo = 'llamada';
+            else if (resultadoWA !== null) tipo = 'whatsapp';
+        }
         return {
             tipo: tipo || 'recordatorio',
             fecha: proximoContactoWizard,
@@ -1364,10 +1403,10 @@ const ContactoSDRDetailPage = () => {
         }
     };
 
-    /** Abre WhatsApp y pasa a fase de confirmación */
+    /** Abre WhatsApp y pasa directamente a programar seguimiento */
     const handleWizardEnviarWA = () => {
         window.open(getWhatsAppLink(contacto.telefono, mensajeWA), '_blank');
-        setWizardFase('resultado');
+        setWizardFase('esperar_respuesta');
     };
 
     /** Callback cuando el usuario elige un template desde el modal */
@@ -1483,9 +1522,9 @@ const ContactoSDRDetailPage = () => {
         if (!fecha) return '';
         const d = new Date(fecha);
         if (isNaN(d.getTime())) return '';
-        // Formatear en hora LOCAL (no UTC) para que el input datetime-local muestre correctamente
-        const pad = (n) => String(n).padStart(2, '0');
-        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        // Usar zona horaria Argentina explícita para ser consistente en SSR y cliente
+        const str = d.toLocaleString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' });
+        return str.substring(0, 16).replace(' ', 'T');
     };
 
     // ==================== PROXIMO CONTACTO / TAREA PICKER ====================
@@ -1532,8 +1571,8 @@ const ContactoSDRDetailPage = () => {
                 ))}
             </Stack>
 
-            {/* Fecha */}
-            {proximoContactoWizard ? (
+            {/* Fecha y hora */}
+            {proximoContactoWizard && (
                 <Chip
                     size="small"
                     label={`📅 ${new Date(proximoContactoWizard).toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short' })} ${new Date(proximoContactoWizard).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}`}
@@ -1541,32 +1580,58 @@ const ContactoSDRDetailPage = () => {
                     onDelete={() => setProximoContactoWizard(null)}
                     sx={{ fontWeight: 600, mb: 0.5 }}
                 />
-            ) : (
-                <Stack spacing={0.5}>
-                    <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
-                        {botonesProximoContacto.map((btn) => (
-                            <Button
-                                key={btn.label}
-                                size="small"
-                                variant="outlined"
-                                onClick={() => setProximoContactoWizard(calcularFecha(btn.cantidad, btn.unidad))}
-                                sx={{ minWidth: 'auto', px: compact ? 0.8 : 1.2, py: 0.3, fontSize: compact ? '0.65rem' : '0.7rem', textTransform: 'none' }}
-                            >
-                                {btn.label}
-                            </Button>
-                        ))}
-                    </Stack>
-                    <input
-                        type="datetime-local"
-                        value={fechaParaInput(proximoContactoWizard)}
-                        onChange={(e) => {
-                            const val = e.target.value;
-                            if (val) setProximoContactoWizard(new Date(val));
-                        }}
-                        style={{ fontSize: compact ? '0.7rem' : '0.8rem', padding: '4px 8px', borderRadius: 4, border: '1px solid #ccc', width: '100%', boxSizing: 'border-box' }}
-                    />
+            )}
+            {!proximoContactoWizard && (
+                <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5, mb: 0.5 }}>
+                    {botonesProximoContacto.map((btn) => (
+                        <Button
+                            key={btn.label}
+                            size="small"
+                            variant="outlined"
+                            onClick={() => setProximoContactoWizard(calcularFecha(btn.cantidad, btn.unidad))}
+                            sx={{ minWidth: 'auto', px: compact ? 0.8 : 1.2, py: 0.3, fontSize: compact ? '0.65rem' : '0.7rem', textTransform: 'none' }}
+                        >
+                            {btn.label}
+                        </Button>
+                    ))}
                 </Stack>
             )}
+            {/* Inputs separados fecha + hora: siempre visibles para poder editar sin borrar */}
+            {(() => {
+                const partes = fechaParaInput(proximoContactoWizard).split('T');
+                const fechaVal = partes[0] || '';
+                const horaVal = partes[1] || '09:00';
+                return (
+                    <Stack direction="row" spacing={0.5}>
+                        <input
+                            type="date"
+                            value={fechaVal}
+                            onChange={(e) => {
+                                const d = e.target.value;
+                                if (d) setProximoContactoWizard(new Date(`${d}T${horaVal}`));
+                            }}
+                            style={{ fontSize: compact ? '0.7rem' : '0.8rem', padding: '4px 8px', borderRadius: 4, border: '1px solid #ccc', flex: 1, boxSizing: 'border-box' }}
+                        />
+                        <input
+                            type="time"
+                            value={horaVal}
+                            onChange={(e) => {
+                                const t = e.target.value;
+                                if (!t) return;
+                                if (fechaVal) {
+                                    setProximoContactoWizard(new Date(`${fechaVal}T${t}`));
+                                } else {
+                                    const hoy = new Date();
+                                    const pad = n => String(n).padStart(2, '0');
+                                    const d = `${hoy.getFullYear()}-${pad(hoy.getMonth() + 1)}-${pad(hoy.getDate())}`;
+                                    setProximoContactoWizard(new Date(`${d}T${t}`));
+                                }
+                            }}
+                            style={{ fontSize: compact ? '0.7rem' : '0.8rem', padding: '4px 8px', borderRadius: 4, border: '1px solid #ccc', width: compact ? 76 : 88, boxSizing: 'border-box' }}
+                        />
+                    </Stack>
+                );
+            })()}
 
             {/* Nota de tarea + estricto */}
             {(proximoContactoWizard || tipoTareaActual) && (
@@ -2244,9 +2309,9 @@ const ContactoSDRDetailPage = () => {
                                                 ))}
                                             </Stack>
 
-                                            {/* Fecha */}
+                                            {/* Fecha y hora */}
                                             <Typography variant="caption" fontWeight={600} sx={{ mb: 0.5, display: 'block' }}>Fecha</Typography>
-                                            {editTareaFecha ? (
+                                            {editTareaFecha && (
                                                 <Chip
                                                     size="small"
                                                     label={`📅 ${new Date(editTareaFecha).toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short' })} ${new Date(editTareaFecha).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}`}
@@ -2254,29 +2319,57 @@ const ContactoSDRDetailPage = () => {
                                                     onDelete={() => setEditTareaFecha(null)}
                                                     sx={{ fontWeight: 600, mb: 0.5 }}
                                                 />
-                                            ) : (
-                                                <Stack spacing={0.5} sx={{ mb: 0.5 }}>
-                                                    <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
-                                                        {botonesProximoContacto.map((btn) => (
-                                                            <Button
-                                                                key={btn.label}
-                                                                size="small"
-                                                                variant="outlined"
-                                                                onClick={() => setEditTareaFecha(calcularFecha(btn.cantidad, btn.unidad))}
-                                                                sx={{ minWidth: 'auto', px: 1, py: 0.3, fontSize: '0.7rem', textTransform: 'none' }}
-                                                            >
-                                                                {btn.label}
-                                                            </Button>
-                                                        ))}
-                                                    </Stack>
-                                                    <input
-                                                        type="datetime-local"
-                                                        value={fechaParaInput(editTareaFecha)}
-                                                        onChange={(e) => { if (e.target.value) setEditTareaFecha(new Date(e.target.value)); }}
-                                                        style={{ fontSize: '0.8rem', padding: '4px 8px', borderRadius: 4, border: '1px solid #ccc', width: '100%', boxSizing: 'border-box' }}
-                                                    />
+                                            )}
+                                            {!editTareaFecha && (
+                                                <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5, mb: 0.5 }}>
+                                                    {botonesProximoContacto.map((btn) => (
+                                                        <Button
+                                                            key={btn.label}
+                                                            size="small"
+                                                            variant="outlined"
+                                                            onClick={() => setEditTareaFecha(calcularFecha(btn.cantidad, btn.unidad))}
+                                                            sx={{ minWidth: 'auto', px: 1, py: 0.3, fontSize: '0.7rem', textTransform: 'none' }}
+                                                        >
+                                                            {btn.label}
+                                                        </Button>
+                                                    ))}
                                                 </Stack>
                                             )}
+                                            {(() => {
+                                                const partes = fechaParaInput(editTareaFecha).split('T');
+                                                const fechaVal = partes[0] || '';
+                                                const horaVal = partes[1] || '09:00';
+                                                return (
+                                                    <Stack direction="row" spacing={0.5} sx={{ mb: 0.5 }}>
+                                                        <input
+                                                            type="date"
+                                                            value={fechaVal}
+                                                            onChange={(e) => {
+                                                                const value = e.target.value;
+                                                                if (value) setEditTareaFecha(new Date(`${value}T${horaVal}`));
+                                                            }}
+                                                            style={{ fontSize: '0.8rem', padding: '4px 8px', borderRadius: 4, border: '1px solid #ccc', flex: 1, boxSizing: 'border-box' }}
+                                                        />
+                                                        <input
+                                                            type="time"
+                                                            value={horaVal}
+                                                            onChange={(e) => {
+                                                                const value = e.target.value;
+                                                                if (!value) return;
+                                                                if (fechaVal) {
+                                                                    setEditTareaFecha(new Date(`${fechaVal}T${value}`));
+                                                                } else {
+                                                                    const hoy = new Date();
+                                                                    const pad = (n) => String(n).padStart(2, '0');
+                                                                    const fechaBase = `${hoy.getFullYear()}-${pad(hoy.getMonth() + 1)}-${pad(hoy.getDate())}`;
+                                                                    setEditTareaFecha(new Date(`${fechaBase}T${value}`));
+                                                                }
+                                                            }}
+                                                            style={{ fontSize: '0.8rem', padding: '4px 8px', borderRadius: 4, border: '1px solid #ccc', width: 88, boxSizing: 'border-box' }}
+                                                        />
+                                                    </Stack>
+                                                );
+                                            })()}
 
                                             {/* Nota / Comentario */}
                                             <Typography variant="caption" fontWeight={600} sx={{ mt: 1, mb: 0.5, display: 'block' }}>Comentario (opcional)</Typography>
@@ -2694,7 +2787,10 @@ const ContactoSDRDetailPage = () => {
                                 </Button>
                             </Stack>
                             <Stack direction="row" spacing={0.5} sx={{ mb: 1.5, overflowX: 'auto', pb: 0.5 }}>
-                                {FILTROS_HISTORIAL.map((filtro) => {
+                                {FILTROS_HISTORIAL.filter(filtro => {
+                                    if (filtro.key === 'todos') return true;
+                                    return filtro.tipos ? historial.filter(e => filtro.tipos.includes(e.tipo)).length > 0 : historial.length > 0;
+                                }).map((filtro) => {
                                     const count = filtro.tipos
                                         ? historial.filter(e => filtro.tipos.includes(e.tipo)).length
                                         : historial.length;
@@ -2828,12 +2924,13 @@ const ContactoSDRDetailPage = () => {
                                                                                 </Stack>
                                                                             </Box>
                                                                         )}
-                                                                        {!esGrupoMultiple && (
-                                                                            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.68rem' }}>
-                                                                                {new Date(evento.createdAt).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                                                                                {evento.sdrNombre && ` • ${evento.sdrNombre}`}
-                                                                            </Typography>
-                                                                        )}
+                                                                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.68rem' }}>
+                                                                            {esGrupoMultiple
+                                                                                ? new Date(evento.createdAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
+                                                                                : new Date(evento.createdAt).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+                                                                            }
+                                                                            {evento.sdrNombre && ` • ${evento.sdrNombre}`}
+                                                                        </Typography>
                                                                     </Box>
                                                                 </Stack>
                                                             </Paper>
@@ -3615,7 +3712,10 @@ const ContactoSDRDetailPage = () => {
                                 </Button>
                             </Stack>
                             <Stack direction="row" spacing={0.5} sx={{ mb: 1.5, overflowX: 'auto', pb: 0.5 }}>
-                                {FILTROS_HISTORIAL.map((filtro) => {
+                                {FILTROS_HISTORIAL.filter(filtro => {
+                                    if (filtro.key === 'todos') return true;
+                                    return filtro.tipos ? historial.filter(e => filtro.tipos.includes(e.tipo)).length > 0 : historial.length > 0;
+                                }).map((filtro) => {
                                     const count = filtro.tipos
                                         ? historial.filter(e => filtro.tipos.includes(e.tipo)).length
                                         : historial.length;
@@ -3747,12 +3847,13 @@ const ContactoSDRDetailPage = () => {
                                                                                 </Stack>
                                                                             </Box>
                                                                         )}
-                                                                        {!esGrupoMultiple && (
-                                                                            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
-                                                                                {new Date(evento.createdAt).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                                                                                {evento.sdrNombre && ` • ${evento.sdrNombre}`}
-                                                                            </Typography>
-                                                                        )}
+                                                                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
+                                                                            {esGrupoMultiple
+                                                                                ? new Date(evento.createdAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
+                                                                                : new Date(evento.createdAt).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+                                                                            }
+                                                                            {evento.sdrNombre && ` • ${evento.sdrNombre}`}
+                                                                        </Typography>
                                                                     </Box>
                                                                 </Stack>
                                                             </Paper>
@@ -3783,6 +3884,39 @@ const ContactoSDRDetailPage = () => {
                     {/* ==================== TAB HISTORIAL ==================== */}
                     {((isMobile && tabMobile === 1) || (!isMobile && tabDesktop === 1)) && (
                         <Paper variant="outlined" sx={{ p: 2, height: { xs: 'auto', md: 600 }, display: 'flex', flexDirection: 'column' }}>
+
+                            {/* Mini-historial: últimas 3 acciones de contacto */}
+                            {(() => {
+                                const TIPOS_CONTACTO = ['llamada_atendida', 'llamada_no_atendida', 'llamada_atendio_y_corto', 'whatsapp_enviado', 'whatsapp_respuesta_confirmada', 'email_enviado', 'linkedin_enviado', 'comentario', 'nota_agregada', 'audio_grabado'];
+                                const ultimas = historial.filter(e => TIPOS_CONTACTO.includes(e.tipo)).slice(0, 3);
+                                if (ultimas.length === 0) return null;
+                                return (
+                                    <Box sx={{ mb: 1.5, p: 1, bgcolor: 'grey.50', borderRadius: 1, border: '1px solid', borderColor: 'divider' }}>
+                                        <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{ display: 'block', mb: 0.5 }}>
+                                            Últimas acciones
+                                        </Typography>
+                                        <Stack spacing={0.5}>
+                                            {ultimas.map(ev => {
+                                                const colors = getEventoColor(ev.tipo);
+                                                return (
+                                                    <Stack key={ev._id} direction="row" alignItems="center" spacing={1}>
+                                                        <Box sx={{ color: colors.icon, display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                                                            {getEventoIcon(ev.tipo)}
+                                                        </Box>
+                                                        <Typography variant="caption" sx={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'text.primary' }}>
+                                                            {ev.nota || ev.tipo.replace(/_/g, ' ')}
+                                                        </Typography>
+                                                        <Typography variant="caption" color="text.disabled" sx={{ flexShrink: 0 }}>
+                                                            {getFechaRelativa(ev.fecha)}
+                                                        </Typography>
+                                                    </Stack>
+                                                );
+                                            })}
+                                        </Stack>
+                                    </Box>
+                                );
+                            })()}
+
                             {/* Comentario + Audio */}
                             {/* Indicador de grabación en tab historial */}
                             {(grabador.estado === 'grabando' || grabador.estado === 'pausado') && (
@@ -3870,7 +4004,10 @@ const ContactoSDRDetailPage = () => {
 
                             {/* Filtro por categoría */}
                             <Stack direction="row" spacing={0.5} sx={{ mb: 1.5, overflowX: 'auto', flexShrink: 0, pb: 0.5 }}>
-                                {FILTROS_HISTORIAL.map((filtro) => {
+                                {FILTROS_HISTORIAL.filter(filtro => {
+                                    if (filtro.key === 'todos') return true;
+                                    return filtro.tipos ? historial.filter(e => filtro.tipos.includes(e.tipo)).length > 0 : historial.length > 0;
+                                }).map((filtro) => {
                                     const count = filtro.tipos 
                                         ? historial.filter(e => filtro.tipos.includes(e.tipo)).length
                                         : historial.length;
@@ -4000,12 +4137,13 @@ const ContactoSDRDetailPage = () => {
                                                                                 </Stack>
                                                                             </Box>
                                                                         )}
-                                                                        {!esGrupoMultiple && (
-                                                                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                                                                                {new Date(evento.createdAt).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                                                                                {evento.sdrNombre && ` • ${evento.sdrNombre}`}
-                                                                            </Typography>
-                                                                        )}
+                                                                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                                                                            {esGrupoMultiple
+                                                                                ? new Date(evento.createdAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
+                                                                                : new Date(evento.createdAt).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                                                                            }
+                                                                            {evento.sdrNombre && ` • ${evento.sdrNombre}`}
+                                                                        </Typography>
                                                                     </Box>
                                                                     <Tooltip title="Eliminar evento">
                                                                         <IconButton 
@@ -4100,6 +4238,7 @@ const ContactoSDRDetailPage = () => {
                                                                 onRealizada={() => handleReunionRealizada(r)}
                                                                 onNoShow={() => handleReunionNoShow(r)}
                                                                 onCancelada={() => handleReunionCancelada(r)}
+                                                                onEditarNotas={(data) => handleEditarNotasReunion(r._id, data)}
                                                             />
                                                         );
                                                     })}
@@ -4139,6 +4278,7 @@ const ContactoSDRDetailPage = () => {
                                                                 onRealizada={esPendiente ? () => handleReunionRealizada(r) : undefined}
                                                                 onNoShow={esPendiente ? () => handleReunionNoShow(r) : undefined}
                                                                 onCancelada={esPendiente ? () => handleReunionCancelada(r) : undefined}
+                                                                onEditarNotas={(data) => handleEditarNotasReunion(r._id, data)}
                                                             />
                                                         );
                                                     })}
@@ -4775,253 +4915,7 @@ const ContactoSDRDetailPage = () => {
     );
 };
 
-// ==================== COMPONENTE REUNION CARD ====================
-const ReunionCard = ({ reunion, estadoConf, fechaReunion, calChip, borderColorMap, onCopy, onEdit, onDelete, onRealizada, onNoShow, onCancelada }) => {
-    const [expandResumen, setExpandResumen] = useState(false);
-    const [expandTranscripcion, setExpandTranscripcion] = useState(false);
-    const [menuAnchor, setMenuAnchor] = useState(null);
-
-    const tieneAcciones = onEdit || onDelete || onRealizada || onNoShow || onCancelada;
-
-    return (
-        <Paper
-            variant="outlined"
-            sx={{
-                p: 1.5,
-                borderLeft: `4px solid ${borderColorMap[reunion.estado] || '#e0e0e0'}`,
-                bgcolor: reunion.estado === 'realizada' ? 'rgba(76,175,80,0.04)'
-                    : reunion.estado === 'no_show' ? 'rgba(244,67,54,0.04)'
-                    : reunion.estado === 'cancelada' ? 'rgba(158,158,158,0.04)'
-                    : 'transparent'
-            }}
-        >
-            {/* Fila principal: fecha + estado + calificación + menú */}
-            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-                <Chip
-                    icon={<EventIcon />}
-                    label={fechaReunion ? new Date(fechaReunion).toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short' }) : 'Sin fecha'}
-                    size="small"
-                    variant="outlined"
-                />
-                {reunion.hora && (
-                    <Typography variant="caption" color="text.secondary">
-                        {reunion.hora}
-                    </Typography>
-                )}
-                <Chip
-                    label={`${estadoConf.icon || ''} ${estadoConf.label || reunion.estado}`}
-                    size="small"
-                    color={estadoConf.color || 'default'}
-                    sx={{ fontWeight: 600 }}
-                />
-                {calChip && (
-                    <Chip
-                        label={calChip.label}
-                        size="small"
-                        color={calChip.color}
-                        variant="outlined"
-                    />
-                )}
-                {reunion.numero && (
-                    <Typography variant="caption" color="text.secondary" fontWeight={600}>
-                        Meet #{reunion.numero}
-                    </Typography>
-                )}
-                {tieneAcciones && (
-                    <Box sx={{ ml: 'auto' }}>
-                        <IconButton size="small" onClick={(e) => setMenuAnchor(e.currentTarget)}>
-                            <MoreVertIcon fontSize="small" />
-                        </IconButton>
-                        <Menu anchorEl={menuAnchor} open={Boolean(menuAnchor)} onClose={() => setMenuAnchor(null)}>
-                            {onRealizada && (
-                                <MenuItem onClick={() => { setMenuAnchor(null); onRealizada(); }}>
-                                    <ListItemIcon><CheckCircleIcon fontSize="small" color="success" /></ListItemIcon>
-                                    <ListItemText>Registrar resultado</ListItemText>
-                                </MenuItem>
-                            )}
-                            {onNoShow && (
-                                <MenuItem onClick={() => { setMenuAnchor(null); onNoShow(); }}>
-                                    <ListItemIcon><CancelIcon fontSize="small" color="error" /></ListItemIcon>
-                                    <ListItemText>No show</ListItemText>
-                                </MenuItem>
-                            )}
-                            {onEdit && (
-                                <MenuItem onClick={() => { setMenuAnchor(null); onEdit(); }}>
-                                    <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon>
-                                    <ListItemText>Reagendar</ListItemText>
-                                </MenuItem>
-                            )}
-                            {onCancelada && (
-                                <MenuItem onClick={() => { setMenuAnchor(null); onCancelada(); }}>
-                                    <ListItemIcon><BlockIcon fontSize="small" /></ListItemIcon>
-                                    <ListItemText>Cancelar</ListItemText>
-                                </MenuItem>
-                            )}
-                            {onDelete && (
-                                <MenuItem onClick={() => { setMenuAnchor(null); onDelete(); }}>
-                                    <ListItemIcon><DeleteIcon fontSize="small" color="error" /></ListItemIcon>
-                                    <ListItemText sx={{ color: 'error.main' }}>Eliminar</ListItemText>
-                                </MenuItem>
-                            )}
-                        </Menu>
-                    </Box>
-                )}
-            </Stack>
-
-            {/* Comentario del SDR */}
-            {reunion.comentario && (
-                <Typography variant="body2" sx={{ mt: 1, pl: 1, borderLeft: '2px solid #e0e0e0', color: 'text.secondary', fontStyle: 'italic' }}>
-                    💬 {reunion.comentario}
-                </Typography>
-            )}
-
-            {/* Motivo de rechazo / cancelación */}
-            {reunion.estado === 'cancelada' && reunion.motivoRechazo && (
-                <Typography variant="body2" sx={{ mt: 1, pl: 1, borderLeft: '2px solid #f44336', color: 'error.main' }}>
-                    🚫 {reunion.motivoRechazo}
-                </Typography>
-            )}
-
-            {/* No show - mensaje destacado */}
-            {reunion.estado === 'no_show' && (
-                <Typography variant="body2" sx={{ mt: 1, color: 'error.main', fontWeight: 500 }}>
-                    ❌ El contacto no se presentó a la reunión
-                    {reunion.notasEvaluador ? ` — ${reunion.notasEvaluador}` : ''}
-                </Typography>
-            )}
-
-            {/* Resumen IA — completo, expandible */}
-            {reunion.resumenIA && (
-                <Paper variant="outlined" sx={{ mt: 1.5, p: 1.5, bgcolor: 'grey.50' }}>
-                    <Stack direction="row" justifyContent="space-between" alignItems="center">
-                        <Typography variant="caption" color="text.secondary" fontWeight={600}>
-                            🤖 Resumen IA
-                        </Typography>
-                        <Stack direction="row" spacing={0.5}>
-                            <Tooltip title="Copiar resumen">
-                                <IconButton size="small" onClick={() => onCopy(reunion.resumenIA, 'Resumen')}>
-                                    <ContentCopyIcon sx={{ fontSize: 16 }} />
-                                </IconButton>
-                            </Tooltip>
-                            {reunion.resumenIA.length > 300 && (
-                                <Chip
-                                    label={expandResumen ? 'Ver menos' : 'Ver todo'}
-                                    size="small"
-                                    variant="outlined"
-                                    onClick={() => setExpandResumen(!expandResumen)}
-                                    sx={{ height: 22, fontSize: '0.7rem' }}
-                                />
-                            )}
-                        </Stack>
-                    </Stack>
-                    <Typography
-                        variant="body2"
-                        sx={{
-                            mt: 0.5,
-                            whiteSpace: 'pre-line',
-                            fontSize: '0.8rem',
-                            ...((!expandResumen && reunion.resumenIA.length > 300) ? {
-                                maxHeight: 200,
-                                overflow: 'hidden',
-                                position: 'relative',
-                                '&::after': {
-                                    content: '""',
-                                    position: 'absolute',
-                                    bottom: 0,
-                                    left: 0,
-                                    right: 0,
-                                    height: 40,
-                                    background: 'linear-gradient(transparent, rgba(250,250,250,1))'
-                                }
-                            } : {})
-                        }}
-                    >
-                        {reunion.resumenIA}
-                    </Typography>
-                </Paper>
-            )}
-
-            {/* Transcripción — expandible con botón copiar */}
-            {reunion.transcripcion && (
-                <Paper variant="outlined" sx={{ mt: 1, p: 1.5, bgcolor: '#fafafa' }}>
-                    <Stack direction="row" justifyContent="space-between" alignItems="center">
-                        <Typography variant="caption" color="text.secondary" fontWeight={600}>
-                            📝 Transcripción
-                        </Typography>
-                        <Stack direction="row" spacing={0.5}>
-                            <Tooltip title="Copiar transcripción">
-                                <IconButton size="small" onClick={() => onCopy(reunion.transcripcion, 'Transcripción')}>
-                                    <ContentCopyIcon sx={{ fontSize: 16 }} />
-                                </IconButton>
-                            </Tooltip>
-                            <Chip
-                                label={expandTranscripcion ? 'Ocultar' : 'Mostrar'}
-                                size="small"
-                                variant="outlined"
-                                onClick={() => setExpandTranscripcion(!expandTranscripcion)}
-                                sx={{ height: 22, fontSize: '0.7rem' }}
-                            />
-                        </Stack>
-                    </Stack>
-                    {expandTranscripcion && (
-                        <Typography
-                            variant="body2"
-                            sx={{ mt: 1, whiteSpace: 'pre-line', fontSize: '0.75rem', color: 'text.secondary', maxHeight: 400, overflow: 'auto' }}
-                        >
-                            {reunion.transcripcion}
-                        </Typography>
-                    )}
-                </Paper>
-            )}
-
-            {/* Next steps */}
-            {reunion.nextSteps && (
-                <Stack direction="row" alignItems="flex-start" spacing={0.5} sx={{ mt: 1 }}>
-                    <Typography variant="body2" sx={{ fontSize: '0.8rem', flex: 1 }}>
-                        📋 <strong>Próximos pasos:</strong> {reunion.nextSteps}
-                    </Typography>
-                    <Tooltip title="Copiar próximos pasos">
-                        <IconButton size="small" onClick={() => onCopy(reunion.nextSteps, 'Próximos pasos')}>
-                            <ContentCopyIcon sx={{ fontSize: 14 }} />
-                        </IconButton>
-                    </Tooltip>
-                </Stack>
-            )}
-
-            {/* Módulos de interés */}
-            {reunion.modulosInteres?.length > 0 && (
-                <Stack direction="row" spacing={0.5} sx={{ mt: 1, flexWrap: 'wrap', gap: 0.5 }}>
-                    <Typography variant="caption" color="text.secondary" sx={{ mr: 0.5 }}>
-                        Módulos:
-                    </Typography>
-                    {reunion.modulosInteres.map(m => (
-                        <Chip key={m} label={m} size="small" variant="outlined" sx={{ height: 20, fontSize: '0.7rem' }} />
-                    ))}
-                </Stack>
-            )}
-
-            {/* Duración */}
-            {reunion.duracionMinutos && (
-                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-                    ⏱️ Duración: {reunion.duracionMinutos} min
-                </Typography>
-            )}
-
-            {/* Link de reunión (solo si agendada) */}
-            {reunion.estado === 'agendada' && reunion.link && (
-                <Chip
-                    label="Abrir link"
-                    size="small"
-                    icon={<OpenInNewIcon />}
-                    onClick={() => window.open(reunion.link, '_blank')}
-                    clickable
-                    color="primary"
-                    variant="outlined"
-                    sx={{ mt: 1 }}
-                />
-            )}
-        </Paper>
-    );
-};
+// ReunionCard es el componente compartido (src/components/sdr/ReunionCardSDR.js)
+const ReunionCard = ReunionCardSDR;
 
 export default ContactoSDRDetailPage;
