@@ -39,9 +39,10 @@ import PasoRevisarCategorias from 'src/sections/importMovimientos/PasoRevisarCat
 import PasoRevisarProveedores from 'src/sections/importMovimientos/PasoRevisarProveedores';
 import PasoAclaracionesMovimientos from 'src/sections/importMovimientos/PasoAclaracionesMovimientos';
 import PasoResumen from 'src/sections/importMovimientos/PasoResumen';
+import PasoValidarMovimientosImport from 'src/sections/importMovimientos/PasoValidarMovimientosImport';
 
 const STEPS_OCR = ['Archivos', 'Contexto', 'Validación'];
-const STEPS_TABULAR = ['Planilla', 'Categorías', 'Proveedores', 'Aclaraciones', 'Resumen'];
+const STEPS_TABULAR = ['Planilla', 'Categorías', 'Proveedores', 'Aclaraciones', 'Validación', 'Resumen'];
 
 const initialContexto = () => ({
   proyecto_id: '',
@@ -57,6 +58,8 @@ const initialContexto = () => ({
 const initialImportWizardData = () => ({
   archivos: [],
   analisisCsv: null,
+  hojasDetectadas: {},
+  hojasSeleccionadas: {},
   proyectoSeleccionado: null,
   tipoImportacion: 'general',
   mapeosCategorias: [],
@@ -65,6 +68,10 @@ const initialImportWizardData = () => ({
   aclaracionesUsuario: '',
   entidadesResueltas: null,
   resultadoFinal: null,
+  codigoPrevisualizacion: null,
+  previewRowsForValidation: null,
+  movimientosPreviewBruto: null,
+  movimientosValidadosParaCrear: null,
 });
 
 function itemFormIsValid(form, comprobanteInfo, ingresoInfo) {
@@ -109,6 +116,7 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
   const categoriasRef = useRef(null);
   const proveedoresRef = useRef(null);
   const aclaracionesRef = useRef(null);
+  const validacionRef = useRef(null);
 
   const updateImportWizardData = useCallback((patch) => {
     setImportWizardData((prev) => ({ ...prev, ...patch }));
@@ -361,7 +369,17 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
       }
       if (activeStep === 3) {
         await aclaracionesRef.current?.submitStep();
+        updateImportWizardData({
+          previewRowsForValidation: null,
+          codigoPrevisualizacion: null,
+          movimientosValidadosParaCrear: null,
+        });
         setActiveStep(4);
+        return;
+      }
+      if (activeStep === 4) {
+        await validacionRef.current?.submitStep();
+        setActiveStep(5);
       }
     } catch {
       /* error ya en setTabularError vía Pasos */
@@ -397,6 +415,13 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
         setCargaModo(null);
         setImportWizardData(initialImportWizardData());
         return;
+      }
+      if (activeStep === 4) {
+        updateImportWizardData({
+          previewRowsForValidation: null,
+          codigoPrevisualizacion: null,
+          movimientosValidadosParaCrear: null,
+        });
       }
       setActiveStep((s) => Math.max(0, s - 1));
     }
@@ -481,13 +506,14 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
       (!importWizardData.analisisCsv ||
         (importWizardData.tipoImportacion === 'proyecto_especifico' &&
           !importWizardData.proyectoSeleccionado))) ||
+    (activeStep === 4 && !importWizardData.previewRowsForValidation?.length) ||
     tabularLoading;
 
   const showPrimaryNext =
     cargaModo === 'ocr'
       ? activeStep < 2
       : cargaModo === 'tabular'
-        ? activeStep < 4
+        ? activeStep < 5
         : false;
 
   const primaryNextDisabled =
@@ -558,6 +584,15 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
           />
         );
       case 4:
+        return (
+          <PasoValidarMovimientosImport
+            key={`val-${importWizardData.analisisCsv?.timestamp || 0}-${(importWizardData.aclaracionesUsuario || '').length}`}
+            ref={validacionRef}
+            {...common}
+            hideNavigation
+          />
+        );
+      case 5:
         return (
           <PasoResumen
             {...common}

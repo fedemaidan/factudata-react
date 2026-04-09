@@ -214,15 +214,27 @@ class ImportMovimientosService {
    * @param {string} especificacionUsuario - Instrucciones del usuario
    * @returns {Promise<object>} Categorías detectadas y comparación
    */
-  async extraerCategorias(archivosUrls, empresaId, especificacionUsuario = '') {
+  async extraerCategorias(
+    archivosUrls,
+    empresaId,
+    especificacionUsuario = '',
+    hojasSeleccionadas = null,
+    archivoNombresOrden = null,
+  ) {
     try {
       const params = new URLSearchParams({
         empresaId,
-        archivosUrls: JSON.stringify(archivosUrls)
+        archivosUrls: JSON.stringify(archivosUrls),
       });
-      
+
       if (especificacionUsuario) {
         params.append('especificacionUsuario', especificacionUsuario);
+      }
+      if (hojasSeleccionadas && typeof hojasSeleccionadas === 'object') {
+        params.append('hojasSeleccionadas', JSON.stringify(hojasSeleccionadas));
+      }
+      if (Array.isArray(archivoNombresOrden) && archivoNombresOrden.length > 0) {
+        params.append('archivoNombresOrden', JSON.stringify(archivoNombresOrden));
       }
       
       const response = await fetch(`${API_BASE_URL}/api/importar-movimientos/categorias?${params}`, {
@@ -295,15 +307,27 @@ class ImportMovimientosService {
    * @param {string} especificacionUsuario - Instrucciones del usuario
    * @returns {Promise<object>} Proveedores detectados y comparación
    */
-  async extraerProveedores(archivosUrls, empresaId, especificacionUsuario = '') {
+  async extraerProveedores(
+    archivosUrls,
+    empresaId,
+    especificacionUsuario = '',
+    hojasSeleccionadas = null,
+    archivoNombresOrden = null,
+  ) {
     try {
       const params = new URLSearchParams({
         empresaId,
-        archivosUrls: JSON.stringify(archivosUrls)
+        archivosUrls: JSON.stringify(archivosUrls),
       });
-      
+
       if (especificacionUsuario) {
         params.append('especificacionUsuario', especificacionUsuario);
+      }
+      if (hojasSeleccionadas && typeof hojasSeleccionadas === 'object') {
+        params.append('hojasSeleccionadas', JSON.stringify(hojasSeleccionadas));
+      }
+      if (Array.isArray(archivoNombresOrden) && archivoNombresOrden.length > 0) {
+        params.append('archivoNombresOrden', JSON.stringify(archivoNombresOrden));
       }
       
       const response = await fetch(`${API_BASE_URL}/api/importar-movimientos/proveedores?${params}`, {
@@ -507,7 +531,17 @@ class ImportMovimientosService {
    * @param {Array} mapeosCategoriasDescartadas - Mapeo de categorías descartadas a existentes
    * @returns {Promise<object>} { codigo, resultado: null }
    */
-  async importarDirecto(archivosUrls, empresaId, userId, userName, proyectoId = null, aclaracionesUsuario = '', mapeosCategoriasDescartadas = []) {
+  async importarDirecto(
+    archivosUrls,
+    empresaId,
+    userId,
+    userName,
+    proyectoId = null,
+    aclaracionesUsuario = '',
+    mapeosCategoriasDescartadas = [],
+    hojasSeleccionadas = null,
+    archivoNombresOrden = null,
+  ) {
     try {
       console.log('[ImportMovimientosService] Iniciando importación directa:', {
         archivos: archivosUrls.length,
@@ -516,13 +550,14 @@ class ImportMovimientosService {
         userName,
         proyectoId,
         tieneAclaraciones: !!aclaracionesUsuario,
-        mapeosCategoriasDescartadas: mapeosCategoriasDescartadas.length
+        mapeosCategoriasDescartadas: mapeosCategoriasDescartadas.length,
+        tieneHojas: !!(hojasSeleccionadas && Object.keys(hojasSeleccionadas).length),
       });
-      
+
       const response = await fetch(`${API_BASE_URL}/api/importar-movimientos/importar-directo`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           archivosUrls,
@@ -531,8 +566,14 @@ class ImportMovimientosService {
           userName,
           proyectoId,
           aclaracionesUsuario,
-          mapeosCategoriasDescartadas
-        })
+          mapeosCategoriasDescartadas,
+          ...(hojasSeleccionadas && typeof hojasSeleccionadas === 'object'
+            ? { hojasSeleccionadas }
+            : {}),
+          ...(Array.isArray(archivoNombresOrden) && archivoNombresOrden.length > 0
+            ? { archivoNombresOrden }
+            : {}),
+        }),
       });
 
       if (!response.ok) {
@@ -553,6 +594,87 @@ class ImportMovimientosService {
     } catch (error) {
       console.error('[ImportMovimientosService] Error importarDirecto:', error);
       throw new Error(`Error importando movimientos: ${error.message}`);
+    }
+  }
+
+  /**
+   * Previsualiza movimientos (solo IA, sin persistir). Devuelve codigo para polling.
+   */
+  async previsualizarImportacion(
+    archivosUrls,
+    empresaId,
+    userId,
+    userName,
+    proyectoId = null,
+    aclaracionesUsuario = '',
+    mapeosCategoriasDescartadas = [],
+    hojasSeleccionadas = null,
+    archivoNombresOrden = null,
+  ) {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/importar-movimientos/previsualizar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          archivosUrls,
+          empresaId,
+          userId,
+          userName,
+          proyectoId,
+          aclaracionesUsuario,
+          mapeosCategoriasDescartadas,
+          ...(hojasSeleccionadas && typeof hojasSeleccionadas === 'object' ? { hojasSeleccionadas } : {}),
+          ...(Array.isArray(archivoNombresOrden) && archivoNombresOrden.length > 0
+            ? { archivoNombresOrden }
+            : {}),
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Error del servidor (${response.status}): ${errorText}`);
+      }
+
+      const resultado = await response.json();
+      if (!resultado.success) {
+        throw new Error(resultado.error || 'Error iniciando previsualización');
+      }
+      return resultado.data;
+    } catch (error) {
+      console.error('[ImportMovimientosService] Error previsualizarImportacion:', error);
+      throw new Error(`Error en previsualización: ${error.message}`);
+    }
+  }
+
+  /**
+   * Confirma creación de movimientos ya validados en el cliente.
+   */
+  async confirmarMovimientosValidados(movimientos, empresaId, userId, userName) {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/importar-movimientos/confirmar-movimientos`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          movimientos,
+          empresaId,
+          userId,
+          userName,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Error del servidor (${response.status}): ${errorText}`);
+      }
+
+      const resultado = await response.json();
+      if (!resultado.success) {
+        throw new Error(resultado.error || 'Error confirmando movimientos');
+      }
+      return resultado.data;
+    } catch (error) {
+      console.error('[ImportMovimientosService] Error confirmarMovimientosValidados:', error);
+      throw new Error(`Error confirmando movimientos: ${error.message}`);
     }
   }
 

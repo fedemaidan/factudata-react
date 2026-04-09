@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import PropTypes from 'prop-types';
 import {
   Box,
@@ -6,6 +6,7 @@ import {
   CircularProgress,
   FormControl,
   FormControlLabel,
+  FormGroup,
   InputLabel,
   MenuItem,
   Radio,
@@ -14,14 +15,40 @@ import {
   Stack,
   Typography,
   Chip,
+  Checkbox,
+  Paper,
+  Alert,
+  Link,
 } from '@mui/material';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import DescriptionIcon from '@mui/icons-material/Description';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import * as XLSX from 'xlsx';
 import importMovimientosService from 'src/services/importMovimientosService';
 
 const MAX_TABULAR_FILES = 10;
 const VALID_EXT = ['.csv', '.xlsx', '.xls'];
+
+const isExcelFile = (fileName) => {
+  const lower = fileName.toLowerCase();
+  return lower.endsWith('.xlsx') || lower.endsWith('.xls');
+};
+
+const readExcelSheetNames = (file) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        resolve(workbook.SheetNames || []);
+      } catch (err) {
+        reject(err);
+      }
+    };
+    reader.onerror = () => reject(new Error('No se pudo leer el archivo Excel'));
+    reader.readAsArrayBuffer(file);
+  });
 
 /**
  * Paso 1 del import tabular: tipo de importación + subida CSV/Excel.
@@ -42,6 +69,11 @@ function ImportPlanillaStep({
   const [analizando, setAnalizando] = useState(false);
   const [archivosAcumulados, setArchivosAcumulados] = useState([]);
   const [analisisAcumulado, setAnalisisAcumulado] = useState(null);
+  /** @type {[Record<string, string[]>, Function]} nombres de hoja por nombre de archivo */
+  const [hojasDetectadas, setHojasDetectadas] = useState({});
+  /** @type {[Record<string, string[]>, Function]} hojas elegidas por el usuario */
+  const [hojasSeleccionadas, setHojasSeleccionadas] = useState({});
+  const [leyendoHojas, setLeyendoHojas] = useState(false);
 
   useEffect(() => {
     if (wizardData.archivos?.length) {
@@ -50,9 +82,15 @@ function ImportPlanillaStep({
     if (wizardData.analisisCsv) {
       setAnalisisAcumulado(wizardData.analisisCsv);
     }
+    if (wizardData.hojasDetectadas && typeof wizardData.hojasDetectadas === 'object') {
+      setHojasDetectadas(wizardData.hojasDetectadas);
+    }
+    if (wizardData.hojasSeleccionadas && typeof wizardData.hojasSeleccionadas === 'object') {
+      setHojasSeleccionadas(wizardData.hojasSeleccionadas);
+    }
   }, []);
 
-  const handleFileUpload = (file) => {
+  const handleFileUpload = async (file) => {
     if (!file) return;
     const lower = file.name.toLowerCase();
     const ok = VALID_EXT.some((ext) => lower.endsWith(ext));
@@ -64,23 +102,90 @@ function ImportPlanillaStep({
       setError(`Máximo ${MAX_TABULAR_FILES} archivos por lote.`);
       return;
     }
-    setArchivosAcumulados((prev) => [...prev, file]);
     setError('');
+
+    if (isExcelFile(file.name)) {
+      setLeyendoHojas(true);
+      try {
+        const sheetNames = await readExcelSheetNames(file);
+        if (!sheetNames.length) {
+          setError(`El archivo "${file.name}" no tiene hojas legibles.`);
+          setLeyendoHojas(false);
+          return;
+        }
+        setArchivosAcumulados((prev) => [...prev, file]);
+        setHojasDetectadas((prev) => ({ ...prev, [file.name]: sheetNames }));
+        setHojasSeleccionadas((prev) => ({ ...prev, [file.name]: [] }));
+      } catch (err) {
+        setError(err.message || `No se pudieron leer las hojas de "${file.name}"`);
+      } finally {
+        setLeyendoHojas(false);
+      }
+      return;
+    }
+
+    setArchivosAcumulados((prev) => [...prev, file]);
   };
 
   const eliminarArchivo = (index) => {
+    const removed = archivosAcumulados[index];
     const nuevos = archivosAcumulados.filter((_, i) => i !== index);
     setArchivosAcumulados(nuevos);
+    if (removed && isExcelFile(removed.name)) {
+      setHojasDetectadas((prev) => {
+        const next = { ...prev };
+        delete next[removed.name];
+        return next;
+      });
+      setHojasSeleccionadas((prev) => {
+        const next = { ...prev };
+        delete next[removed.name];
+        return next;
+      });
+    }
     if (nuevos.length === 0) {
       setAnalisisAcumulado(null);
-      updateWizardData({ archivos: [], analisisCsv: null });
+      setHojasDetectadas({});
+      setHojasSeleccionadas({});
+      updateWizardData({
+        archivos: [],
+        analisisCsv: null,
+        hojasDetectadas: {},
+        hojasSeleccionadas: {},
+      });
     }
   };
+
+  const handleToggleHoja = useCallback((fileName, sheetName) => {
+    setHojasSeleccionadas((prev) => {
+      const current = prev[fileName] || [];
+      const has = current.includes(sheetName);
+      const nextList = has ? current.filter((h) => h !== sheetName) : [...current, sheetName];
+      return { ...prev, [fileName]: nextList };
+    });
+  }, []);
+
+  const handleSeleccionarTodasHojas = useCallback((fileName) => {
+    const todas = hojasDetectadas[fileName] || [];
+    setHojasSeleccionadas((prev) => ({ ...prev, [fileName]: [...todas] }));
+  }, [hojasDetectadas]);
+
+  const handleQuitarTodasHojas = useCallback((fileName) => {
+    setHojasSeleccionadas((prev) => ({ ...prev, [fileName]: [] }));
+  }, []);
 
   const analizarTodosLosArchivos = async () => {
     if (archivosAcumulados.length === 0) {
       setError('Agregá al menos un archivo');
       return;
+    }
+    for (const f of archivosAcumulados) {
+      if (!isExcelFile(f.name)) continue;
+      const sel = hojasSeleccionadas[f.name];
+      if (!sel || sel.length === 0) {
+        setError(`Elegí al menos una hoja para "${f.name}"`);
+        return;
+      }
     }
     setAnalizando(true);
     setLoading(true);
@@ -91,11 +196,13 @@ function ImportPlanillaStep({
         empresa.id,
         '',
       );
+      const nombresOrden = archivosAcumulados.map((f) => f.name);
       const analisisBasico = {
         archivos: resultado.urls_archivos || [],
         archivos_subidos: resultado.archivos_subidos || archivosAcumulados.length,
         timestamp: resultado.timestamp,
         _archivosUrls: resultado.urls_archivos,
+        _archivoNombresOrden: nombresOrden,
         _empresaId: empresa.id,
         _especificacionUsuario: '',
       };
@@ -103,6 +210,8 @@ function ImportPlanillaStep({
       updateWizardData({
         archivos: archivosAcumulados,
         analisisCsv: analisisBasico,
+        hojasDetectadas,
+        hojasSeleccionadas,
       });
     } catch (error) {
       setError(error.message || 'Error al subir archivos');
@@ -221,25 +330,105 @@ function ImportPlanillaStep({
       </Box>
 
       {archivosAcumulados.length > 0 && (
-        <Stack spacing={1}>
+        <Stack spacing={1.5}>
           <Typography variant="caption" color="text.secondary">
             {archivosAcumulados.length} archivo(s)
           </Typography>
-          <Stack direction="row" flexWrap="wrap" useFlexGap spacing={0.5}>
+          <Stack spacing={1.5}>
             {archivosAcumulados.map((archivo, index) => (
-              <Chip
-                key={`${archivo.name}-${index}`}
-                icon={<DescriptionIcon />}
-                label={`${archivo.name} (${Math.round(archivo.size / 1024)} KB)`}
-                onDelete={() => eliminarArchivo(index)}
-                deleteIcon={<DeleteOutlineIcon />}
-                size="small"
-                variant="outlined"
-              />
+              <Box key={`${archivo.name}-${index}`}>
+                <Stack direction="row" alignItems="center" spacing={0.5} flexWrap="wrap" useFlexGap>
+                  <Chip
+                    icon={<DescriptionIcon />}
+                    label={`${archivo.name} (${Math.round(archivo.size / 1024)} KB)`}
+                    onDelete={() => eliminarArchivo(index)}
+                    deleteIcon={<DeleteOutlineIcon />}
+                    size="small"
+                    variant="outlined"
+                  />
+                </Stack>
+                {isExcelFile(archivo.name) && (hojasDetectadas[archivo.name]?.length > 0) && (
+                  <Paper
+                    variant="outlined"
+                    sx={{
+                      mt: 1.5,
+                      p: 1.5,
+                      bgcolor: 'grey.50',
+                      borderColor: (hojasSeleccionadas[archivo.name] || []).length === 0 ? 'warning.light' : 'divider',
+                    }}
+                  >
+                    <Stack spacing={1}>
+                      <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" useFlexGap>
+                        <Typography variant="subtitle2" fontWeight={600}>
+                          Hojas a importar
+                        </Typography>
+                        <Stack direction="row" spacing={1} alignItems="center">
+                          <Link
+                            component="button"
+                            type="button"
+                            variant="body2"
+                            onClick={() => handleSeleccionarTodasHojas(archivo.name)}
+                            sx={{ cursor: 'pointer' }}
+                          >
+                            Todas
+                          </Link>
+                          <Typography variant="caption" color="text.disabled">
+                            ·
+                          </Typography>
+                          <Link
+                            component="button"
+                            type="button"
+                            variant="body2"
+                            onClick={() => handleQuitarTodasHojas(archivo.name)}
+                            sx={{ cursor: 'pointer' }}
+                          >
+                            Ninguna
+                          </Link>
+                        </Stack>
+                      </Stack>
+                      {(hojasSeleccionadas[archivo.name] || []).length === 0 ? (
+                        <Alert severity="warning" sx={{ py: 0.5 }}>
+                          Elegí al menos una hoja para este archivo (por defecto ninguna está seleccionada).
+                        </Alert>
+                      ) : (
+                        <Typography variant="caption" color="text.secondary">
+                          {(hojasSeleccionadas[archivo.name] || []).length} de {hojasDetectadas[archivo.name].length}{' '}
+                          hoja(s) seleccionada(s)
+                        </Typography>
+                      )}
+                      <FormGroup sx={{ gap: 0.25 }}>
+                        {hojasDetectadas[archivo.name].map((nombreHoja) => (
+                          <FormControlLabel
+                            key={`${archivo.name}-${nombreHoja}`}
+                            control={
+                              <Checkbox
+                                size="small"
+                                checked={(hojasSeleccionadas[archivo.name] || []).includes(nombreHoja)}
+                                onChange={() => handleToggleHoja(archivo.name, nombreHoja)}
+                              />
+                            }
+                            label={
+                              <Typography variant="body2" component="span">
+                                {nombreHoja}
+                              </Typography>
+                            }
+                            sx={{ ml: 0, alignItems: 'center', py: 0.25 }}
+                          />
+                        ))}
+                      </FormGroup>
+                    </Stack>
+                  </Paper>
+                )}
+              </Box>
             ))}
           </Stack>
           <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-            <Button variant="contained" size="small" onClick={analizarTodosLosArchivos} disabled={analizando}>
+            <Button
+              variant="contained"
+              size="small"
+              onClick={analizarTodosLosArchivos}
+              disabled={analizando || leyendoHojas}
+            >
               {analizando ? <CircularProgress size={18} /> : 'Subir a almacenamiento'}
             </Button>
             <Button
@@ -249,7 +438,14 @@ function ImportPlanillaStep({
               onClick={() => {
                 setArchivosAcumulados([]);
                 setAnalisisAcumulado(null);
-                updateWizardData({ archivos: [], analisisCsv: null });
+                setHojasDetectadas({});
+                setHojasSeleccionadas({});
+                updateWizardData({
+                  archivos: [],
+                  analisisCsv: null,
+                  hojasDetectadas: {},
+                  hojasSeleccionadas: {},
+                });
               }}
             >
               Limpiar
@@ -258,11 +454,11 @@ function ImportPlanillaStep({
         </Stack>
       )}
 
-      {analizando && (
+      {(analizando || leyendoHojas) && (
         <Stack direction="row" alignItems="center" spacing={1}>
           <CircularProgress size={18} />
           <Typography variant="body2" color="text.secondary">
-            Subiendo…
+            {leyendoHojas ? 'Leyendo hojas del Excel…' : 'Subiendo…'}
           </Typography>
         </Stack>
       )}

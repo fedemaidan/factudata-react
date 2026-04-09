@@ -84,8 +84,10 @@ const PasoRevisarProveedores = forwardRef(({
       // Extraer proveedores específicamente del backend
       const analisisProveedores = await importMovimientosService.extraerProveedores(
         archivosUrls,
-        empresaId, 
-        especificacionUsuario || ''
+        empresaId,
+        especificacionUsuario || '',
+        wizardData.hojasSeleccionadas || null,
+        wizardData.analisisCsv?._archivoNombresOrden || null,
       );
       
       console.log('[PasoRevisarProveedores] Proveedores extraídos:', analisisProveedores);

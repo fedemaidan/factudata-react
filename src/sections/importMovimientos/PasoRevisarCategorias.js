@@ -82,8 +82,10 @@ const PasoRevisarCategorias = forwardRef(({
       // Extraer categorías específicamente del backend
       const analisisCategorias = await importMovimientosService.extraerCategorias(
         archivosUrls,
-        empresaId, 
-        especificacionFinal
+        empresaId,
+        especificacionFinal,
+        wizardData.hojasSeleccionadas || null,
+        wizardData.analisisCsv?._archivoNombresOrden || null,
       );
       
       console.log('[PasoRevisarCategorias] Categorías extraídas:', analisisCategorias);

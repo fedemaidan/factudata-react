@@ -25,12 +25,14 @@ import PasoRevisarCategorias from 'src/sections/importMovimientos/PasoRevisarCat
 import PasoRevisarProveedores from 'src/sections/importMovimientos/PasoRevisarProveedores';
 import PasoAclaracionesMovimientos from 'src/sections/importMovimientos/PasoAclaracionesMovimientos';
 import PasoResumen from 'src/sections/importMovimientos/PasoResumen';
+import PasoValidarMovimientosImport from 'src/sections/importMovimientos/PasoValidarMovimientosImport';
 
 const steps = [
   'Subir archivo CSV',
   'Revisar Categorías',
   'Revisar Proveedores',
   'Aclaraciones',
+  'Validar movimientos',
   'Resumen y Confirmación'
 ];
 
@@ -48,6 +50,8 @@ const ImportMovimientosPage = () => {
   const [wizardData, setWizardData] = useState({
     archivos: [],
     analisisCsv: null,
+    hojasDetectadas: {},
+    hojasSeleccionadas: {},
     proyectoSeleccionado: null,
     tipoImportacion: 'general', // 'general' o 'proyecto_especifico'
     mapeosCategorias: [],
@@ -55,7 +59,11 @@ const ImportMovimientosPage = () => {
     mapeosProveedores: [],
     aclaracionesUsuario: '', // Instrucciones prioritarias para el prompt
     entidadesResueltas: null,
-    resultadoFinal: null
+    resultadoFinal: null,
+    codigoPrevisualizacion: null,
+    previewRowsForValidation: null,
+    movimientosPreviewBruto: null,
+    movimientosValidadosParaCrear: null,
   });
 
   useEffect(() => {
@@ -87,7 +95,17 @@ const ImportMovimientosPage = () => {
   };
 
   const handleBack = () => {
-    setActiveStep((prevActiveStep) => prevActiveStep - 1);
+    setActiveStep((prevActiveStep) => {
+      if (prevActiveStep === 4) {
+        setWizardData((prev) => ({
+          ...prev,
+          previewRowsForValidation: null,
+          codigoPrevisualizacion: null,
+          movimientosValidadosParaCrear: null,
+        }));
+      }
+      return Math.max(0, prevActiveStep - 1);
+    });
   };
 
   const handleCancel = () => {
@@ -144,13 +162,33 @@ const ImportMovimientosPage = () => {
             empresa={empresa}
             wizardData={wizardData}
             updateWizardData={updateWizardData}
-            onNext={handleNext}
+            onNext={() => {
+              updateWizardData({
+                previewRowsForValidation: null,
+                codigoPrevisualizacion: null,
+                movimientosValidadosParaCrear: null,
+              });
+              handleNext();
+            }}
             onBack={handleBack}
             setLoading={setLoading}
             setError={setError}
           />
         );
       case 4:
+        return (
+          <PasoValidarMovimientosImport
+            key={`val-${wizardData.analisisCsv?.timestamp || 0}-${(wizardData.aclaracionesUsuario || '').length}`}
+            empresa={empresa}
+            wizardData={wizardData}
+            updateWizardData={updateWizardData}
+            onNext={handleNext}
+            onBack={handleBack}
+            setLoading={setLoading}
+            setError={setError}
+          />
+        );
+      case 5:
         return (
           <PasoResumen
             empresa={empresa}
