@@ -25,6 +25,7 @@ import RocketLaunchIcon from '@mui/icons-material/RocketLaunch';
 import SettingsIcon from '@mui/icons-material/Settings';
 import ScienceIcon from '@mui/icons-material/Science';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
+import TrackChangesIcon from '@mui/icons-material/TrackChanges';
 import SupportAgentIcon from '@mui/icons-material/SupportAgent';
 import TodayIcon from '@mui/icons-material/Today';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
@@ -132,6 +133,7 @@ const ControlPanelPage = () => {
       title: 'Conf extra',
       panels: [
         { title: 'Leads', description: 'Prospectos y oportunidades', icon: LeaderboardIcon, color: 'success', path: '/leads' },
+        { title: 'Origen de Contactos', description: 'Facebook, Instagram o sin atribución', icon: TrackChangesIcon, color: 'info', path: '/origen-contactos' },
         { title: 'Cadencias', description: 'Secuencias y tareas comerciales', icon: AccountTreeIcon, color: 'secondary', path: '/sdr/cadencias' },
         { title: 'Admin SDR', description: 'Configuración operativa SDR', icon: SettingsIcon, color: 'info', path: '/sdr/admin' },
         { title: 'Follow-Up Auto Config', description: 'Automatización de follow-ups', icon: AutorenewIcon, color: 'success', path: '/followUpAutoConfig' },
