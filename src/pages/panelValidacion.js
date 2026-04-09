@@ -478,8 +478,7 @@ const PanelValidacionPage = () => {
       form?.total === '' ||
       form?.total === undefined ||
       form?.total === null ||
-      !form?.fecha_factura ||
-      (Boolean(camposConfig.fecha_pago) && !form?.fecha_pago)
+      !form?.fecha_factura
     );
   }, [editDrawer.form, drawerCatalogos.comprobanteInfo, drawerCatalogos.ingresoInfo, savingEdit]);
 

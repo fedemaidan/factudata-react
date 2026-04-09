@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
     Dialog, DialogTitle, DialogContent, DialogActions,
     Button, TextField, Stack, FormControl, InputLabel, Select, MenuItem,
@@ -6,6 +6,11 @@ import {
     Chip, Box, FormGroup, FormControlLabel, Checkbox, Alert,
     ToggleButton, ToggleButtonGroup
 } from '@mui/material';
+import {
+    combineDateAndTimeToOffsetIso,
+    formatForDateInput,
+    formatForTimeInput
+} from 'src/utils/sdrDateTime';
 
 const MODULOS_DISPONIBLES = [
     'Stock', 'Acopios', 'Presupuestos', 'Movimientos',
@@ -58,9 +63,25 @@ const ModalResultadoReunion = ({ open, onClose, reunion, onSubmit, loading }) =>
         proximoContacto: {
             tipo: 'llamar_despues',
             fecha: '',
+            hora: '',
             nota: ''
         }
     });
+
+    useEffect(() => {
+        if (!open) return;
+        const fechaBase = reunion?.contactoId?.proximaTarea?.fecha || reunion?.contactoId?.proximoContacto || null;
+        if (!fechaBase) return;
+
+        setForm(prev => ({
+            ...prev,
+            proximoContacto: {
+                ...prev.proximoContacto,
+                fecha: prev.proximoContacto.fecha || formatForDateInput(fechaBase),
+                hora: prev.proximoContacto.hora || formatForTimeInput(fechaBase)
+            }
+        }));
+    }, [open, reunion]);
 
     const handleReset = () => {
         setPaso(0);
@@ -73,6 +94,7 @@ const ModalResultadoReunion = ({ open, onClose, reunion, onSubmit, loading }) =>
             proximoContacto: {
                 tipo: 'llamar_despues',
                 fecha: '',
+                hora: '',
                 nota: ''
             }
         });
@@ -92,13 +114,23 @@ const ModalResultadoReunion = ({ open, onClose, reunion, onSubmit, loading }) =>
         }));
     };
 
+    const handleProximoContactoChange = (field, value) => {
+        setForm(prev => ({
+            ...prev,
+            proximoContacto: {
+                ...prev.proximoContacto,
+                [field]: value
+            }
+        }));
+    };
+
     const puedeAvanzar = () => {
         switch (paso) {
             case 0: return !!form.estado;
             case 1: return form.estado === 'realizada' ? form.comentario.trim().length > 0 : true;
             case 2: return true; // transcripción es opcional
             case 3: return true; // módulos y calificación son opcionales
-            case 4: return form.proximoContacto.tipo && form.proximoContacto.fecha;
+            case 4: return form.proximoContacto.tipo && form.proximoContacto.fecha && form.proximoContacto.hora;
             default: return false;
         }
     };
@@ -126,13 +158,22 @@ const ModalResultadoReunion = ({ open, onClose, reunion, onSubmit, loading }) =>
     };
 
     const handleSubmit = () => {
+        const fechaNormalizada = combineDateAndTimeToOffsetIso(
+            form.proximoContacto.fecha,
+            form.proximoContacto.hora
+        );
+
         onSubmit({
             estado: form.estado,
             comentario: form.comentario || null,
             transcripcion: form.transcripcion || null,
             modulosInteres: form.modulosInteres.length > 0 ? form.modulosInteres : null,
             calificacionRapida: form.calificacionRapida || null,
-            proximoContacto: form.proximoContacto
+            proximoContacto: {
+                tipo: form.proximoContacto.tipo,
+                fecha: fechaNormalizada,
+                nota: form.proximoContacto.nota || ''
+            }
         });
         handleReset();
     };
@@ -290,10 +331,7 @@ const ModalResultadoReunion = ({ open, onClose, reunion, onSubmit, loading }) =>
                             <Select
                                 value={form.proximoContacto.tipo}
                                 label="Tipo de acción"
-                                onChange={(e) => setForm({
-                                    ...form,
-                                    proximoContacto: { ...form.proximoContacto, tipo: e.target.value }
-                                })}
+                                onChange={(e) => handleProximoContactoChange('tipo', e.target.value)}
                             >
                                 {TIPOS_PROXIMO_CONTACTO.map(t => (
                                     <MenuItem key={t.value} value={t.value}>{t.label}</MenuItem>
@@ -301,13 +339,19 @@ const ModalResultadoReunion = ({ open, onClose, reunion, onSubmit, loading }) =>
                             </Select>
                         </FormControl>
                         <TextField
-                            label="Fecha y hora *"
-                            type="datetime-local"
+                            label="Fecha *"
+                            type="date"
                             value={form.proximoContacto.fecha}
-                            onChange={(e) => setForm({
-                                ...form,
-                                proximoContacto: { ...form.proximoContacto, fecha: e.target.value }
-                            })}
+                            onChange={(e) => handleProximoContactoChange('fecha', e.target.value)}
+                            fullWidth
+                            InputLabelProps={{ shrink: true }}
+                            required
+                        />
+                        <TextField
+                            label="Hora *"
+                            type="time"
+                            value={form.proximoContacto.hora}
+                            onChange={(e) => handleProximoContactoChange('hora', e.target.value)}
                             fullWidth
                             InputLabelProps={{ shrink: true }}
                             required
@@ -315,10 +359,7 @@ const ModalResultadoReunion = ({ open, onClose, reunion, onSubmit, loading }) =>
                         <TextField
                             label="Nota"
                             value={form.proximoContacto.nota}
-                            onChange={(e) => setForm({
-                                ...form,
-                                proximoContacto: { ...form.proximoContacto, nota: e.target.value }
-                            })}
+                            onChange={(e) => handleProximoContactoChange('nota', e.target.value)}
                             fullWidth
                             multiline
                             rows={2}

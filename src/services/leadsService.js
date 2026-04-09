@@ -41,6 +41,16 @@ const LeadsService = {
     const res = await api.get(`/lead/primer-mensaje/${encodeURIComponent(phone)}`);
     return res.data;
   },
+
+  // GET /api/lead/origen-stats - Estadísticas de origen de contactos
+  getOrigenStats: async ({ from, to, on } = {}) => {
+    const params = {};
+    if (from) params.from = from;
+    if (to) params.to = to;
+    if (on) params.on = on;
+    const res = await api.get('/lead/origen-stats', { params });
+    return res.data;
+  },
 };
 
 export default LeadsService;

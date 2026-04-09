@@ -77,6 +77,26 @@ const abTestService = {
         );
         return data;
     },
+
+    /**
+     * Crea un punto de inflexión (snapshot de métricas actuales).
+     * @param {string} name - Nombre del test
+     * @param {string} descripcion
+     */
+    addInflexion: async (name, descripcion) => {
+        const { data } = await api.post(`/ab-tests/${encodeURIComponent(name)}/inflexion`, { descripcion });
+        return data;
+    },
+
+    /**
+     * Elimina un punto de inflexión.
+     * @param {string} name - Nombre del test
+     * @param {string} inflexionId
+     */
+    removeInflexion: async (name, inflexionId) => {
+        const { data } = await api.delete(`/ab-tests/${encodeURIComponent(name)}/inflexion/${encodeURIComponent(inflexionId)}`);
+        return data;
+    },
 };
 
 export default abTestService;

@@ -97,6 +97,10 @@ const getEventoColor = (tipo) => {
         
         // Reuniones
         'reunion_coordinada': { bg: '#f3e5f5', border: '#9c27b0', icon: '#6a1b9a' },
+        'reunion_realizada': { bg: '#e8f5e9', border: '#4caf50', icon: '#2e7d32' },
+        'reunion_no_show': { bg: '#ffebee', border: '#ef5350', icon: '#c62828' },
+        'reunion_cancelada': { bg: '#fff3e0', border: '#fb8c00', icon: '#ef6c00' },
+        'reunion_actualizada': { bg: '#e3f2fd', border: '#42a5f5', icon: '#1565c0' },
         'reunion_aprobada': { bg: '#e8f5e9', border: '#4caf50', icon: '#2e7d32' },
         'reunion_rechazada': { bg: '#ffebee', border: '#f44336', icon: '#c62828' },
         
@@ -135,6 +139,10 @@ const getEventoIcon = (tipo) => {
         'email_enviado': <EmailIcon fontSize="small" />,
         'linkedin_enviado': <LinkedInIcon fontSize="small" />,
         'reunion_coordinada': <EventIcon fontSize="small" />,
+        'reunion_realizada': <CheckCircleIcon fontSize="small" />,
+        'reunion_no_show': <CancelIcon fontSize="small" />,
+        'reunion_cancelada': <CancelIcon fontSize="small" />,
+        'reunion_actualizada': <ScheduleIcon fontSize="small" />,
         'reunion_aprobada': <CheckCircleIcon fontSize="small" />,
         'reunion_rechazada': <CancelIcon fontSize="small" />,
         'marcado_no_califica': <DoNotDisturbIcon fontSize="small" />,
@@ -663,8 +671,10 @@ const DrawerDetalleContactoSDR = ({
     const fechaParaInput = (fecha) => {
         if (!fecha) return '';
         const d = new Date(fecha);
-        // Formato: YYYY-MM-DDTHH:mm
-        return d.toISOString().slice(0, 16);
+        if (isNaN(d.getTime())) return '';
+        // Usar zona horaria Argentina para ser consistente en SSR y cliente
+        const str = d.toLocaleString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' });
+        return str.substring(0, 16).replace(' ', 'T');
     };
 
     // ==================== SCORING: PLAN E INTENCIÓN ====================
@@ -1132,24 +1142,41 @@ const DrawerDetalleContactoSDR = ({
                                     </Stack>
 
                                     <Typography variant="caption" fontWeight={600} sx={{ mb: 0.5, display: 'block' }}>Fecha</Typography>
-                                    {editTareaFecha ? (
+                                    {editTareaFecha && (
                                         <Chip size="small"
                                             label={`📅 ${new Date(editTareaFecha).toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short' })} ${new Date(editTareaFecha).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}`}
                                             color="success" onDelete={() => setEditTareaFecha(null)} sx={{ fontWeight: 600, mb: 0.5 }} />
-                                    ) : (
-                                        <Stack spacing={0.5} sx={{ mb: 0.5 }}>
-                                            <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
-                                                {botonesProximoContacto.map((btn) => (
-                                                    <Chip key={btn.label} label={btn.label} size="small" variant="outlined" color="primary"
-                                                        onClick={() => setEditTareaFecha(calcularFecha(btn.cantidad, btn.unidad))}
-                                                        sx={{ cursor: 'pointer', fontSize: '0.7rem' }} />
-                                                ))}
-                                            </Stack>
-                                            <input type="datetime-local" value={editTareaFecha ? fechaParaInput(editTareaFecha) : ''}
-                                                onChange={(e) => { if (e.target.value) setEditTareaFecha(new Date(e.target.value)); }}
-                                                style={{ fontSize: '0.8rem', padding: '4px 8px', borderRadius: 4, border: '1px solid #ccc', width: '100%', boxSizing: 'border-box' }} />
+                                    )}
+                                    {!editTareaFecha && (
+                                        <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5, mb: 0.5 }}>
+                                            {botonesProximoContacto.map((btn) => (
+                                                <Chip key={btn.label} label={btn.label} size="small" variant="outlined" color="primary"
+                                                    onClick={() => setEditTareaFecha(calcularFecha(btn.cantidad, btn.unidad))}
+                                                    sx={{ cursor: 'pointer', fontSize: '0.7rem' }} />
+                                            ))}
                                         </Stack>
                                     )}
+                                    {/* Inputs separados fecha + hora: siempre visibles */}
+                                    {(() => {
+                                        const partes = fechaParaInput(editTareaFecha).split('T');
+                                        const fechaVal = partes[0] || '';
+                                        const horaVal = partes[1] || '09:00';
+                                        return (
+                                            <Stack direction="row" spacing={0.5} sx={{ mb: 0.5 }}>
+                                                <input type="date" value={fechaVal}
+                                                    onChange={(e) => { const d = e.target.value; if (d) setEditTareaFecha(new Date(`${d}T${horaVal}`)); }}
+                                                    style={{ fontSize: '0.8rem', padding: '4px 8px', borderRadius: 4, border: '1px solid #ccc', flex: 1, boxSizing: 'border-box' }} />
+                                                <input type="time" value={horaVal}
+                                                    onChange={(e) => {
+                                                        const t = e.target.value;
+                                                        if (!t) return;
+                                                        if (fechaVal) { setEditTareaFecha(new Date(`${fechaVal}T${t}`)); }
+                                                        else { const hoy = new Date(); const pad = n => String(n).padStart(2, '0'); setEditTareaFecha(new Date(`${hoy.getFullYear()}-${pad(hoy.getMonth()+1)}-${pad(hoy.getDate())}T${t}`)); }
+                                                    }}
+                                                    style={{ fontSize: '0.8rem', padding: '4px 8px', borderRadius: 4, border: '1px solid #ccc', width: 88, boxSizing: 'border-box' }} />
+                                            </Stack>
+                                        );
+                                    })()}
 
                                     <Typography variant="caption" fontWeight={600} sx={{ mt: 1, mb: 0.5, display: 'block' }}>Comentario (opcional)</Typography>
                                     <input type="text" placeholder="Comentario para la tarea..."
@@ -1960,24 +1987,41 @@ const DrawerDetalleContactoSDR = ({
                                             sx={{ cursor: 'pointer', fontSize: '0.65rem' }} />
                                     ))}
                                 </Stack>
-                                {editTareaFecha ? (
+                                {editTareaFecha && (
                                     <Chip size="small"
                                         label={`📅 ${new Date(editTareaFecha).toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short' })} ${new Date(editTareaFecha).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}`}
                                         color="success" onDelete={() => setEditTareaFecha(null)} sx={{ fontWeight: 600, mb: 0.5, fontSize: '0.7rem' }} />
-                                ) : (
-                                    <Stack spacing={0.5} sx={{ mb: 0.5 }}>
-                                        <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
-                                            {botonesProximoContacto.map((btn) => (
-                                                <Button key={btn.label} size="small" variant="outlined"
-                                                    onClick={() => setEditTareaFecha(calcularFecha(btn.cantidad, btn.unidad))}
-                                                    sx={{ minWidth: 'auto', px: 0.8, py: 0.2, fontSize: '0.65rem', textTransform: 'none' }}>{btn.label}</Button>
-                                            ))}
-                                        </Stack>
-                                        <input type="datetime-local" value={editTareaFecha ? fechaParaInput(editTareaFecha) : ''}
-                                            onChange={(e) => { if (e.target.value) setEditTareaFecha(new Date(e.target.value)); }}
-                                            style={{ fontSize: '0.75rem', padding: '3px 6px', borderRadius: 4, border: '1px solid #ccc', width: '100%', boxSizing: 'border-box' }} />
+                                )}
+                                {!editTareaFecha && (
+                                    <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5, mb: 0.5 }}>
+                                        {botonesProximoContacto.map((btn) => (
+                                            <Button key={btn.label} size="small" variant="outlined"
+                                                onClick={() => setEditTareaFecha(calcularFecha(btn.cantidad, btn.unidad))}
+                                                sx={{ minWidth: 'auto', px: 0.8, py: 0.2, fontSize: '0.65rem', textTransform: 'none' }}>{btn.label}</Button>
+                                        ))}
                                     </Stack>
                                 )}
+                                {/* Inputs separados fecha + hora: siempre visibles */}
+                                {(() => {
+                                    const partes = fechaParaInput(editTareaFecha).split('T');
+                                    const fechaVal = partes[0] || '';
+                                    const horaVal = partes[1] || '09:00';
+                                    return (
+                                        <Stack direction="row" spacing={0.5} sx={{ mb: 0.5 }}>
+                                            <input type="date" value={fechaVal}
+                                                onChange={(e) => { const d = e.target.value; if (d) setEditTareaFecha(new Date(`${d}T${horaVal}`)); }}
+                                                style={{ fontSize: '0.75rem', padding: '3px 6px', borderRadius: 4, border: '1px solid #ccc', flex: 1, boxSizing: 'border-box' }} />
+                                            <input type="time" value={horaVal}
+                                                onChange={(e) => {
+                                                    const t = e.target.value;
+                                                    if (!t) return;
+                                                    if (fechaVal) { setEditTareaFecha(new Date(`${fechaVal}T${t}`)); }
+                                                    else { const hoy = new Date(); const pad = n => String(n).padStart(2, '0'); setEditTareaFecha(new Date(`${hoy.getFullYear()}-${pad(hoy.getMonth()+1)}-${pad(hoy.getDate())}T${t}`)); }
+                                                }}
+                                                style={{ fontSize: '0.75rem', padding: '3px 6px', borderRadius: 4, border: '1px solid #ccc', width: 76, boxSizing: 'border-box' }} />
+                                        </Stack>
+                                    );
+                                })()}
                                 <input type="text" placeholder="Comentario (opcional)..."
                                     value={editTareaNota} onChange={(e) => setEditTareaNota(e.target.value)}
                                     style={{ fontSize: '0.75rem', padding: '3px 6px', borderRadius: 4, border: '1px solid #ccc', width: '100%', boxSizing: 'border-box', marginTop: 4 }} />

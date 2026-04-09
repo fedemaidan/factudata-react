@@ -30,10 +30,12 @@ import DescriptionIcon from '@mui/icons-material/Description';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useAuthContext } from 'src/contexts/auth-context';
 import SDRService from 'src/services/sdrService';
+import { appendBrowserTimezoneOffset } from 'src/utils/sdrDateTime';
 import ModalCrearReunion from 'src/components/sdr/ModalCrearReunion';
 import ModalResultadoReunion from 'src/components/sdr/ModalResultadoReunion';
 import CalendarSyncPendientes from 'src/components/sdr/CalendarSyncPendientes';
 import SyncIcon from '@mui/icons-material/Sync';
+import ReunionCardSDR from 'src/components/sdr/ReunionCardSDR';
 
 // ==================== HELPERS ====================
 
@@ -78,230 +80,6 @@ const esPasado = (fecha) => {
     const hoy = new Date();
     hoy.setHours(0, 0, 0, 0);
     return d < hoy;
-};
-
-const getCountdown = (fecha) => {
-    if (!fecha) return '';
-    const ahora = new Date();
-    const d = new Date(fecha);
-    const diffMs = d - ahora;
-    const diffMin = Math.round(diffMs / 60000);
-
-    if (diffMin > 0 && diffMin < 60) return `En ${diffMin} min`;
-    if (diffMin >= 60 && diffMin < 1440) return `En ${Math.floor(diffMin / 60)}h ${diffMin % 60}min`;
-    if (diffMin < 0 && diffMin > -60) return `Hace ${Math.abs(diffMin)} min`;
-    if (diffMin <= -60 && diffMin > -1440) return `Hace ${Math.floor(Math.abs(diffMin) / 60)}h`;
-    return '';
-};
-
-const getAntiguedadSinRegistrar = (fecha) => {
-    if (!fecha) return 0;
-    const d = new Date(fecha);
-    const ahora = new Date();
-    return Math.floor((ahora - d) / (1000 * 60 * 60));
-};
-
-const getCalificacionChip = (calificacion) => {
-    const map = {
-        frio: { label: '❄️ Frío', color: 'info' },
-        tibio: { label: '🌤️ Tibio', color: 'warning' },
-        caliente: { label: '🔥 Caliente', color: 'error' },
-        listo_para_cerrar: { label: '🎯 Listo', color: 'success' }
-    };
-    return map[calificacion] || null;
-};
-
-// ==================== COMPONENTE CARD DE REUNIÓN ====================
-
-const ReunionCard = ({ reunion, variant = 'hoy', onMarcarRealizada, onMarcarNoShow, onCancelar, onEliminar, onVerContacto, onCopiarLink, mostrarSnackbar, mostrarSDR = false }) => {
-    const contacto = reunion.contactoId || {};
-    const fechaReunion = reunion.fecha || reunion.fechaHora;
-    const countdown = getCountdown(fechaReunion);
-    const horasAntigua = getAntiguedadSinRegistrar(fechaReunion);
-
-    return (
-        <Card
-            variant="outlined"
-            sx={{
-                height: '100%',
-                display: 'flex',
-                flexDirection: 'column',
-                borderLeft: variant === 'sin_registrar' && horasAntigua > 24
-                    ? '4px solid #f44336'
-                    : variant === 'sin_registrar'
-                        ? '4px solid #ff9800'
-                        : variant === 'hoy'
-                            ? '4px solid #2196f3'
-                            : '4px solid #e0e0e0'
-            }}
-        >
-            <CardContent sx={{ pb: 1, flex: 1, '&:last-child': { pb: 1 } }}>
-                <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
-                    <Box sx={{ flex: 1 }}>
-                        <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
-                            <Typography variant="subtitle1" fontWeight={600}>
-                                {formatearHora(fechaReunion)}
-                            </Typography>
-                            {countdown && (
-                                <Chip
-                                    label={countdown}
-                                    size="small"
-                                    color={countdown.startsWith('Hace') ? 'warning' : 'info'}
-                                    variant="outlined"
-                                />
-                            )}
-                            {reunion.calificacionRapida && (() => {
-                                const chip = getCalificacionChip(reunion.calificacionRapida);
-                                return chip ? <Chip label={chip.label} size="small" color={chip.color} /> : null;
-                            })()}
-                            {reunion.origen === 'auto_calendar' && (
-                                <Chip label="🤖 Bot" size="small" color="secondary" variant="outlined" />
-                            )}
-                        </Stack>
-
-                        <Typography variant="body1" fontWeight={500}>
-                            {contacto.nombre || reunion.contactoPrincipal || 'Sin nombre'}
-                            {(contacto.empresa || reunion.empresaNombre) && (
-                                <Typography component="span" color="text.secondary" sx={{ ml: 1 }}>
-                                    — {contacto.empresa || reunion.empresaNombre}
-                                </Typography>
-                            )}
-                        </Typography>
-
-                        {/* SDR asignado (modo ver todas) */}
-                        {mostrarSDR && (contacto.sdrAsignadoNombre || reunion.sdrAsignadoNombre) && (
-                            <Chip
-                                icon={<PeopleIcon fontSize="small" />}
-                                label={contacto.sdrAsignadoNombre || reunion.sdrAsignadoNombre}
-                                size="small"
-                                variant="outlined"
-                                sx={{ mt: 0.5 }}
-                            />
-                        )}
-
-                        {/* Resumen SDR del contacto (si existe) */}
-                        {variant === 'hoy' && contacto.resumenSDR && (
-                            <Paper variant="outlined" sx={{ p: 1.5, mt: 1, bgcolor: 'grey.50', maxHeight: 120, overflow: 'auto' }}>
-                                <Typography variant="caption" color="text.secondary" fontWeight={600}>
-                                    📋 Resumen SDR
-                                </Typography>
-                                <Typography variant="body2" sx={{ mt: 0.5, whiteSpace: 'pre-line', fontSize: '0.8rem' }}>
-                                    {contacto.resumenSDR.substring(0, 500)}{contacto.resumenSDR.length > 500 ? '...' : ''}
-                                </Typography>
-                            </Paper>
-                        )}
-
-                        {/* Link de reunión */}
-                        {reunion.link && (
-                            <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1 }}>
-                                <Chip
-                                    label="Link reunión"
-                                    size="small"
-                                    icon={<OpenInNewIcon />}
-                                    onClick={() => window.open(reunion.link, '_blank')}
-                                    clickable
-                                    color="primary"
-                                    variant="outlined"
-                                />
-                                <Tooltip title="Copiar link">
-                                    <IconButton size="small" onClick={() => onCopiarLink(reunion.link)}>
-                                        <ContentCopyIcon fontSize="small" />
-                                    </IconButton>
-                                </Tooltip>
-                            </Stack>
-                        )}
-
-                        {/* Comentario (para tab realizadas) */}
-                        {variant === 'realizada' && reunion.comentario && (
-                            <Typography variant="body2" color="text.secondary" sx={{ mt: 1, fontStyle: 'italic' }}>
-                                💬 {reunion.comentario.substring(0, 200)}{reunion.comentario.length > 200 ? '...' : ''}
-                            </Typography>
-                        )}
-
-                        {/* Módulos de interés */}
-                        {reunion.modulosInteres?.length > 0 && (
-                            <Stack direction="row" spacing={0.5} sx={{ mt: 1, flexWrap: 'wrap', gap: 0.5 }}>
-                                {reunion.modulosInteres.map(m => (
-                                    <Chip key={m} label={m} size="small" variant="outlined" />
-                                ))}
-                            </Stack>
-                        )}
-
-                        {/* Alerta sin registrar */}
-                        {variant === 'sin_registrar' && (
-                            <Alert
-                                severity={horasAntigua > 24 ? 'error' : 'warning'}
-                                sx={{ mt: 1, py: 0 }}
-                            >
-                                {horasAntigua > 24
-                                    ? `⚠️ Hace más de ${Math.floor(horasAntigua / 24)} día(s) sin registrar`
-                                    : `Hace ${horasAntigua}h sin registrar`
-                                }
-                            </Alert>
-                        )}
-
-                        {/* Próxima tarea del contacto (tab realizadas) */}
-                        {variant === 'realizada' && contacto.proximaTarea?.tipo && (
-                            <Chip
-                                label={`Próximo: ${contacto.proximaTarea.tipo.replace(/_/g, ' ')}`}
-                                size="small"
-                                color="primary"
-                                variant="outlined"
-                                sx={{ mt: 1 }}
-                            />
-                        )}
-                        {variant === 'realizada' && !contacto.proximaTarea?.tipo && (
-                            <Chip
-                                label="⚠️ Sin próximo paso"
-                                size="small"
-                                color="warning"
-                                sx={{ mt: 1 }}
-                            />
-                        )}
-                    </Box>
-                </Stack>
-            </CardContent>
-            <CardActions sx={{ pt: 0, px: 2, pb: 1.5, flexWrap: 'wrap', gap: 0.5 }}>
-                {/* Acciones según variant */}
-                {(variant === 'hoy' || variant === 'sin_registrar') && (
-                    <>
-                        <Button size="small" color="success" variant="contained" onClick={() => onMarcarRealizada(reunion)}>
-                            ✅ Realizada
-                        </Button>
-                        <Button size="small" color="error" variant="outlined" onClick={() => onMarcarNoShow(reunion)}>
-                            ❌ No show
-                        </Button>
-                    </>
-                )}
-                {variant === 'proxima' && (
-                    <>
-                        <Button size="small" variant="outlined" onClick={() => onCancelar(reunion)}>
-                            Cancelar
-                        </Button>
-                    </>
-                )}
-                {variant === 'no_show' && (
-                    <>
-                        <Button size="small" variant="contained" onClick={() => onMarcarRealizada(reunion)}>
-                            Reagendar
-                        </Button>
-                    </>
-                )}
-                <Button
-                    size="small"
-                    onClick={() => onVerContacto(reunion)}
-                    endIcon={<OpenInNewIcon fontSize="small" />}
-                >
-                    Ver contacto
-                </Button>
-                <Tooltip title="Eliminar reunión">
-                    <IconButton size="small" color="error" onClick={() => onEliminar(reunion)} sx={{ ml: 'auto' }}>
-                        <DeleteIcon fontSize="small" />
-                    </IconButton>
-                </Tooltip>
-            </CardActions>
-        </Card>
-    );
 };
 
 // ==================== TABS CONFIG ====================
@@ -544,7 +322,7 @@ const ReunionesSDRPage = () => {
                 if (contactoId) {
                     await SDRService.actualizarProximoContacto(contactoId, null, null, {
                         tipo: data.proximoContacto.tipo,
-                        fecha: data.proximoContacto.fecha,
+                        fecha: appendBrowserTimezoneOffset(data.proximoContacto.fecha),
                         nota: data.proximoContacto.nota || ''
                     });
                 }
@@ -589,16 +367,15 @@ const ReunionesSDRPage = () => {
 
     const renderCardItem = (r, variant) => (
         <Grid item xs={12} md={6} key={r._id}>
-            <ReunionCard
+            <ReunionCardSDR
                 reunion={r}
                 variant={variant}
-                onMarcarRealizada={handleMarcarRealizada}
-                onMarcarNoShow={handleMarcarNoShow}
-                onCancelar={handleCancelar}
-                onEliminar={handleEliminar}
-                onVerContacto={handleVerContacto}
+                onRealizada={() => handleMarcarRealizada(r)}
+                onNoShow={() => handleMarcarNoShow(r)}
+                onCancelada={() => handleCancelar(r)}
+                onDelete={() => handleEliminar(r)}
+                onVerContacto={() => handleVerContacto(r)}
                 onCopiarLink={handleCopiarLink}
-                mostrarSnackbar={mostrarSnackbar}
                 mostrarSDR={verTodas}
             />
         </Grid>
