@@ -25,6 +25,9 @@ import {
     Tooltip,
     Slider,
     Link,
+    TextField,
+    ToggleButton,
+    ToggleButtonGroup,
 } from '@mui/material';
 import {
     Refresh as RefreshIcon,
@@ -35,6 +38,8 @@ import {
     OpenInNew as OpenInNewIcon,
     VisibilityOff as IgnorarIcon,
     Visibility as RestaurarIcon,
+    Add as AddIcon,
+    DeleteOutline as DeleteIcon,
 } from '@mui/icons-material';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import abTestService from 'src/services/abTestService';
@@ -84,30 +89,185 @@ function getMetrica(test, variante, key) {
     return m?.[key] || 0;
 }
 
+// ─── Helpers para punto de inflexión ──────────────────────
+
+function getSnapshotContador(inflexion, variante) {
+    if (!inflexion?.contadoresSnapshot) return 0;
+    const s = inflexion.contadoresSnapshot;
+    if (typeof s.get === 'function') return s.get(variante) || 0;
+    return s[variante] || 0;
+}
+
+function getSnapshotMetrica(inflexion, variante, key) {
+    if (!inflexion?.metricasSnapshot) return 0;
+    const s = inflexion.metricasSnapshot;
+    const m = typeof s.get === 'function' ? s.get(variante) : s[variante];
+    return m?.[key] || 0;
+}
+
+function getContadorPeriodo(test, variante, inflexion, periodo) {
+    const current = getContador(test, variante);
+    if (periodo === 'total' || !inflexion) return current;
+    const snap = getSnapshotContador(inflexion, variante);
+    return periodo === 'pre' ? snap : Math.max(0, current - snap);
+}
+
+function getMetricaPeriodo(test, variante, key, inflexion, periodo) {
+    const current = getMetrica(test, variante, key);
+    if (periodo === 'total' || !inflexion) return current;
+    const snap = getSnapshotMetrica(inflexion, variante, key);
+    return periodo === 'pre' ? snap : Math.max(0, current - snap);
+}
+
+function filterContactosPeriodo(contactos, inflexion, periodo) {
+    if (periodo === 'total' || !inflexion) return contactos;
+    const fecha = new Date(inflexion.fecha);
+    return periodo === 'pre'
+        ? contactos.filter(c => new Date(c.createdAt) < fecha)
+        : contactos.filter(c => new Date(c.createdAt) >= fecha);
+}
+
+// ─── Componente: Puntos de inflexión ──────────────────────
+
+function PuntosInflexion({ test, onAdd, onRemove, selectedId, onSelect, periodo, onPeriodoChange }) {
+    const [desc, setDesc] = useState('');
+    const [adding, setAdding] = useState(false);
+    const puntos = test?.puntosInflexion || [];
+
+    const handleAdd = async () => {
+        if (!desc.trim()) return;
+        setAdding(true);
+        try {
+            await onAdd(desc.trim());
+            setDesc('');
+        } finally {
+            setAdding(false);
+        }
+    };
+
+    const selected = puntos.find(p => p._id === selectedId);
+
+    return (
+        <Card>
+            <CardHeader
+                title="📌 Puntos de inflexión"
+                subheader="Marcá cambios de condiciones para comparar métricas antes y después"
+            />
+            <CardContent>
+                {/* Lista de puntos existentes */}
+                {puntos.length > 0 && (
+                    <Stack spacing={1} sx={{ mb: 2 }}>
+                        {puntos.map((p) => (
+                            <Stack
+                                key={p._id}
+                                direction="row"
+                                alignItems="center"
+                                spacing={1}
+                                sx={{
+                                    p: 1,
+                                    borderRadius: 1,
+                                    bgcolor: selectedId === p._id ? 'action.selected' : 'transparent',
+                                    cursor: 'pointer',
+                                    '&:hover': { bgcolor: 'action.hover' },
+                                }}
+                                onClick={() => onSelect(selectedId === p._id ? null : p._id)}
+                            >
+                                <Chip
+                                    size="small"
+                                    label={new Date(p.fecha).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                    color={selectedId === p._id ? 'primary' : 'default'}
+                                    variant={selectedId === p._id ? 'filled' : 'outlined'}
+                                />
+                                <Typography variant="body2" sx={{ flex: 1 }}>{p.descripcion}</Typography>
+                                <Tooltip title="Eliminar punto">
+                                    <IconButton
+                                        size="small"
+                                        color="error"
+                                        onClick={(e) => { e.stopPropagation(); onRemove(p._id); }}
+                                    >
+                                        <DeleteIcon fontSize="small" />
+                                    </IconButton>
+                                </Tooltip>
+                            </Stack>
+                        ))}
+                    </Stack>
+                )}
+
+                {/* Selector de periodo */}
+                {selected && (
+                    <Box sx={{ mb: 2 }}>
+                        <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
+                            Viendo métricas:
+                        </Typography>
+                        <ToggleButtonGroup
+                            size="small"
+                            value={periodo}
+                            exclusive
+                            onChange={(_, v) => { if (v) onPeriodoChange(v); }}
+                        >
+                            <ToggleButton value="total">Total</ToggleButton>
+                            <ToggleButton value="pre">
+                                Pre — {selected.descripcion}
+                            </ToggleButton>
+                            <ToggleButton value="post">
+                                Post — {selected.descripcion}
+                            </ToggleButton>
+                        </ToggleButtonGroup>
+                    </Box>
+                )}
+
+                {/* Formulario agregar */}
+                <Stack direction="row" spacing={1} alignItems="flex-start">
+                    <TextField
+                        size="small"
+                        placeholder="Ej: Deploy modal inline booking"
+                        value={desc}
+                        onChange={(e) => setDesc(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') handleAdd(); }}
+                        sx={{ flex: 1 }}
+                    />
+                    <Button
+                        size="small"
+                        variant="contained"
+                        startIcon={<AddIcon />}
+                        onClick={handleAdd}
+                        disabled={adding || !desc.trim()}
+                    >
+                        {adding ? '...' : 'Marcar'}
+                    </Button>
+                </Stack>
+            </CardContent>
+        </Card>
+    );
+}
+
 // ─── Tabla de métricas ────────────────────────────────────
 
-function MetricasResumen({ test, contactos }) {
-    const actA = (contactos.A || []).filter(c => !c.ab_test_ignorado);
-    const actB = (contactos.B || []).filter(c => !c.ab_test_ignorado);
+function MetricasResumen({ test, contactos, inflexion, periodo }) {
+    const filteredA = filterContactosPeriodo((contactos.A || []).filter(c => !c.ab_test_ignorado), inflexion, periodo);
+    const filteredB = filterContactosPeriodo((contactos.B || []).filter(c => !c.ab_test_ignorado), inflexion, periodo);
 
-    const visitasA = getContador(test, 'A');
-    const visitasB = getContador(test, 'B');
+    const visitasA = getContadorPeriodo(test, 'A', inflexion, periodo);
+    const visitasB = getContadorPeriodo(test, 'B', inflexion, periodo);
 
-    // abrieronLink: A = click en CTA WhatsApp. B = click en CTA agendar reunión → calendario.
-    // Ambos se incrementan en el backend cuando sucede el click efectivo.
-    const abrieronLinkA = getMetrica(test, 'A', 'abrieronLink');
-    const abrieronLinkB = getMetrica(test, 'B', 'abrieronLink');
+    // CTA principal: ambas variantes usan abrieronLink
+    const ctaA = getMetricaPeriodo(test, 'A', 'abrieronLink', inflexion, periodo);
+    const ctaB = getMetricaPeriodo(test, 'B', 'abrieronLink', inflexion, periodo);
 
-    const contactosA = actA.length;
-    const contactosB = actB.length;
+    // Siguiente paso del funnel: A = contactos creados via bot, B = eligieron horario en el modal
+    const eligieronHorarioB = getMetricaPeriodo(test, 'B', 'eligieronHorario', inflexion, periodo);
 
-    const movimientosA = actA.filter(c => c._flags?.generaronMovimiento).length;
-    const movimientosB = actB.filter(c => c._flags?.generaronMovimiento).length;
+    const contactosA = filteredA.length;
 
-    const quisieronAgendarA = actA.filter(c => c._flags?.pidieronDemo).length;
+    const movimientosA = filteredA.filter(c => c._flags?.generaronMovimiento).length;
+    const movimientosB = filteredB.filter(c => c._flags?.generaronMovimiento).length;
 
-    const reunionesA = actA.filter(c => c._flags?.agendaronReunion).length;
-    const reunionesB = actB.filter(c => c._flags?.agendaronReunion).length;
+    const quisieronAgendarA = filteredA.filter(c => c._flags?.pidieronDemo).length;
+
+    // Agendaron reunión: A = tiene ReunionSDR, B = agendaronInline (crea ReunionSDR)
+    // Usamos el max de ambas fuentes para B (agendaronInline es el contador, reuniones es la fuente de verdad)
+    const reunionesA = filteredA.filter(c => c._flags?.agendaronReunion).length;
+    const reunionesB = filteredB.filter(c => c._flags?.agendaronReunion).length;
 
     const rows = [
         {
@@ -120,21 +280,21 @@ function MetricasResumen({ test, contactos }) {
         },
         {
             label: 'Clics al CTA principal',
-            tooltip: 'Variante A: clicks en "Probá Sorby" → redirección a WhatsApp.\nVariante B: clicks en "Agendar reunión" → redirección a Google Calendar.',
-            valA: abrieronLinkA,
-            valB: abrieronLinkB,
-            pctA: pct(abrieronLinkA, visitasA),
-            pctB: pct(abrieronLinkB, visitasB),
+            tooltip: 'Variante A: clicks en "Probá Sorby" → redirección a WhatsApp.\nVariante B: clicks en "Agendar reunión" → abre modal de agendamiento.',
+            valA: ctaA,
+            valB: ctaB,
+            pctA: pct(ctaA, visitasA),
+            pctB: pct(ctaB, visitasB),
             highlight: true,
         },
         null,
         {
-            label: 'Contactos creados',
-            tooltip: 'ContactoSDR generados para cada variante.\nA: creados via bot (leadContactoBridge).\nB: creados via Calendar Sync cuando se detecta un evento con teléfono + asistente externo.',
+            label: 'Contactos / Eligieron horario',
+            tooltip: 'Variante A: contactos creados via bot (leadContactoBridge).\nVariante B: seleccionaron un slot de horario en el calendario inline.',
             valA: contactosA,
-            valB: contactosB,
-            pctA: pct(contactosA, visitasA),
-            pctB: pct(contactosB, visitasB),
+            valB: eligieronHorarioB,
+            pctA: pct(contactosA, ctaA),
+            pctB: pct(eligieronHorarioB, ctaB),
         },
         {
             label: 'Generaron movimiento',
@@ -142,7 +302,7 @@ function MetricasResumen({ test, contactos }) {
             valA: movimientosA,
             valB: movimientosB,
             pctA: pct(movimientosA, contactosA),
-            pctB: pct(movimientosB, contactosB),
+            pctB: pct(movimientosB, reunionesB),
         },
         {
             label: 'Quisieron agendar',
@@ -167,7 +327,10 @@ function MetricasResumen({ test, contactos }) {
         <Card>
             <CardHeader
                 title="📊 Métricas del test"
-                subheader="Conversión landing → reunión por variante"
+                subheader={periodo !== 'total' && inflexion
+                    ? `Mostrando: ${periodo === 'pre' ? 'Pre' : 'Post'} — ${inflexion.descripcion}`
+                    : 'Conversión landing → reunión por variante'
+                }
             />
             <CardContent>
                 <TableContainer>
@@ -400,6 +563,8 @@ const AbTestLandingAgendaPage = () => {
     const [pesoA, setPesoA] = useState(50);
     const [savingPesos, setSavingPesos] = useState(false);
     const [filtroVariante, setFiltroVariante] = useState('todos');
+    const [selectedInflexionId, setSelectedInflexionId] = useState(null);
+    const [periodo, setPeriodo] = useState('total');
 
     const handleToggleIgnorar = async (contactoId, ignorar) => {
         setContactos(prev => {
@@ -470,6 +635,35 @@ const AbTestLandingAgendaPage = () => {
             setSavingPesos(false);
         }
     };
+
+    const handleAddInflexion = async (descripcion) => {
+        try {
+            await abTestService.addInflexion(TEST_NAME, descripcion);
+            fetchData();
+        } catch (err) {
+            setError(err.response?.data?.error || err.message);
+        }
+    };
+
+    const handleRemoveInflexion = async (inflexionId) => {
+        try {
+            if (selectedInflexionId === inflexionId) {
+                setSelectedInflexionId(null);
+                setPeriodo('total');
+            }
+            await abTestService.removeInflexion(TEST_NAME, inflexionId);
+            fetchData();
+        } catch (err) {
+            setError(err.response?.data?.error || err.message);
+        }
+    };
+
+    const handleSelectInflexion = (id) => {
+        setSelectedInflexionId(id);
+        setPeriodo(id ? 'post' : 'total');
+    };
+
+    const selectedInflexion = (test?.puntosInflexion || []).find(p => p._id === selectedInflexionId) || null;
 
     return (
         <>
@@ -585,9 +779,27 @@ const AbTestLandingAgendaPage = () => {
                                 </CardContent>
                             </Card>
 
+                            {/* Puntos de inflexión */}
+                            <Box sx={{ mb: 3 }}>
+                                <PuntosInflexion
+                                    test={test}
+                                    onAdd={handleAddInflexion}
+                                    onRemove={handleRemoveInflexion}
+                                    selectedId={selectedInflexionId}
+                                    onSelect={handleSelectInflexion}
+                                    periodo={periodo}
+                                    onPeriodoChange={setPeriodo}
+                                />
+                            </Box>
+
                             {/* Métricas */}
                             <Box sx={{ mb: 3 }}>
-                                <MetricasResumen test={test} contactos={contactos} />
+                                <MetricasResumen
+                                    test={test}
+                                    contactos={contactos}
+                                    inflexion={selectedInflexion}
+                                    periodo={periodo}
+                                />
                             </Box>
 
                             {/* Contactos */}

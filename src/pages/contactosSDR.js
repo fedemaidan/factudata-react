@@ -72,6 +72,32 @@ import { PRECALIFICACION_BOT, PLANES_SORBY } from 'src/constant/sdrConstants';
 
 const ITEMS_PER_PAGE = 50;
 
+const normalizarOrdenarPor = (value) => {
+    const orderMap = {
+        vencidos: 'vencidos',
+        nuevo: 'createdAt',
+        fecha: 'ultimaAccion',
+        prioridad: 'prioridad',
+        proximo_contacto: 'proximoContacto',
+        fecha_creacion: 'createdAt'
+    };
+
+    return orderMap[value] || value || '';
+};
+
+const getOrdenDirPorDefecto = (value) => {
+    const dirMap = {
+        vencidos: 'asc',
+        proximoContacto: 'asc',
+        createdAt: 'desc',
+        ultimaAccion: 'desc',
+        prioridad: 'desc',
+        estado: 'asc'
+    };
+
+    return dirMap[value] || 'asc';
+};
+
 const COLUMNAS_LABELS = {
     empresa: 'Empresa',
     estado: 'Estado',
@@ -124,9 +150,14 @@ const ContactosSDRPage = () => {
     
     // Filtros
     const [busqueda, setBusqueda] = useState('');
-    const [filtroEstado, setFiltroEstado] = useState('');
+    const [filtroEstados, setFiltroEstados] = useState([]); // array, OR logic
+    const [filtroLlamadaExitosa, setFiltroLlamadaExitosa] = useState(''); // '' | 'si' | 'no'
     const [bandejaActiva, setBandejaActiva] = useState('nuevos'); // 'nuevos' | 'reintentos' | 'seguimiento' | 'reunionesPendientes' | 'reunionesPasadas' | 'todos'
-    const [filtroProximoContacto, setFiltroProximoContacto] = useState(''); // '' | 'sin_proximo' | 'vencido' | 'pendiente'
+    const [filtroFechaDesde, setFiltroFechaDesde] = useState(''); // YYYY-MM-DD
+    const [filtroFechaHasta, setFiltroFechaHasta] = useState(''); // YYYY-MM-DD
+    const [filtroSinFecha, setFiltroSinFecha] = useState(false);
+    const [filtroCreatedDesde, setFiltroCreatedDesde] = useState(''); // YYYY-MM-DD
+    const [filtroCreatedHasta, setFiltroCreatedHasta] = useState(''); // YYYY-MM-DD
     const [filtroSegmento, setFiltroSegmento] = useState(''); // '' | 'inbound' | 'outbound'
     const [filtroActividad, setFiltroActividad] = useState(''); // '' | 'sin_llamadas' | 'con_llamadas_no_atendidas' | 'con_llamadas_atendidas' | 'con_mensajes' | 'con_reuniones' | 'sin_actividad'
     const [filtroCalificadoBot, setFiltroCalificadoBot] = useState(''); // '' | 'calificado' | 'no_calificado' | 'quiere_meet' | 'no_llego'
@@ -137,8 +168,12 @@ const ContactosSDRPage = () => {
     const [filtroOptOut, setFiltroOptOut] = useState(''); // '' | 'si' | 'no'
     const [ordenarPor, setOrdenarPor] = useState(''); // vacío = el backend elige según bandeja
     const [ordenDir, setOrdenDir] = useState('asc'); // 'asc' | 'desc'
-    const [columnasVisibles, setColumnasVisibles] = useState(DEFAULT_COLUMNAS);
-    const [columnasOrden, setColumnasOrden] = useState(DEFAULT_COLUMNAS_ORDEN);
+    const [columnasVisibles, setColumnasVisibles] = useState(() => {
+        try { const s = localStorage.getItem('sdr_columnas_visibles'); return s ? JSON.parse(s) : DEFAULT_COLUMNAS; } catch { return DEFAULT_COLUMNAS; }
+    });
+    const [columnasOrden, setColumnasOrden] = useState(() => {
+        try { const s = localStorage.getItem('sdr_columnas_orden'); return s ? JSON.parse(s) : DEFAULT_COLUMNAS_ORDEN; } catch { return DEFAULT_COLUMNAS_ORDEN; }
+    });
     const [anchorColumnas, setAnchorColumnas] = useState(null);
 
     // Filtros expandidos/colapsados
@@ -233,9 +268,19 @@ const ContactosSDRPage = () => {
                 params.excluirEstados = 'no_califica';
             }
             
-            if (filtroEstado) params.estado = filtroEstado;
+            if (filtroEstados.length) params.estado = filtroEstados.join(',');
             if (busqueda) params.busqueda = busqueda;
             if (filtroSegmento) params.segmento = filtroSegmento;
+            if (filtroFechaDesde) params.filtroFechaDesde = filtroFechaDesde;
+            if (filtroFechaHasta) params.filtroFechaHasta = filtroFechaHasta;
+            if (filtroSinFecha) params.filtroSinFecha = 'true';
+            if (filtroCreatedDesde) params.createdDesde = filtroCreatedDesde;
+            if (filtroCreatedHasta) params.createdHasta = filtroCreatedHasta;
+            if (filtroActividad) params.actividad = filtroActividad;
+            if (filtroCalificadoBot) params.precalificacionBot = filtroCalificadoBot;
+            if (filtroQuiereReunion) params.quiereReunion = filtroQuiereReunion;
+            if (filtroProximaTarea) params.proximaTarea = filtroProximaTarea;
+            if (filtroSoloCompromisos) params.soloCompromisos = 'true';
             if (filtroExcluirConReunion) params.excluirConReunion = 'true';
             if (filtroOptOut) params.optOut = filtroOptOut;
             
@@ -271,7 +316,7 @@ const ContactosSDRPage = () => {
         } finally {
             setLoading(false);
         }
-    }, [empresaId, sdrId, filtroEstado, bandejaActiva, busqueda, filtroSegmento, filtroExcluirConReunion, filtroOptOut, ordenarPor, ordenDir, page]);
+    }, [empresaId, sdrId, filtroEstados, bandejaActiva, busqueda, filtroFechaDesde, filtroFechaHasta, filtroSinFecha, filtroCreatedDesde, filtroCreatedHasta, filtroSegmento, filtroActividad, filtroCalificadoBot, filtroQuiereReunion, filtroProximaTarea, filtroSoloCompromisos, filtroExcluirConReunion, filtroOptOut, ordenarPor, ordenDir, page]);
 
     // Cargar métricas del SDR - soporta día, semana y mes
     const cargarMetricas = useCallback(async () => {
@@ -335,6 +380,10 @@ const ContactosSDRPage = () => {
         }
     }, [sdrId]);
 
+    // Persistir preferencias de columnas
+    useEffect(() => { try { localStorage.setItem('sdr_columnas_visibles', JSON.stringify(columnasVisibles)); } catch {} }, [columnasVisibles]);
+    useEffect(() => { try { localStorage.setItem('sdr_columnas_orden', JSON.stringify(columnasOrden)); } catch {} }, [columnasOrden]);
+
     // Inicializar filtros desde query params de la URL (una sola vez al montar)
     useEffect(() => {
         if (!router.isReady || initialized.current) return;
@@ -351,17 +400,22 @@ const ContactosSDRPage = () => {
             } catch { /* ignore */ }
         }
         setBandejaActiva(src.bandeja || 'nuevos');
-        setFiltroEstado(src.estado || '');
+        setFiltroEstados(src.estado ? src.estado.split(',') : []);
+        setFiltroLlamadaExitosa(src.llamadaExitosa || '');
         setFiltroSegmento(src.segmento || '');
         setFiltroActividad(src.actividad || '');
         setFiltroCalificadoBot(src.calificadoBot || '');
         setFiltroQuiereReunion(src.quiereReunion || '');
         setFiltroProximaTarea(src.proximaTarea || '');
-        setFiltroProximoContacto(src.proximoContacto || '');
+        setFiltroFechaDesde(src.fechaDesde || '');
+        setFiltroFechaHasta(src.fechaHasta || '');
+        setFiltroSinFecha(src.sinFecha === 'true');
+        setFiltroCreatedDesde(src.createdDesde || '');
+        setFiltroCreatedHasta(src.createdHasta || '');
         setFiltroExcluirConReunion(src.excluirConReunion === 'true');
         setFiltroSoloCompromisos(src.soloCompromisos === 'true');
         setFiltroOptOut(src.optOut || '');
-        setOrdenarPor(src.ordenarPor || '');
+        setOrdenarPor(normalizarOrdenarPor(src.ordenarPor || ''));
         setOrdenDir(src.ordenDir || 'asc');
         setBusqueda(src.busqueda || '');
         setPage(src.page ? parseInt(src.page, 10) : 1);
@@ -371,7 +425,7 @@ const ContactosSDRPage = () => {
     // Cambiar bandeja: limpia los filtros que dependen de ella
     const handleCambiarBandeja = (v) => {
         setBandejaActiva(v);
-        setFiltroEstado('');
+        setFiltroEstados([]);
         setFiltroCalificadoBot('');
         setFiltroQuiereReunion('');
         setFiltroProximaTarea('');
@@ -382,7 +436,7 @@ const ContactosSDRPage = () => {
     useEffect(() => {
         if (!initialized.current) return;
         setPage(1);
-    }, [filtroEstado, busqueda, filtroSegmento, ordenarPor]);
+    }, [filtroEstados, filtroLlamadaExitosa, busqueda, filtroSegmento, ordenarPor]);
 
     useEffect(() => {
         cargarContactos();
@@ -413,13 +467,18 @@ const ContactosSDRPage = () => {
         if (!initialized.current) return;
         const params = {};
         if (bandejaActiva && bandejaActiva !== 'nuevos') params.bandeja = bandejaActiva;
-        if (filtroEstado) params.estado = filtroEstado;
+        if (filtroEstados.length) params.estado = filtroEstados.join(',');
+        if (filtroLlamadaExitosa) params.llamadaExitosa = filtroLlamadaExitosa;
         if (filtroSegmento) params.segmento = filtroSegmento;
         if (filtroActividad) params.actividad = filtroActividad;
         if (filtroCalificadoBot) params.calificadoBot = filtroCalificadoBot;
         if (filtroQuiereReunion) params.quiereReunion = filtroQuiereReunion;
         if (filtroProximaTarea) params.proximaTarea = filtroProximaTarea;
-        if (filtroProximoContacto) params.proximoContacto = filtroProximoContacto;
+        if (filtroFechaDesde) params.fechaDesde = filtroFechaDesde;
+        if (filtroFechaHasta) params.fechaHasta = filtroFechaHasta;
+        if (filtroSinFecha) params.sinFecha = 'true';
+        if (filtroCreatedDesde) params.createdDesde = filtroCreatedDesde;
+        if (filtroCreatedHasta) params.createdHasta = filtroCreatedHasta;
         if (filtroExcluirConReunion) params.excluirConReunion = 'true';
         if (filtroSoloCompromisos) params.soloCompromisos = 'true';
         if (filtroOptOut) params.optOut = filtroOptOut;
@@ -438,7 +497,7 @@ const ContactosSDRPage = () => {
             if (qs) sessionStorage.setItem('sdr_lista_query', qs);
             else sessionStorage.removeItem('sdr_lista_query');
         } catch { /* ignore */ }
-    }, [bandejaActiva, filtroEstado, filtroSegmento, filtroActividad, filtroCalificadoBot, filtroQuiereReunion, filtroProximaTarea, filtroProximoContacto, filtroExcluirConReunion, filtroSoloCompromisos, filtroOptOut, ordenarPor, ordenDir, busqueda, page]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [bandejaActiva, filtroEstados, filtroLlamadaExitosa, filtroSegmento, filtroActividad, filtroCalificadoBot, filtroQuiereReunion, filtroProximaTarea, filtroFechaDesde, filtroFechaHasta, filtroSinFecha, filtroCreatedDesde, filtroCreatedHasta, filtroExcluirConReunion, filtroSoloCompromisos, filtroOptOut, ordenarPor, ordenDir, busqueda, page]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Abrir contacto desde query param si existe
     useEffect(() => {
@@ -610,19 +669,6 @@ const ContactosSDRPage = () => {
         return contactos.filter(c => c.estado === estado).length;
     };
     
-    // Contadores de próximo contacto
-    const contarSinProximo = () => contactos.filter(c => !c.proximoContacto).length;
-    const contarProximoVencido = () => contactos.filter(c => c.proximoContacto && new Date(c.proximoContacto) < new Date()).length;
-    const contarProximoPendiente = () => contactos.filter(c => c.proximoContacto && new Date(c.proximoContacto) >= new Date()).length;
-    const contarVencidosHoy = () => {
-        const hoy = new Date();
-        return contactos.filter(c => {
-            if (!c.proximoContacto) return false;
-            const d = new Date(c.proximoContacto);
-            return d < hoy && d.toDateString() === hoy.toDateString();
-        }).length;
-    };
-    
     // Contar vencidos
     const contarVencidos = () => {
         return contactos.filter(c => c.proximoContacto && new Date(c.proximoContacto) < new Date()).length;
@@ -634,19 +680,23 @@ const ContactosSDRPage = () => {
         return new Date(contacto.proximoContacto) < new Date();
     };
     
-    // Filtrar contactos según filtro de próximo contacto
+    // Filtrar contactos por rango de fecha de próximo contacto
     const filtrarPorProximoContacto = (lista) => {
-        if (!filtroProximoContacto) return lista;
-        const hoy = new Date();
+        if (!filtroFechaDesde && !filtroFechaHasta && !filtroSinFecha) return lista;
         return lista.filter(c => {
-            if (filtroProximoContacto === 'sin_proximo') return !c.proximoContacto;
-            if (filtroProximoContacto === 'vencido') return c.proximoContacto && new Date(c.proximoContacto) < hoy;
-            if (filtroProximoContacto === 'vencido_hoy') {
-                if (!c.proximoContacto) return false;
-                const d = new Date(c.proximoContacto);
-                return d < hoy && d.toDateString() === hoy.toDateString();
+            if (filtroSinFecha) return !c.proximoContacto;
+            if (!c.proximoContacto) return false;
+            const fecha = new Date(c.proximoContacto);
+            if (filtroFechaDesde) {
+                const [year, month, day] = filtroFechaDesde.split('-').map(Number);
+                const desde = new Date(year, month - 1, day, 0, 0, 0, 0);
+                if (fecha < desde) return false;
             }
-            if (filtroProximoContacto === 'pendiente') return c.proximoContacto && new Date(c.proximoContacto) >= hoy;
+            if (filtroFechaHasta) {
+                const [year, month, day] = filtroFechaHasta.split('-').map(Number);
+                const hasta = new Date(year, month - 1, day, 23, 59, 59, 999);
+                if (fecha > hasta) return false;
+            }
             return true;
         });
     };
@@ -843,17 +893,23 @@ const ContactosSDRPage = () => {
         // Aplicar filtros de la vista
         const f = vista.filtros || {};
         setBandejaActiva(f.bandejaActiva || 'todos');
-        setFiltroEstado(f.filtroEstado || (f.estados?.length === 1 ? f.estados[0] : ''));
-        setFiltroProximoContacto(f.proximoContacto || '');
+        setFiltroEstados(f.filtroEstados || (f.filtroEstado ? [f.filtroEstado] : f.estados || []));
+        setFiltroLlamadaExitosa(f.filtroLlamadaExitosa || '');
+        setFiltroFechaDesde(f.filtroFechaDesde || '');
+        setFiltroFechaHasta(f.filtroFechaHasta || '');
+        setFiltroSinFecha(f.filtroSinFecha || false);
+        setFiltroCreatedDesde(f.filtroCreatedDesde || '');
+        setFiltroCreatedHasta(f.filtroCreatedHasta || '');
         setFiltroSegmento(f.filtroSegmento || '');
         setFiltroActividad(f.filtroActividad || '');
         setFiltroCalificadoBot(f.filtroCalificadoBot || '');
         setFiltroQuiereReunion(f.filtroQuiereReunion || '');
         setFiltroProximaTarea(f.filtroProximaTarea || '');
+        setFiltroOptOut(f.filtroOptOut || '');
         setFiltroExcluirConReunion(f.filtroExcluirConReunion || false);
         setFiltroSoloCompromisos(f.filtroSoloCompromisos || false);
-        setOrdenarPor(f.ordenarPor || '');
-        setOrdenDir(f.ordenDir || 'asc');
+        setOrdenarPor(normalizarOrdenarPor(f.ordenarPor || ''));
+        setOrdenDir(f.ordenDir || vista.ordenDir || 'asc');
         setBusqueda(f.busqueda || '');
         setColumnasVisibles({ ...DEFAULT_COLUMNAS, ...(f.columnasVisibles || {}) });
         setColumnasOrden(f.columnasOrden || DEFAULT_COLUMNAS_ORDEN);
@@ -869,18 +925,24 @@ const ContactosSDRPage = () => {
                 compartida: vistaCompartida,
                 filtros: {
                     bandejaActiva,
-                    filtroEstado,
-                    estados: filtroEstado ? [filtroEstado] : [],
-                    proximoContacto: filtroProximoContacto || null,
+                    filtroEstados,
+                    filtroLlamadaExitosa: filtroLlamadaExitosa || '',
+                    filtroFechaDesde: filtroFechaDesde || '',
+                    filtroFechaHasta: filtroFechaHasta || '',
+                    filtroSinFecha,
+                    filtroCreatedDesde: filtroCreatedDesde || '',
+                    filtroCreatedHasta: filtroCreatedHasta || '',
                     busqueda: busqueda || '',
                     filtroSegmento,
                     filtroActividad,
                     filtroCalificadoBot,
                     filtroQuiereReunion,
                     filtroProximaTarea,
+                    filtroOptOut,
                     filtroExcluirConReunion,
                     filtroSoloCompromisos,
                     ordenarPor,
+                    ordenDir,
                     columnasVisibles,
                     columnasOrden
                 },
@@ -912,16 +974,25 @@ const ContactosSDRPage = () => {
 
     const handleLimpiarVista = () => {
         setVistaActiva(null);
-        setFiltroEstado('');
+        setFiltroEstados([]);
+        setFiltroLlamadaExitosa('');
         setBandejaActiva('nuevos');
-        setFiltroProximoContacto('');
+        setFiltroFechaDesde('');
+        setFiltroFechaHasta('');
+        setFiltroSinFecha(false);
+        setFiltroCreatedDesde('');
+        setFiltroCreatedHasta('');
         setFiltroActividad('');
         setFiltroCalificadoBot('');
         setFiltroQuiereReunion('');
         setFiltroProximaTarea('');
+        setFiltroOptOut('');
         setFiltroExcluirConReunion(false);
         setFiltroSoloCompromisos(false);
+        setOrdenarPor('');
+        setOrdenDir('asc');
         setBusqueda('');
+        setColumnasVisibles(DEFAULT_COLUMNAS);
         setColumnasOrden(DEFAULT_COLUMNAS_ORDEN);
     };
     
@@ -933,7 +1004,33 @@ const ContactosSDRPage = () => {
         return lista.filter(c => c.proximaTarea?.estricto === true);
     };
 
-    const contactosOrdenados = filtrarPorCompromisos(filtrarPorProximaTarea(filtrarPorQuiereReunion(filtrarPorCalificadoBot(filtrarPorActividad(filtrarPorProximoContacto(contactos))))));
+    const filtrarPorLlamadaExitosa = (lista) => {
+        if (!filtroLlamadaExitosa) return lista;
+        return lista.filter(c => {
+            const tiene = (c.contadores?.llamadasAtendidas || 0) > 0;
+            return filtroLlamadaExitosa === 'si' ? tiene : !tiene;
+        });
+    };
+
+    const contactosOrdenados = filtrarPorLlamadaExitosa(filtrarPorCompromisos(filtrarPorProximaTarea(filtrarPorQuiereReunion(filtrarPorCalificadoBot(filtrarPorActividad(filtrarPorProximoContacto(contactos)))))));
+
+    const nFiltrosActivos = [
+        filtroFechaDesde, filtroFechaHasta, filtroSinFecha,
+        filtroCreatedDesde, filtroCreatedHasta,
+        filtroSegmento, filtroActividad, filtroCalificadoBot,
+        filtroQuiereReunion, filtroProximaTarea, filtroOptOut,
+        filtroExcluirConReunion, filtroSoloCompromisos, ordenarPor,
+        filtroLlamadaExitosa
+    ].filter(Boolean).length + (filtroEstados.length > 0 ? 1 : 0);
+
+    const handleLimpiarFiltros = () => {
+        setFiltroFechaDesde(''); setFiltroFechaHasta(''); setFiltroSinFecha(false);
+        setFiltroCreatedDesde(''); setFiltroCreatedHasta('');
+        setFiltroSegmento(''); setFiltroActividad(''); setFiltroCalificadoBot('');
+        setFiltroQuiereReunion(''); setFiltroProximaTarea(''); setFiltroOptOut('');
+        setFiltroExcluirConReunion(false); setFiltroSoloCompromisos(false); setOrdenarPor(''); setOrdenDir('asc');
+        setFiltroEstados([]); setFiltroLlamadaExitosa('');
+    };
     
     // Formatear próximo contacto para mostrar
     const formatearFechaCorta = (fecha) => {
@@ -969,6 +1066,11 @@ const ContactosSDRPage = () => {
             setOrdenarPor(campo);
             setOrdenDir('asc');
         }
+    };
+
+    const handleOrdenPredefinidoChange = (value) => {
+        setOrdenarPor(value);
+        setOrdenDir(getOrdenDirPorDefecto(value));
     };
 
     const handleComenzarSecuencial = () => {
@@ -1411,365 +1513,220 @@ const ContactosSDRPage = () => {
                 </Tabs>
             </Box>
 
-            {/* Filtros por estado (solo en bandeja 'todos') */}
-            {bandejaActiva === 'todos' && (
-            <Box sx={{ px: 2, pb: 2, overflowX: 'auto' }}>
-                <Stack direction="row" spacing={1} sx={{ minWidth: 'max-content' }}>
-                    <Chip 
-                        label={`Nuevos: ${contarPorEstado('nuevo')}`} 
-                        color="info" 
-                        size="small"
-                        variant={filtroEstado === 'nuevo' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroEstado(filtroEstado === 'nuevo' ? '' : 'nuevo')}
-                    />
-                    <Chip 
-                        label={`Contactados: ${contarPorEstado('contactado')}`} 
-                        color="warning" 
-                        size="small"
-                        variant={filtroEstado === 'contactado' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroEstado(filtroEstado === 'contactado' ? '' : 'contactado')}
-                    />
-                    <Chip 
-                        label={`En Cierre: ${contarPorEstado('cierre')}`} 
-                        color="secondary" 
-                        size="small"
-                        variant={filtroEstado === 'cierre' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroEstado(filtroEstado === 'cierre' ? '' : 'cierre')}
-                    />
-                    <Chip 
-                        label={`Calificados: ${contarPorEstado('calificado')}`} 
-                        color="success" 
-                        size="small"
-                        variant={filtroEstado === 'calificado' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroEstado(filtroEstado === 'calificado' ? '' : 'calificado')}
-                    />
-                    <Chip 
-                        label={`No Responde: ${contarPorEstado('no_responde')}`} 
-                        size="small"
-                        variant={filtroEstado === 'no_responde' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroEstado(filtroEstado === 'no_responde' ? '' : 'no_responde')}
-                    />
-                    <Chip 
-                        label={`No Califica: ${contarPorEstado('no_califica')}`} 
-                        color="error"
-                        size="small"
-                        variant={filtroEstado === 'no_califica' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroEstado(filtroEstado === 'no_califica' ? '' : 'no_califica')}
-                    />
-                </Stack>
-            </Box>
-            )}
-
             {/* ── Barra de filtros colapsable ── */}
             {(() => {
-                const filtrosActivos = [];
-                if (filtroProximoContacto) filtrosActivos.push({ label: filtroProximoContacto === 'sin_proximo' ? 'Sin fecha' : filtroProximoContacto === 'vencido' ? 'Vencidos' : filtroProximoContacto === 'vencido_hoy' ? '🔥 Hoy' : 'Pendientes', onDelete: () => setFiltroProximoContacto('') });
-                if (filtroSegmento) filtrosActivos.push({ label: filtroSegmento === 'inbound' ? '🔵 Inbound' : '🟠 Outbound', onDelete: () => setFiltroSegmento('') });
-                if (filtroCalificadoBot) filtrosActivos.push({ label: filtroCalificadoBot === 'calificado' ? '🤖 Calificado' : filtroCalificadoBot === 'quiere_meet' ? '🤝 Quiere meet' : filtroCalificadoBot === 'no_llego' ? 'No llegó' : 'No calificado', onDelete: () => setFiltroCalificadoBot('') });
-                if (filtroQuiereReunion) filtrosActivos.push({ label: filtroQuiereReunion === 'si' ? '📅 Quiere reunión' : '📅 No quiere', onDelete: () => setFiltroQuiereReunion('') });
-                if (filtroProximaTarea) filtrosActivos.push({ label: filtroProximaTarea === 'sin_tarea' ? 'Sin tarea' : `Tarea: ${filtroProximaTarea}`, onDelete: () => setFiltroProximaTarea('') });
-                if (filtroActividad) filtrosActivos.push({ label: filtroActividad.replace(/_/g, ' ').replace('con ', '').replace('sin ', 'Sin '), onDelete: () => setFiltroActividad('') });
-                if (filtroExcluirConReunion) filtrosActivos.push({ label: '🚫 Sin reunión', onDelete: () => setFiltroExcluirConReunion(false) });
-                if (filtroSoloCompromisos) filtrosActivos.push({ label: '🔔 Compromisos', onDelete: () => setFiltroSoloCompromisos(false) });
-                if (filtroOptOut) filtrosActivos.push({ label: filtroOptOut === 'si' ? '🔇 Opt-out' : '✅ Sin opt-out', onDelete: () => setFiltroOptOut('') });
-                if (ordenarPor) filtrosActivos.push({ label: `Orden: ${ordenarPor === 'proximo_contacto' ? 'Próximo' : ordenarPor === 'fecha_creacion' ? 'Más nuevo' : ordenarPor}`, onDelete: () => setOrdenarPor('') });
+                const nFiltros = nFiltrosActivos;
 
                 return (
                     <>
                         <Box sx={{ px: 2, pb: 1 }}>
-                            <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: 'wrap', gap: 0.5 }}>
+                            <Stack direction="row" spacing={1} alignItems="center">
                                 <Chip
                                     icon={<FilterListIcon sx={{ fontSize: 16 }} />}
-                                    label={`Filtros${filtrosActivos.length > 0 ? ` (${filtrosActivos.length})` : ''}`}
+                                    label={`Filtros${nFiltros > 0 ? ` (${nFiltros})` : ''}`}
                                     size="small"
-                                    color={filtrosActivos.length > 0 ? 'primary' : 'default'}
+                                    color={nFiltros > 0 ? 'primary' : 'default'}
                                     variant={filtrosExpandidos ? 'filled' : 'outlined'}
-                                    onClick={() => setFiltrosExpandidos(!filtrosExpandidos)}
+                                    onClick={() => setFiltrosExpandidos(v => !v)}
                                     sx={{ fontWeight: 600 }}
                                 />
-                                {!filtrosExpandidos && filtrosActivos.map((f, i) => (
-                                    <Chip key={i} label={f.label} size="small" color="primary" variant="outlined" onDelete={f.onDelete} sx={{ fontSize: '0.75rem' }} />
-                                ))}
-                                {!filtrosExpandidos && filtrosActivos.length > 0 && (
-                                    <Chip label="Limpiar" size="small" variant="outlined" onClick={() => {
-                                        setFiltroProximoContacto(''); setFiltroSegmento(''); setFiltroCalificadoBot('');
-                                        setFiltroQuiereReunion(''); setFiltroProximaTarea(''); setFiltroActividad('');
-                                        setFiltroExcluirConReunion(false); setFiltroSoloCompromisos(false); setFiltroOptOut(''); setOrdenarPor('');
-                                    }} sx={{ fontSize: '0.75rem', color: 'text.secondary' }} />
+                                {nFiltros > 0 && (
+                                    <Chip label="Limpiar" size="small" variant="outlined" onClick={handleLimpiarFiltros} sx={{ fontSize: '0.75rem', color: 'text.secondary' }} />
                                 )}
                             </Stack>
                         </Box>
 
                         <Collapse in={filtrosExpandidos}>
+                            <Box sx={{ px: 2, pb: 1.5 }}>
+                                <Stack direction="row" spacing={1.5} flexWrap="wrap" useFlexGap alignItems="flex-end">
+                                    {/* Rango de fecha próximo contacto */}
+                                    <TextField
+                                        type="date"
+                                        size="small"
+                                        label="Próx. desde"
+                                        value={filtroFechaDesde}
+                                        onChange={(e) => { setFiltroFechaDesde(e.target.value); setFiltroSinFecha(false); }}
+                                        InputLabelProps={{ shrink: true }}
+                                        sx={{ width: 150 }}
+                                    />
+                                    <TextField
+                                        type="date"
+                                        size="small"
+                                        label="Próx. hasta"
+                                        value={filtroFechaHasta}
+                                        onChange={(e) => { setFiltroFechaHasta(e.target.value); setFiltroSinFecha(false); }}
+                                        InputLabelProps={{ shrink: true }}
+                                        sx={{ width: 150 }}
+                                    />
+                                    <FormControlLabel
+                                        control={<Checkbox size="small" checked={filtroSinFecha} onChange={(e) => { setFiltroSinFecha(e.target.checked); if (e.target.checked) { setFiltroFechaDesde(''); setFiltroFechaHasta(''); } }} />}
+                                        label={<Typography variant="caption">Sin fecha</Typography>}
+                                        sx={{ m: 0, alignSelf: 'center' }}
+                                    />
 
-            {/* Filtros por próximo contacto */}
-            <Box sx={{ px: 2, pb: 1, overflowX: 'auto' }}>
-                <Stack direction="row" spacing={1} sx={{ minWidth: 'max-content' }}>
-                    <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center', mr: 0.5 }}>
-                        Próximo contacto:
-                    </Typography>
-                    <Chip 
-                        label={`Sin fecha (${contarSinProximo()})`}
-                        size="small"
-                        icon={<HourglassEmptyIcon sx={{ fontSize: 14 }} />}
-                        color={filtroProximoContacto === 'sin_proximo' ? 'warning' : 'default'}
-                        variant={filtroProximoContacto === 'sin_proximo' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroProximoContacto(filtroProximoContacto === 'sin_proximo' ? '' : 'sin_proximo')}
-                    />
-                    <Chip 
-                        label={`Vencidos (${contarProximoVencido()})`}
-                        size="small"
-                        icon={<EventBusyIcon sx={{ fontSize: 14 }} />}
-                        color={filtroProximoContacto === 'vencido' ? 'error' : 'default'}
-                        variant={filtroProximoContacto === 'vencido' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroProximoContacto(filtroProximoContacto === 'vencido' ? '' : 'vencido')}
-                    />
-                    <Chip 
-                        label={`Vencidos hoy (${contarVencidosHoy()})`}
-                        size="small"
-                        icon={<span style={{ fontSize: 12 }}>🔥</span>}
-                        color={filtroProximoContacto === 'vencido_hoy' ? 'warning' : 'default'}
-                        variant={filtroProximoContacto === 'vencido_hoy' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroProximoContacto(filtroProximoContacto === 'vencido_hoy' ? '' : 'vencido_hoy')}
-                    />
-                    <Chip 
-                        label={`Pendientes (${contarProximoPendiente()})`}
-                        size="small"
-                        icon={<ScheduleIcon sx={{ fontSize: 14 }} />}
-                        color={filtroProximoContacto === 'pendiente' ? 'success' : 'default'}
-                        variant={filtroProximoContacto === 'pendiente' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroProximoContacto(filtroProximoContacto === 'pendiente' ? '' : 'pendiente')}
-                    />
-                </Stack>
-            </Box>
+                                    {/* Rango de fecha de inicio (createdAt) */}
+                                    <TextField
+                                        type="date"
+                                        size="small"
+                                        label="Inicio desde"
+                                        value={filtroCreatedDesde}
+                                        onChange={(e) => setFiltroCreatedDesde(e.target.value)}
+                                        InputLabelProps={{ shrink: true }}
+                                        sx={{ width: 150 }}
+                                    />
+                                    <TextField
+                                        type="date"
+                                        size="small"
+                                        label="Inicio hasta"
+                                        value={filtroCreatedHasta}
+                                        onChange={(e) => setFiltroCreatedHasta(e.target.value)}
+                                        InputLabelProps={{ shrink: true }}
+                                        sx={{ width: 150 }}
+                                    />
+                                </Stack>
 
-            {/* Filtros por segmento (inbound / outbound) */}
-            <Box sx={{ px: 2, pb: 1, overflowX: 'auto' }}>
-                <Stack direction="row" spacing={1} sx={{ minWidth: 'max-content' }}>
-                    <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center', mr: 0.5 }}>
-                        Segmento:
-                    </Typography>
-                    <Chip 
-                        label="Inbound"
-                        size="small"
-                        icon={<span style={{ fontSize: 12 }}>🔵</span>}
-                        color={filtroSegmento === 'inbound' ? 'info' : 'default'}
-                        variant={filtroSegmento === 'inbound' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroSegmento(filtroSegmento === 'inbound' ? '' : 'inbound')}
-                    />
-                    <Chip 
-                        label="Outbound"
-                        size="small"
-                        icon={<span style={{ fontSize: 12 }}>🟠</span>}
-                        color={filtroSegmento === 'outbound' ? 'warning' : 'default'}
-                        variant={filtroSegmento === 'outbound' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroSegmento(filtroSegmento === 'outbound' ? '' : 'outbound')}
-                    />
-                </Stack>
-            </Box>
+                                <Stack direction="row" spacing={1.5} flexWrap="wrap" useFlexGap alignItems="flex-end">
 
-            {/* Filtros por calificación del bot */}
-            <Box sx={{ px: 2, pb: 1, overflowX: 'auto' }}>
-                <Stack direction="row" spacing={1} sx={{ minWidth: 'max-content' }}>
-                    <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center', mr: 0.5 }}>
-                        🤖 Bot:
-                    </Typography>
-                    <Chip 
-                        label={`Calificado (${contarPorCalificadoBot('calificado')})`}
-                        size="small"
-                        icon={<SmartToyIcon sx={{ fontSize: 14 }} />}
-                        color={filtroCalificadoBot === 'calificado' ? 'info' : 'default'}
-                        variant={filtroCalificadoBot === 'calificado' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroCalificadoBot(filtroCalificadoBot === 'calificado' ? '' : 'calificado')}
-                    />
-                    <Chip 
-                        label={`No calificado (${contarPorCalificadoBot('no_calificado')})`}
-                        size="small"
-                        color={filtroCalificadoBot === 'no_calificado' ? 'default' : 'default'}
-                        variant={filtroCalificadoBot === 'no_calificado' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroCalificadoBot(filtroCalificadoBot === 'no_calificado' ? '' : 'no_calificado')}
-                    />
-                    <Chip 
-                        label={`Quiere meet (${contarPorCalificadoBot('quiere_meet')})`}
-                        size="small"
-                        icon={<span style={{ fontSize: 12 }}>🤝</span>}
-                        color={filtroCalificadoBot === 'quiere_meet' ? 'primary' : 'default'}
-                        variant={filtroCalificadoBot === 'quiere_meet' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroCalificadoBot(filtroCalificadoBot === 'quiere_meet' ? '' : 'quiere_meet')}
-                    />
-                    <Chip 
-                        label={`No llegó (${contarPorCalificadoBot('no_llego')})`}
-                        size="small"
-                        color={filtroCalificadoBot === 'no_llego' ? 'warning' : 'default'}
-                        variant={filtroCalificadoBot === 'no_llego' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroCalificadoBot(filtroCalificadoBot === 'no_llego' ? '' : 'no_llego')}
-                    />
-                </Stack>
-            </Box>
+                                    {/* Estado — multi-select OR */}
+                                    <FormControl size="small" sx={{ minWidth: 175 }}>
+                                        <InputLabel>Estado</InputLabel>
+                                        <Select
+                                            multiple
+                                            value={filtroEstados}
+                                            label="Estado"
+                                            onChange={(e) => setFiltroEstados(e.target.value)}
+                                            renderValue={(sel) => sel.length === 0 ? '' : `${sel.length} estado(s)`}
+                                        >
+                                            {[
+                                                { key: 'nuevo', label: 'Nuevo' },
+                                                { key: 'contactado', label: 'Contactado' },
+                                                { key: 'calificado', label: 'Calificado' },
+                                                { key: 'cierre', label: 'En Cierre' },
+                                                { key: 'ganado', label: 'Ganado' },
+                                                { key: 'no_contacto', label: 'No Contacto' },
+                                                { key: 'no_responde', label: 'No Responde' },
+                                                { key: 'revisar_mas_adelante', label: 'Revisar' },
+                                                { key: 'no_califica', label: 'No Califica' },
+                                                { key: 'perdido', label: 'Perdido' },
+                                            ].map(({ key, label }) => (
+                                                <MenuItem key={key} value={key}>
+                                                    <Checkbox size="small" checked={filtroEstados.includes(key)} />
+                                                    {label} ({contarPorEstado(key)})
+                                                </MenuItem>
+                                            ))}
+                                        </Select>
+                                    </FormControl>
 
-            {/* Filtro por quiere reunión */}
-            <Box sx={{ px: 2, pb: 1, overflowX: 'auto' }}>
-                <Stack direction="row" spacing={1} sx={{ minWidth: 'max-content' }}>
-                    <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center', mr: 0.5 }}>
-                        Reunión:
-                    </Typography>
-                    <Chip 
-                        label={`Quiere reunión (${contarQuiereReunion('si')})`}
-                        size="small"
-                        icon={<EventAvailableIcon sx={{ fontSize: 14 }} />}
-                        color={filtroQuiereReunion === 'si' ? 'success' : 'default'}
-                        variant={filtroQuiereReunion === 'si' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroQuiereReunion(filtroQuiereReunion === 'si' ? '' : 'si')}
-                    />
-                    <Chip 
-                        label={`No quiere (${contarQuiereReunion('no')})`}
-                        size="small"
-                        color={filtroQuiereReunion === 'no' ? 'default' : 'default'}
-                        variant={filtroQuiereReunion === 'no' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroQuiereReunion(filtroQuiereReunion === 'no' ? '' : 'no')}
-                    />
-                </Stack>
-            </Box>
+                                    {/* Actividad */}
+                                    <FormControl size="small" sx={{ minWidth: 155 }}>
+                                        <InputLabel>Actividad</InputLabel>
+                                        <Select value={filtroActividad} label="Actividad" onChange={(e) => setFiltroActividad(e.target.value)}>
+                                            <MenuItem value="">Todas</MenuItem>
+                                            <MenuItem value="sin_actividad">🆕 Sin actividad</MenuItem>
+                                            <MenuItem value="con_llamadas_no_atendidas">📵 No atendidas</MenuItem>
+                                            <MenuItem value="con_llamadas_atendidas">📞 Atendidas</MenuItem>
+                                            <MenuItem value="sin_llamadas">📴 Sin llamadas</MenuItem>
+                                            <MenuItem value="con_mensajes">💬 Mensajes</MenuItem>
+                                            <MenuItem value="con_reuniones">📅 Con reuniones</MenuItem>
+                                        </Select>
+                                    </FormControl>
 
-            {/* Filtro por próxima tarea */}
-            <Box sx={{ px: 2, pb: 1, overflowX: 'auto' }}>
-                <Stack direction="row" spacing={1} sx={{ minWidth: 'max-content' }}>
-                    <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center', mr: 0.5 }}>
-                        Tarea:
-                    </Typography>
-                    <Chip 
-                        label={`Sin tarea (${contarPorProximaTarea('sin_tarea')})`}
-                        size="small"
-                        icon={<HourglassEmptyIcon sx={{ fontSize: 14 }} />}
-                        color={filtroProximaTarea === 'sin_tarea' ? 'warning' : 'default'}
-                        variant={filtroProximaTarea === 'sin_tarea' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroProximaTarea(filtroProximaTarea === 'sin_tarea' ? '' : 'sin_tarea')}
-                    />
-                    <Chip 
-                        label={`📞 Llamada (${contarPorProximaTarea('llamada')})`}
-                        size="small"
-                        color={filtroProximaTarea === 'llamada' ? 'success' : 'default'}
-                        variant={filtroProximaTarea === 'llamada' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroProximaTarea(filtroProximaTarea === 'llamada' ? '' : 'llamada')}
-                    />
-                    <Chip 
-                        label={`💬 WhatsApp (${contarPorProximaTarea('whatsapp')})`}
-                        size="small"
-                        color={filtroProximaTarea === 'whatsapp' ? 'info' : 'default'}
-                        variant={filtroProximaTarea === 'whatsapp' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroProximaTarea(filtroProximaTarea === 'whatsapp' ? '' : 'whatsapp')}
-                    />
-                    <Chip 
-                        label={`✉️ Email (${contarPorProximaTarea('email')})`}
-                        size="small"
-                        color={filtroProximaTarea === 'email' ? 'primary' : 'default'}
-                        variant={filtroProximaTarea === 'email' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroProximaTarea(filtroProximaTarea === 'email' ? '' : 'email')}
-                    />
-                    <Chip 
-                        label={`📝 Recordatorio (${contarPorProximaTarea('recordatorio')})`}
-                        size="small"
-                        color={filtroProximaTarea === 'recordatorio' ? 'secondary' : 'default'}
-                        variant={filtroProximaTarea === 'recordatorio' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroProximaTarea(filtroProximaTarea === 'recordatorio' ? '' : 'recordatorio')}
-                    />
-                </Stack>
-            </Box>
+                                    {/* Calificado por bot */}
+                                    <FormControl size="small" sx={{ minWidth: 140 }}>
+                                        <InputLabel>Bot</InputLabel>
+                                        <Select value={filtroCalificadoBot} label="Bot" onChange={(e) => setFiltroCalificadoBot(e.target.value)}>
+                                            <MenuItem value="">Todos</MenuItem>
+                                            <MenuItem value="calificado">🤖 Calificado</MenuItem>
+                                            <MenuItem value="no_calificado">No calificado</MenuItem>
+                                            <MenuItem value="quiere_meet">🤝 Quiere meet</MenuItem>
+                                            <MenuItem value="no_llego">No llegó</MenuItem>
+                                        </Select>
+                                    </FormControl>
 
-            {/* Filtros por actividad (tipo de contacto y resultado) */}
-            <Box sx={{ px: 2, pb: 1, overflowX: 'auto' }}>
-                <Stack direction="row" spacing={1} sx={{ minWidth: 'max-content' }}>
-                    <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center', mr: 0.5 }}>
-                        Actividad:
-                    </Typography>
-                    <Chip 
-                        label={`Sin actividad (${contarPorActividad('sin_actividad')})`}
-                        size="small"
-                        icon={<span style={{ fontSize: 12 }}>🆕</span>}
-                        color={filtroActividad === 'sin_actividad' ? 'default' : 'default'}
-                        variant={filtroActividad === 'sin_actividad' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroActividad(filtroActividad === 'sin_actividad' ? '' : 'sin_actividad')}
-                    />
-                    <Chip 
-                        label={`📵 No atendidas (${contarPorActividad('con_llamadas_no_atendidas')})`}
-                        size="small"
-                        color={filtroActividad === 'con_llamadas_no_atendidas' ? 'warning' : 'default'}
-                        variant={filtroActividad === 'con_llamadas_no_atendidas' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroActividad(filtroActividad === 'con_llamadas_no_atendidas' ? '' : 'con_llamadas_no_atendidas')}
-                    />
-                    <Chip 
-                        label={`📞 Atendidas (${contarPorActividad('con_llamadas_atendidas')})`}
-                        size="small"
-                        color={filtroActividad === 'con_llamadas_atendidas' ? 'success' : 'default'}
-                        variant={filtroActividad === 'con_llamadas_atendidas' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroActividad(filtroActividad === 'con_llamadas_atendidas' ? '' : 'con_llamadas_atendidas')}
-                    />
-                    <Chip 
-                        label={`Sin llamadas (${contarPorActividad('sin_llamadas')})`}
-                        size="small"
-                        icon={<span style={{ fontSize: 12 }}>📴</span>}
-                        color={filtroActividad === 'sin_llamadas' ? 'error' : 'default'}
-                        variant={filtroActividad === 'sin_llamadas' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroActividad(filtroActividad === 'sin_llamadas' ? '' : 'sin_llamadas')}
-                    />
-                    <Chip 
-                        label={`💬 Mensajes (${contarPorActividad('con_mensajes')})`}
-                        size="small"
-                        color={filtroActividad === 'con_mensajes' ? 'info' : 'default'}
-                        variant={filtroActividad === 'con_mensajes' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroActividad(filtroActividad === 'con_mensajes' ? '' : 'con_mensajes')}
-                    />
-                    <Chip 
-                        label={`📅 Reuniones (${contarPorActividad('con_reuniones')})`}
-                        size="small"
-                        color={filtroActividad === 'con_reuniones' ? 'secondary' : 'default'}
-                        variant={filtroActividad === 'con_reuniones' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroActividad(filtroActividad === 'con_reuniones' ? '' : 'con_reuniones')}
-                    />
-                    <Chip 
-                        label="🚫 Excluir con reunión"
-                        size="small"
-                        color={filtroExcluirConReunion ? 'error' : 'default'}
-                        variant={filtroExcluirConReunion ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroExcluirConReunion(!filtroExcluirConReunion)}
-                    />
-                    <Chip 
-                        label="🔔 Solo compromisos"
-                        size="small"
-                        color={filtroSoloCompromisos ? 'warning' : 'default'}
-                        variant={filtroSoloCompromisos ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroSoloCompromisos(!filtroSoloCompromisos)}
-                    />
-                    <Chip 
-                        label="🔇 Solo opt-out"
-                        size="small"
-                        color={filtroOptOut === 'si' ? 'error' : 'default'}
-                        variant={filtroOptOut === 'si' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroOptOut(filtroOptOut === 'si' ? '' : 'si')}
-                    />
-                    <Chip 
-                        label="✅ Sin opt-out"
-                        size="small"
-                        color={filtroOptOut === 'no' ? 'success' : 'default'}
-                        variant={filtroOptOut === 'no' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroOptOut(filtroOptOut === 'no' ? '' : 'no')}
-                    />
-                </Stack>
-            </Box>
+                                    {/* Reunión */}
+                                    <FormControl size="small" sx={{ minWidth: 130 }}>
+                                        <InputLabel>Reunión</InputLabel>
+                                        <Select value={filtroQuiereReunion} label="Reunión" onChange={(e) => setFiltroQuiereReunion(e.target.value)}>
+                                            <MenuItem value="">Todos</MenuItem>
+                                            <MenuItem value="si">📅 Quiere</MenuItem>
+                                            <MenuItem value="no">No quiere</MenuItem>
+                                        </Select>
+                                    </FormControl>
 
-            {/* Ordenar por */}
-            <Box sx={{ px: 2, pb: 1, overflowX: 'auto' }}>
-                <Stack direction="row" spacing={1} sx={{ minWidth: 'max-content' }}>
-                    <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center', mr: 0.5 }}>
-                        Ordenar:
-                    </Typography>
-                    <Chip label="Próximo" size="small" color={ordenarPor === 'proximo_contacto' ? 'primary' : 'default'} variant={ordenarPor === 'proximo_contacto' ? 'filled' : 'outlined'} onClick={() => setOrdenarPor('proximo_contacto')} />
-                    <Chip label="Más nuevo" size="small" color={ordenarPor === 'fecha_creacion' ? 'primary' : 'default'} variant={ordenarPor === 'fecha_creacion' ? 'filled' : 'outlined'} onClick={() => setOrdenarPor('fecha_creacion')} />
-                    <Chip label="Prioridad" size="small" color={ordenarPor === 'prioridad' ? 'primary' : 'default'} variant={ordenarPor === 'prioridad' ? 'filled' : 'outlined'} onClick={() => setOrdenarPor('prioridad')} />
-                    <Chip label="Estado" size="small" color={ordenarPor === 'estado' ? 'primary' : 'default'} variant={ordenarPor === 'estado' ? 'filled' : 'outlined'} onClick={() => setOrdenarPor('estado')} />
-                </Stack>
-            </Box>
+                                    {/* Próxima tarea */}
+                                    <FormControl size="small" sx={{ minWidth: 140 }}>
+                                        <InputLabel>Próx. tarea</InputLabel>
+                                        <Select value={filtroProximaTarea} label="Próx. tarea" onChange={(e) => setFiltroProximaTarea(e.target.value)}>
+                                            <MenuItem value="">Todas</MenuItem>
+                                            <MenuItem value="sin_tarea">Sin tarea</MenuItem>
+                                            <MenuItem value="llamada">📞 Llamada</MenuItem>
+                                            <MenuItem value="whatsapp">💬 WhatsApp</MenuItem>
+                                            <MenuItem value="email">✉️ Email</MenuItem>
+                                            <MenuItem value="recordatorio">📝 Recordatorio</MenuItem>
+                                        </Select>
+                                    </FormControl>
 
+                                    {/* Segmento */}
+                                    <FormControl size="small" sx={{ minWidth: 120 }}>
+                                        <InputLabel>Segmento</InputLabel>
+                                        <Select value={filtroSegmento} label="Segmento" onChange={(e) => setFiltroSegmento(e.target.value)}>
+                                            <MenuItem value="">Todos</MenuItem>
+                                            <MenuItem value="inbound">🔵 Inbound</MenuItem>
+                                            <MenuItem value="outbound">🟠 Outbound</MenuItem>
+                                        </Select>
+                                    </FormControl>
+
+                                    {/* Opt-out */}
+                                    <FormControl size="small" sx={{ minWidth: 120 }}>
+                                        <InputLabel>Opt-out</InputLabel>
+                                        <Select value={filtroOptOut} label="Opt-out" onChange={(e) => setFiltroOptOut(e.target.value)}>
+                                            <MenuItem value="">Todos</MenuItem>
+                                            <MenuItem value="si">🔇 Solo opt-out</MenuItem>
+                                            <MenuItem value="no">✅ Sin opt-out</MenuItem>
+                                        </Select>
+                                    </FormControl>
+
+                                    {/* Ordenar */}
+                                    <FormControl size="small" sx={{ minWidth: 140 }}>
+                                        <InputLabel>Ordenar por</InputLabel>
+                                        <Select value={ordenarPor} label="Ordenar por" onChange={(e) => handleOrdenPredefinidoChange(e.target.value)}>
+                                            <MenuItem value="">Por defecto</MenuItem>
+                                            <MenuItem value="proximoContacto">Próximo contacto</MenuItem>
+                                            <MenuItem value="createdAt">Más nuevos</MenuItem>
+                                            <MenuItem value="ultimaAccion">Última actividad</MenuItem>
+                                            <MenuItem value="prioridad">Prioridad</MenuItem>
+                                            <MenuItem value="estado">Estado</MenuItem>
+                                        </Select>
+                                    </FormControl>
+
+                                    {/* Llamada exitosa */}
+                                    <FormControl size="small" sx={{ minWidth: 155 }}>
+                                        <InputLabel>Llamada exitosa</InputLabel>
+                                        <Select value={filtroLlamadaExitosa} label="Llamada exitosa" onChange={(e) => setFiltroLlamadaExitosa(e.target.value)}>
+                                            <MenuItem value="">Todas</MenuItem>
+                                            <MenuItem value="si">📞 Con llamada exitosa</MenuItem>
+                                            <MenuItem value="no">📵 Sin llamada exitosa</MenuItem>
+                                        </Select>
+                                    </FormControl>
+
+                                    {/* Toggles */}
+                                    <FormControlLabel
+                                        control={<Checkbox size="small" checked={filtroExcluirConReunion} onChange={(e) => setFiltroExcluirConReunion(e.target.checked)} />}
+                                        label={<Typography variant="caption">🚫 Excluir c/reunión</Typography>}
+                                        sx={{ m: 0, alignSelf: 'center' }}
+                                    />
+                                    <FormControlLabel
+                                        control={<Checkbox size="small" checked={filtroSoloCompromisos} onChange={(e) => setFiltroSoloCompromisos(e.target.checked)} />}
+                                        label={<Typography variant="caption">🔔 Solo compromisos</Typography>}
+                                        sx={{ m: 0, alignSelf: 'center' }}
+                                    />
+                                    {nFiltrosActivos > 0 && (
+                                        <Button size="small" variant="outlined" color="inherit" onClick={handleLimpiarFiltros} sx={{ ml: 'auto', color: 'text.secondary', borderColor: 'divider', whiteSpace: 'nowrap' }}>
+                                            Limpiar filtros
+                                        </Button>
+                                    )}
+                                </Stack>
+                            </Box>
                         </Collapse>
                     </>
                 );
@@ -1861,7 +1818,7 @@ const ContactosSDRPage = () => {
                 ) : contactosOrdenados.length === 0 ? (
                     <Paper sx={{ p: 4, textAlign: 'center' }}>
                         <Typography color="text.secondary">
-                            {filtroEstado ? `No hay contactos "${filtroEstado}"` : 'No tienes contactos asignados'}
+                            {filtroEstados.length > 0 ? `No hay contactos con estado "${filtroEstados.join(', ')}"` : 'No tienes contactos asignados'}
                         </Typography>
                     </Paper>
                 ) : (
@@ -2336,299 +2293,156 @@ const ContactosSDRPage = () => {
                     </Stack>
                 </Paper>
 
-                {/* Filtros por estado (solo en bandeja 'todos') */}
-                {bandejaActiva === 'todos' && (
-                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                    <Chip 
-                        label={`Nuevos: ${contarPorEstado('nuevo')}`} 
-                        color="info" 
-                        variant={filtroEstado === 'nuevo' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroEstado(filtroEstado === 'nuevo' ? '' : 'nuevo')}
-                    />
-                    <Chip 
-                        label={`Contactados: ${contarPorEstado('contactado')}`} 
-                        color="warning" 
-                        variant={filtroEstado === 'contactado' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroEstado(filtroEstado === 'contactado' ? '' : 'contactado')}
-                    />
-                    <Chip 
-                        label={`En Cierre: ${contarPorEstado('cierre')}`} 
-                        color="secondary" 
-                        variant={filtroEstado === 'cierre' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroEstado(filtroEstado === 'cierre' ? '' : 'cierre')}
-                    />
-                    <Chip 
-                        label={`Calificados: ${contarPorEstado('calificado')}`} 
-                        color="success" 
-                        variant={filtroEstado === 'calificado' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroEstado(filtroEstado === 'calificado' ? '' : 'calificado')}
-                    />
-                    <Chip 
-                        label={`No Califica: ${contarPorEstado('no_califica')}`} 
-                        color="error" 
-                        variant={filtroEstado === 'no_califica' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroEstado(filtroEstado === 'no_califica' ? '' : 'no_califica')}
-                    />
-                    <Chip 
-                        label={`No Responde: ${contarPorEstado('no_responde')}`} 
-                        color="default" 
-                        variant={filtroEstado === 'no_responde' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroEstado(filtroEstado === 'no_responde' ? '' : 'no_responde')}
-                    />
-                    <Chip 
-                        label={`Ganados: ${contarPorEstado('ganado')}`} 
-                        color="success" 
-                        variant={filtroEstado === 'ganado' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroEstado(filtroEstado === 'ganado' ? '' : 'ganado')}
-                    />
-                    <Chip 
-                        label={`No Contactado: ${contarPorEstado('no_contacto')}`} 
-                        color="default" 
-                        variant={filtroEstado === 'no_contacto' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroEstado(filtroEstado === 'no_contacto' ? '' : 'no_contacto')}
-                    />
-                    <Chip 
-                        label={`Revisar: ${contarPorEstado('revisar_mas_adelante')}`} 
-                        color="warning" 
-                        variant={filtroEstado === 'revisar_mas_adelante' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroEstado(filtroEstado === 'revisar_mas_adelante' ? '' : 'revisar_mas_adelante')}
-                    />
-                    <Chip 
-                        label={`Perdidos: ${contarPorEstado('perdido')}`} 
-                        color="error" 
-                        variant={filtroEstado === 'perdido' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroEstado(filtroEstado === 'perdido' ? '' : 'perdido')}
-                    />
-                </Stack>
-                )}
-
-                {/* Filtros por próximo contacto */}
+                {/* ── Filtros colapsables (desktop) ── */}
                 <Stack direction="row" spacing={1} alignItems="center">
-                    <Typography variant="body2" color="text.secondary">
-                        Próximo contacto:
-                    </Typography>
-                    <Chip 
-                        label={`Sin fecha (${contarSinProximo()})`}
-                        icon={<HourglassEmptyIcon />}
-                        color={filtroProximoContacto === 'sin_proximo' ? 'warning' : 'default'}
-                        variant={filtroProximoContacto === 'sin_proximo' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroProximoContacto(filtroProximoContacto === 'sin_proximo' ? '' : 'sin_proximo')}
+                    <Chip
+                        icon={<FilterListIcon sx={{ fontSize: 16 }} />}
+                        label={`Filtros${nFiltrosActivos > 0 ? ` (${nFiltrosActivos})` : ''}`}
+                        size="small"
+                        color={nFiltrosActivos > 0 ? 'primary' : 'default'}
+                        variant={filtrosExpandidos ? 'filled' : 'outlined'}
+                        onClick={() => setFiltrosExpandidos(v => !v)}
+                        sx={{ fontWeight: 600 }}
                     />
-                    <Chip 
-                        label={`Vencidos (${contarProximoVencido()})`}
-                        icon={<EventBusyIcon />}
-                        color={filtroProximoContacto === 'vencido' ? 'error' : 'default'}
-                        variant={filtroProximoContacto === 'vencido' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroProximoContacto(filtroProximoContacto === 'vencido' ? '' : 'vencido')}
-                    />
-                    <Chip 
-                        label={`🔥 Vencidos hoy (${contarVencidosHoy()})`}
-                        color={filtroProximoContacto === 'vencido_hoy' ? 'warning' : 'default'}
-                        variant={filtroProximoContacto === 'vencido_hoy' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroProximoContacto(filtroProximoContacto === 'vencido_hoy' ? '' : 'vencido_hoy')}
-                    />
-                    <Chip 
-                        label={`Pendientes (${contarProximoPendiente()})`}
-                        icon={<ScheduleIcon />}
-                        color={filtroProximoContacto === 'pendiente' ? 'success' : 'default'}
-                        variant={filtroProximoContacto === 'pendiente' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroProximoContacto(filtroProximoContacto === 'pendiente' ? '' : 'pendiente')}
-                    />
-                    {filtroProximoContacto && (
-                        <Chip 
-                            label="Limpiar"
-                            size="small"
-                            onDelete={() => setFiltroProximoContacto('')}
-                        />
+                    {nFiltrosActivos > 0 && (
+                        <Chip label="Limpiar" size="small" variant="outlined" onClick={handleLimpiarFiltros} sx={{ color: 'text.secondary' }} />
                     )}
                 </Stack>
+                <Collapse in={filtrosExpandidos}>
+                    <Paper variant="outlined" sx={{ p: 1.5 }}>
+                        <Stack direction="row" spacing={1.5} flexWrap="wrap" useFlexGap alignItems="flex-end">
+                            <TextField type="date" size="small" label="Próx. desde" value={filtroFechaDesde}
+                                onChange={(e) => { setFiltroFechaDesde(e.target.value); setFiltroSinFecha(false); }}
+                                InputLabelProps={{ shrink: true }} sx={{ width: 155 }} />
+                            <TextField type="date" size="small" label="Próx. hasta" value={filtroFechaHasta}
+                                onChange={(e) => { setFiltroFechaHasta(e.target.value); setFiltroSinFecha(false); }}
+                                InputLabelProps={{ shrink: true }} sx={{ width: 155 }} />
+                            <FormControlLabel
+                                control={<Checkbox size="small" checked={filtroSinFecha} onChange={(e) => { setFiltroSinFecha(e.target.checked); if (e.target.checked) { setFiltroFechaDesde(''); setFiltroFechaHasta(''); } }} />}
+                                label={<Typography variant="body2">Sin fecha</Typography>}
+                                sx={{ m: 0, alignSelf: 'center' }}
+                            />
+                            <TextField type="date" size="small" label="Inicio desde" value={filtroCreatedDesde}
+                                onChange={(e) => setFiltroCreatedDesde(e.target.value)}
+                                InputLabelProps={{ shrink: true }} sx={{ width: 155 }} />
+                            <TextField type="date" size="small" label="Inicio hasta" value={filtroCreatedHasta}
+                                onChange={(e) => setFiltroCreatedHasta(e.target.value)}
+                                InputLabelProps={{ shrink: true }} sx={{ width: 155 }} />
+                        </Stack>
 
-                {/* Filtros por actividad (tipo de contacto y resultado) */}
-                <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-                    <Typography variant="body2" color="text.secondary">
-                        Actividad:
-                    </Typography>
-                    <Chip 
-                        label={`Sin actividad (${contarPorActividad('sin_actividad')})`}
-                        icon={<span style={{ fontSize: 14 }}>🆕</span>}
-                        color={filtroActividad === 'sin_actividad' ? 'default' : 'default'}
-                        variant={filtroActividad === 'sin_actividad' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroActividad(filtroActividad === 'sin_actividad' ? '' : 'sin_actividad')}
-                    />
-                    <Chip 
-                        label={`📵 No atendidas (${contarPorActividad('con_llamadas_no_atendidas')})`}
-                        color={filtroActividad === 'con_llamadas_no_atendidas' ? 'warning' : 'default'}
-                        variant={filtroActividad === 'con_llamadas_no_atendidas' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroActividad(filtroActividad === 'con_llamadas_no_atendidas' ? '' : 'con_llamadas_no_atendidas')}
-                    />
-                    <Chip 
-                        label={`📞 Atendidas (${contarPorActividad('con_llamadas_atendidas')})`}
-                        color={filtroActividad === 'con_llamadas_atendidas' ? 'success' : 'default'}
-                        variant={filtroActividad === 'con_llamadas_atendidas' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroActividad(filtroActividad === 'con_llamadas_atendidas' ? '' : 'con_llamadas_atendidas')}
-                    />
-                    <Chip 
-                        label={`📴 Sin llamadas (${contarPorActividad('sin_llamadas')})`}
-                        color={filtroActividad === 'sin_llamadas' ? 'error' : 'default'}
-                        variant={filtroActividad === 'sin_llamadas' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroActividad(filtroActividad === 'sin_llamadas' ? '' : 'sin_llamadas')}
-                    />
-                    <Chip 
-                        label={`💬 Mensajes (${contarPorActividad('con_mensajes')})`}
-                        color={filtroActividad === 'con_mensajes' ? 'info' : 'default'}
-                        variant={filtroActividad === 'con_mensajes' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroActividad(filtroActividad === 'con_mensajes' ? '' : 'con_mensajes')}
-                    />
-                    <Chip 
-                        label={`📅 Reuniones (${contarPorActividad('con_reuniones')})`}
-                        color={filtroActividad === 'con_reuniones' ? 'secondary' : 'default'}
-                        variant={filtroActividad === 'con_reuniones' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroActividad(filtroActividad === 'con_reuniones' ? '' : 'con_reuniones')}
-                    />
-                    <Chip 
-                        label="🚫 Excluir con reunión"
-                        color={filtroExcluirConReunion ? 'error' : 'default'}
-                        variant={filtroExcluirConReunion ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroExcluirConReunion(!filtroExcluirConReunion)}
-                    />
-                    <Chip 
-                        label="🔔 Solo compromisos"
-                        color={filtroSoloCompromisos ? 'warning' : 'default'}
-                        variant={filtroSoloCompromisos ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroSoloCompromisos(!filtroSoloCompromisos)}
-                    />
-                    <Chip 
-                        label="🔇 Solo opt-out"
-                        color={filtroOptOut === 'si' ? 'error' : 'default'}
-                        variant={filtroOptOut === 'si' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroOptOut(filtroOptOut === 'si' ? '' : 'si')}
-                    />
-                    <Chip 
-                        label="✅ Sin opt-out"
-                        color={filtroOptOut === 'no' ? 'success' : 'default'}
-                        variant={filtroOptOut === 'no' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroOptOut(filtroOptOut === 'no' ? '' : 'no')}
-                    />
-                    {filtroActividad && (
-                        <Chip 
-                            label="Limpiar"
-                            size="small"
-                            onDelete={() => setFiltroActividad('')}
-                        />
-                    )}
-                </Stack>
-
-                {/* Filtros por calificación del bot */}
-                <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-                    <Typography variant="body2" color="text.secondary">
-                        🤖 Calificado por bot:
-                    </Typography>
-                    <Chip 
-                        label={`Calificado (${contarPorCalificadoBot('calificado')})`}
-                        icon={<SmartToyIcon />}
-                        color={filtroCalificadoBot === 'calificado' ? 'info' : 'default'}
-                        variant={filtroCalificadoBot === 'calificado' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroCalificadoBot(filtroCalificadoBot === 'calificado' ? '' : 'calificado')}
-                    />
-                    <Chip 
-                        label={`No calificado (${contarPorCalificadoBot('no_calificado')})`}
-                        color={filtroCalificadoBot === 'no_calificado' ? 'default' : 'default'}
-                        variant={filtroCalificadoBot === 'no_calificado' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroCalificadoBot(filtroCalificadoBot === 'no_calificado' ? '' : 'no_calificado')}
-                    />
-                    <Chip 
-                        label={`Quiere meet (${contarPorCalificadoBot('quiere_meet')})`}
-                        icon={<span style={{ fontSize: 14 }}>🤝</span>}
-                        color={filtroCalificadoBot === 'quiere_meet' ? 'primary' : 'default'}
-                        variant={filtroCalificadoBot === 'quiere_meet' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroCalificadoBot(filtroCalificadoBot === 'quiere_meet' ? '' : 'quiere_meet')}
-                    />
-                    <Chip 
-                        label={`No llegó (${contarPorCalificadoBot('no_llego')})`}
-                        color={filtroCalificadoBot === 'no_llego' ? 'warning' : 'default'}
-                        variant={filtroCalificadoBot === 'no_llego' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroCalificadoBot(filtroCalificadoBot === 'no_llego' ? '' : 'no_llego')}
-                    />
-                    {filtroCalificadoBot && (
-                        <Chip 
-                            label="Limpiar"
-                            size="small"
-                            onDelete={() => setFiltroCalificadoBot('')}
-                        />
-                    )}
-                </Stack>
-
-                {/* Filtro por quiere reunión */}
-                <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-                    <Typography variant="body2" color="text.secondary">
-                        Quiere reunión:
-                    </Typography>
-                    <Chip 
-                        label={`Sí (${contarQuiereReunion('si')})`}
-                        icon={<EventAvailableIcon />}
-                        color={filtroQuiereReunion === 'si' ? 'success' : 'default'}
-                        variant={filtroQuiereReunion === 'si' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroQuiereReunion(filtroQuiereReunion === 'si' ? '' : 'si')}
-                    />
-                    <Chip 
-                        label={`No (${contarQuiereReunion('no')})`}
-                        color={filtroQuiereReunion === 'no' ? 'default' : 'default'}
-                        variant={filtroQuiereReunion === 'no' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroQuiereReunion(filtroQuiereReunion === 'no' ? '' : 'no')}
-                    />
-                    {filtroQuiereReunion && (
-                        <Chip 
-                            label="Limpiar"
-                            size="small"
-                            onDelete={() => setFiltroQuiereReunion('')}
-                        />
-                    )}
-                </Stack>
-
-                {/* Filtro por próxima tarea */}
-                <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-                    <Typography variant="body2" color="text.secondary">
-                        📋 Próxima tarea:
-                    </Typography>
-                    <Chip 
-                        label={`Sin tarea (${contarPorProximaTarea('sin_tarea')})`}
-                        icon={<HourglassEmptyIcon />}
-                        color={filtroProximaTarea === 'sin_tarea' ? 'warning' : 'default'}
-                        variant={filtroProximaTarea === 'sin_tarea' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroProximaTarea(filtroProximaTarea === 'sin_tarea' ? '' : 'sin_tarea')}
-                    />
-                    <Chip 
-                        label={`📞 Llamada (${contarPorProximaTarea('llamada')})`}
-                        color={filtroProximaTarea === 'llamada' ? 'success' : 'default'}
-                        variant={filtroProximaTarea === 'llamada' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroProximaTarea(filtroProximaTarea === 'llamada' ? '' : 'llamada')}
-                    />
-                    <Chip 
-                        label={`💬 WhatsApp (${contarPorProximaTarea('whatsapp')})`}
-                        color={filtroProximaTarea === 'whatsapp' ? 'info' : 'default'}
-                        variant={filtroProximaTarea === 'whatsapp' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroProximaTarea(filtroProximaTarea === 'whatsapp' ? '' : 'whatsapp')}
-                    />
-                    <Chip 
-                        label={`✉️ Email (${contarPorProximaTarea('email')})`}
-                        color={filtroProximaTarea === 'email' ? 'primary' : 'default'}
-                        variant={filtroProximaTarea === 'email' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroProximaTarea(filtroProximaTarea === 'email' ? '' : 'email')}
-                    />
-                    <Chip 
-                        label={`📝 Recordatorio (${contarPorProximaTarea('recordatorio')})`}
-                        color={filtroProximaTarea === 'recordatorio' ? 'secondary' : 'default'}
-                        variant={filtroProximaTarea === 'recordatorio' ? 'filled' : 'outlined'}
-                        onClick={() => setFiltroProximaTarea(filtroProximaTarea === 'recordatorio' ? '' : 'recordatorio')}
-                    />
-                    {filtroProximaTarea && (
-                        <Chip 
-                            label="Limpiar"
-                            size="small"
-                            onDelete={() => setFiltroProximaTarea('')}
-                        />
-                    )}
-                </Stack>
+                        <Stack direction="row" spacing={1.5} flexWrap="wrap" useFlexGap alignItems="flex-end">
+                            {/* Estado — multi-select OR */}
+                            <FormControl size="small" sx={{ minWidth: 175 }}>
+                                <InputLabel>Estado</InputLabel>
+                                <Select
+                                    multiple
+                                    value={filtroEstados}
+                                    label="Estado"
+                                    onChange={(e) => setFiltroEstados(e.target.value)}
+                                    renderValue={(sel) => sel.length === 0 ? '' : `${sel.length} estado(s)`}
+                                >
+                                    {[
+                                        { key: 'nuevo', label: 'Nuevo' },
+                                        { key: 'contactado', label: 'Contactado' },
+                                        { key: 'calificado', label: 'Calificado' },
+                                        { key: 'cierre', label: 'En Cierre' },
+                                        { key: 'ganado', label: 'Ganado' },
+                                        { key: 'no_contacto', label: 'No Contacto' },
+                                        { key: 'no_responde', label: 'No Responde' },
+                                        { key: 'revisar_mas_adelante', label: 'Revisar' },
+                                        { key: 'no_califica', label: 'No Califica' },
+                                        { key: 'perdido', label: 'Perdido' },
+                                    ].map(({ key, label }) => (
+                                        <MenuItem key={key} value={key}>
+                                            <Checkbox size="small" checked={filtroEstados.includes(key)} />
+                                            {label} ({contarPorEstado(key)})
+                                        </MenuItem>
+                                    ))}
+                                </Select>
+                            </FormControl>
+                            <FormControl size="small" sx={{ minWidth: 155 }}>
+                                <InputLabel>Actividad</InputLabel>
+                                <Select value={filtroActividad} label="Actividad" onChange={(e) => setFiltroActividad(e.target.value)}>
+                                    <MenuItem value="">Todas</MenuItem>
+                                    <MenuItem value="sin_actividad">🆕 Sin actividad</MenuItem>
+                                    <MenuItem value="con_llamadas_no_atendidas">📵 No atendidas</MenuItem>
+                                    <MenuItem value="con_llamadas_atendidas">📞 Atendidas</MenuItem>
+                                    <MenuItem value="sin_llamadas">📴 Sin llamadas</MenuItem>
+                                    <MenuItem value="con_mensajes">💬 Mensajes</MenuItem>
+                                    <MenuItem value="con_reuniones">📅 Con reuniones</MenuItem>
+                                </Select>
+                            </FormControl>
+                            <FormControl size="small" sx={{ minWidth: 140 }}>
+                                <InputLabel>Bot</InputLabel>
+                                <Select value={filtroCalificadoBot} label="Bot" onChange={(e) => setFiltroCalificadoBot(e.target.value)}>
+                                    <MenuItem value="">Todos</MenuItem>
+                                    <MenuItem value="calificado">🤖 Calificado</MenuItem>
+                                    <MenuItem value="no_calificado">No calificado</MenuItem>
+                                    <MenuItem value="quiere_meet">🤝 Quiere meet</MenuItem>
+                                    <MenuItem value="no_llego">No llegó</MenuItem>
+                                </Select>
+                            </FormControl>
+                            <FormControl size="small" sx={{ minWidth: 130 }}>
+                                <InputLabel>Reunión</InputLabel>
+                                <Select value={filtroQuiereReunion} label="Reunión" onChange={(e) => setFiltroQuiereReunion(e.target.value)}>
+                                    <MenuItem value="">Todos</MenuItem>
+                                    <MenuItem value="si">📅 Quiere</MenuItem>
+                                    <MenuItem value="no">No quiere</MenuItem>
+                                </Select>
+                            </FormControl>
+                            <FormControl size="small" sx={{ minWidth: 140 }}>
+                                <InputLabel>Próx. tarea</InputLabel>
+                                <Select value={filtroProximaTarea} label="Próx. tarea" onChange={(e) => setFiltroProximaTarea(e.target.value)}>
+                                    <MenuItem value="">Todas</MenuItem>
+                                    <MenuItem value="sin_tarea">Sin tarea</MenuItem>
+                                    <MenuItem value="llamada">📞 Llamada</MenuItem>
+                                    <MenuItem value="whatsapp">💬 WhatsApp</MenuItem>
+                                    <MenuItem value="email">✉️ Email</MenuItem>
+                                    <MenuItem value="recordatorio">📝 Recordatorio</MenuItem>
+                                </Select>
+                            </FormControl>
+                            <FormControl size="small" sx={{ minWidth: 120 }}>
+                                <InputLabel>Segmento</InputLabel>
+                                <Select value={filtroSegmento} label="Segmento" onChange={(e) => setFiltroSegmento(e.target.value)}>
+                                    <MenuItem value="">Todos</MenuItem>
+                                    <MenuItem value="inbound">🔵 Inbound</MenuItem>
+                                    <MenuItem value="outbound">🟠 Outbound</MenuItem>
+                                </Select>
+                            </FormControl>
+                            <FormControl size="small" sx={{ minWidth: 120 }}>
+                                <InputLabel>Opt-out</InputLabel>
+                                <Select value={filtroOptOut} label="Opt-out" onChange={(e) => setFiltroOptOut(e.target.value)}>
+                                    <MenuItem value="">Todos</MenuItem>
+                                    <MenuItem value="si">🔇 Solo opt-out</MenuItem>
+                                    <MenuItem value="no">✅ Sin opt-out</MenuItem>
+                                </Select>
+                            </FormControl>
+                            <FormControl size="small" sx={{ minWidth: 165 }}>
+                                <InputLabel>Llamada exitosa</InputLabel>
+                                <Select value={filtroLlamadaExitosa} label="Llamada exitosa" onChange={(e) => setFiltroLlamadaExitosa(e.target.value)}>
+                                    <MenuItem value="">Todas</MenuItem>
+                                    <MenuItem value="si">📞 Con llamada exitosa</MenuItem>
+                                    <MenuItem value="no">📵 Sin llamada exitosa</MenuItem>
+                                </Select>
+                            </FormControl>
+                            <FormControlLabel
+                                control={<Checkbox size="small" checked={filtroExcluirConReunion} onChange={(e) => setFiltroExcluirConReunion(e.target.checked)} />}
+                                label={<Typography variant="body2">🚫 Excluir c/reunión</Typography>}
+                                sx={{ m: 0, alignSelf: 'center' }}
+                            />
+                            <FormControlLabel
+                                control={<Checkbox size="small" checked={filtroSoloCompromisos} onChange={(e) => setFiltroSoloCompromisos(e.target.checked)} />}
+                                label={<Typography variant="body2">🔔 Solo compromisos</Typography>}
+                                sx={{ m: 0, alignSelf: 'center' }}
+                            />
+                            {nFiltrosActivos > 0 && (
+                                <Button size="small" variant="outlined" color="inherit" onClick={handleLimpiarFiltros} sx={{ ml: 'auto', color: 'text.secondary', borderColor: 'divider', whiteSpace: 'nowrap' }}>
+                                    Limpiar filtros
+                                </Button>
+                            )}
+                        </Stack>
+                    </Paper>
+                </Collapse>
 
                 {/* Barra de acciones masivas */}
                 {seleccionados.length > 0 && (
@@ -2735,27 +2549,17 @@ const ContactosSDRPage = () => {
                                 )
                             }}
                         />
-                        <Stack direction="row" spacing={0.5} alignItems="center" sx={{ flexShrink: 0 }}>
-                            <SortIcon fontSize="small" color="action" />
-                            <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>Ordenar:</Typography>
-                            {[
-                                { value: 'vencidos', label: 'Vencidos primero' },
-                                { value: 'nuevo', label: 'Más nuevos' },
-                                { value: 'fecha', label: 'Última actividad' },
-                                { value: 'estado', label: 'Estado' },
-                                { value: 'prioridad', label: 'Prioridad' },
-                            ].map(opt => (
-                                <Chip
-                                    key={opt.value}
-                                    label={opt.label}
-                                    size="small"
-                                    color={ordenarPor === opt.value ? 'primary' : 'default'}
-                                    variant={ordenarPor === opt.value ? 'filled' : 'outlined'}
-                                    onClick={() => setOrdenarPor(opt.value)}
-                                    sx={{ cursor: 'pointer' }}
-                                />
-                            ))}
-                        </Stack>
+                        <FormControl size="small" sx={{ minWidth: 160, flexShrink: 0 }}>
+                            <InputLabel>Ordenar por</InputLabel>
+                            <Select value={ordenarPor} label="Ordenar por" onChange={(e) => handleOrdenPredefinidoChange(e.target.value)}>
+                                <MenuItem value="">Por defecto</MenuItem>
+                                <MenuItem value="vencidos">Vencidos primero</MenuItem>
+                                <MenuItem value="createdAt">Más nuevos</MenuItem>
+                                <MenuItem value="ultimaAccion">Última actividad</MenuItem>
+                                <MenuItem value="estado">Estado</MenuItem>
+                                <MenuItem value="prioridad">Prioridad</MenuItem>
+                            </Select>
+                        </FormControl>
                         <Tooltip title="Mostrar/ocultar columnas">
                             <IconButton size="small" onClick={(e) => setAnchorColumnas(e.currentTarget)} color={Object.values(columnasVisibles).some(v => !v) ? 'primary' : 'default'}>
                                 <ViewColumnIcon fontSize="small" />
@@ -3043,8 +2847,8 @@ const ContactosSDRPage = () => {
                                     <TableRow>
                                         <TableCell colSpan={2 + Object.values(columnasVisibles).filter(Boolean).length} align="center" sx={{ py: 4 }}>
                                             <Typography color="text.secondary">
-                                                {filtroEstado 
-                                                    ? `No hay contactos con estado "${filtroEstado}"`
+                                                {filtroEstados.length > 0 
+                                                    ? `No hay contactos con estado "${filtroEstados.join(', ')}"`
                                                     : 'No tienes contactos asignados'
                                                 }
                                             </Typography>

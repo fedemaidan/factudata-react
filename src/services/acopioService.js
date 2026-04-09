@@ -249,11 +249,36 @@ cambiarEstadoAcopio: async (acopioId, activo) => {
      return resp.data?.materiales || [];
   },
     
-  
+  /**
+   * Pre-análisis: sube el archivo y genera preguntas contextuales basadas en visión
+   * @param {File} archivo - Archivo a analizar
+   * @returns {{ urls: string[], resumen_documento: string, preguntas: Array }}
+   */
+  preAnalizarCompra: async (archivo, { tipoLista } = {}) => {
+    try {
+      const formData = new FormData();
+      formData.append('archivo', archivo);
+      if (tipoLista) formData.append('tipoLista', tipoLista);
+
+      const response = await api.post('/acopio/compra/pre-analisis', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+
+      return response.data;
+    } catch (error) {
+      console.error('❌ Error en pre-análisis:', error);
+      throw error;
+    }
+  },
+
   extraerCompraInit: async (archivo, meta = {}) => {
     try {
       const formData = new FormData();
       if (archivo) formData.append('archivo', archivo);
+      // Si ya tenemos URLs del pre-análisis, enviarlas para evitar re-upload
+      if (meta.archivo_url) {
+        formData.append('archivo_url', JSON.stringify(meta.archivo_url));
+      }
       // Pasar tipoLista para que el backend sepa si verificar cantidades
       if (meta.tipoLista) formData.append('tipoLista', meta.tipoLista);
       // Pasar modo de extracción: 'rapido', 'balanceado', 'preciso'
@@ -352,7 +377,9 @@ cambiarEstadoAcopio: async (acopioId, activo) => {
         urls,
         aclaracion,
         tipoLista: meta.tipoLista,
-        modo: meta.modo || 'balanceado'
+        modo: meta.modo || 'preciso',
+        contexto_preanalisis: meta.contexto_preanalisis || '',
+        materiales_actuales: meta.materiales_actuales || []
       });
       return response.data.taskId;
     } catch (error) {

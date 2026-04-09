@@ -6,6 +6,7 @@ import {
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import SDRService from 'src/services/sdrService';
+import { appendBrowserTimezoneOffset, formatForDateTimeLocalInput } from 'src/utils/sdrDateTime';
 
 const TAMANOS_EMPRESA = ['1-10', '11-50', '51-200', '200+'];
 
@@ -61,11 +62,7 @@ const ModalCrearReunion = ({ open, onClose, contacto, onSubmit, loading }) => {
             if (data && data.titulo) {
                 const fecha = data.fechaInicio ? new Date(data.fechaInicio) : null;
                 const fechaLocal = fecha
-                    ? fecha.getFullYear() + '-' +
-                      String(fecha.getMonth() + 1).padStart(2, '0') + '-' +
-                      String(fecha.getDate()).padStart(2, '0') + 'T' +
-                      String(fecha.getHours()).padStart(2, '0') + ':' +
-                      String(fecha.getMinutes()).padStart(2, '0')
+                    ? formatForDateTimeLocalInput(fecha)
                     : form.fechaHora;
                 setForm(prev => ({
                     ...prev,
@@ -86,16 +83,7 @@ const ModalCrearReunion = ({ open, onClose, contacto, onSubmit, loading }) => {
     };
 
     const handleSubmit = () => {
-        // Agregar timezone offset del navegador al datetime-local para evitar desfase UTC
-        const offset = new Date().getTimezoneOffset();
-        const sign = offset > 0 ? '-' : '+';
-        const absOffset = Math.abs(offset);
-        const hours = String(Math.floor(absOffset / 60)).padStart(2, '0');
-        const minutes = String(absOffset % 60).padStart(2, '0');
-        const tzSuffix = `${sign}${hours}:${minutes}`;
-        const fechaConZona = form.fechaHora.length === 16
-            ? form.fechaHora + ':00' + tzSuffix
-            : form.fechaHora + tzSuffix;
+        const fechaConZona = appendBrowserTimezoneOffset(form.fechaHora);
         onSubmit({ ...form, fechaHora: fechaConZona });
     };
 
