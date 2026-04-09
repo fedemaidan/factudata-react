@@ -4,6 +4,8 @@ import { useRouter } from 'next/router';
 import React, { useEffect, useRef, useState } from 'react';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
+import { Dialog, DialogContent, DialogTitle, IconButton } from '@mui/material';
+import CloseIcon from '@mui/icons-material/Close';
 import {
   HomeIcon,
   FolderIcon,
@@ -40,6 +42,8 @@ import TransferenciaInternaDialog from 'src/components/TransferenciaInternaDialo
 import EgresoConCajaPagadoraDialog from 'src/components/EgresoConCajaPagadoraDialog';
 import PagoEntreCajasInfo from 'src/components/PagoEntreCajasInfo';
 import MovimientoLogsPanel from 'src/components/movimientos/MovimientoLogsPanel';
+import ComprobanteModal from 'src/components/celulandia/ComprobanteModal';
+import ComprobantePdfModal from 'src/components/celulandia/ComprobantePdfModal';
 
 // Componente para mostrar información de prorrateo
 const ProrrateoInfo = ({ movimiento, onVerRelacionados }) => {
@@ -100,9 +104,9 @@ const ProrrateoInfo = ({ movimiento, onVerRelacionados }) => {
               {movimientosRelacionados.map((mov) => (
                 <li key={mov.id}>
                   <strong>{mov.proyecto}:</strong> {formatCurrencyLocal(mov.total, mov.moneda)}
-                  {mov.prorrateo_porcentaje && ` (${mov.prorrateo_porcentaje}%)`}
+                {mov.prorrateo_porcentaje && ` (${mov.prorrateo_porcentaje}%)`}
                 </li>
-              ))}
+            ))}
             </ul>
           </div>
         )}
@@ -165,7 +169,9 @@ const MovementFormPage = () => {
   const fileInputRef = useRef(null);
   const pendingExtraccionRef = useRef(false);
   const [createdUser, setCreatedUser] = useState(null);
-  const [fullOpen, setFullOpen] = useState(false);
+  const [comprobanteModalOpen, setComprobanteModalOpen] = useState(false);
+  const [imagenModal, setImagenModal] = useState('');
+  const [pdfModalOpen, setPdfModalOpen] = useState(false);
   const [parcialMonto, setParcialMonto] = useState('');
 
   // En edit mode, priorizar datos del movimiento sobre query params
@@ -276,6 +282,22 @@ const MovementFormPage = () => {
     setNuevoArchivo(file);
   };
   const hasComprobante = Boolean(movimiento?.url_imagen || urlTemporal || previewUrl);
+  const comprobanteSrc = previewUrl || movimiento?.url_imagen || urlTemporal || '';
+  const isComprobantePdf = Boolean(comprobanteSrc) && (
+    String(comprobanteSrc).toLowerCase().includes('.pdf') ||
+    nuevoArchivo?.type === 'application/pdf'
+  );
+
+  const handleCloseComprobanteModal = () => {
+    setComprobanteModalOpen(false);
+    setImagenModal('');
+  };
+  const handleCloseComprobantePdfModal = () => {
+    setPdfModalOpen(false);
+  };
+  const handleCloseAuditDialog = () => {
+    setAuditOpen(false);
+  };
 
   // Vista previa al seleccionar archivo (antes de subir)
   useEffect(() => {
@@ -645,7 +667,6 @@ const createdAtStr = (() => {
     }
   });
 
-
   useEffect(() => {
     loadInitialData(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -787,13 +808,16 @@ const createdAtStr = (() => {
       case 'prorrateo':
         setProrrateoOpen(true);
         break;
+      case 'auditoria':
+        setAuditOpen(true);
+        break;
       default:
         break;
     }
   };
 
   const StitchBlock = ({ step, title, children }) => (
-    <section className="flex min-h-0 flex-[1_1_0] flex-col overflow-hidden rounded-xl border border-divider bg-white shadow-sm">
+    <section className="flex shrink-0 flex-col rounded-xl border border-divider bg-white shadow-sm">
       <div className="flex shrink-0 items-center gap-2 border-b border-divider px-2 py-1">
         <span
           className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary-main text-[11px] font-bold text-white"
@@ -803,7 +827,7 @@ const createdAtStr = (() => {
         </span>
         <h2 className="text-xs font-semibold tracking-tight text-neutral-900">{title}</h2>
       </div>
-      <div className="min-h-0 flex-1 overflow-hidden px-2 py-1.5">{children}</div>
+      <div className="px-2 py-1.5">{children}</div>
     </section>
   );
 
@@ -831,33 +855,33 @@ const createdAtStr = (() => {
     hideFooterButtons: true,
   };
   const renderSummaryBody = () => {
-    const V = formik.values || {};
-    const impuestos = Array.isArray(V.impuestos) ? V.impuestos : [];
-    const impuestosTotal = impuestos.reduce((a, i) => a + (Number(i.monto) || 0), 0);
-    const yesNo = (b) => (b ? 'Sí' : 'No');
-    const comprobanteDefaults = {
-      categoria: true, observacion: true, proveedor: true, proyecto: true,
-      subcategoria: false, total_original: false, medio_pago: false,
-      tipo_factura: false, tags_extra: false, caja_chica: false,
-      impuestos: false, numero_factura: false, subtotal: false,
-      cuenta_interna: false, etapa: false, empresa_facturacion: false,
-      fecha_pago: false, obra: false, cliente: false, factura_cliente: false,
-      dolar_referencia: false, detalle: false,
-    };
-    const ingresoDefaults = {
-      observacion: true, medio_pago: false, categoria: false,
-      subcategoria: false, tags_extra: false, dolar_referencia: false,
-    };
-    const tipoMov = V.type || 'egreso';
-    const rawInfo = tipoMov === 'ingreso' ? ingreso_info : comprobante_info;
-    const defaults = tipoMov === 'ingreso' ? ingresoDefaults : comprobanteDefaults;
-    const camposCfg = { ...defaults, ...(rawInfo || {}) };
-    const shouldShowMontoPagado = V.type === 'egreso' && V.estado === 'Parcialmente Pagado';
-    const montoPagadoResumen = Number(parcialMonto || V.monto_pagado || 0);
-    const summaryConfig = [
+                      const V = formik.values || {};
+                      const impuestos = Array.isArray(V.impuestos) ? V.impuestos : [];
+                      const impuestosTotal = impuestos.reduce((a, i) => a + (Number(i.monto) || 0), 0);
+                      const yesNo = (b) => (b ? 'Sí' : 'No');
+                      const comprobanteDefaults = {
+                        categoria: true, observacion: true, proveedor: true, proyecto: true,
+                        subcategoria: false, total_original: false, medio_pago: false,
+                        tipo_factura: false, tags_extra: false, caja_chica: false,
+                        impuestos: false, numero_factura: false, subtotal: false,
+                        cuenta_interna: false, etapa: false, empresa_facturacion: false,
+                        fecha_pago: false, obra: false, cliente: false, factura_cliente: false,
+                        dolar_referencia: false, detalle: false,
+                      };
+                      const ingresoDefaults = {
+                        observacion: true, medio_pago: false, categoria: false,
+                        subcategoria: false, tags_extra: false, dolar_referencia: false,
+                      };
+                      const tipoMov = V.type || 'egreso';
+                      const rawInfo = tipoMov === 'ingreso' ? ingreso_info : comprobante_info;
+                      const defaults = tipoMov === 'ingreso' ? ingresoDefaults : comprobanteDefaults;
+                      const camposCfg = { ...defaults, ...(rawInfo || {}) };
+                      const shouldShowMontoPagado = V.type === 'egreso' && V.estado === 'Parcialmente Pagado';
+                      const montoPagadoResumen = Number(parcialMonto || V.monto_pagado || 0);
+                      const summaryConfig = [
       { key: '__creator', label: 'Creador', configKey: null, render: () => <span className="text-xs text-neutral-800">{creatorLabel}</span> },
       { key: '__created_at', label: 'Fecha de creación', configKey: null, render: () => <span className="text-xs text-neutral-800">{createdAtStr || '—'}</span> },
-      { key: 'nombre_proveedor', label: 'Proveedor', configKey: 'proveedor' },
+                        { key: 'nombre_proveedor', label: 'Proveedor', configKey: 'proveedor' },
       { key: 'fecha_factura', label: 'Fecha', configKey: null },
       { key: 'type', label: 'Tipo', configKey: null, format: (v) => (v ? v.toUpperCase() : '-') },
       { key: 'categoria', label: 'Categoría', configKey: 'categoria' },
@@ -865,15 +889,15 @@ const createdAtStr = (() => {
       { key: 'numero_factura', label: 'N° Factura', configKey: 'numero_factura' },
       { key: 'tipo_factura', label: 'Tipo de Factura', configKey: 'tipo_factura' },
       { key: 'medio_pago', label: 'Medio de Pago', configKey: 'medio_pago' },
-      { key: 'empresa_facturacion', label: 'Empresa de facturación', configKey: 'empresa_facturacion' },
-      { key: 'factura_cliente', label: 'Factura de cliente', configKey: 'factura_cliente', format: yesNo },
+                        { key: 'empresa_facturacion', label: 'Empresa de facturación', configKey: 'empresa_facturacion' },
+                        { key: 'factura_cliente', label: 'Factura de cliente', configKey: 'factura_cliente', format: yesNo },
       { key: 'fecha_pago', label: 'Fecha de pago', configKey: 'fecha_pago' },
       { key: 'moneda', label: 'Moneda', configKey: null },
       { key: 'subtotal', label: 'Subtotal', configKey: 'subtotal', format: (v) => formatCurrency(v, 2) },
       { key: 'total_original', label: 'Total Original', configKey: 'total_original', format: (v) => formatCurrency(v, 2) },
       { key: 'total', label: 'Total', configKey: null, format: (v) => formatCurrency(v, 2) },
       { key: 'estado', label: 'Estado', configKey: null,
-        render: () => (
+                          render: () => (
           <span
             className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${
               V.estado === 'Pagado' ? 'bg-success-main/15 text-success-dark' :
@@ -891,10 +915,10 @@ const createdAtStr = (() => {
       { key: 'observacion', label: 'Observación', configKey: 'observacion' },
       { key: 'detalle', label: 'Detalle', configKey: 'detalle' },
       { key: 'obra', label: 'Obra', configKey: 'obra' },
-      { key: 'cliente', label: 'Cliente', configKey: 'cliente' },
+                        { key: 'cliente', label: 'Cliente', configKey: 'cliente' },
       { key: 'tags_extra', label: 'Tags', configKey: 'tags_extra',
-        render: () =>
-          Array.isArray(V.tags_extra) && V.tags_extra.length > 0 ? (
+                          render: () =>
+                            Array.isArray(V.tags_extra) && V.tags_extra.length > 0 ? (
             <span className="flex flex-wrap gap-0.5">
               {V.tags_extra.map((t) => (
                 <span key={t} className="rounded border border-neutral-200 px-1.5 py-0.5 text-[10px] text-neutral-700">{t}</span>
@@ -903,21 +927,21 @@ const createdAtStr = (() => {
           ) : null,
       },
     ];
-    if (shouldShowMontoPagado) {
-      const totalIndex = summaryConfig.findIndex((item) => item.key === 'total');
-      summaryConfig.splice(totalIndex + 1, 0, {
-        key: '__monto_pagado',
-        label: 'Monto ya pagado',
-        configKey: null,
-        render: () => (
+                      if (shouldShowMontoPagado) {
+                        const totalIndex = summaryConfig.findIndex((item) => item.key === 'total');
+                        summaryConfig.splice(totalIndex + 1, 0, {
+                          key: '__monto_pagado',
+                          label: 'Monto ya pagado',
+                          configKey: null,
+                          render: () => (
           <span className="text-xs font-semibold text-success-dark">{formatCurrency(montoPagadoResumen, 2)}</span>
         ),
       });
     }
-    const rows = summaryConfig
-      .filter(({ configKey }) => configKey === null || configKey === undefined || camposCfg[configKey])
-      .filter(({ key, render }) => render || (V[key] !== undefined && String(V[key]).trim() !== ''))
-      .map(({ key, label, format, render }) => (
+                      const rows = summaryConfig
+                        .filter(({ configKey }) => configKey === null || configKey === undefined || camposCfg[configKey])
+                        .filter(({ key, render }) => render || (V[key] !== undefined && String(V[key]).trim() !== ''))
+                        .map(({ key, label, format, render }) => (
         <div key={key} className="flex flex-wrap gap-x-1 gap-y-0.5 border-b border-divider/80 py-1 last:border-0">
           <span className="w-28 shrink-0 text-[11px] font-bold text-neutral-600">{label}:</span>
           <div className="min-w-0 flex-1 text-xs text-neutral-900">
@@ -925,69 +949,69 @@ const createdAtStr = (() => {
           </div>
         </div>
       ));
-    const impuestosRow = camposCfg.impuestos ? (
+                      const impuestosRow = camposCfg.impuestos ? (
       <div key="__impuestos" className="flex flex-wrap gap-1 border-b border-divider/80 py-1">
         <span className="w-28 shrink-0 text-[11px] font-bold text-neutral-600">Impuestos:</span>
         <span className="text-xs text-neutral-800">
-          {impuestos.length > 0 ? `${impuestos.length} ítem(s) • ${formatCurrency(impuestosTotal, 2)}` : '—'}
+                              {impuestos.length > 0 ? `${impuestos.length} ítem(s) • ${formatCurrency(impuestosTotal, 2)}` : '—'}
         </span>
       </div>
-    ) : null;
-    const stockRefId = movimiento?.acopio_id || movimiento?.solicitud_stock_id;
-    const stockRefTipo = movimiento?.acopio_id ? 'acopio' : (movimiento?.solicitud_stock_id ? 'solicitud' : null);
-    const showStockSection = isEditMode && formik.values.categoria === 'Materiales' && empresa?.stock_config?.caja_a_stock === true;
-    const materialesList = showStockSection && (
+                      ) : null;
+                      const stockRefId = movimiento?.acopio_id || movimiento?.solicitud_stock_id;
+                      const stockRefTipo = movimiento?.acopio_id ? 'acopio' : (movimiento?.solicitud_stock_id ? 'solicitud' : null);
+                      const showStockSection = isEditMode && formik.values.categoria === 'Materiales' && empresa?.stock_config?.caja_a_stock === true;
+                      const materialesList = showStockSection && (
       <div className="mt-2 border-t border-divider pt-2">
         <p className="text-[11px] font-bold text-neutral-800">Stock</p>
-        {stockRefId ? (
+                          {stockRefId ? (
           <div className="mt-1 space-y-1 pl-0.5">
             <div className="flex items-center gap-1 text-xs text-success-dark">
               <CheckCircleIcon className="h-3.5 w-3.5" aria-hidden />
-              {stockRefTipo === 'acopio' ? 'Acopio creado' : 'Solicitud de stock creada'}
+                                  {stockRefTipo === 'acopio' ? 'Acopio creado' : 'Solicitud de stock creada'}
             </div>
             <a
               className="block text-xs text-primary-dark hover:underline"
               href={stockRefTipo === 'acopio' ? `/movimientosAcopio?acopioId=${stockRefId}` : `/stockSolicitudes?solicitudId=${stockRefId}`}
-            >
-              {stockRefTipo === 'acopio' ? 'Ver acopio →' : 'Ver solicitud →'}
+                              >
+                                {stockRefTipo === 'acopio' ? 'Ver acopio →' : 'Ver solicitud →'}
             </a>
             <button
               type="button"
               className="block text-left text-xs text-warning-dark hover:underline"
-              onClick={() => setStockPopupOpen(true)}
-            >
-              Reprocesar materiales
+                                onClick={() => setStockPopupOpen(true)}
+                              >
+                                Reprocesar materiales
             </button>
           </div>
-        ) : (
+                          ) : (
           <div className="mt-1 space-y-1 pl-0.5">
             <p className="text-[10px] text-neutral-500">
-              {movimiento?.stock_procesado
-                ? 'Se eligió no procesar. Podés procesarlos cuando quieras.'
-                : 'Materiales pendientes de procesar.'}
+                                {movimiento?.stock_procesado
+                                  ? 'Se eligió no procesar. Podés procesarlos cuando quieras.'
+                                  : 'Materiales pendientes de procesar.'}
             </p>
             <button
               type="button"
-              onClick={() => setStockPopupOpen(true)}
+                                onClick={() => setStockPopupOpen(true)}
               className="rounded border border-primary-main px-2 py-0.5 text-[11px] font-medium text-primary-dark"
-            >
-              Procesar materiales
+                              >
+                                Procesar materiales
             </button>
           </div>
-        )}
+                          )}
       </div>
-    );
-    return (
-      <>
+                      );
+                      return (
+                        <>
         <div className="flex flex-wrap gap-1 border-b border-divider/80 py-1">
           <span className="w-28 shrink-0 text-[11px] font-bold text-neutral-600">Proyecto:</span>
           <span className="text-xs text-neutral-900">{effectiveProyectoName || '-'}</span>
         </div>
-        {rows}
-        {impuestosRow}
-        {materialesList}
-      </>
-    );
+                          {rows}
+                          {impuestosRow}
+                          {materialesList}
+                        </>
+                      );
   };
   return (
     <>
@@ -1002,7 +1026,7 @@ const createdAtStr = (() => {
         onChange={handleFileChange}
         aria-hidden
       />
-      <div className="flex h-[calc(100dvh-4.5rem)] max-h-[calc(100vh-4.5rem)] flex-col gap-2 overflow-hidden bg-neutral-50 px-2 pb-2 pt-1">
+      <div className="flex h-[calc(100dvh-4.5rem)] max-h-[calc(100vh-4.5rem)] min-h-0 flex-col gap-2 overflow-hidden bg-neutral-50 px-2 pb-2 pt-1">
         <header className="shrink-0 rounded-xl border border-divider bg-white px-3 py-2 shadow-sm">
           <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
             <div className="min-w-0">
@@ -1118,6 +1142,16 @@ const createdAtStr = (() => {
                         Prorratear por proyectos
                       </button>
                     )}
+                    <button
+                      type="button"
+                      role="menuitem"
+                      disabled={!isEditMode}
+                      onClick={() => handleAccionesMenuItemClick('auditoria')}
+                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-neutral-50 disabled:opacity-40"
+                    >
+                      <DocumentTextIcon className="h-4 w-4 text-neutral-600" />
+                      Ver auditoría
+                    </button>
                   </div>
                 )}
               </div>
@@ -1233,28 +1267,41 @@ const createdAtStr = (() => {
             </div>
           </div>
         ) : (
-          <div className="flex min-h-0 flex-1 flex-col gap-2 lg:flex-row lg:gap-3">
+          <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden lg:flex-row lg:gap-3">
             <form
               className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-hidden"
               onSubmit={formik.handleSubmit}
             >
-              <div className="grid min-h-0 flex-1 grid-rows-3 gap-2 overflow-hidden">
-                <StitchBlock step={1} title="Detalles del movimiento">
-                  <MovementFields {...sharedFieldProps} block="details" />
-                </StitchBlock>
-                <StitchBlock step={2} title="Clasificación">
-                  <MovementFields {...sharedFieldProps} block="classification" />
-                </StitchBlock>
-                <StitchBlock step={3} title="Detalles financieros e impuestos">
-                  <MovementFields {...sharedFieldProps} block="financial" />
-                </StitchBlock>
+              <div
+                data-movement-form-scroll="true"
+                className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain"
+              >
+                <div className="flex flex-col gap-2 pb-1">
+                  <StitchBlock step={1} title="Detalles del movimiento">
+                    <MovementFields {...sharedFieldProps} block="details" />
+                  </StitchBlock>
+                  <StitchBlock step={2} title="Clasificación">
+                    <MovementFields {...sharedFieldProps} block="classification" />
+                  </StitchBlock>
+                  <StitchBlock step={3} title="Detalles financieros e impuestos">
+                    <MovementFields {...sharedFieldProps} block="financial" />
+                  </StitchBlock>
+                </div>
               </div>
-              <footer className="flex shrink-0 flex-wrap items-center gap-2 border-t border-divider pt-2">
+              <footer className="flex shrink-0 flex-wrap items-center gap-2 border-t border-divider bg-neutral-50 pt-2">
                 <button
                   type="button"
                   onClick={() => {
-                    if (hasComprobante) setFullOpen(true);
-                    else fileInputRef.current?.click();
+                    if (!hasComprobante) {
+                      fileInputRef.current?.click();
+                      return;
+                    }
+                    if (isComprobantePdf) {
+                      setPdfModalOpen(true);
+                      return;
+                    }
+                    setImagenModal(comprobanteSrc);
+                    setComprobanteModalOpen(true);
                   }}
                   className="text-sm font-medium text-primary-dark hover:underline"
                 >
@@ -1288,34 +1335,26 @@ const createdAtStr = (() => {
                     Reemplazar comprobante
                   </button>
                 )}
-                <span className="text-neutral-300" aria-hidden>|</span>
-                <button
-                  type="button"
-                  onClick={() => setAuditOpen(true)}
-                  className="text-sm font-medium text-primary-dark hover:underline"
-                >
-                  Ver auditoría
-                </button>
               </footer>
             </form>
 
-            <aside className="hidden w-full shrink-0 overflow-hidden rounded-xl border border-divider bg-white shadow-sm lg:flex lg:w-[280px] lg:flex-col">
+            <aside className="hidden min-h-0 w-full shrink-0 flex-col overflow-hidden rounded-xl border border-divider bg-white shadow-sm lg:flex lg:w-[280px]">
               <div className="border-b border-divider px-3 py-2">
                 <h2 className="text-sm font-semibold text-neutral-900">Resumen</h2>
               </div>
               <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">{renderSummaryBody()}</div>
-              {isEditMode && movimiento?.es_movimiento_prorrateo && (
-                <div className="border-t border-divider px-2 pb-2">
-                  <ProrrateoInfo
+                {isEditMode && movimiento?.es_movimiento_prorrateo && (
+                <div className="shrink-0 border-t border-divider px-2 pb-2">
+                  <ProrrateoInfo 
                     movimiento={movimiento}
                     onVerRelacionados={() => {
                       router.push(`/movimientos-prorrateo?grupoId=${movimiento.prorrateo_grupo_id}`);
                     }}
                   />
                 </div>
-              )}
-              {isEditMode && movimiento?.es_pago_entre_cajas && (
-                <div className="border-t border-divider px-2 pb-2">
+                )}
+                {isEditMode && movimiento?.es_pago_entre_cajas && (
+                <div className="shrink-0 border-t border-divider px-2 pb-2">
                   <PagoEntreCajasInfo movimiento={movimiento} />
                 </div>
               )}
@@ -1326,7 +1365,7 @@ const createdAtStr = (() => {
               <div className="max-h-48 overflow-y-auto text-xs">{renderSummaryBody()}</div>
               {isEditMode && movimiento?.es_movimiento_prorrateo && (
                 <ProrrateoInfo
-                  movimiento={movimiento}
+                    movimiento={movimiento}
                   onVerRelacionados={() => {
                     router.push(`/movimientos-prorrateo?grupoId=${movimiento.prorrateo_grupo_id}`);
                   }}
@@ -1336,68 +1375,37 @@ const createdAtStr = (() => {
             </div>
           </div>
         )}
-        {fullOpen && (movimiento?.url_imagen || urlTemporal || previewUrl) && (
-          <div
-            className="fixed inset-0 z-50 flex flex-col bg-black"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Comprobante a pantalla completa"
-          >
-            <div className="absolute right-3 top-3 z-10">
-              <button
-                type="button"
-                onClick={() => setFullOpen(false)}
-                className="rounded-lg bg-white/10 p-2 text-white hover:bg-white/20"
-                aria-label="Cerrar"
-              >
-                <XMarkIcon className="h-6 w-6" />
-              </button>
-            </div>
-            <div className="flex flex-1 items-center justify-center p-4">
-              {(() => {
-                const src = previewUrl || movimiento?.url_imagen || urlTemporal;
-                const isPdf = String(src).includes('.pdf') || nuevoArchivo?.type === 'application/pdf';
-                return isPdf ? (
-                  <embed src={src} className="h-full w-full max-h-[calc(100vh-2rem)]" title="Comprobante PDF" />
-                ) : (
-                  <img src={src} alt="Comprobante" className="max-h-full max-w-full object-contain" />
-                );
-              })()}
-            </div>
-          </div>
-        )}
+        <ComprobanteModal
+          open={comprobanteModalOpen}
+          onClose={handleCloseComprobanteModal}
+          imagenUrl={imagenModal}
+        />
+        <ComprobantePdfModal
+          open={pdfModalOpen}
+          onClose={handleCloseComprobantePdfModal}
+          pdfUrl={hasComprobante && isComprobantePdf ? comprobanteSrc : ''}
+        />
 
-        {auditOpen && (
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-            role="presentation"
-            onClick={() => setAuditOpen(false)}
-            onKeyDown={(e) => e.key === 'Escape' && setAuditOpen(false)}
-          >
-            <div
-              className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-xl bg-white shadow-xl"
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="audit-title"
-              onClick={(e) => e.stopPropagation()}
+        <Dialog
+          open={auditOpen}
+          onClose={handleCloseAuditDialog}
+          maxWidth="md"
+          fullWidth
+        >
+          <DialogTitle sx={{ pr: 6 }}>
+            Auditoría de cambios
+            <IconButton
+              aria-label="Cerrar"
+              onClick={handleCloseAuditDialog}
+              sx={{ position: 'absolute', right: 8, top: 8 }}
             >
-              <div className="flex items-center justify-between border-b border-divider px-4 py-2">
-                <h2 id="audit-title" className="text-sm font-semibold text-neutral-900">Auditoría de cambios</h2>
-                <button
-                  type="button"
-                  onClick={() => setAuditOpen(false)}
-                  className="rounded-lg p-1 hover:bg-neutral-100"
-                  aria-label="Cerrar"
-                >
-                  <XMarkIcon className="h-5 w-5" />
-                </button>
-              </div>
-              <div className="min-h-0 flex-1 overflow-y-auto p-3">
-                <MovimientoLogsPanel logs={movimiento?.logs || []} />
-              </div>
-            </div>
-          </div>
-        )}
+              <CloseIcon />
+            </IconButton>
+          </DialogTitle>
+          <DialogContent dividers sx={{ minHeight: 240, maxHeight: '80vh' }}>
+            <MovimientoLogsPanel logs={movimiento?.logs || []} />
+          </DialogContent>
+        </Dialog>
 
         {confirmOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -1435,25 +1443,25 @@ const createdAtStr = (() => {
                   }}
                   className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm"
                 >
-                  Revisar
+              Revisar
                 </button>
                 <button
                   type="button"
-                  onClick={async () => {
-                    if (!pendingPayload) return;
-                    setIsLoading(true);
-                    await savePayload(pendingPayload);
-                  }}
+              onClick={async () => {
+                if (!pendingPayload) return;
+                setIsLoading(true);
+                await savePayload(pendingPayload);
+              }}
                   className="rounded-lg bg-primary-main px-3 py-1.5 text-sm font-semibold text-white"
-                >
-                  Guardar igual
+            >
+              Guardar igual
                 </button>
               </div>
             </div>
           </div>
         )}
 
-        <ProrrateoDialog
+        <ProrrateoDialog 
           open={prorrateoOpen}
           onClose={(success) => {
             setProrrateoOpen(false);

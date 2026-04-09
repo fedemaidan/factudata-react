@@ -1,10 +1,12 @@
 import React, { useMemo } from 'react';
 import { formatCurrency } from 'src/utils/formatters';
 import ImpuestosEditor from './impuestosEditor';
+import InputWithSelect from 'src/components/ui/input-with-select';
+import SelectOne from 'src/components/ui/select-1';
+import PanelOutlineDateField from 'src/components/forms/PanelOutlineDateField';
 import {
   getCamposVisibles,
   GROUP_SECTIONS,
-  STITCH_GROUP_SECTIONS,
   getOptionsFromContext,
   isSubtotalFieldEnabled,
 } from './movementFieldsConfig';
@@ -36,6 +38,11 @@ const formatAmountInput = (value) => {
   });
 };
 
+const CURRENCY_OPTIONS = [
+  { value: 'ARS', label: 'ARS' },
+  { value: 'USD', label: 'USD' },
+];
+
 const MovementFields = ({
   formik,
   comprobante_info,
@@ -61,6 +68,22 @@ const MovementFields = ({
   onParcialMontoChange,
   hideFooterButtons = false,
 }) => {
+  const setFieldValuePreservingScroll = (fieldName, nextValue, shouldValidate = true) => {
+    const scrollContainer =
+      typeof document !== 'undefined'
+        ? document.querySelector('[data-movement-form-scroll="true"]')
+        : null;
+    const previousScrollTop = scrollContainer?.scrollTop ?? null;
+
+    formik.setFieldValue(fieldName, nextValue, shouldValidate);
+
+    if (previousScrollTop == null) return;
+    requestAnimationFrame(() => {
+      if (!scrollContainer) return;
+      scrollContainer.scrollTop = previousScrollTop;
+    });
+  };
+
   const renderPagoParcialDetalle = () => {
     if (
       formik.values.type !== 'egreso' ||
@@ -112,33 +135,37 @@ const MovementFields = ({
     const dolarRef = Number(formik.values.dolar_referencia) || 0;
     const subtotal = Number(formik.values.subtotal) || 0;
     const total = Number(formik.values.total) || 0;
+    const moneda = formik.values.moneda;
 
-    if (dolarRef > 0 && formik.values.moneda === 'ARS') {
-      const subtotalDolar = Number((subtotal / dolarRef).toFixed(2));
-      const totalDolar = Number((total / dolarRef).toFixed(2));
+    let nextSubtotalDolar = formik.values.subtotal_dolar;
+    let nextTotalDolar = formik.values.total_dolar;
 
-      if (Math.abs(Number(formik.values.subtotal_dolar) - subtotalDolar) > 0.01) {
-        formik.setFieldValue('subtotal_dolar', subtotalDolar);
-      }
-      if (Math.abs(Number(formik.values.total_dolar) - totalDolar) > 0.01) {
-        formik.setFieldValue('total_dolar', totalDolar);
-      }
-    } else if (formik.values.moneda === 'USD') {
-      if (Number(formik.values.subtotal_dolar) !== subtotal) {
-        formik.setFieldValue('subtotal_dolar', subtotal);
-      }
-      if (Number(formik.values.total_dolar) !== total) {
-        formik.setFieldValue('total_dolar', total);
-      }
+    if (dolarRef > 0 && moneda === 'ARS') {
+      nextSubtotalDolar = Number((subtotal / dolarRef).toFixed(2));
+      nextTotalDolar = Number((total / dolarRef).toFixed(2));
+    } else if (moneda === 'USD') {
+      nextSubtotalDolar = subtotal;
+      nextTotalDolar = total;
     } else {
-      if (formik.values.subtotal_dolar !== '' && formik.values.subtotal_dolar !== 0) {
-        formik.setFieldValue('subtotal_dolar', '');
-      }
-      if (formik.values.total_dolar !== '' && formik.values.total_dolar !== 0) {
-        formik.setFieldValue('total_dolar', '');
-      }
+      nextSubtotalDolar = '';
+      nextTotalDolar = '';
     }
-  }, [formik.values.dolar_referencia, formik.values.subtotal, formik.values.total, formik.values.moneda, formik.setFieldValue]);
+
+    if (String(formik.values.subtotal_dolar ?? '') !== String(nextSubtotalDolar ?? '')) {
+      formik.setFieldValue('subtotal_dolar', nextSubtotalDolar, false);
+    }
+    if (String(formik.values.total_dolar ?? '') !== String(nextTotalDolar ?? '')) {
+      formik.setFieldValue('total_dolar', nextTotalDolar, false);
+    }
+  }, [
+    formik.values.dolar_referencia,
+    formik.values.subtotal,
+    formik.values.total,
+    formik.values.moneda,
+    formik.values.subtotal_dolar,
+    formik.values.total_dolar,
+    formik.setFieldValue,
+  ]);
 
   const tipoMovimiento = formik.values.type || 'egreso';
   const optionsContext = useMemo(
@@ -166,15 +193,44 @@ const MovementFields = ({
     ]
   );
 
+  const usaSubtotal = isSubtotalFieldEnabled(comprobante_info, ingreso_info, tipoMovimiento);
+
   const camposGrupo = useMemo(() => {
     const visibles = getCamposVisibles(comprobante_info, empresa, ingreso_info, tipoMovimiento);
+    if (block) {
+      const ordered = visibles
+        .filter((campo) => campo.stitchBlock === block)
+        .sort((a, b) => (a.stitchOrder || 0) - (b.stitchOrder || 0));
+      if (block === 'financial') {
+        // Moneda se renderiza junto a Total con un control unificado.
+        return ordered.filter((campo) => campo.name !== 'moneda');
+      }
+      return ordered;
+    }
+
     const permitidas = new Set(GROUP_SECTIONS[group] || GROUP_SECTIONS.general);
-    return visibles.filter(c => permitidas.has(c.section));
-  }, [group, comprobante_info, ingreso_info, empresa, tipoMovimiento]);
+    return visibles.filter((campo) => permitidas.has(campo.section));
+  }, [block, group, comprobante_info, ingreso_info, empresa, tipoMovimiento]);
 
   const renderCampo = (campo) => {
     const value = formik.values[campo.name] ?? (campo.type === 'boolean' ? false : '');
     if (['text', 'number', 'date'].includes(campo.type)) {
+      if (campo.type === 'date') {
+        const isFechaPago = campo.name === 'fecha_pago';
+        return (
+          <PanelOutlineDateField
+            key={campo.name}
+            label={campo.label}
+            name={campo.name}
+            value={value || ''}
+            optional={isFechaPago}
+            onChange={(event) => setFieldValuePreservingScroll(campo.name, event.target.value)}
+            disabled={Boolean(campo.readonly)}
+            readOnly={Boolean(campo.readonly)}
+          />
+        );
+      }
+
       if (campo.name === 'dolar_referencia') {
         const isManual = Boolean(formik.values.dolar_referencia_manual);
         return (
@@ -231,6 +287,42 @@ const MovementFields = ({
           formik.setFieldValue('total', parsed);
         };
 
+        if (block === 'financial') {
+          const totalNumber = Number(formik.values.total) || 0;
+          const handleIncrement = () => {
+            const next = Number((totalNumber + 1).toFixed(2));
+            formik.setFieldValue('total', String(next));
+          };
+          const handleDecrement = () => {
+            const next = Math.max(0, Number((totalNumber - 1).toFixed(2)));
+            formik.setFieldValue('total', String(next));
+          };
+
+          return (
+            <div key={campo.name}>
+              <InputWithSelect
+                label="Total y moneda"
+                placeholder="0.00"
+                value={formatAmountInput(value)}
+                onValueChange={(rawValue) => {
+                  const parsed = parseAmountInput(rawValue);
+                  formik.setFieldValue('total', parsed);
+                }}
+                options={CURRENCY_OPTIONS}
+                selectedOption={formik.values.moneda || ''}
+                onOptionChange={(nextMoneda) => {
+                  if (nextMoneda !== (formik.values.moneda || '')) {
+                    setFieldValuePreservingScroll('moneda', nextMoneda);
+                  }
+                }}
+                onIncrement={handleIncrement}
+                onDecrement={handleDecrement}
+              />
+              {renderPagoParcialDetalle()}
+            </div>
+          );
+        }
+
         return (
           <div key={campo.name}>
             <label className={labelCls}>{campo.label}</label>
@@ -276,20 +368,13 @@ const MovementFields = ({
       const options = campo.options || getOptionsFromContext(campo.optionsKey, optionsContext);
       return (
         <div key={campo.name}>
-          <label className={labelCls}>{campo.label}</label>
-          <select
-            className={inputCls}
+          <SelectOne
+            label={campo.label}
             name={campo.name}
             value={value}
-            onChange={formik.handleChange}
-          >
-            <option value="">Seleccionar</option>
-            {options.map((opt) => (
-              <option key={`${campo.name}-${opt}`} value={opt}>
-                {opt}
-              </option>
-            ))}
-          </select>
+            options={options.map((opt) => ({ value: opt, label: opt }))}
+            onChange={(nextValue) => setFieldValuePreservingScroll(campo.name, nextValue)}
+          />
         </div>
       );
     }
@@ -374,16 +459,18 @@ const MovementFields = ({
       const strVal = value === true || value === 'true' ? 'true' : 'false';
       return (
         <div key={campo.name}>
-          <label className={labelCls}>{campo.label}</label>
-          <select
-            className={inputCls}
+          <SelectOne
+            label={campo.label}
             name={campo.name}
             value={strVal}
-            onChange={(e) => formik.setFieldValue(campo.name, e.target.value === 'true')}
-          >
-            <option value="true">Sí</option>
-            <option value="false">No</option>
-          </select>
+            options={[
+              { value: 'true', label: 'Sí' },
+              { value: 'false', label: 'No' },
+            ]}
+            onChange={(nextValue) =>
+              setFieldValuePreservingScroll(campo.name, nextValue === 'true')
+            }
+          />
         </div>
       );
     }
