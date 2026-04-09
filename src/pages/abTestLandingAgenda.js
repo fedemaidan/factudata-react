@@ -250,9 +250,9 @@ function MetricasResumen({ test, contactos, inflexion, periodo }) {
     const visitasA = getContadorPeriodo(test, 'A', inflexion, periodo);
     const visitasB = getContadorPeriodo(test, 'B', inflexion, periodo);
 
-    // CTA principal: A = abrieronLink (click WhatsApp), B = abrieronModal (click abre modal = mismo CTA)
+    // CTA principal: ambas variantes usan abrieronLink
     const ctaA = getMetricaPeriodo(test, 'A', 'abrieronLink', inflexion, periodo);
-    const ctaB = getMetricaPeriodo(test, 'B', 'abrieronModal', inflexion, periodo);
+    const ctaB = getMetricaPeriodo(test, 'B', 'abrieronLink', inflexion, periodo);
 
     // Siguiente paso del funnel: A = contactos creados via bot, B = eligieron horario en el modal
     const eligieronHorarioB = getMetricaPeriodo(test, 'B', 'eligieronHorario', inflexion, periodo);
