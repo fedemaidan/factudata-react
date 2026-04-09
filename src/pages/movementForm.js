@@ -1,10 +1,20 @@
 // pages/movementForm/index.jsx
 import Head from 'next/head';
 import { useRouter } from 'next/router';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
-import { Dialog, DialogContent, DialogTitle, IconButton } from '@mui/material';
+import {
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
+  IconButton,
+  Button,
+  CircularProgress,
+  Typography,
+} from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import {
   HomeIcon,
@@ -29,6 +39,7 @@ import { useAuthContext } from 'src/contexts/auth-context';
 import proveedorService from 'src/services/proveedorService';
 import { useBreadcrumbs } from 'src/contexts/breadcrumbs-context';
 import { dateToTimestamp, formatCurrency, formatTimestamp } from 'src/utils/formatters';
+import { buildCompletarPagoUpdateFields, puedeCompletarPagoEgreso } from 'src/utils/movimientoPagoCompleto';
 import MovementFields from 'src/components/movementFields';
 import {
   computeNetSubtotalFromTotalImpuestos,
@@ -188,6 +199,8 @@ const MovementFormPage = () => {
   const [imagenModal, setImagenModal] = useState('');
   const [pdfModalOpen, setPdfModalOpen] = useState(false);
   const [parcialMonto, setParcialMonto] = useState('');
+  const [completarPagoDialogOpen, setCompletarPagoDialogOpen] = useState(false);
+  const [completarPagoLoading, setCompletarPagoLoading] = useState(false);
 
   // En edit mode, priorizar datos del movimiento sobre query params
   const effectiveProyectoId = (isEditMode && movimiento?.proyecto_id) || proyectoId || null;
@@ -838,8 +851,86 @@ const createdAtStr = (() => {
       case 'auditoria':
         setAuditOpen(true);
         break;
+      case 'completarPago':
+        setCompletarPagoDialogOpen(true);
+        break;
       default:
         break;
+    }
+  };
+
+  const snapshotCompletarPago = useMemo(
+    () => ({
+      type: formik.values.type,
+      estado: formik.values.estado,
+      total: formik.values.total,
+      monto_pagado:
+        parcialMonto !== ''
+          ? Number(parcialMonto)
+          : Number(formik.values.monto_pagado ?? movimiento?.monto_pagado) || 0,
+      fecha_pago: formik.values.fecha_pago || movimiento?.fecha_pago,
+    }),
+    [
+      formik.values.type,
+      formik.values.estado,
+      formik.values.total,
+      formik.values.monto_pagado,
+      formik.values.fecha_pago,
+      parcialMonto,
+      movimiento?.monto_pagado,
+      movimiento?.fecha_pago,
+    ]
+  );
+
+  const mostrarCompletarPago = isEditMode && puedeCompletarPagoEgreso(snapshotCompletarPago);
+
+  const handleCompletarPagoConfirm = async () => {
+    if (!movimientoId || !movimiento) return;
+    if (!puedeCompletarPagoEgreso(snapshotCompletarPago)) {
+      setCompletarPagoDialogOpen(false);
+      return;
+    }
+    setCompletarPagoLoading(true);
+    try {
+      const nombreUsuario =
+        [user?.firstName, user?.lastName].filter(Boolean).join(' ') || user?.email || null;
+      const patch = buildCompletarPagoUpdateFields(snapshotCompletarPago);
+      const res = await movimientosService.updateMovimiento(
+        movimientoId,
+        { ...movimiento, ...patch },
+        nombreUsuario
+      );
+      if (res?.error) throw new Error('update failed');
+      const updated = await movimientosService.getMovimientoById(movimientoId);
+      if (updated) {
+        setMovimiento(updated);
+        const data = { ...updated };
+        data.fecha_factura = formatTimestamp(data.fecha_factura);
+        if (data.fecha_pago) data.fecha_pago = formatTimestamp(data.fecha_pago);
+        formik.setValues({
+          ...formik.values,
+          ...data,
+          fecha_factura: data.fecha_factura,
+          fecha_pago: data.fecha_pago || '',
+          tags_extra: data.tags_extra || [],
+          caja_chica: data.caja_chica ?? false,
+          impuestos: data.impuestos || [],
+          materiales: data.materiales || [],
+          etapa: data.etapa || '',
+          obra: data.obra || '',
+          cliente: data.cliente || '',
+          factura_cliente: typeof data.factura_cliente === 'boolean' ? data.factura_cliente : false,
+          dolar_referencia_manual: data.dolar_referencia_manual ?? false,
+          total: data.total,
+        });
+      }
+      setParcialMonto('');
+      setCompletarPagoDialogOpen(false);
+      setAlert({ open: true, message: 'Pago completado correctamente', severity: 'success' });
+    } catch {
+      setAlert({ open: true, message: 'No se pudo completar el pago', severity: 'error' });
+    } finally {
+      setCompletarPagoLoading(false);
     }
   };
 
@@ -1164,6 +1255,18 @@ const createdAtStr = (() => {
                       <DocumentTextIcon className="h-4 w-4 text-neutral-600" />
                       Ver auditoría
                     </button>
+                    {mostrarCompletarPago && (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        disabled={isLoading || completarPagoLoading}
+                        onClick={() => handleAccionesMenuItemClick('completarPago')}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-neutral-50 disabled:opacity-40"
+                      >
+                        <CheckCircleIcon className="h-4 w-4 text-success-dark" />
+                        Completar pago
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -1417,6 +1520,45 @@ const createdAtStr = (() => {
           <DialogContent dividers sx={{ minHeight: 240, maxHeight: '80vh' }}>
             <MovimientoLogsPanel logs={movimiento?.logs || []} />
           </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={completarPagoDialogOpen}
+          onClose={() => !completarPagoLoading && setCompletarPagoDialogOpen(false)}
+          aria-labelledby="completar-pago-dialog-title"
+        >
+          <DialogTitle id="completar-pago-dialog-title">Completar pago</DialogTitle>
+          <DialogContent>
+            <DialogContentText component="div">
+              ¿Marcar este egreso como pagado por el total de{' '}
+              <strong>
+                {formatCurrency(
+                  Number(formik.values.total) || 0,
+                  formik.values.moneda || 'ARS'
+                )}
+              </strong>
+              ?
+              {formik.values.estado === 'Parcialmente Pagado' && (
+                <Typography component="span" variant="body2" display="block" sx={{ mt: 1.5, color: 'text.secondary' }}>
+                  El monto abonado pasará a igualar al total del comprobante.
+                </Typography>
+              )}
+            </DialogContentText>
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button onClick={() => setCompletarPagoDialogOpen(false)} disabled={completarPagoLoading}>
+              Cancelar
+            </Button>
+            <Button
+              variant="contained"
+              color="success"
+              onClick={handleCompletarPagoConfirm}
+              disabled={completarPagoLoading}
+              autoFocus
+            >
+              {completarPagoLoading ? <CircularProgress size={22} color="inherit" /> : 'Confirmar'}
+            </Button>
+          </DialogActions>
         </Dialog>
 
         {confirmOpen && (

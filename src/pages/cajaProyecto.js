@@ -50,6 +50,9 @@ import { getCajaColumnasConfig, applyColumnOrder, getHeaderLabel, getHeaderCellS
 import CajaTablaCell from 'src/components/cajaProyecto/CajaTablaCell';
 import ProyectoConfigDrawer from 'src/components/cajaProyecto/ProyectoConfigDrawer';
 import SettingsIcon from '@mui/icons-material/Settings';
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
+import { buildCompletarPagoUpdateFields, puedeCompletarPagoEgreso } from 'src/utils/movimientoPagoCompleto';
+import { formatCurrencyWithCode } from 'src/utils/formatters';
 
 
 // tamaños mínimos por columna (px)
@@ -79,7 +82,7 @@ const COLS = {
   totalDolar: 140,
   subtotalDolar: 140,
   tagsExtra: 180,
-  acciones: 120,
+  acciones: 200,
 };
 
 // estilos comunes
@@ -325,6 +328,8 @@ const ProyectoMovimientosPage = () => {
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
   const [configDrawerOpen, setConfigDrawerOpen] = useState(false);
+  const [confirmarPagoMov, setConfirmarPagoMov] = useState(null);
+  const [confirmarPagoLoading, setConfirmarPagoLoading] = useState(false);
   const openImg = (url) => setImgPreview({ open: true, url });
   const closeImg = () => setImgPreview({ open: false, url: null });
   const openMobileActions = (event, mov) => {
@@ -900,6 +905,38 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
     return { movs, movsUsd };
   }, [authUserUid]);
 
+  const handleOpenConfirmarPago = useCallback((mov) => {
+    setConfirmarPagoMov(mov);
+  }, []);
+
+  const handleCloseConfirmarPagoDialog = useCallback(() => {
+    if (confirmarPagoLoading) return;
+    setConfirmarPagoMov(null);
+  }, [confirmarPagoLoading]);
+
+  const handleConfirmarPagoEjecutar = useCallback(async () => {
+    const mov = confirmarPagoMov;
+    if (!mov?.id || !proyectoId) return;
+    setConfirmarPagoLoading(true);
+    try {
+      const nombreUsuario = [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim() || user?.email || null;
+      const patch = buildCompletarPagoUpdateFields(mov);
+      const res = await movimientosService.updateMovimiento(mov.id, { ...mov, ...patch }, nombreUsuario);
+      if (res?.error) {
+        setAlert({ open: true, message: 'No se pudo confirmar el pago', severity: 'error' });
+        return;
+      }
+      await fetchAndHydrateMovimientos(proyectoId);
+      setAlert({ open: true, message: 'Pago confirmado correctamente', severity: 'success' });
+      setConfirmarPagoMov(null);
+      setDetalleMov((prev) => (prev?.id === mov.id ? { ...prev, ...patch } : prev));
+    } catch {
+      setAlert({ open: true, message: 'Error al confirmar el pago', severity: 'error' });
+    } finally {
+      setConfirmarPagoLoading(false);
+    }
+  }, [confirmarPagoMov, proyectoId, user, fetchAndHydrateMovimientos]);
+
   const handleRefresh = async () => {
     if (!proyectoId) return;
     await fetchAndHydrateMovimientos(proyectoId);
@@ -1101,11 +1138,12 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
     openDetalle,
     goToEdit,
     handleEliminarClick,
+    onOpenConfirmarPago: handleOpenConfirmarPago,
     deletingElement,
     COLS,
     cellBase,
     ellipsis,
-  }), [empresa, compactCols, deletingElement, openDetalle]);
+  }), [empresa, compactCols, deletingElement, openDetalle, handleOpenConfirmarPago]);
 
   const onSelectCaja = (caja) => {
     applyCajaSelection(caja);
@@ -2637,6 +2675,44 @@ useEffect(() => {
         </DialogActions>
       </Dialog>
 
+      <Dialog
+        open={Boolean(confirmarPagoMov)}
+        onClose={handleCloseConfirmarPagoDialog}
+        aria-labelledby="confirmar-pago-title"
+      >
+        <DialogTitle id="confirmar-pago-title">Confirmar pago</DialogTitle>
+        <DialogContent>
+          <DialogContentText component="div">
+            ¿Marcar este egreso como pagado por el total de{' '}
+            <strong>
+              {confirmarPagoMov
+                ? formatCurrencyWithCode(Number(confirmarPagoMov.total) || 0, confirmarPagoMov.moneda || 'ARS')
+                : ''}
+            </strong>
+            ?
+            {confirmarPagoMov?.estado === 'Parcialmente Pagado' && (
+              <Typography component="span" variant="body2" display="block" sx={{ mt: 1.5, color: 'text.secondary' }}>
+                El monto abonado pasará a igualar al total del comprobante.
+              </Typography>
+            )}
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={handleCloseConfirmarPagoDialog} disabled={confirmarPagoLoading}>
+            Cancelar
+          </Button>
+          <Button
+            variant="contained"
+            color="success"
+            onClick={handleConfirmarPagoEjecutar}
+            disabled={confirmarPagoLoading}
+            autoFocus
+          >
+            {confirmarPagoLoading ? <CircularProgress size={22} color="inherit" /> : 'Confirmar'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
 
       <Dialog open={imgPreview.open} onClose={closeImg} maxWidth="md" fullWidth>
   <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -2702,6 +2778,17 @@ useEffect(() => {
   {mobileActionMov && (
     <MenuItem onClick={() => { openDetalle(mobileActionMov); closeMobileActions(); }}>
       Comentarios
+    </MenuItem>
+  )}
+  {mobileActionMov && puedeCompletarPagoEgreso(mobileActionMov) && (
+    <MenuItem
+      onClick={() => {
+        setConfirmarPagoMov(mobileActionMov);
+        closeMobileActions();
+      }}
+    >
+      <CheckCircleOutlineIcon sx={{ mr: 1, fontSize: 20, color: 'success.main' }} />
+      Confirmar pago
     </MenuItem>
   )}
   {mobileActionMov && (
