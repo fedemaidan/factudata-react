@@ -1279,11 +1279,13 @@ function resolveSocioNombre(m, phone) {
 
 function buildDebtTransfers(socios) {
   const epsilon = 0.01;
-  const acreedores = socios
+  // diferencia > 0: tiene saldo por encima del ideal, por lo tanto debe transferir
+  const deudores = socios
     .filter((s) => s.diferencia > epsilon)
     .map((s) => ({ ...s, restante: round2(s.diferencia) }))
     .sort((a, b) => b.restante - a.restante);
-  const deudores = socios
+  // diferencia < 0: esta por debajo del ideal, por lo tanto debe recibir
+  const acreedores = socios
     .filter((s) => s.diferencia < -epsilon)
     .map((s) => ({ ...s, restante: round2(-s.diferencia) }))
     .sort((a, b) => b.restante - a.restante);
@@ -1482,8 +1484,8 @@ export function processBalanceBetweenPartners(block, movimientos, _presupuestos,
           Math.abs(diferencia) <= 0.01
             ? 'Balanceado'
             : diferencia > 0
-              ? 'Puso de mas'
-              : 'Debe aportar',
+              ? 'Debe'
+              : 'Le deben',
         movimientosCount: s.movimientos.length,
         _movimientos: s.movimientos,
       };

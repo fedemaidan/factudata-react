@@ -128,8 +128,8 @@ const BalanceBetweenPartnersBlock = ({ data, displayCurrency, onDrillDown }) => 
                 Math.abs(diff) <= 0.01
                   ? 'default'
                   : diff > 0
-                    ? 'success'
-                    : 'error';
+                    ? 'error'
+                    : 'success';
 
               return (
                 <TableRow
@@ -168,14 +168,14 @@ const BalanceBetweenPartnersBlock = ({ data, displayCurrency, onDrillDown }) => 
                     <Typography
                       variant="body2"
                       fontWeight={800}
-                      color={Math.abs(diff) <= 0.01 ? 'text.primary' : diff > 0 ? 'success.dark' : 'error.dark'}
+                      color={Math.abs(diff) <= 0.01 ? 'text.primary' : diff > 0 ? 'error.dark' : 'success.dark'}
                     >
                       {formatValue(diff, 'currency', displayCurrency)}
                     </Typography>
                     <LinearProgress
                       variant="determinate"
                       value={diffRatio}
-                      color={Math.abs(diff) <= 0.01 ? 'primary' : diff > 0 ? 'success' : 'error'}
+                      color={Math.abs(diff) <= 0.01 ? 'primary' : diff > 0 ? 'error' : 'success'}
                       sx={{
                         mt: 0.4,
                         height: 5,
