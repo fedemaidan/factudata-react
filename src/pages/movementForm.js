@@ -1,14 +1,37 @@
 // pages/movementForm/index.jsx
 import Head from 'next/head';
-import {
-  Box, Container, Typography, Button, CircularProgress, Snackbar, Alert,
-  Grid, Paper, Stack, Chip, Divider, TextField, MenuItem,
-  Tooltip, Menu, ListItemIcon, ListItemText
-} from '@mui/material';
 import { useRouter } from 'next/router';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
+import {
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
+  IconButton,
+  Button,
+  CircularProgress,
+  Typography,
+} from '@mui/material';
+import CloseIcon from '@mui/icons-material/Close';
+import {
+  HomeIcon,
+  FolderIcon,
+  DocumentTextIcon,
+  XMarkIcon,
+  ArrowPathIcon,
+  ArrowsRightLeftIcon,
+  WalletIcon,
+  EllipsisVerticalIcon,
+  ChartPieIcon,
+  ChatBubbleOvalLeftEllipsisIcon,
+  GlobeAltIcon,
+  ArrowPathRoundedSquareIcon,
+  CheckCircleIcon,
+  DocumentMagnifyingGlassIcon,
+} from '@heroicons/react/24/outline';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import movimientosService from 'src/services/movimientosService';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
@@ -16,38 +39,22 @@ import { useAuthContext } from 'src/contexts/auth-context';
 import proveedorService from 'src/services/proveedorService';
 import { useBreadcrumbs } from 'src/contexts/breadcrumbs-context';
 import { dateToTimestamp, formatCurrency, formatTimestamp } from 'src/utils/formatters';
-import HomeIcon from '@mui/icons-material/Home';
-import FolderIcon from '@mui/icons-material/Folder';
-import ReceiptIcon from '@mui/icons-material/Receipt';
+import { buildCompletarPagoUpdateFields, puedeCompletarPagoEgreso } from 'src/utils/movimientoPagoCompleto';
 import MovementFields from 'src/components/movementFields';
 import {
   computeNetSubtotalFromTotalImpuestos,
   isSubtotalFieldEnabled,
 } from 'src/components/movementFieldsConfig';
 import profileService from 'src/services/profileService';
-import OpenInFullIcon from '@mui/icons-material/OpenInFull';
-import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
-import RemoveIcon from '@mui/icons-material/Remove';
-import AddIcon from '@mui/icons-material/Add';
-import { Dialog, DialogTitle, DialogContent, DialogActions } from '@mui/material';
-import IconButton from '@mui/material/IconButton';
-import CloseIcon from '@mui/icons-material/Close';
-import { Tabs, Tab } from '@mui/material';
-import DocumentScannerIcon from '@mui/icons-material/DocumentScanner';
 import MaterialesFacturaActions from 'src/components/stock/MaterialesFacturaActions';
 import { getProyectosByEmpresa } from 'src/services/proyectosService';
 import ProrrateoDialog from 'src/components/ProrrateoDialog';
 import TransferenciaInternaDialog from 'src/components/TransferenciaInternaDialog';
 import EgresoConCajaPagadoraDialog from 'src/components/EgresoConCajaPagadoraDialog';
 import PagoEntreCajasInfo from 'src/components/PagoEntreCajasInfo';
-import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
-import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
-import MoreVertIcon from '@mui/icons-material/MoreVert';
-import CallSplitIcon from '@mui/icons-material/CallSplit';
-import WhatsAppIcon from '@mui/icons-material/WhatsApp';
-import LanguageIcon from '@mui/icons-material/Language';
-import SyncIcon from '@mui/icons-material/Sync';
 import MovimientoLogsPanel from 'src/components/movimientos/MovimientoLogsPanel';
+import ComprobanteModal from 'src/components/celulandia/ComprobanteModal';
+import ComprobantePdfModal from 'src/components/celulandia/ComprobantePdfModal';
 
 // Componente para mostrar información de prorrateo
 const ProrrateoInfo = ({ movimiento, onVerRelacionados }) => {
@@ -83,72 +90,74 @@ const ProrrateoInfo = ({ movimiento, onVerRelacionados }) => {
   };
 
   return (
-    <Paper sx={{ p: 4, mt: 3, backgroundColor: '#e3f2fd', border: '2px solid #1976d2' }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-        <Chip 
-          label="🔄 MOVIMIENTO PRORRATEADO" 
-          color="primary" 
-          variant="filled" 
-          sx={{ fontSize: '0.875rem', fontWeight: 'bold' }}
-        />
-      </Box>
-
-      <Typography variant="h6" gutterBottom color="primary" sx={{ mb: 2 }}>
-        📊 Distribución del Gasto
-      </Typography>
-      
-      <Box sx={{ mb: 3, bgcolor: 'white', p: 2, borderRadius: 1, border: '1px solid #bbdefb' }}>
-        <Typography variant="body1" sx={{ fontWeight: 'bold', mb: 1, color: 'primary.main' }}>
-          💰 Este proyecto: {formatCurrencyLocal(movimiento.total, movimiento.moneda)} 
+    <div className="mt-2 rounded-xl border-2 border-primary-main/40 bg-primary-lightest p-3">
+      <div className="mb-2">
+        <span className="inline-block rounded-full bg-primary-main px-2 py-0.5 text-xs font-bold text-white">
+          MOVIMIENTO PRORRATEADO
+        </span>
+      </div>
+      <h3 className="mb-2 text-sm font-semibold text-primary-dark">Distribución del gasto</h3>
+      <div className="mb-2 rounded-lg border border-primary-light bg-white p-2">
+        <p className="text-xs font-bold text-primary-dark">
+          Este proyecto: {formatCurrencyLocal(movimiento.total, movimiento.moneda)}
           {movimiento.prorrateo_porcentaje && ` (${movimiento.prorrateo_porcentaje}%)`}
-        </Typography>
-        
+        </p>
         {loading && (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <CircularProgress size={16} />
-            <Typography variant="body2" color="text.secondary">
-              Cargando distribución completa...
-            </Typography>
-          </Box>
+          <p className="mt-1 flex items-center gap-1 text-xs text-neutral-500">
+            <ArrowPathIcon className="h-3.5 w-3.5 animate-spin" aria-hidden />
+            Cargando distribución…
+          </p>
         )}
-        
         {!loading && movimientosRelacionados.length > 0 && (
-          <Box sx={{ mt: 2 }}>
-            <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 1 }}>
-              Otros proyectos:
-            </Typography>
-            {movimientosRelacionados.map((mov, index) => (
-              <Typography key={mov.id} variant="body2" color="text.secondary" sx={{ ml: 2, mb: 0.5 }}>
-                • <strong>{mov.proyecto}:</strong> {formatCurrencyLocal(mov.total, mov.moneda)}
+          <div className="mt-2">
+            <p className="text-xs font-semibold text-neutral-800">Otros proyectos:</p>
+            <ul className="mt-1 list-inside list-disc text-xs text-neutral-600">
+              {movimientosRelacionados.map((mov) => (
+                <li key={mov.id}>
+                  <strong>{mov.proyecto}:</strong> {formatCurrencyLocal(mov.total, mov.moneda)}
                 {mov.prorrateo_porcentaje && ` (${mov.prorrateo_porcentaje}%)`}
-              </Typography>
+                </li>
             ))}
-          </Box>
+            </ul>
+          </div>
         )}
-      </Box>
-
+      </div>
       {movimientosRelacionados.length > 0 && (
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <Button
-            variant="contained"
-            size="medium"
+        <div className="flex flex-col gap-2">
+          <button
+            type="button"
             onClick={onVerRelacionados}
-            sx={{ alignSelf: 'flex-start' }}
+            className="w-fit rounded-lg bg-primary-main px-3 py-1.5 text-xs font-semibold text-white hover:bg-primary-dark"
           >
             Ver todos los movimientos ({movimientosRelacionados.length + 1})
-          </Button>
-          
-          <Typography variant="body1" sx={{ fontWeight: 'bold', color: 'success.main' }}>
-            💸 Total distribuido: {formatCurrencyLocal(
+          </button>
+          <p className="text-xs font-bold text-success-dark">
+            Total distribuido:{' '}
+            {formatCurrencyLocal(
               Number(movimiento.total) + movimientosRelacionados.reduce((sum, m) => sum + Number(m.total), 0),
               movimiento.moneda
             )}
-          </Typography>
-        </Box>
+          </p>
+        </div>
       )}
-    </Paper>
+    </div>
   );
 };
+
+const StitchBlock = ({ step, title, children }) => (
+  <section className="flex shrink-0 flex-col rounded-xl border border-divider bg-white shadow-sm">
+    <div className="flex shrink-0 items-center gap-2 border-b border-divider px-2 py-1">
+      <span
+        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary-main text-[11px] font-bold text-white"
+        aria-hidden
+      >
+        {step}
+      </span>
+      <h2 className="text-xs font-semibold tracking-tight text-neutral-900">{title}</h2>
+    </div>
+    <div className="px-2 py-1.5">{children}</div>
+  </section>
+);
 
 const MovementFormPage = () => {
   const { user, signOut } = useAuthContext();
@@ -159,8 +168,8 @@ const MovementFormPage = () => {
 
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [modoIngreso, setModoIngreso] = useState(null); // null=pantalla selección, 'manual'
-  const [movimiento, setMovimiento] = useState(null);
   const [isExtractingData, setIsExtractingData] = useState(false);
+  const [movimiento, setMovimiento] = useState(null);
   const [categorias, setCategorias] = useState([]);
   const [proveedores, setProveedores] = useState([]);
   const [comprobante_info, setComprobanteInfo] = useState([]);
@@ -177,17 +186,21 @@ const MovementFormPage = () => {
   const [isRetrying, setIsRetrying] = useState(false);
   const [openTransferencia, setOpenTransferencia] = useState(false);
   const [openEgresoConCajaPagadora, setOpenEgresoConCajaPagadora] = useState(false);
-  const [accionesMenuAnchor, setAccionesMenuAnchor] = useState(null);
+  const [accionesOpen, setAccionesOpen] = useState(false);
+  const [auditOpen, setAuditOpen] = useState(false);
+  const accionesRef = useRef(null);
   const [mediosPago, setMediosPago] = useState(['Efectivo', 'Transferencia', 'Tarjeta', 'Mercado Pago', 'Cheque']);
   const [urlTemporal, setUrlTemporal] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
   const fileInputRef = useRef(null);
   const pendingExtraccionRef = useRef(false);
   const [createdUser, setCreatedUser] = useState(null);
-  const [viewerHeightVh, setViewerHeightVh] = useState(70);
-  const [isWide, setIsWide] = useState(false);
-  const [fullOpen, setFullOpen] = useState(false);
+  const [comprobanteModalOpen, setComprobanteModalOpen] = useState(false);
+  const [imagenModal, setImagenModal] = useState('');
+  const [pdfModalOpen, setPdfModalOpen] = useState(false);
   const [parcialMonto, setParcialMonto] = useState('');
+  const [completarPagoDialogOpen, setCompletarPagoDialogOpen] = useState(false);
+  const [completarPagoLoading, setCompletarPagoLoading] = useState(false);
 
   // En edit mode, priorizar datos del movimiento sobre query params
   const effectiveProyectoId = (isEditMode && movimiento?.proyecto_id) || proyectoId || null;
@@ -197,13 +210,12 @@ const MovementFormPage = () => {
   useEffect(() => {
     const titulo = isEditMode ? `Editar (${movimiento?.codigo_operacion || ''})` : 'Nuevo Movimiento';
     setBreadcrumbs([
-      { label: 'Inicio', href: '/', icon: <HomeIcon fontSize="small" /> },
-      { label: effectiveProyectoName || 'Proyecto', href: effectiveProyectoId ? `/cajaProyecto?proyectoId=${effectiveProyectoId}` : '/proyectos', icon: <FolderIcon fontSize="small" /> },
-      { label: titulo, icon: <ReceiptIcon fontSize="small" /> }
+      { label: 'Inicio', href: '/', icon: <HomeIcon className="h-4 w-4" /> },
+      { label: effectiveProyectoName || 'Proyecto', href: effectiveProyectoId ? `/cajaProyecto?proyectoId=${effectiveProyectoId}` : '/proyectos', icon: <FolderIcon className="h-4 w-4" /> },
+      { label: titulo, icon: <DocumentTextIcon className="h-4 w-4" /> }
     ]);
     return () => setBreadcrumbs([]);
   }, [isEditMode, movimiento?.codigo_operacion, effectiveProyectoId, effectiveProyectoName, setBreadcrumbs]);
-  const [tab, setTab] = useState(0);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pendingPayload, setPendingPayload] = useState(null);
   // arriba con otros useState
@@ -216,6 +228,17 @@ const MovementFormPage = () => {
   // Prorrateo
   const [prorrateoOpen, setProrrateoOpen] = useState(false);
   const [stockPopupOpen, setStockPopupOpen] = useState(false);
+
+  useEffect(() => {
+    if (!accionesOpen) return undefined;
+    const onDown = (e) => {
+      if (accionesRef.current && !accionesRef.current.contains(e.target)) {
+        setAccionesOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [accionesOpen]);
 
   const savePayload = async (payload) => {
     try {
@@ -278,9 +301,6 @@ const MovementFormPage = () => {
     }
   };
 
-  const increaseHeight = () => setViewerHeightVh(h => Math.min(95, h + 10));
-  const decreaseHeight = () => setViewerHeightVh(h => Math.max(40, h - 10));
-  const toggleWide = () => setIsWide(w => !w);
   const handleCloseAlert = () => setAlert({ ...alert, open: false });
   const handleFileInputClick = (event) => {
     event.target.value = '';
@@ -290,6 +310,22 @@ const MovementFormPage = () => {
     setNuevoArchivo(file);
   };
   const hasComprobante = Boolean(movimiento?.url_imagen || urlTemporal || previewUrl);
+  const comprobanteSrc = previewUrl || movimiento?.url_imagen || urlTemporal || '';
+  const isComprobantePdf = Boolean(comprobanteSrc) && (
+    String(comprobanteSrc).toLowerCase().includes('.pdf') ||
+    nuevoArchivo?.type === 'application/pdf'
+  );
+
+  const handleCloseComprobanteModal = () => {
+    setComprobanteModalOpen(false);
+    setImagenModal('');
+  };
+  const handleCloseComprobantePdfModal = () => {
+    setPdfModalOpen(false);
+  };
+  const handleCloseAuditDialog = () => {
+    setAuditOpen(false);
+  };
 
   // Vista previa al seleccionar archivo (antes de subir)
   useEffect(() => {
@@ -571,7 +607,9 @@ const createdAtStr = (() => {
   try {
     return formatTimestamp(movimiento?.fecha_creacion); // ya lo estás importando arriba
   } catch {
-    return typeof movimiento?.fecha_creacion === 'string' ? t : new Date(movimiento?.fecha_creacion).toLocaleString();
+    return typeof movimiento?.fecha_creacion === 'string'
+      ? movimiento.fecha_creacion
+      : new Date(movimiento?.fecha_creacion).toLocaleString();
   }
 })();
 
@@ -657,7 +695,6 @@ const createdAtStr = (() => {
     }
   });
 
-
   useEffect(() => {
     loadInitialData(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -671,7 +708,19 @@ const createdAtStr = (() => {
     const net = computeNetSubtotalFromTotalImpuestos(formik.values.total, formik.values.impuestos);
     const cur = Number(formik.values.subtotal) || 0;
     if (Math.abs(cur - net) > 0.005) {
-      formik.setFieldValue('subtotal', net);
+      const scrollContainer =
+        typeof document !== 'undefined'
+          ? document.querySelector('[data-movement-form-scroll="true"]')
+          : null;
+      const previousScrollTop = scrollContainer?.scrollTop ?? null;
+      formik.setFieldValue('subtotal', net, false);
+      if (previousScrollTop != null) {
+        requestAnimationFrame(() => {
+          if (scrollContainer) {
+            scrollContainer.scrollTop = previousScrollTop;
+          }
+        });
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- sincronizar solo ante total/impuestos/tipo/config
   }, [
@@ -787,16 +836,8 @@ const createdAtStr = (() => {
     }, 1500);
   };
 
-  const handleAccionesMenuOpen = (event) => {
-    setAccionesMenuAnchor(event.currentTarget);
-  };
-
-  const handleAccionesMenuClose = () => {
-    setAccionesMenuAnchor(null);
-  };
-
   const handleAccionesMenuItemClick = (action) => {
-    handleAccionesMenuClose();
+    setAccionesOpen(false);
     switch (action) {
       case 'transferencia':
         handleOpenTransferencia();
@@ -807,423 +848,120 @@ const createdAtStr = (() => {
       case 'prorrateo':
         setProrrateoOpen(true);
         break;
+      case 'auditoria':
+        setAuditOpen(true);
+        break;
+      case 'completarPago':
+        setCompletarPagoDialogOpen(true);
+        break;
       default:
         break;
     }
   };
 
-  // Tab Materiales removido — materiales se gestionan vía MaterialesFacturaActions (Dialog post-egreso)
-  // Tab Auditoría es siempre index 3 (Info=0, Importes=1, Imagen=2, Auditoría=3)
+  const snapshotCompletarPago = useMemo(
+    () => ({
+      type: formik.values.type,
+      estado: formik.values.estado,
+      total: formik.values.total,
+      monto_pagado:
+        parcialMonto !== ''
+          ? Number(parcialMonto)
+          : Number(formik.values.monto_pagado ?? movimiento?.monto_pagado) || 0,
+      fecha_pago: formik.values.fecha_pago || movimiento?.fecha_pago,
+    }),
+    [
+      formik.values.type,
+      formik.values.estado,
+      formik.values.total,
+      formik.values.monto_pagado,
+      formik.values.fecha_pago,
+      parcialMonto,
+      movimiento?.monto_pagado,
+      movimiento?.fecha_pago,
+    ]
+  );
 
-  return (
-    <>
-      <Head><title>{titulo}</title></Head>
+  const mostrarCompletarPago = isEditMode && puedeCompletarPagoEgreso(snapshotCompletarPago);
 
-      <Container maxWidth="xl" sx={{ pt: 0, pb: 6 }}>
-        {/* File input siempre montado para uso programático */}
-        <input
-          ref={fileInputRef}
-          accept="image/*,application/pdf"
-          type="file"
-          style={{ display: 'none' }}
-          onClick={handleFileInputClick}
-          onChange={handleFileChange}
-        />
-        {/* CABECERA */}
-        <Paper sx={{ p: 2, mb: 2 }}>
-          <Stack direction={{ xs: 'column', md: 'row' }} alignItems={{ xs: 'flex-start', md: 'center' }} justifyContent="space-between" spacing={1}>
-            <Box>
-              <Typography variant="h5" sx={{ mb: 0.5 }}>{titulo}</Typography>
-              <Stack direction="row" spacing={1} flexWrap="wrap" alignItems="center">
-                {effectiveProyectoName && <Chip size="small" label={`${effectiveProyectoName}`} />}
-                {formik.values?.fecha_factura && <Chip size="small" label={`${formik.values.fecha_factura}`} />}
-                {formik.values.type && <Chip size="small" color={formik.values?.type === 'ingreso' ? 'success' : 'error'} label={`${formik.values.type.toUpperCase()}`} />}
-                {formik.values.caja_chica && <Chip size="small" color="info" label='Caja chica'/>}
-                {isEditMode && movimiento?.origen && (
-                  <Tooltip title={`Origen: ${movimiento.origen}`}>
-                    <Chip 
-                      size="small" 
-                      variant="outlined"
-                      color={movimiento.origen === 'whatsapp' ? 'success' : movimiento.origen === 'web' ? 'info' : 'default'}
-                      icon={
-                        movimiento.origen === 'whatsapp' ? <WhatsAppIcon fontSize="small" /> :
-                        movimiento.origen === 'web' ? <LanguageIcon fontSize="small" /> :
-                        movimiento.origen?.includes('sync') || movimiento.id_sincronizacion ? <SyncIcon fontSize="small" /> :
-                        null
-                      }
-                      label={movimiento.origen === 'whatsapp' ? 'WhatsApp' : movimiento.origen === 'web' ? 'Web' : movimiento.origen}
-                      sx={{ textTransform: 'capitalize' }}
-                    />
-                  </Tooltip>
-                )}
-                {isEditMode && movimiento?.id_sincronizacion && !movimiento?.origen?.includes('sync') && (
-                  <Tooltip title={`Sincronizado: ${movimiento.id_sincronizacion}`}>
-                    <Chip 
-                      size="small" 
-                      variant="outlined"
-                      color="secondary"
-                      icon={<SyncIcon fontSize="small" />}
-                      label="Sync"
-                    />
-                  </Tooltip>
-                )}
-                {isRetrying && (
-                  <Chip 
-                    size="small" 
-                    color="warning" 
-                    label="Reintentando conexión..." 
-                    icon={<CircularProgress size={12} />}
-                  />
-                )}
-              </Stack>
-            </Box>
+  const handleCompletarPagoConfirm = async () => {
+    if (!movimientoId || !movimiento) return;
+    if (!puedeCompletarPagoEgreso(snapshotCompletarPago)) {
+      setCompletarPagoDialogOpen(false);
+      return;
+    }
+    setCompletarPagoLoading(true);
+    try {
+      const nombreUsuario =
+        [user?.firstName, user?.lastName].filter(Boolean).join(' ') || user?.email || null;
+      const patch = buildCompletarPagoUpdateFields(snapshotCompletarPago);
+      const res = await movimientosService.updateMovimiento(
+        movimientoId,
+        { ...movimiento, ...patch },
+        nombreUsuario
+      );
+      if (res?.error) throw new Error('update failed');
+      const updated = await movimientosService.getMovimientoById(movimientoId);
+      if (updated) {
+        setMovimiento(updated);
+        const data = { ...updated };
+        data.fecha_factura = formatTimestamp(data.fecha_factura);
+        if (data.fecha_pago) data.fecha_pago = formatTimestamp(data.fecha_pago);
+        formik.setValues({
+          ...formik.values,
+          ...data,
+          fecha_factura: data.fecha_factura,
+          fecha_pago: data.fecha_pago || '',
+          tags_extra: data.tags_extra || [],
+          caja_chica: data.caja_chica ?? false,
+          impuestos: data.impuestos || [],
+          materiales: data.materiales || [],
+          etapa: data.etapa || '',
+          obra: data.obra || '',
+          cliente: data.cliente || '',
+          factura_cliente: typeof data.factura_cliente === 'boolean' ? data.factura_cliente : false,
+          dolar_referencia_manual: data.dolar_referencia_manual ?? false,
+          total: data.total,
+        });
+      }
+      setParcialMonto('');
+      setCompletarPagoDialogOpen(false);
+      setAlert({ open: true, message: 'Pago completado correctamente', severity: 'success' });
+    } catch {
+      setAlert({ open: true, message: 'No se pudo completar el pago', severity: 'error' });
+    } finally {
+      setCompletarPagoLoading(false);
+    }
+  };
 
-            <Stack direction="row" spacing={1} flexWrap="wrap" alignItems="center">
-              {/* Acciones principales */}
-              {(isEditMode || modoIngreso === 'manual') && (
-              <Button
-                variant="outlined"
-                color="secondary"
-                startIcon={isExtractingData ? <CircularProgress size={16} /> : <DocumentScannerIcon />}
-                onClick={() => handleExtraerDatos()}
-                disabled={isExtractingData || (!isEditMode && !hasComprobante)}
-              >
-                {isExtractingData ? 'Extrayendo...' : 'Extraer datos de archivo'}
-              </Button>
-              )}
-
-              {/* Menú de acciones avanzadas */}
-              <Button
-                variant="outlined"
-                color="primary"
-                startIcon={<MoreVertIcon />}
-                onClick={handleAccionesMenuOpen}
-                disabled={isLoading}
-                sx={{ minWidth: 'auto', px: 2 }}
-              >
-                Acciones
-              </Button>
-
-              <Menu
-                anchorEl={accionesMenuAnchor}
-                open={Boolean(accionesMenuAnchor)}
-                onClose={handleAccionesMenuClose}
-                PaperProps={{
-                  sx: { minWidth: 200 }
-                }}
-              >
-                <MenuItem 
-                  onClick={() => handleAccionesMenuItemClick('transferencia')}
-                  disabled={!effectiveProyectoId}
-                >
-                  <ListItemIcon>
-                    <SwapHorizIcon fontSize="small" />
-                  </ListItemIcon>
-                  <ListItemText primary="Transferencia interna" />
-                </MenuItem>
-
-                {!isEditMode && (
-                  <MenuItem 
-                    onClick={() => handleAccionesMenuItemClick('pagoOtraCaja')}
-                    disabled={!effectiveProyectoId || !formik.values.total || proyectos.length <= 1 || formik.values.type !== 'egreso'}
-                  >
-                    <ListItemIcon>
-                      <AccountBalanceWalletIcon fontSize="small" />
-                    </ListItemIcon>
-                    <ListItemText 
-                      primary="Pagar desde otra caja" 
-                      secondary={
-                        !effectiveProyectoId ? "Falta proyecto" :
-                        !formik.values.total ? "Falta total" :
-                        proyectos.length <= 1 ? "Faltan proyectos" :
-                        formik.values.type !== 'egreso' ? "Solo para egresos" : null
-                      }
-                    />
-                  </MenuItem>
-                )}
-
-                {!isEditMode && proyectos.length >= 1 && (
-                  <MenuItem 
-                    onClick={() => handleAccionesMenuItemClick('prorrateo')}
-                    disabled={isLoading || !formik.values.total}
-                  >
-                    <ListItemIcon>
-                      <CallSplitIcon fontSize="small" />
-                    </ListItemIcon>
-                    <ListItemText 
-                      primary="Prorratear por Proyectos"
-                      secondary={!formik.values.total ? "Falta total" : null}
-                    />
-                  </MenuItem>
-                )}
-              </Menu>
-              
-              {/* Acciones principales de navegación */}
-              <Button variant="outlined" onClick={() => router.push(lastPageUrl || '/')}>
-                Volver sin guardar
-              </Button>
-              <Button variant="contained" onClick={formik.submitForm} disabled={isLoading}>
-                {isLoading ? <CircularProgress size={22} /> : (isEditMode ? 'Guardar' : 'Crear')}
-              </Button>
-            </Stack>
-          </Stack>
-        </Paper>
-
-        {isInitialLoading ? (
-          <Box display="flex" flexDirection="column" justifyContent="center" alignItems="center" minHeight="50vh" spacing={2}>
-            <CircularProgress />
-            {isRetrying && retryCount > 0 && (
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-                Reintentando... (intento {retryCount}/3)
-              </Typography>
-            )}
-            {!isRetrying && retryCount === 0 && (
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-                Cargando datos...
-              </Typography>
-            )}
-          </Box>
-        ) : loadingError ? (
-          <Box display="flex" flexDirection="column" justifyContent="center" alignItems="center" minHeight="50vh" spacing={2}>
-            <Alert 
-              severity={loadingError.code?.startsWith('sorby/') ? 'warning' : 'error'} 
-              sx={{ mb: 2, maxWidth: 600 }}
-            >
-              <Typography variant="h6" gutterBottom>
-                {loadingError.code?.startsWith('sorby/') 
-                  ? 'Problema con tu sesión' 
-                  : 'Error al cargar los datos'}
-              </Typography>
-              <Typography variant="body2" sx={{ mb: 2 }}>
-                {loadingError.code?.startsWith('sorby/') 
-                  ? 'Tu sesión parece estar desactualizada o incompleta. Por favor, cerrá sesión y volvé a ingresar.'
-                  : (loadingError.message || 'Ha ocurrido un error inesperado')}
-              </Typography>
-              <Stack direction="row" spacing={2} sx={{ mt: 2 }}>
-                <Button 
-                  variant="outlined" 
-                  onClick={() => router.push(lastPageUrl || '/')}
-                >
-                  Volver
-                </Button>
-                {loadingError.code?.startsWith('sorby/') ? (
-                  <Button 
-                    variant="contained" 
-                    color="warning"
-                    onClick={() => {
-                      signOut();
-                      router.push('/auth/login');
-                    }}
-                  >
-                    Cerrar sesión
-                  </Button>
-                ) : (
-                  <Button 
-                    variant="contained" 
-                    onClick={handleRetry}
-                    startIcon={isInitialLoading ? <CircularProgress size={16} /> : null}
-                    disabled={isInitialLoading}
-                  >
-                    {isInitialLoading ? 'Reintentando...' : 'Reintentar'}
-                  </Button>
-                )}
-              </Stack>
-            </Alert>
-          </Box>
-        ) : modoIngreso === null && !isEditMode ? (
-          <Box display="flex" flexDirection="column" alignItems="center" justifyContent="center" minHeight="60vh">
-            <Paper sx={{ p: 4, maxWidth: 460, width: '100%', textAlign: 'center' }}>
-              <Typography variant="h6" gutterBottom>¿Cómo querés cargar el movimiento?</Typography>
-              {effectiveProyectoName && (
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                  Proyecto: {effectiveProyectoName}
-                </Typography>
-              )}
-              <Stack spacing={2} sx={{ mt: 3 }}>
-                <Button
-                  variant="contained"
-                  size="large"
-                  startIcon={isExtractingData ? <CircularProgress size={18} /> : <DocumentScannerIcon />}
-                  onClick={() => {
-                    pendingExtraccionRef.current = true;
-                    fileInputRef.current?.click();
-                  }}
-                  disabled={isExtractingData}
-                  sx={{ py: 2 }}
-                >
-                  {isExtractingData ? 'Extrayendo datos...' : 'Tengo una factura o comprobante'}
-                </Button>
-                <Button
-                  variant="outlined"
-                  size="large"
-                  onClick={() => setModoIngreso('manual')}
-                  disabled={isExtractingData}
-                  sx={{ py: 2 }}
-                >
-                  Carga manual
-                </Button>
-              </Stack>
-            </Paper>
-          </Box>
-        ) : (
-          <Grid container spacing={3}>
-            {/* COLUMNA IZQUIERDA */}
-            <Grid item xs={12} md={isWide ? 9 : 7}>
-              <Paper sx={{ p: 0, mb: 2 }}>
-                {/* Header + Tabs */}
-                <Box sx={{ px: 2, pt: 2 }}>
-                  <Stack direction="row" alignItems="center" justifyContent="space-between">
-                    <Typography variant="h6">Edición de movimiento</Typography>
-                    <Stack direction="row" spacing={1}>
-                      <Button size="small" variant="outlined" onClick={toggleWide}>{isWide ? 'Vista normal' : 'Vista ancha'}</Button>
-                      <Button size="small" variant="contained" onClick={formik.submitForm} disabled={isLoading}>
-                        {isLoading ? <CircularProgress size={18} /> : (isEditMode ? 'Guardar' : 'Crear')}
-                      </Button>
-                    </Stack>
-                  </Stack>
-                </Box>
-
-                <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" scrollButtons="auto" sx={{ px: 1, borderBottom: 1, borderColor: 'divider' }}>
-                  <Tab label="Info general" />
-                  <Tab label="Importes e impuestos" />
-                  <Tab label="Imagen de la factura" />
-                  <Tab label="Auditoria" />
-                </Tabs>
-
-                {tab === 0 && (
-                  <Box sx={{ p: 0 }}>
-                    <form onSubmit={formik.handleSubmit}>
-                      <MovementFields
-                        group="general"
-                        formik={formik}
-                        comprobante_info={comprobante_info}
-                        ingreso_info={ingreso_info}
-                        empresa={empresa}
-                        etapas={empresa?.etapas || []}
-                        proveedores={proveedores}
-                        categorias={categorias}
-                        categoriaSeleccionada={categoriaSeleccionada}
-                        tagsExtra={tagsExtra}
-                        mediosPago={mediosPago}
-                        isEditMode={isEditMode}
-                        isLoading={isLoading}
-                        router={router}
-                        lastPageUrl={lastPageUrl}
-                        lastPageName={lastPageName}
-                        movimiento={movimiento}
-                        obrasOptions={obrasOptions}
-                        clientesOptions={clientesOptions}
-                      />
-
-                    </form>
-                  </Box>
-                )}
-
-                {tab === 1 && (
-                  <Box sx={{ p: 0 }}>
-                    <form onSubmit={formik.handleSubmit}>
-                      <MovementFields
-                        group="montos"
-                        formik={formik}
-                        comprobante_info={comprobante_info}
-                        ingreso_info={ingreso_info}
-                        empresa={empresa}
-                        etapas={empresa?.etapas || []}
-                        proveedores={proveedores}
-                        categorias={categorias}
-                        categoriaSeleccionada={categoriaSeleccionada}
-                        tagsExtra={tagsExtra}
-                        mediosPago={mediosPago}
-                        isEditMode={isEditMode}
-                        isLoading={isLoading}
-                        router={router}
-                        lastPageUrl={lastPageUrl}
-                        lastPageName={lastPageName}
-                        movimiento={movimiento}
-                        parcialMonto={parcialMonto}
-                        onParcialMontoChange={handleParcialMontoChange}
-                      />
-                    </form>
-                  </Box>
-                )}
-
-                {tab === 2 && (
-                  <Box sx={{ p: 2 }}>
-                    <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
-                      <Typography variant="subtitle2">Comprobante</Typography>
-                      <Stack direction="row" spacing={1}>
-                        <Button size="small" variant="outlined" startIcon={<RemoveIcon />} onClick={decreaseHeight}>Alto</Button>
-                        <Button size="small" variant="outlined" startIcon={<AddIcon />} onClick={increaseHeight}>Alto</Button>
-                        <Button size="small" variant="contained" startIcon={<OpenInFullIcon />} onClick={() => setFullOpen(true)} disabled={!hasComprobante}>Full</Button>
-                        <Button variant="outlined" size="small" onClick={() => handleExtraerDatos()} disabled={isExtractingData || (!isEditMode && !hasComprobante)}>
-                          {isExtractingData ? <CircularProgress size={18} /> : 'Extraer datos de archivo'}
-                        </Button>
-                      </Stack>
-                    </Stack>
-
-                    <Button variant="outlined" size="small" onClick={() => fileInputRef.current?.click()} sx={{ mb: 1 }}>
-                      Seleccionar archivo
-                    </Button>
-                    {!isEditMode && (
-                      <Button variant="contained" onClick={handleUploadImage} disabled={!nuevoArchivo || isReemplazandoImagen} sx={{ mt: 2, ml: 1 }}>
-                        {isReemplazandoImagen ? <CircularProgress size={22} /> : 'Subir comprobante'}
-                      </Button>
-                    )}
-
-                    {(movimiento?.url_imagen || urlTemporal || previewUrl) && (
-                      <Box mt={2}>
-                        {(() => {
-                          const src = previewUrl || movimiento?.url_imagen || urlTemporal;
-                          const isPdf = String(src).includes('.pdf') || (nuevoArchivo?.type === 'application/pdf');
-                          return isPdf ? (
-                            <Box
-                              key={src}
-                              sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, overflow: 'hidden', height: `${viewerHeightVh}vh` }}
-                              onDoubleClick={() => setFullOpen(true)}
-                            >
-                              <embed src={src} width="100%" height="100%" />
-                            </Box>
-                          ) : (
-                            <Box
-                              key={src}
-                              sx={{ width: '100%', height: `${viewerHeightVh}vh`, borderRadius: 1, border: '1px solid', borderColor: 'divider', overflow: 'hidden', cursor: 'zoom-in' }}
-                              onDoubleClick={() => setFullOpen(true)}
-                            >
-                              <img src={src} alt="Comprobante" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                            </Box>
-                          );
-                        })()}
-                      </Box>
-                    )}
-                  </Box>
-                )}
-
-                {tab === 3 && (
-                  <Box sx={{ p: 2 }}>
-                    <Typography variant="subtitle2" sx={{ mb: 1 }}>Auditoria de cambios</Typography>
-                    <Divider sx={{ mb: 2 }} />
-                    <MovimientoLogsPanel logs={movimiento?.logs || []} />
-                  </Box>
-                )}
-              </Paper>
-
-
-
-            </Grid>
-
-            {/* COLUMNA DERECHA */}
-            <Grid item xs={12} md={isWide ? 3 : 5}>
-              <Stack spacing={2} sx={{ position: { md: 'sticky' }, top: { md: 16 } }}>
-                <Paper sx={{ p: 2 }}>
-                  <Typography variant="h6" sx={{ mb: 1 }}>Resumen</Typography>
-                  <Stack spacing={1}>
-                    {(() => {
+  const sharedFieldProps = {
+    formik,
+    comprobante_info,
+    ingreso_info,
+    empresa,
+    etapas: empresa?.etapas || [],
+    proveedores,
+    categorias,
+    categoriaSeleccionada,
+    tagsExtra,
+    mediosPago,
+    isEditMode,
+    isLoading,
+    router,
+    lastPageUrl,
+    lastPageName,
+    movimiento,
+    obrasOptions,
+    clientesOptions,
+    parcialMonto,
+    onParcialMontoChange: handleParcialMontoChange,
+    hideFooterButtons: true,
+  };
+  const renderSummaryBody = () => {
                       const V = formik.values || {};
                       const impuestos = Array.isArray(V.impuestos) ? V.impuestos : [];
                       const impuestosTotal = impuestos.reduce((a, i) => a + (Number(i.monto) || 0), 0);
                       const yesNo = (b) => (b ? 'Sí' : 'No');
-
-                      // Defaults para resumen (mismos que en configuracionGeneral)
                       const comprobanteDefaults = {
                         categoria: true, observacion: true, proveedor: true, proyecto: true,
                         subcategoria: false, total_original: false, medio_pago: false,
@@ -1243,53 +981,55 @@ const createdAtStr = (() => {
                       const camposCfg = { ...defaults, ...(rawInfo || {}) };
                       const shouldShowMontoPagado = V.type === 'egreso' && V.estado === 'Parcialmente Pagado';
                       const montoPagadoResumen = Number(parcialMonto || V.monto_pagado || 0);
-
-                      // configKey: clave en comprobante_info/ingreso_info. null = siempre visible.
                       const summaryConfig = [
-                        { key: '__creator',     label: 'Creador',         configKey: null, render: () => (<Typography variant="body2">{creatorLabel}</Typography>) },
-                        { key: '__created_at',  label: 'Fecha de creación', configKey: null, render: () => (<Typography variant="body2">{createdAtStr || '—'}</Typography>) },
+      { key: '__creator', label: 'Creador', configKey: null, render: () => <span className="text-xs text-neutral-800">{creatorLabel}</span> },
+      { key: '__created_at', label: 'Fecha de creación', configKey: null, render: () => <span className="text-xs text-neutral-800">{createdAtStr || '—'}</span> },
                         { key: 'nombre_proveedor', label: 'Proveedor', configKey: 'proveedor' },
-                        { key: 'fecha_factura',    label: 'Fecha', configKey: null },
-                        { key: 'type',             label: 'Tipo', configKey: null, format: (v) => (v ? v.toUpperCase() : '-') },
-                        { key: 'categoria',        label: 'Categoría', configKey: 'categoria' },
-                        { key: 'subcategoria',     label: 'Subcategoría', configKey: 'subcategoria' },
-                        { key: 'numero_factura',   label: 'N° Factura', configKey: 'numero_factura' },
-                        { key: 'tipo_factura',     label: 'Tipo de Factura', configKey: 'tipo_factura' },
-                        { key: 'medio_pago',       label: 'Medio de Pago', configKey: 'medio_pago' },
+      { key: 'fecha_factura', label: 'Fecha', configKey: null },
+      { key: 'type', label: 'Tipo', configKey: null, format: (v) => (v ? v.toUpperCase() : '-') },
+      { key: 'categoria', label: 'Categoría', configKey: 'categoria' },
+      { key: 'subcategoria', label: 'Subcategoría', configKey: 'subcategoria' },
+      { key: 'numero_factura', label: 'N° Factura', configKey: 'numero_factura' },
+      { key: 'tipo_factura', label: 'Tipo de Factura', configKey: 'tipo_factura' },
+      { key: 'medio_pago', label: 'Medio de Pago', configKey: 'medio_pago' },
                         { key: 'empresa_facturacion', label: 'Empresa de facturación', configKey: 'empresa_facturacion' },
                         { key: 'factura_cliente', label: 'Factura de cliente', configKey: 'factura_cliente', format: yesNo },
-                        { key: 'fecha_pago',          label: 'Fecha de pago', configKey: 'fecha_pago' },
-                        { key: 'moneda',           label: 'Moneda', configKey: null },
-                        { key: 'subtotal',         label: 'Subtotal', configKey: 'subtotal', format: (v)=>formatCurrency(v,2) },
-                        { key: 'total_original',   label: 'Total Original', configKey: 'total_original', format: (v)=>formatCurrency(v,2) },
-                        { key: 'total',            label: 'Total', configKey: null, format: (v)=>formatCurrency(v,2) },
-                        { key: 'estado',           label: 'Estado', configKey: null,
+      { key: 'fecha_pago', label: 'Fecha de pago', configKey: 'fecha_pago' },
+      { key: 'moneda', label: 'Moneda', configKey: null },
+      { key: 'subtotal', label: 'Subtotal', configKey: 'subtotal', format: (v) => formatCurrency(v, 2) },
+      { key: 'total_original', label: 'Total Original', configKey: 'total_original', format: (v) => formatCurrency(v, 2) },
+      { key: 'total', label: 'Total', configKey: null, format: (v) => formatCurrency(v, 2) },
+      { key: 'estado', label: 'Estado', configKey: null,
                           render: () => (
-                            <Chip
-                              size="small"
-                              color={V.estado === 'Pagado' ? 'success' : V.estado === 'Parcialmente Pagado' ? 'info' : 'warning'}
-                              label={V.estado || 'Pendiente'}
-                              sx={{ ml: 0.5 }}
-                            />
-                          )
-                        },
-                        { key: 'caja_chica',       label: 'Caja Chica', configKey: 'caja_chica', format: yesNo },
-                        { key: 'cuenta_interna',   label: 'Cuenta Interna', configKey: 'cuenta_interna' },
-                        { key: 'etapa',            label: 'Etapa', configKey: 'etapa' },
-                        { key: 'observacion',     label: 'Observación', configKey: 'observacion' },
-                        { key: 'detalle',         label: 'Detalle', configKey: 'detalle' },
-                        { key: 'obra',    label: 'Obra', configKey: 'obra' },
+          <span
+            className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+              V.estado === 'Pagado' ? 'bg-success-main/15 text-success-dark' :
+              V.estado === 'Parcialmente Pagado' ? 'bg-info-main/15 text-info-dark' :
+              'bg-warning-main/15 text-warning-dark'
+            }`}
+          >
+            {V.estado || 'Pendiente'}
+          </span>
+        ),
+      },
+      { key: 'caja_chica', label: 'Caja Chica', configKey: 'caja_chica', format: yesNo },
+      { key: 'cuenta_interna', label: 'Cuenta Interna', configKey: 'cuenta_interna' },
+      { key: 'etapa', label: 'Etapa', configKey: 'etapa' },
+      { key: 'observacion', label: 'Observación', configKey: 'observacion' },
+      { key: 'detalle', label: 'Detalle', configKey: 'detalle' },
+      { key: 'obra', label: 'Obra', configKey: 'obra' },
                         { key: 'cliente', label: 'Cliente', configKey: 'cliente' },
-                        { key: 'tags_extra',       label: 'Tags', configKey: 'tags_extra',
+      { key: 'tags_extra', label: 'Tags', configKey: 'tags_extra',
                           render: () =>
                             Array.isArray(V.tags_extra) && V.tags_extra.length > 0 ? (
-                              <Stack direction="row" spacing={0.5} flexWrap="wrap">
-                                {V.tags_extra.map((t) => (<Chip key={t} size="small" label={t} variant="outlined" />))}
-                              </Stack>
-                            ) : null
-                        },
-                      ];
-
+            <span className="flex flex-wrap gap-0.5">
+              {V.tags_extra.map((t) => (
+                <span key={t} className="rounded border border-neutral-200 px-1.5 py-0.5 text-[10px] text-neutral-700">{t}</span>
+              ))}
+            </span>
+          ) : null,
+      },
+    ];
                       if (shouldShowMontoPagado) {
                         const totalIndex = summaryConfig.findIndex((item) => item.key === 'total');
                         summaryConfig.splice(totalIndex + 1, 0, {
@@ -1297,192 +1037,584 @@ const createdAtStr = (() => {
                           label: 'Monto ya pagado',
                           configKey: null,
                           render: () => (
-                            <Typography variant="body2" color="success.main" sx={{ fontWeight: 600 }}>
-                              {formatCurrency(montoPagadoResumen, 2)}
-                            </Typography>
-                          )
-                        });
-                      }
-
+          <span className="text-xs font-semibold text-success-dark">{formatCurrency(montoPagadoResumen, 2)}</span>
+        ),
+      });
+    }
                       const rows = summaryConfig
-                        // Filtrar por configuración: si tiene configKey, solo mostrar si está habilitado
                         .filter(({ configKey }) => configKey === null || configKey === undefined || camposCfg[configKey])
                         .filter(({ key, render }) => render || (V[key] !== undefined && String(V[key]).trim() !== ''))
                         .map(({ key, label, format, render }) => (
-                          <Stack key={key} direction="row" spacing={0.75} alignItems="center" flexWrap="wrap">
-                            <Typography variant="body2" sx={{ fontWeight: 700, minWidth: 130 }}>{label}:</Typography>
-                            {render ? render() : (<Typography variant="body2">{format ? format(V[key]) : V[key]}</Typography>)}
-                          </Stack>
-                        ));
-
+        <div key={key} className="flex flex-wrap gap-x-1 gap-y-0.5 border-b border-divider/80 py-1 last:border-0">
+          <span className="w-28 shrink-0 text-[11px] font-bold text-neutral-600">{label}:</span>
+          <div className="min-w-0 flex-1 text-xs text-neutral-900">
+            {render ? render() : (format ? format(V[key]) : V[key])}
+          </div>
+        </div>
+      ));
                       const impuestosRow = camposCfg.impuestos ? (
-                        <Stack key="__impuestos" spacing={0.5}>
-                          <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap">
-                            <Typography variant="body2" sx={{ fontWeight: 700, minWidth: 130 }}>Impuestos:</Typography>
-                            <Typography variant="body2">
+      <div key="__impuestos" className="flex flex-wrap gap-1 border-b border-divider/80 py-1">
+        <span className="w-28 shrink-0 text-[11px] font-bold text-neutral-600">Impuestos:</span>
+        <span className="text-xs text-neutral-800">
                               {impuestos.length > 0 ? `${impuestos.length} ítem(s) • ${formatCurrency(impuestosTotal, 2)}` : '—'}
-                            </Typography>
-                          </Stack>
-                        </Stack>
+        </span>
+      </div>
                       ) : null;
-
                       const stockRefId = movimiento?.acopio_id || movimiento?.solicitud_stock_id;
                       const stockRefTipo = movimiento?.acopio_id ? 'acopio' : (movimiento?.solicitud_stock_id ? 'solicitud' : null);
                       const showStockSection = isEditMode && formik.values.categoria === 'Materiales' && empresa?.stock_config?.caja_a_stock === true;
-
                       const materialesList = showStockSection && (
-                        <Stack key="__materiales_stock" spacing={1} sx={{ mt: 1 }}>
-                          <Divider />
-                          <Typography variant="body2" sx={{ fontWeight: 700 }}>📦 Stock:</Typography>
+      <div className="mt-2 border-t border-divider pt-2">
+        <p className="text-[11px] font-bold text-neutral-800">Stock</p>
                           {stockRefId ? (
-                            <Stack spacing={0.5} sx={{ pl: 1 }}>
-                              <Stack direction="row" alignItems="center" spacing={0.5}>
-                                <CheckCircleOutlineIcon color="success" sx={{ fontSize: 16 }} />
-                                <Typography variant="body2" color="success.dark">
+          <div className="mt-1 space-y-1 pl-0.5">
+            <div className="flex items-center gap-1 text-xs text-success-dark">
+              <CheckCircleIcon className="h-3.5 w-3.5" aria-hidden />
                                   {stockRefTipo === 'acopio' ? 'Acopio creado' : 'Solicitud de stock creada'}
-                                </Typography>
-                              </Stack>
-                              <Button
-                                size="small"
-                                variant="text"
-                                href={stockRefTipo === 'acopio'
-                                  ? `/movimientosAcopio?acopioId=${stockRefId}`
-                                  : `/stockSolicitudes?solicitudId=${stockRefId}`}
-                                sx={{ justifyContent: 'flex-start', textTransform: 'none', pl: 0 }}
+            </div>
+            <a
+              className="block text-xs text-primary-dark hover:underline"
+              href={stockRefTipo === 'acopio' ? `/movimientosAcopio?acopioId=${stockRefId}` : `/stockSolicitudes?solicitudId=${stockRefId}`}
                               >
                                 {stockRefTipo === 'acopio' ? 'Ver acopio →' : 'Ver solicitud →'}
-                              </Button>
-                              <Button
-                                size="small"
-                                variant="text"
-                                color="warning"
+            </a>
+            <button
+              type="button"
+              className="block text-left text-xs text-warning-dark hover:underline"
                                 onClick={() => setStockPopupOpen(true)}
-                                sx={{ justifyContent: 'flex-start', textTransform: 'none', pl: 0 }}
                               >
                                 Reprocesar materiales
-                              </Button>
-                            </Stack>
+            </button>
+          </div>
                           ) : (
-                            <Stack spacing={0.5} sx={{ pl: 1 }}>
-                              <Typography variant="caption" color="text.secondary">
+          <div className="mt-1 space-y-1 pl-0.5">
+            <p className="text-[10px] text-neutral-500">
                                 {movimiento?.stock_procesado
                                   ? 'Se eligió no procesar. Podés procesarlos cuando quieras.'
                                   : 'Materiales pendientes de procesar.'}
-                              </Typography>
-                              <Button
-                                size="small"
-                                variant="outlined"
+            </p>
+            <button
+              type="button"
                                 onClick={() => setStockPopupOpen(true)}
-                                sx={{ justifyContent: 'flex-start', textTransform: 'none' }}
+              className="rounded border border-primary-main px-2 py-0.5 text-[11px] font-medium text-primary-dark"
                               >
                                 Procesar materiales
-                              </Button>
-                            </Stack>
+            </button>
+          </div>
                           )}
-                        </Stack>
+      </div>
                       );
-
                       return (
                         <>
-                          <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap">
-                            <Typography variant="body2" sx={{ fontWeight: 700, minWidth: 130 }}>Proyecto:</Typography>
-                            <Typography variant="body2">{effectiveProyectoName || '-'}</Typography>
-                          </Stack>
+        <div className="flex flex-wrap gap-1 border-b border-divider/80 py-1">
+          <span className="w-28 shrink-0 text-[11px] font-bold text-neutral-600">Proyecto:</span>
+          <span className="text-xs text-neutral-900">{effectiveProyectoName || '-'}</span>
+        </div>
                           {rows}
                           {impuestosRow}
                           {materialesList}
                         </>
                       );
-                    })()}
-                  </Stack>
-                </Paper>
+  };
+  return (
+    <>
+      <Head><title>{titulo}</title></Head>
 
-                {/* Información de Prorrateo */}
+      <input
+        ref={fileInputRef}
+        accept="image/*,application/pdf"
+        type="file"
+        className="hidden"
+        onClick={handleFileInputClick}
+        onChange={handleFileChange}
+        aria-hidden
+      />
+      <div className="flex h-[calc(100dvh-4.5rem)] max-h-[calc(100vh-4.5rem)] min-h-0 flex-col gap-2 overflow-hidden bg-neutral-50 px-2 pb-2 pt-1">
+        <header className="shrink-0 rounded-xl border border-divider bg-white px-3 py-2 shadow-sm">
+          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <div className="min-w-0">
+              <h1 className="text-base font-bold tracking-tight text-neutral-900 md:text-lg">{titulo}</h1>
+              <div className="mt-1 flex flex-wrap items-center gap-1">
+                {effectiveProyectoName && (
+                  <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] text-neutral-800">{effectiveProyectoName}</span>
+                )}
+                {formik.values?.fecha_factura && (
+                  <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] text-neutral-800">{formik.values.fecha_factura}</span>
+                )}
+                {formik.values.type && (
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase ${
+                      formik.values.type === 'ingreso' ? 'bg-success-main/15 text-success-dark' : 'bg-error-main/15 text-error-dark'
+                    }`}
+                  >
+                    {formik.values.type}
+                  </span>
+                )}
+                {formik.values.caja_chica && (
+                  <span className="rounded-full bg-info-main/15 px-2 py-0.5 text-[11px] font-medium text-info-dark">Caja chica</span>
+                )}
+                {isEditMode && movimiento?.origen && (
+                  <span
+                    className="inline-flex items-center gap-0.5 rounded-full border border-neutral-200 px-2 py-0.5 text-[11px] capitalize text-neutral-700"
+                    title={`Origen: ${movimiento.origen}`}
+                  >
+                    {movimiento.origen === 'whatsapp' ? <ChatBubbleOvalLeftEllipsisIcon className="h-3.5 w-3.5 text-success-main" /> : null}
+                    {movimiento.origen === 'web' ? <GlobeAltIcon className="h-3.5 w-3.5 text-info-main" /> : null}
+                    {(movimiento.origen?.includes('sync') || movimiento.id_sincronizacion) && movimiento.origen !== 'whatsapp' && movimiento.origen !== 'web' ? (
+                      <ArrowPathRoundedSquareIcon className="h-3.5 w-3.5" />
+                    ) : null}
+                    {movimiento.origen === 'whatsapp' ? 'WhatsApp' : movimiento.origen === 'web' ? 'Web' : movimiento.origen}
+                  </span>
+                )}
+                {isEditMode && movimiento?.id_sincronizacion && !movimiento?.origen?.includes('sync') && (
+                  <span className="inline-flex items-center gap-0.5 rounded-full border border-neutral-300 px-2 py-0.5 text-[11px]" title={`Sincronizado: ${movimiento.id_sincronizacion}`}>
+                    <ArrowPathRoundedSquareIcon className="h-3.5 w-3.5" />
+                    Sync
+                  </span>
+                )}
+                {isRetrying && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-warning-main/15 px-2 py-0.5 text-[11px] text-warning-dark">
+                    <ArrowPathIcon className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                    Reintentando…
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {(isEditMode || modoIngreso === 'manual') && (
+                <button
+                  type="button"
+                  onClick={() => handleExtraerDatos()}
+                  disabled={isExtractingData || (!isEditMode && !hasComprobante)}
+                  className="inline-flex items-center gap-1 rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium text-neutral-800 shadow-sm hover:bg-neutral-50 disabled:opacity-50"
+                >
+                  {isExtractingData ? (
+                    <ArrowPathIcon className="h-4 w-4 animate-spin" aria-hidden />
+                  ) : (
+                    <DocumentMagnifyingGlassIcon className="h-4 w-4" aria-hidden />
+                  )}
+                  {isExtractingData ? 'Extrayendo…' : 'Extraer datos de archivo'}
+                </button>
+              )}
+              <div className="relative" ref={accionesRef}>
+                <button
+                  type="button"
+                  disabled={isLoading}
+                  onClick={() => setAccionesOpen((o) => !o)}
+                  className="inline-flex items-center gap-1 rounded-lg border border-primary-main bg-white px-3 py-1.5 text-sm font-medium text-primary-dark shadow-sm hover:bg-primary-lightest disabled:opacity-50"
+                >
+                  <EllipsisVerticalIcon className="h-4 w-4" aria-hidden />
+                  Acciones
+                </button>
+                {accionesOpen && (
+                  <div
+                    role="menu"
+                    className="absolute right-0 z-30 mt-1 min-w-[14rem] rounded-lg border border-divider bg-white py-1 shadow-lg"
+                  >
+                    <button
+                      type="button"
+                      role="menuitem"
+                      disabled={!effectiveProyectoId}
+                      onClick={() => handleAccionesMenuItemClick('transferencia')}
+                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-neutral-50 disabled:opacity-40"
+                    >
+                      <ArrowsRightLeftIcon className="h-4 w-4 text-neutral-600" />
+                      Transferencia interna
+                    </button>
+                    {!isEditMode && (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        disabled={!effectiveProyectoId || !formik.values.total || proyectos.length <= 1 || formik.values.type !== 'egreso'}
+                        onClick={() => handleAccionesMenuItemClick('pagoOtraCaja')}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-neutral-50 disabled:opacity-40"
+                      >
+                        <WalletIcon className="h-4 w-4 text-neutral-600" />
+                        Pagar desde otra caja
+                      </button>
+                    )}
+                    {!isEditMode && proyectos.length >= 1 && (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        disabled={isLoading || !formik.values.total}
+                        onClick={() => handleAccionesMenuItemClick('prorrateo')}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-neutral-50 disabled:opacity-40"
+                      >
+                        <ChartPieIcon className="h-4 w-4 text-neutral-600" />
+                        Prorratear por proyectos
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      role="menuitem"
+                      disabled={!isEditMode}
+                      onClick={() => handleAccionesMenuItemClick('auditoria')}
+                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-neutral-50 disabled:opacity-40"
+                    >
+                      <DocumentTextIcon className="h-4 w-4 text-neutral-600" />
+                      Ver auditoría
+                    </button>
+                    {mostrarCompletarPago && (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        disabled={isLoading || completarPagoLoading}
+                        onClick={() => handleAccionesMenuItemClick('completarPago')}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-neutral-50 disabled:opacity-40"
+                      >
+                        <CheckCircleIcon className="h-4 w-4 text-success-dark" />
+                        Completar pago
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => router.push(lastPageUrl || '/')}
+                className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium text-neutral-800 shadow-sm hover:bg-neutral-50"
+              >
+                Volver sin guardar
+              </button>
+              <button
+                type="button"
+                onClick={() => formik.submitForm()}
+                disabled={isLoading}
+                className="inline-flex min-w-[5.5rem] items-center justify-center rounded-lg bg-primary-main px-4 py-1.5 text-sm font-semibold text-white shadow hover:bg-primary-dark disabled:opacity-50"
+              >
+                {isLoading ? <ArrowPathIcon className="h-5 w-5 animate-spin" aria-label="Cargando" /> : (isEditMode ? 'Guardar' : 'Crear')}
+              </button>
+            </div>
+          </div>
+        </header>
+
+        {isInitialLoading ? (
+          <div className="flex flex-1 flex-col items-center justify-center gap-2">
+            <ArrowPathIcon className="h-10 w-10 animate-spin text-primary-main" aria-hidden />
+            {isRetrying && retryCount > 0 && (
+              <p className="text-sm text-neutral-600">Reintentando… ({retryCount}/3)</p>
+            )}
+            {!isRetrying && retryCount === 0 && (
+              <p className="text-sm text-neutral-600">Cargando datos…</p>
+            )}
+          </div>
+        ) : loadingError ? (
+          <div className="flex flex-1 flex-col items-center justify-center p-4">
+            <div
+              className={`max-w-lg rounded-xl border px-4 py-3 ${
+                loadingError.code?.startsWith('sorby/') ? 'border-warning-main/40 bg-warning-main/10' : 'border-error-main/40 bg-error-main/10'
+              }`}
+            >
+              <p className="text-sm font-semibold text-neutral-900">
+                {loadingError.code?.startsWith('sorby/') ? 'Problema con tu sesión' : 'Error al cargar los datos'}
+              </p>
+              <p className="mt-2 text-sm text-neutral-700">
+                {loadingError.code?.startsWith('sorby/')
+                  ? 'Tu sesión parece estar desactualizada o incompleta. Cerrá sesión y volvé a ingresar.'
+                  : (loadingError.message || 'Error inesperado')}
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => router.push(lastPageUrl || '/')}
+                  className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm"
+                >
+                  Volver
+                </button>
+                {loadingError.code?.startsWith('sorby/') ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      signOut();
+                      router.push('/auth/login');
+                    }}
+                    className="rounded-lg bg-warning-main px-3 py-1.5 text-sm font-medium text-white"
+                  >
+                    Cerrar sesión
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleRetry}
+                    disabled={isInitialLoading}
+                    className="rounded-lg bg-primary-main px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+                  >
+                    {isInitialLoading ? 'Reintentando…' : 'Reintentar'}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : modoIngreso === null && !isEditMode ? (
+          <div className="flex flex-1 flex-col items-center justify-center px-4 py-8">
+            <div className="w-full max-w-md rounded-xl border border-divider bg-white p-6 text-center shadow-sm">
+              <h2 className="text-lg font-semibold text-neutral-900">¿Cómo querés cargar el movimiento?</h2>
+              {effectiveProyectoName && (
+                <p className="mt-2 text-sm text-neutral-600">Proyecto: {effectiveProyectoName}</p>
+              )}
+              <div className="mt-6 flex flex-col gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    pendingExtraccionRef.current = true;
+                    fileInputRef.current?.click();
+                  }}
+                  disabled={isExtractingData}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary-main px-4 py-3 text-sm font-semibold text-white shadow hover:bg-primary-dark disabled:opacity-50"
+                >
+                  {isExtractingData ? (
+                    <ArrowPathIcon className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+                  ) : (
+                    <DocumentMagnifyingGlassIcon className="h-4 w-4 shrink-0" aria-hidden />
+                  )}
+                  {isExtractingData ? 'Extrayendo datos…' : 'Tengo una factura o comprobante'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setModoIngreso('manual')}
+                  disabled={isExtractingData}
+                  className="rounded-lg border border-neutral-300 bg-white px-4 py-3 text-sm font-medium text-neutral-800 hover:bg-neutral-50 disabled:opacity-50"
+                >
+                  Carga manual
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden lg:flex-row lg:gap-3">
+            <form
+              className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-hidden"
+              onSubmit={formik.handleSubmit}
+            >
+              <div
+                data-movement-form-scroll="true"
+                className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain"
+              >
+                <div className="flex flex-col gap-2 pb-1">
+                  <StitchBlock step={1} title="Detalles del movimiento">
+                    <MovementFields {...sharedFieldProps} block="details" />
+                  </StitchBlock>
+                  <StitchBlock step={2} title="Clasificación">
+                    <MovementFields {...sharedFieldProps} block="classification" />
+                  </StitchBlock>
+                  <StitchBlock step={3} title="Detalles financieros e impuestos">
+                    <MovementFields {...sharedFieldProps} block="financial" />
+                  </StitchBlock>
+                </div>
+              </div>
+              <footer className="flex shrink-0 flex-wrap items-center gap-2 border-t border-divider bg-neutral-50 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!hasComprobante) {
+                      fileInputRef.current?.click();
+                      return;
+                    }
+                    if (isComprobantePdf) {
+                      setPdfModalOpen(true);
+                      return;
+                    }
+                    setImagenModal(comprobanteSrc);
+                    setComprobanteModalOpen(true);
+                  }}
+                  className="text-sm font-medium text-primary-dark hover:underline"
+                >
+                  Ver imagen de factura
+                </button>
+                {!isEditMode && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="text-sm font-medium text-neutral-700 hover:underline"
+                    >
+                      Elegir archivo
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleUploadImage}
+                      disabled={!nuevoArchivo || isReemplazandoImagen}
+                      className="rounded-lg border border-primary-main px-2 py-1 text-xs font-semibold text-primary-dark disabled:opacity-40"
+                    >
+                      {isReemplazandoImagen ? 'Subiendo…' : 'Subir comprobante'}
+                    </button>
+                  </>
+                )}
+                {isEditMode && (
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="text-sm font-medium text-neutral-700 hover:underline"
+                  >
+                    Reemplazar comprobante
+                  </button>
+                )}
+              </footer>
+            </form>
+
+            <aside className="hidden min-h-0 w-full shrink-0 flex-col overflow-hidden rounded-xl border border-divider bg-white shadow-sm lg:flex lg:w-[280px]">
+              <div className="border-b border-divider px-3 py-2">
+                <h2 className="text-sm font-semibold text-neutral-900">Resumen</h2>
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">{renderSummaryBody()}</div>
                 {isEditMode && movimiento?.es_movimiento_prorrateo && (
+                <div className="shrink-0 border-t border-divider px-2 pb-2">
                   <ProrrateoInfo 
                     movimiento={movimiento}
                     onVerRelacionados={() => {
                       router.push(`/movimientos-prorrateo?grupoId=${movimiento.prorrateo_grupo_id}`);
                     }}
                   />
+                </div>
                 )}
-
-                {/* Información de Pago Entre Cajas */}
                 {isEditMode && movimiento?.es_pago_entre_cajas && (
-                  <PagoEntreCajasInfo 
+                <div className="shrink-0 border-t border-divider px-2 pb-2">
+                  <PagoEntreCajasInfo movimiento={movimiento} />
+                </div>
+              )}
+            </aside>
+
+            <div className="shrink-0 rounded-xl border border-divider bg-white p-3 shadow-sm lg:hidden">
+              <h2 className="mb-2 text-sm font-semibold text-neutral-900">Resumen</h2>
+              <div className="max-h-48 overflow-y-auto text-xs">{renderSummaryBody()}</div>
+              {isEditMode && movimiento?.es_movimiento_prorrateo && (
+                <ProrrateoInfo
                     movimiento={movimiento}
-                  />
-                )}
-
-                {/* HISTORIAL / ACCIONES secundarias… (sin cambios) */}
-                {/* ... */}
-              </Stack>
-            </Grid>
-          </Grid>
+                  onVerRelacionados={() => {
+                    router.push(`/movimientos-prorrateo?grupoId=${movimiento.prorrateo_grupo_id}`);
+                  }}
+                />
+              )}
+              {isEditMode && movimiento?.es_pago_entre_cajas && <PagoEntreCajasInfo movimiento={movimiento} />}
+            </div>
+          </div>
         )}
+        <ComprobanteModal
+          open={comprobanteModalOpen}
+          onClose={handleCloseComprobanteModal}
+          imagenUrl={imagenModal}
+        />
+        <ComprobantePdfModal
+          open={pdfModalOpen}
+          onClose={handleCloseComprobantePdfModal}
+          pdfUrl={hasComprobante && isComprobantePdf ? comprobanteSrc : ''}
+        />
 
-        {/* Fullscreen comprobante */}
-        <Dialog fullScreen open={fullOpen} onClose={() => setFullOpen(false)} PaperProps={{ sx: { bgcolor: 'black' } }}>
-          <Box sx={{ position: 'fixed', top: 8, right: 8, zIndex: 10 }}>
-            <IconButton onClick={() => setFullOpen(false)} sx={{ bgcolor: 'rgba(255,255,255,0.1)' }}>
-              <CloseIcon sx={{ color: 'white' }} />
+        <Dialog
+          open={auditOpen}
+          onClose={handleCloseAuditDialog}
+          maxWidth="md"
+          fullWidth
+        >
+          <DialogTitle sx={{ pr: 6 }}>
+            Auditoría de cambios
+            <IconButton
+              aria-label="Cerrar"
+              onClick={handleCloseAuditDialog}
+              sx={{ position: 'absolute', right: 8, top: 8 }}
+            >
+              <CloseIcon />
             </IconButton>
-          </Box>
-          {(movimiento?.url_imagen || urlTemporal || previewUrl) && (
-            <Box sx={{ width: '100vw', height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', p: { xs: 1, md: 3 } }}>
-              {(() => {
-                const src = previewUrl || movimiento?.url_imagen || urlTemporal;
-                const isPdf = String(src).includes('.pdf') || nuevoArchivo?.type === 'application/pdf';
-                return isPdf ? (
-                  <embed src={src} width="100%" height="100%" style={{ border: 0 }} />
-                ) : (
-                  <img src={src} alt="Comprobante" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
-                );
-              })()}
-            </Box>
-          )}
+          </DialogTitle>
+          <DialogContent dividers sx={{ minHeight: 240, maxHeight: '80vh' }}>
+            <MovimientoLogsPanel logs={movimiento?.logs || []} />
+          </DialogContent>
         </Dialog>
 
-        {/* Confirm totales */}
-        <Dialog open={confirmOpen} onClose={() => { setConfirmOpen(false); setPendingPayload(null); }}>
-          <DialogTitle>¿Guardar con totales diferentes?</DialogTitle>
+        <Dialog
+          open={completarPagoDialogOpen}
+          onClose={() => !completarPagoLoading && setCompletarPagoDialogOpen(false)}
+          aria-labelledby="completar-pago-dialog-title"
+        >
+          <DialogTitle id="completar-pago-dialog-title">Completar pago</DialogTitle>
           <DialogContent>
-            <Typography variant="body2" sx={{ mb: 1 }}>
-              Detectamos que <b>Subtotal + Impuestos</b> no coincide con <b>Total</b>.
-            </Typography>
-            <Stack spacing={0.5}>
-              <Typography variant="body2">Subtotal: {formatCurrency(Number(formik.values.subtotal)||0, 2)}</Typography>
-              <Typography variant="body2">
-                Impuestos: {formatCurrency((formik.values.impuestos||[]).reduce((a, i)=>a+(Number(i.monto)||0),0), 2)}
-              </Typography>
-              <Typography variant="body2">Total: {formatCurrency(Number(formik.values.total)||0, 2)}</Typography>
-              <Divider sx={{ my: 1 }} />
-              <Typography variant="body2">
-                Diferencia: {formatCurrency(Math.abs(((Number(formik.values.subtotal)||0) + (formik.values.impuestos||[]).reduce((a,i)=>a+(Number(i.monto)||0),0)) - (Number(formik.values.total)||0)), 2)}
-              </Typography>
-            </Stack>
-            <Typography variant="body2" sx={{ mt: 2 }}>
-              ¿Querés guardar de todos modos?
-            </Typography>
+            <DialogContentText component="div">
+              ¿Marcar este egreso como pagado por el total de{' '}
+              <strong>
+                {formatCurrency(
+                  Number(formik.values.total) || 0,
+                  formik.values.moneda || 'ARS'
+                )}
+              </strong>
+              ?
+              {formik.values.estado === 'Parcialmente Pagado' && (
+                <Typography component="span" variant="body2" display="block" sx={{ mt: 1.5, color: 'text.secondary' }}>
+                  El monto abonado pasará a igualar al total del comprobante.
+                </Typography>
+              )}
+            </DialogContentText>
           </DialogContent>
-          <DialogActions>
-            <Button onClick={() => { setConfirmOpen(false); setPendingPayload(null); }} variant="outlined">
-              Revisar
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button onClick={() => setCompletarPagoDialogOpen(false)} disabled={completarPagoLoading}>
+              Cancelar
             </Button>
             <Button
               variant="contained"
+              color="success"
+              onClick={handleCompletarPagoConfirm}
+              disabled={completarPagoLoading}
+              autoFocus
+            >
+              {completarPagoLoading ? <CircularProgress size={22} color="inherit" /> : 'Confirmar'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {confirmOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+            <div className="w-full max-w-md rounded-xl bg-white p-4 shadow-xl">
+              <h3 className="text-sm font-semibold text-neutral-900">¿Guardar con totales diferentes?</h3>
+              <p className="mt-2 text-xs text-neutral-700">
+                Subtotal + Impuestos no coincide con Total.
+              </p>
+              <ul className="mt-2 space-y-1 text-xs text-neutral-800">
+                <li>Subtotal: {formatCurrency(Number(formik.values.subtotal) || 0, 2)}</li>
+                <li>
+                  Impuestos:{' '}
+                  {formatCurrency((formik.values.impuestos || []).reduce((a, i) => a + (Number(i.monto) || 0), 0), 2)}
+                </li>
+                <li>Total: {formatCurrency(Number(formik.values.total) || 0, 2)}</li>
+                <li className="border-t border-divider pt-1 font-medium">
+                  Diferencia:{' '}
+                  {formatCurrency(
+                    Math.abs(
+                      (Number(formik.values.subtotal) || 0) +
+                        (formik.values.impuestos || []).reduce((a, i) => a + (Number(i.monto) || 0), 0) -
+                        (Number(formik.values.total) || 0)
+                    ),
+                    2
+                  )}
+                </li>
+              </ul>
+              <p className="mt-3 text-xs text-neutral-700">¿Guardar de todos modos?</p>
+              <div className="mt-4 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setConfirmOpen(false);
+                    setPendingPayload(null);
+                  }}
+                  className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm"
+                >
+              Revisar
+                </button>
+                <button
+                  type="button"
               onClick={async () => {
                 if (!pendingPayload) return;
                 setIsLoading(true);
                 await savePayload(pendingPayload);
               }}
+                  className="rounded-lg bg-primary-main px-3 py-1.5 text-sm font-semibold text-white"
             >
               Guardar igual
-            </Button>
-          </DialogActions>
-        </Dialog>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
-        {/* Diálogo de Prorrateo */}
         <ProrrateoDialog 
           open={prorrateoOpen}
           onClose={(success) => {
@@ -1491,9 +1623,8 @@ const createdAtStr = (() => {
               setAlert({
                 open: true,
                 message: 'Movimientos prorrateo creados con éxito',
-                severity: 'success'
+                severity: 'success',
               });
-              // Redirigir a la lista o mostrar éxito
               setTimeout(() => {
                 router.push(lastPageUrl || `/cajaProyecto?proyectoId=${effectiveProyectoId}`);
               }, 1500);
@@ -1502,7 +1633,7 @@ const createdAtStr = (() => {
           datosBase={{
             ...formik.values,
             proyecto_id: effectiveProyectoId,
-            proyecto_nombre: effectiveProyectoName
+            proyecto_nombre: effectiveProyectoName,
           }}
           proyectos={proyectos}
           onSuccess={(data) => {
@@ -1510,7 +1641,6 @@ const createdAtStr = (() => {
           }}
         />
 
-        {/* Diálogo de Transferencia Interna */}
         <TransferenciaInternaDialog
           open={openTransferencia}
           onClose={handleCloseTransferencia}
@@ -1522,7 +1652,6 @@ const createdAtStr = (() => {
           showMedioPago={!!empresa?.comprobante_info?.medio_pago}
         />
 
-        {/* Diálogo de Egreso con Caja Pagadora */}
         <EgresoConCajaPagadoraDialog
           open={openEgresoConCajaPagadora}
           onClose={handleCloseEgresoConCajaPagadora}
@@ -1531,13 +1660,12 @@ const createdAtStr = (() => {
             proyecto_id: effectiveProyectoId,
             proyecto_nombre: effectiveProyectoName,
             user_phone: user?.phone,
-            empresa_id: empresa?.id
+            empresa_id: empresa?.id,
           }}
           proyectos={proyectos}
           onSuccess={handleEgresoConCajaPagadoraSuccess}
         />
 
-        {/* Diálogo de Stock — Destino de materiales */}
         {empresa?.stock_config?.caja_a_stock === true && isEditMode && movimientoId && (
           <MaterialesFacturaActions
             open={stockPopupOpen}
@@ -1556,10 +1684,26 @@ const createdAtStr = (() => {
           />
         )}
 
-        <Snackbar open={alert.open} autoHideDuration={6000} onClose={handleCloseAlert}>
-          <Alert severity={alert.severity}>{alert.message}</Alert>
-        </Snackbar>
-      </Container>
+        {alert.open && (
+          <div
+            className={`fixed bottom-4 right-4 z-[60] max-w-sm rounded-lg border px-4 py-3 text-sm shadow-lg ${
+              alert.severity === 'success'
+                ? 'border-success-main/40 bg-white text-success-dark'
+                : alert.severity === 'error'
+                  ? 'border-error-main/40 bg-white text-error-dark'
+                  : 'border-warning-main/40 bg-white text-warning-dark'
+            }`}
+            role="status"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <span>{alert.message}</span>
+              <button type="button" onClick={handleCloseAlert} className="text-neutral-500 hover:text-neutral-800" aria-label="Cerrar">
+                <XMarkIcon className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </>
   );
 };

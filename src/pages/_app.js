@@ -14,6 +14,7 @@ import { createEmotionCache } from 'src/utils/create-emotion-cache';
 import { BreadcrumbsProvider } from 'src/contexts/breadcrumbs-context';
 import 'simplebar-react/dist/simplebar.min.css';
 import 'src/styles/react-datepicker.css';
+import 'src/styles/tailwind.css';
 import { QueryCache, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AlertProvider, useAlert } from 'src/contexts/alert-context';
 

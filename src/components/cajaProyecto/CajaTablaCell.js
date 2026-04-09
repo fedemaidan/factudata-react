@@ -14,6 +14,8 @@ import CommentIcon from '@mui/icons-material/Comment';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
+import { puedeCompletarPagoEgreso } from 'src/utils/movimientoPagoCompleto';
 
 const CajaTablaCell = ({ colKey, mov, amountColor, ctx, isProrrateo = false }) => {
   const {
@@ -25,6 +27,7 @@ const CajaTablaCell = ({ colKey, mov, amountColor, ctx, isProrrateo = false }) =
     openDetalle,
     goToEdit,
     handleEliminarClick,
+    onOpenConfirmarPago,
     deletingElement,
     COLS,
     cellBase,
@@ -172,6 +175,21 @@ const CajaTablaCell = ({ colKey, mov, amountColor, ctx, isProrrateo = false }) =
       return cell(
         stickyRight,
         <>
+          {puedeCompletarPagoEgreso(mov) && onOpenConfirmarPago && (
+            <Tooltip title="Confirmar pago">
+              <IconButton
+                size="small"
+                color="success"
+                aria-label="Confirmar pago"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenConfirmarPago(mov);
+                }}
+              >
+                <CheckCircleOutlineIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
           {mov.url_imagen && (
             <IconButton size="small" onClick={(e) => { e.stopPropagation(); openImg(mov.url_imagen); }}>
               <ImageIcon fontSize="small" />
@@ -222,6 +240,7 @@ CajaTablaCell.propTypes = {
     openDetalle: PropTypes.func,
     goToEdit: PropTypes.func,
     handleEliminarClick: PropTypes.func,
+    onOpenConfirmarPago: PropTypes.func,
     deletingElement: PropTypes.any,
     COLS: PropTypes.object,
     cellBase: PropTypes.object,
