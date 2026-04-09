@@ -133,6 +133,21 @@ const ProrrateoInfo = ({ movimiento, onVerRelacionados }) => {
   );
 };
 
+const StitchBlock = ({ step, title, children }) => (
+  <section className="flex shrink-0 flex-col rounded-xl border border-divider bg-white shadow-sm">
+    <div className="flex shrink-0 items-center gap-2 border-b border-divider px-2 py-1">
+      <span
+        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary-main text-[11px] font-bold text-white"
+        aria-hidden
+      >
+        {step}
+      </span>
+      <h2 className="text-xs font-semibold tracking-tight text-neutral-900">{title}</h2>
+    </div>
+    <div className="px-2 py-1.5">{children}</div>
+  </section>
+);
+
 const MovementFormPage = () => {
   const { user, signOut } = useAuthContext();
   const { setBreadcrumbs } = useBreadcrumbs();
@@ -680,7 +695,19 @@ const createdAtStr = (() => {
     const net = computeNetSubtotalFromTotalImpuestos(formik.values.total, formik.values.impuestos);
     const cur = Number(formik.values.subtotal) || 0;
     if (Math.abs(cur - net) > 0.005) {
-      formik.setFieldValue('subtotal', net);
+      const scrollContainer =
+        typeof document !== 'undefined'
+          ? document.querySelector('[data-movement-form-scroll="true"]')
+          : null;
+      const previousScrollTop = scrollContainer?.scrollTop ?? null;
+      formik.setFieldValue('subtotal', net, false);
+      if (previousScrollTop != null) {
+        requestAnimationFrame(() => {
+          if (scrollContainer) {
+            scrollContainer.scrollTop = previousScrollTop;
+          }
+        });
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- sincronizar solo ante total/impuestos/tipo/config
   }, [
@@ -815,21 +842,6 @@ const createdAtStr = (() => {
         break;
     }
   };
-
-  const StitchBlock = ({ step, title, children }) => (
-    <section className="flex shrink-0 flex-col rounded-xl border border-divider bg-white shadow-sm">
-      <div className="flex shrink-0 items-center gap-2 border-b border-divider px-2 py-1">
-        <span
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary-main text-[11px] font-bold text-white"
-          aria-hidden
-        >
-          {step}
-        </span>
-        <h2 className="text-xs font-semibold tracking-tight text-neutral-900">{title}</h2>
-      </div>
-      <div className="px-2 py-1.5">{children}</div>
-    </section>
-  );
 
   const sharedFieldProps = {
     formik,

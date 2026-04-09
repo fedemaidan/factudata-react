@@ -68,6 +68,22 @@ const MovementFields = ({
   onParcialMontoChange,
   hideFooterButtons = false,
 }) => {
+  const setFieldValuePreservingScroll = (fieldName, nextValue, shouldValidate = true) => {
+    const scrollContainer =
+      typeof document !== 'undefined'
+        ? document.querySelector('[data-movement-form-scroll="true"]')
+        : null;
+    const previousScrollTop = scrollContainer?.scrollTop ?? null;
+
+    formik.setFieldValue(fieldName, nextValue, shouldValidate);
+
+    if (previousScrollTop == null) return;
+    requestAnimationFrame(() => {
+      if (!scrollContainer) return;
+      scrollContainer.scrollTop = previousScrollTop;
+    });
+  };
+
   const renderPagoParcialDetalle = () => {
     if (
       formik.values.type !== 'egreso' ||
@@ -208,7 +224,7 @@ const MovementFields = ({
             name={campo.name}
             value={value || ''}
             optional={isFechaPago}
-            onChange={formik.handleChange}
+            onChange={(event) => setFieldValuePreservingScroll(campo.name, event.target.value)}
             disabled={Boolean(campo.readonly)}
             readOnly={Boolean(campo.readonly)}
           />
@@ -266,20 +282,13 @@ const MovementFields = ({
       );
 
       if (campo.name === 'total') {
-        const handleTotalChange = (event) => {
-          const parsed = parseAmountInput(event.target.value);
-          formik.setFieldValue('total', parsed);
-        };
-
         if (block === 'financial') {
           const totalNumber = Number(formik.values.total) || 0;
           const handleIncrement = () => {
-            const next = Number((totalNumber + 1).toFixed(2));
-            formik.setFieldValue('total', String(next));
+            formik.setFieldValue('total', String(Number((totalNumber + 1).toFixed(2))), false);
           };
           const handleDecrement = () => {
-            const next = Math.max(0, Number((totalNumber - 1).toFixed(2)));
-            formik.setFieldValue('total', String(next));
+            formik.setFieldValue('total', String(Math.max(0, Number((totalNumber - 1).toFixed(2)))), false);
           };
 
           return (
@@ -287,16 +296,15 @@ const MovementFields = ({
               <InputWithSelect
                 label="Total y moneda"
                 placeholder="0.00"
-                value={value ?? ''}
-                onValueChange={(rawValue) => {
-                  const parsed = parseAmountInput(rawValue);
-                  formik.setFieldValue('total', parsed);
-                }}
+                value={value}
+                formatDisplay={formatAmountInput}
+                parseInput={parseAmountInput}
+                onValueChange={(parsed) => formik.setFieldValue('total', parsed, false)}
                 options={CURRENCY_OPTIONS}
                 selectedOption={formik.values.moneda || ''}
                 onOptionChange={(nextMoneda) => {
                   if (nextMoneda !== (formik.values.moneda || '')) {
-                    formik.setFieldValue('moneda', nextMoneda);
+                    setFieldValuePreservingScroll('moneda', nextMoneda);
                   }
                 }}
                 onIncrement={handleIncrement}
@@ -318,7 +326,9 @@ const MovementFields = ({
               value={formatAmountInput(value)}
               readOnly={campo.readonly}
               disabled={campo.readonly}
-              onChange={handleTotalChange}
+              onChange={(event) => {
+                formik.setFieldValue('total', parseAmountInput(event.target.value), false);
+              }}
             />
             {renderPagoParcialDetalle()}
           </div>
@@ -357,7 +367,7 @@ const MovementFields = ({
             name={campo.name}
             value={value}
             options={options.map((opt) => ({ value: opt, label: opt }))}
-            onChange={(nextValue) => formik.setFieldValue(campo.name, nextValue)}
+            onChange={(nextValue) => setFieldValuePreservingScroll(campo.name, nextValue)}
           />
         </div>
       );
@@ -451,7 +461,9 @@ const MovementFields = ({
               { value: 'true', label: 'Sí' },
               { value: 'false', label: 'No' },
             ]}
-            onChange={(nextValue) => formik.setFieldValue(campo.name, nextValue === 'true')}
+            onChange={(nextValue) =>
+              setFieldValuePreservingScroll(campo.name, nextValue === 'true')
+            }
           />
         </div>
       );
