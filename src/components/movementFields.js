@@ -68,22 +68,6 @@ const MovementFields = ({
   onParcialMontoChange,
   hideFooterButtons = false,
 }) => {
-  const setFieldValuePreservingScroll = (fieldName, nextValue, shouldValidate = true) => {
-    const scrollContainer =
-      typeof document !== 'undefined'
-        ? document.querySelector('[data-movement-form-scroll="true"]')
-        : null;
-    const previousScrollTop = scrollContainer?.scrollTop ?? null;
-
-    formik.setFieldValue(fieldName, nextValue, shouldValidate);
-
-    if (previousScrollTop == null) return;
-    requestAnimationFrame(() => {
-      if (!scrollContainer) return;
-      scrollContainer.scrollTop = previousScrollTop;
-    });
-  };
-
   const renderPagoParcialDetalle = () => {
     if (
       formik.values.type !== 'egreso' ||
@@ -224,7 +208,7 @@ const MovementFields = ({
             name={campo.name}
             value={value || ''}
             optional={isFechaPago}
-            onChange={(event) => setFieldValuePreservingScroll(campo.name, event.target.value)}
+            onChange={formik.handleChange}
             disabled={Boolean(campo.readonly)}
             readOnly={Boolean(campo.readonly)}
           />
@@ -303,7 +287,7 @@ const MovementFields = ({
               <InputWithSelect
                 label="Total y moneda"
                 placeholder="0.00"
-                value={formatAmountInput(value)}
+                value={value ?? ''}
                 onValueChange={(rawValue) => {
                   const parsed = parseAmountInput(rawValue);
                   formik.setFieldValue('total', parsed);
@@ -312,7 +296,7 @@ const MovementFields = ({
                 selectedOption={formik.values.moneda || ''}
                 onOptionChange={(nextMoneda) => {
                   if (nextMoneda !== (formik.values.moneda || '')) {
-                    setFieldValuePreservingScroll('moneda', nextMoneda);
+                    formik.setFieldValue('moneda', nextMoneda);
                   }
                 }}
                 onIncrement={handleIncrement}
@@ -373,7 +357,7 @@ const MovementFields = ({
             name={campo.name}
             value={value}
             options={options.map((opt) => ({ value: opt, label: opt }))}
-            onChange={(nextValue) => setFieldValuePreservingScroll(campo.name, nextValue)}
+            onChange={(nextValue) => formik.setFieldValue(campo.name, nextValue)}
           />
         </div>
       );
@@ -467,9 +451,7 @@ const MovementFields = ({
               { value: 'true', label: 'Sí' },
               { value: 'false', label: 'No' },
             ]}
-            onChange={(nextValue) =>
-              setFieldValuePreservingScroll(campo.name, nextValue === 'true')
-            }
+            onChange={(nextValue) => formik.setFieldValue(campo.name, nextValue === 'true')}
           />
         </div>
       );
