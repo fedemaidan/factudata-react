@@ -671,6 +671,7 @@ const PresupuestosPage = () => {
           mode={drawerPresupuesto.mode}
           empresaId={empresaId}
           userId={user?.uid}
+          proyectoId={drawerPresupuesto.presupuesto?.proyecto_id}
           presupuesto={drawerPresupuesto.presupuesto}
           onRecalcular={handleRecalcularPresupuesto}
           showFullForm
