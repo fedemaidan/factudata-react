@@ -1,101 +1,90 @@
-# Carga masiva de movimientos (web) — documento técnico
+# Carga Masiva — Documentación Técnica (Frontend)
 
-## Ubicación en el código
+## Arquitectura de componentes
 
-| Pieza | Ruta |
-|-------|------|
-| Diálogo orquestador | `src/components/movimientos/cargaMasiva/CargaMasivaDialog.js` |
-| Paso archivos OCR | `src/components/movimientos/cargaMasiva/steps/CargaArchivosStep.js` |
-| Paso contexto + GPT | `src/components/movimientos/cargaMasiva/steps/PreguntasContextoStep.js` |
-| Paso validación OCR | `src/components/movimientos/cargaMasiva/steps/ValidacionLoteStep.js` |
-| Formulario por ítem | `src/components/movimientos/cargaMasiva/BatchValidationForm.js` |
-| Mapeo extracción → form | `src/components/movimientos/cargaMasiva/cargaMasivaMap.js` |
-| Payload confirmación | `src/components/movimientos/cargaMasiva/buildBatchMovimientoPayload.js` |
-| Utilidades preguntas GPT | `src/components/movimientos/cargaMasiva/cargaMasivaPreguntasUtils.js` |
-| API cliente | `src/services/movimientosService.js` |
+```
+CargaMasivaDialog.js          ← Componente raíz (Dialog MUI)
+├── steps/CargaArchivosStep   ← Drag & drop + lista (OCR)
+├── steps/PreguntasContextoStep ← Preguntas GPT + defaults lote (OCR)
+├── steps/ValidacionLoteStep  ← Revisión asistida comprobante a comprobante (OCR)
+├── ImportPlanillaStep         ← Upload CSV/Excel (tabular)
+├── PasoRevisarCategorias      ← Mapeo categorías (tabular)
+├── PasoRevisarProveedores     ← Mapeo proveedores (tabular)
+├── PasoAclaracionesMovimientos ← Texto libre para IA (tabular)
+├── PasoValidarMovimientosImport ← Tabla validación IA (tabular)
+└── PasoResumen                ← Confirmación final (tabular)
+```
 
-## Arquitectura del componente `CargaMasivaDialog`
+## Estado local (useState)
 
-### Props
+El diálogo mantiene todo en estado local del componente:
 
-- `open`, `onClose`, `onSuccess`  
-- `empresa`, `proyectos`, `user` (entre otros datos necesarios para catálogos y confirmación)
+- `mode`: `null | 'ocr' | 'tabular'`
+- `step`: índice del stepper activo
+- `files`: archivos subidos (File[])
+- `contexto`: objeto con proyecto, tipo, moneda, categorías, medios, notas, cuestionario GPT
+- `batchItems`: ítems procesados por IA (OCR)
+- `tabularWizard`: estado del wizard de importación (tabular)
+- `loading`, `analyzeError`, `confirmError`: estados de UI
 
-### Estado principal
+## Servicios y endpoints
 
-- `cargaModo`: `null` \| `'ocr'` \| `'tabular'` — selector inicial.  
-- `activeStep`: índice dentro del stepper del modo activo.  
-- **OCR**: `files`, `contexto`, `preguntasGpt`, `respuestasGpt`, `batchItems`, flags de loading/error de análisis y preguntas.  
-- **Tabular**: `importWizardData` — objeto grande que alimenta los pasos reutilizados del import (`ImportPlanillaStep`, `PasoRevisarCategorias`, etc.).  
-- `drawerCatalogos`: comprobante/ingreso info, proveedores, categorías, medios de pago, etapas, obras, clientes (hidratado en `useEffect` al abrir).
+### OCR (`movimientosService.js`)
 
-### Stepper
+| Método | Endpoint | Tipo | Payload |
+|--------|----------|------|---------|
+| `sugerirPreguntasCargaMasiva` | `POST /movimiento/carga-masiva/sugerir-preguntas` | multipart | `muestra` (hasta 5 archivos) + `metadata_lote` (JSON) |
+| `analizarCargaMasiva` | `POST /movimiento/carga-masiva/analizar` | multipart | `archivos` (todos) + `contexto_lote` (JSON con defaults + cuestionario) |
+| `confirmarCargaMasiva` | `POST /movimiento/carga-masiva/confirmar` | JSON | `{ movimientos }` |
 
-Constantes:
+### Tabular (`importMovimientosService.js`)
 
-- `STEPS_OCR = ['Archivos', 'Contexto', 'Validación']`  
-- `STEPS_TABULAR = ['Planilla', 'Categorías', 'Proveedores', 'Aclaraciones', 'Validación', 'Resumen']`
+| Método | Endpoint |
+|--------|----------|
+| `extraerData` | `POST /api/importar-movimientos/extraerData` |
+| `previsualizar` | `POST /api/importar-movimientos/previsualizar` |
+| `consultarEstadoImportacion` | `GET /api/importar-movimientos/status/:codigo` |
+| `confirmarMovimientos` | `POST /api/importar-movimientos/confirmar-movimientos` |
 
-## Flujo OCR — secuencia técnica
+## Archivos auxiliares
 
-1. **Paso 0 — Archivos**  
-   - `CargaArchivosStep` mantiene `files` (máx. 50, dedupe por `name-size-lastModified`).  
-   - Al pulsar “Siguiente”, `fetchPreguntasYAvanzar`:  
-     - `pickRandomFiles(files, 5)` → muestra.  
-     - `metadata_lote = { total, archivos: [{ name, type, size }] }`.  
-     - `movimientosService.sugerirPreguntasCargaMasiva(muestra, metadata_lote)` → guarda `preguntasGpt` y avanza a paso 1.
+| Archivo | Función |
+|---------|---------|
+| `cargaMasivaPreguntasUtils.js` | `pickRandomFiles(files, 5)`, `buildContextoCuestionarioTexto`, `preguntasEstanCompletas` |
+| `cargaMasivaMap.js` | `mapExtractedToForm`, `emptyForm` — normaliza salida IA a formulario |
+| `buildBatchMovimientoPayload.js` | Construye payload para `confirmarCargaMasiva` desde cada ítem validado |
+| `BatchValidationForm.js` | Formulario de edición por ítem OCR (misma lógica de campos que comprobante único) |
 
-2. **Paso 1 — Contexto**  
-   - `PreguntasContextoStep` actualiza `contexto` y `respuestasGpt`.  
-   - Condiciones para avanzar: `contexto.proyecto_id` definido y `preguntasEstanCompletas(preguntasGpt, respuestasGpt)`.  
-   - `textoCuestionario` = `buildContextoCuestionarioTexto(preguntasGpt, respuestasGpt)` (memo).  
-   - `payloadContextoLote` (memo): `proyecto_id/nombre`, `default_type`, `default_moneda`, opcionales `default_categorias`, `default_medios_pago`, `default_etapa`, `notas_lote`, `contexto_cuestionario_texto`.
+## Flujo de datos OCR
 
-3. **Paso 2 — Análisis y validación**  
-   - `handleRunAnalyze` → `movimientosService.analizarCargaMasiva(files, payloadContextoLote)`.  
-   - Respuesta esperada: `data.items[]` con `originalname`, `url_imagen`, `extracted`, `error`.  
-   - Cada ítem se mapea a `batchItems[]` con `clientId` estable, `form` = `mapExtractedToForm(it.extracted, contextoForMap)` o `emptyForm`.  
-   - `ValidacionLoteStep` + `BatchValidationForm` usan `getCamposConfig` para alinear visibilidad/required con el formulario estándar de movimientos.
+```
+archivos → sugerirPreguntasCargaMasiva(muestra) → preguntas GPT
+         → analizarCargaMasiva(todos + contexto_lote) → items[{originalname, url_imagen, extracted, error}]
+         → mapExtractedToForm → batchItems → ValidacionLoteStep
+         → buildBatchMovimientoPayload → confirmarCargaMasiva → movimientos creados
+```
 
-4. **Confirmación**  
-   - `buildMovimientoPayloadFromBatchItem` por cada ítem no omitido.  
-   - `movimientosService.confirmarCargaMasiva(movimientos)` → POST JSON.  
-   - Respuesta: `{ ok, errores }` tipicamente; éxito dispara `onSuccess` y `onClose`.
+## Flujo de datos tabular
 
-## Flujo tabular — integración
+```
+archivos → upload a storage → extraerData (categorías/proveedores)
+         → mapeo usuario → previsualizar (polling status/:codigo)
+         → filas con ia_data → validación/edición tabla
+         → confirmarMovimientos → movimientos creados
+```
 
-No duplica lógica de negocio: embebe componentes existentes de `importMovimientos`:
+## Validación pre-confirmación
 
-- `ImportPlanillaStep`  
-- `PasoRevisarCategorias`, `PasoRevisarProveedores`, `PasoAclaracionesMovimientos`  
-- `PasoValidarMovimientosImport`  
-- `PasoResumen`
+### OCR
+- `itemFormIsValid`: proyecto (si `getCamposConfig` lo requiere), total > 0, fecha_factura.
+- `canConfirm`: todos los ítems no omitidos pasan `itemFormIsValid`.
 
-Refs (`categoriasRef`, `proveedoresRef`, etc.) exponen `submitStep()` para avanzar de forma imperativa en `handleTabularNext`. El estado vive en `importWizardData` + `updateImportWizardData`.
+### Tabular
+- `rowIsValid`: acción (CREAR_EGRESO/INGRESO), moneda, estado, fecha, total, proyecto si la empresa tiene proyectos y es import general.
 
-## Endpoints HTTP (modo OCR)
+## Catálogos cargados al abrir
 
-Definidos en `movimientosService.js`:
-
-| Método | Ruta | Uso |
-|--------|------|-----|
-| POST (multipart) | `/movimiento/carga-masiva/sugerir-preguntas` | Campos: `muestra` (archivos), `metadata_lote` (JSON string). |
-| POST (multipart) | `/movimiento/carga-masiva/analizar` | Campos: `archivos`, `contexto_lote` (JSON string). |
-| POST (JSON) | `/movimiento/carga-masiva/confirmar` | Body: `{ movimientos }` — payloads alineados a movimiento estándar. |
-
-## Mapeo de datos
-
-- **`mapExtractedToForm`**: fusiona respuesta del backend por archivo con defaults del `contexto` (tipo, moneda, categoría/medio únicos del lote, proyecto, fechas normalizadas con `toDateInputValue`).  
-- **`buildMovimientoPayloadFromBatchItem`**: convierte el formulario validado a payload de API (timestamps, subtotal derivado si aplica, `user_phone`, nombres de proyecto, etc.).
-
-## Consideraciones de UX / reglas en código
-
-- `itemFormIsValid` y `ValidacionLoteStep.continuarDisabled` replican reglas mínimas (proyecto si config lo pide, total y fecha).  
-- `canConfirm` exige que todos los ítems no omitidos pasen `itemFormIsValid`.  
-- Al cerrar el diálogo (`open === false`), `resetWizard` limpia todo el estado para la próxima apertura.
-
-## Dependencias externas relevantes
-
-- MUI: `Dialog`, `Stepper`, `ToggleButtonGroup`, `Alert`, etc.  
-- `getCamposConfig` / `movementFieldsConfig` para paridad con el formulario único de movimiento.  
-- `proveedorService.getNombres` para catálogo de proveedores al abrir.
+- Proveedores (vía `proveedorService.getNombres(empresa.id)`)
+- Categorías de la empresa (excluyendo "Ingreso dinero" y "Ajuste")
+- Medios de pago
+- Etapas, obras, clientes

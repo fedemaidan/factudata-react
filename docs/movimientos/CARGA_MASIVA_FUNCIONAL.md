@@ -1,71 +1,58 @@
-# Carga masiva de movimientos (web) — documento funcional
+# Carga Masiva — Documentación Funcional (Frontend)
 
-## Objetivo
+## Descripción general
 
-Permitir crear **varios movimientos** en una sola sesión desde la aplicación web, sin mezclar en la misma corrida **comprobantes** (imagen/PDF) con **planillas** (CSV/Excel). El usuario elige un modo al inicio y sigue un asistente por pasos.
+La carga masiva permite al usuario crear múltiples movimientos en una sola sesión, a partir de comprobantes (imágenes/PDF) o planillas (CSV/Excel). Los dos modos son excluyentes dentro de la misma sesión.
 
-## Punto de entrada en la UI
+## Flujo de usuario
 
-El flujo vive en el diálogo **“Carga masiva de movimientos”** (`CargaMasivaDialog`). Al abrirlo, el usuario ve dos opciones exclusivas:
+### Modo comprobantes (OCR)
 
-| Modo | Qué permite |
-|------|-------------|
-| **Comprobantes (imagen / PDF)** | Subir hasta **50** archivos de imagen o PDF; el sistema los interpreta con OCR/visión y propone un movimiento por archivo. |
-| **Planilla (CSV / Excel)** | Reutiliza el asistente de importación por planilla: análisis del archivo, mapeo de categorías/proveedores, aclaraciones, validación y resumen antes de persistir. |
+| Paso | Acción |
+|------|--------|
+| 1 | El usuario abre el diálogo "Carga masiva" y elige **Comprobantes (imagen / PDF)**. |
+| 2 | **Archivos:** sube hasta 50 archivos (drag & drop o selector). Tipos: `image/*`, `.pdf`. |
+| 3 | **Contexto:** se envía una muestra aleatoria de hasta 5 archivos al backend para que la IA sugiera preguntas de contexto. El usuario completa: |
+|   | • Preguntas GPT dinámicas (0-5), con opciones + "Otro". |
+|   | • Proyecto por defecto (obligatorio). |
+|   | • Tipo por defecto (egreso / ingreso). |
+|   | • Moneda por defecto (ARS / USD). |
+|   | • Categorías candidatas (multi-select, opcional). |
+|   | • Medios de pago candidatos (multi-select, opcional). |
+|   | • Notas del lote (texto libre, opcional). |
+| 4 | El sistema analiza todos los archivos con IA (GPT visión). |
+| 5 | **Validación:** revisión uno a uno con navegación asistida. Cada ítem muestra la imagen/PDF y un formulario con los datos extraídos. Se puede omitir o corregir. |
+| 6 | **Confirmación:** se crean los movimientos no omitidos que pasen validación (proyecto, total y fecha obligatorios). |
 
-No se pueden combinar comprobantes y planillas en la **misma** sesión del diálogo.
+### Modo planilla (tabular)
 
-## Modo comprobantes (OCR) — pasos para el usuario
+| Paso | Acción |
+|------|--------|
+| 1 | Elige **Planilla (CSV / Excel)**. |
+| 2 | **Planilla:** sube hasta 10 archivos (`.csv`, `.xlsx`, `.xls`; ~10 MB c/u). Para Excel multi-hoja, selecciona hojas. |
+| 3 | **Categorías:** revisión y mapeo de categorías detectadas. |
+| 4 | **Proveedores:** revisión y mapeo de proveedores detectados. |
+| 5 | **Aclaraciones:** instrucciones adicionales para la IA. |
+| 6 | **Validación:** tabla con filas procesadas por IA. Se puede editar, omitir o aprobar cada fila. |
+| 7 | **Resumen:** confirmación final y creación de movimientos. |
 
-El stepper muestra: **Archivos → Contexto → Validación**.
+## Límites y constantes
 
-1. **Archivos**  
-   - Subir o arrastrar archivos (imágenes o PDF).  
-   - Máximo **50** archivos.  
-   - Al avanzar, el sistema envía una **muestra** (hasta 5 archivos aleatorios) para generar, si aplica, **preguntas extra** con IA.
+| Parámetro | Valor |
+|-----------|-------|
+| Máx. archivos OCR | 50 |
+| Muestra para preguntas GPT | 5 (aleatoria) |
+| Máx. archivos planilla | 10 |
+| Tamaño máx. por planilla (UI) | 10 MB |
+| Intervalo polling previsualización | 4000 ms |
 
-2. **Contexto**  
-   - **Proyecto por defecto** (obligatorio): aplica al lote y enriquece el contexto del OCR.  
-   - Si el modelo generó preguntas dinámicas, el usuario las responde (opciones u “Otro” con texto libre).  
-   - Campos fijos del lote: tipo por defecto (egreso/ingreso), moneda (ARS/USD), categorías y medios de pago candidatos (opcionales), etapa, notas del lote, etc.  
-   - Si no hay preguntas extra, se informa que el formulario ya cubre el contexto necesario.
+## Tipos de archivo aceptados
 
-3. **Validación**  
-   - Lista de ítems (uno por archivo analizado).  
-   - Navegación asistida: revisar/editar cada comprobante, omitir ítems, aplicar proyecto a todos si hace falta.  
-   - Reglas de validez por ítem alineadas al formulario de movimiento (por ejemplo proyecto si la empresa lo exige, total y fecha obligatorios).  
-   - Al confirmar, se abre un diálogo final y se crean los movimientos en el backend.
+- **OCR:** JPEG, PNG, GIF, WEBP, PDF
+- **Tabular:** CSV, XLSX, XLS
 
-## Modo planilla (tabular) — pasos para el usuario
+## Manejo de errores
 
-El stepper muestra: **Planilla → Categorías → Proveedores → Aclaraciones → Validación → Resumen**.
-
-1. **Planilla**: subir CSV/Excel, revisar detección de columnas/hojas y elegir alcance (por ejemplo importación general vs proyecto específico, según lo que exponga `ImportPlanillaStep`).  
-2. **Categorías**: resolver/mapear categorías detectadas vs catálogo de la empresa.  
-3. **Proveedores**: idem para proveedores.  
-4. **Aclaraciones**: texto u orientaciones adicionales para la IA sobre el lote.  
-5. **Validación**: revisar filas/movimientos propuestos antes de crear.  
-6. **Resumen**: cierre y persistencia del import.
-
-Al finalizar, el padre recibe un callback con el resultado del import (no es el mismo endpoint que el modo OCR de “confirmar carga masiva”).
-
-## Catálogos y datos auxiliares
-
-Al abrir el diálogo (con empresa válida), se cargan en memoria, entre otros:
-
-- Configuración de campos de comprobante e ingreso de la empresa.  
-- Lista de proveedores (nombres).  
-- Categorías (más entradas sintéticas como “Ingreso dinero” / “Ajuste” si aplica).  
-- Medios de pago (desde empresa o lista por defecto).  
-- Etapas, obras y clientes derivados de obras (para campos opcionales del movimiento).
-
-## Resultado esperado
-
-- **OCR**: array de movimientos creados y posibles errores por ítem (`onSuccess` con `ok` / `errores`).  
-- **Tabular**: resultado del wizard de importación (`tabularImport`, `resultado`, `wizardSnapshot`).
-
-## Límites y mensajes relevantes
-
-- **50** archivos máximo en modo comprobantes (`CargaArchivosStep`).  
-- Lotes grandes pueden tardar varios minutos en analizarse (mensaje informativo en contexto).  
-- Sin teléfono de usuario en sesión no se puede confirmar la creación en modo OCR (validación explícita en el diálogo).
+- Archivos que no se puedan analizar se marcan con error y formulario manual.
+- Alertas con reintento para fallas de red o análisis.
+- Validación de campos obligatorios antes de confirmar (proyecto si aplica, total, fecha).
