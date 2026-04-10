@@ -366,8 +366,10 @@ const MovementFormPage = () => {
           }
           formik.setValues(prev => ({ ...prev, ...result }));
           setAlert({ open: true, message: '¡Datos extraídos con éxito!', severity: 'success' });
-        } catch {
-          setAlert({ open: true, message: 'No se pudieron extraer los datos.', severity: 'warning' });
+        } catch (err) {
+          const msg = err?.response?.data?.error || 'No se pudieron extraer los datos.';
+          const severity = err?.response?.status === 400 ? 'error' : 'warning';
+          setAlert({ open: true, message: msg, severity });
         } finally {
           setIsExtractingData(false);
           setModoIngreso('manual');
@@ -587,8 +589,10 @@ const MovementFormPage = () => {
       );
       formik.setValues({ ...formik.values, ...result });
       setAlert({ open: true, message: 'Datos extraídos con éxito!', severity: 'success' });
-    } catch {
-      setAlert({ open: true, message: 'No se pudieron extraer los datos.', severity: 'warning' });
+    } catch (err) {
+      const msg = err?.response?.data?.error || 'No se pudieron extraer los datos.';
+      const severity = err?.response?.status === 400 ? 'error' : 'warning';
+      setAlert({ open: true, message: msg, severity });
     } finally {
       setIsExtractingData(false);
     }
