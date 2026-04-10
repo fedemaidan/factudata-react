@@ -7,6 +7,7 @@ import {
 } from '@mui/material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import movimientosService from 'src/services/movimientosService';
+import { getSubempresasOptions } from './movementFieldsConfig';
 
 // ── Operaciones disponibles ──
 const IMPORTE_OPS = [
@@ -69,8 +70,7 @@ const BulkEditDialog = ({ open, onClose, selectedCount, selectedIds, onDone, opt
     if (field.options) return field.options;
     if (field.optionsKey && options[field.optionsKey]) return options[field.optionsKey];
     if (field.optionsKey === 'subempresas') {
-      const list = empresa?.subempresas || empresa?.sub_empresas || [];
-      return list.map((s) => (typeof s === 'string' ? s : s?.nombre || s?.razon_social || '')).filter(Boolean);
+      return getSubempresasOptions(empresa);
     }
     if (field.optionsKey === 'cuentasInternas') return empresa?.cuentas || [];
     if (field.optionsKey === 'obras') return options.obras || [];

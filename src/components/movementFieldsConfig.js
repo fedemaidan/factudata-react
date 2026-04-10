@@ -99,6 +99,29 @@ export const computeNetSubtotalFromTotalImpuestos = (total, impuestos) => {
   return Math.max(0, t - imp);
 };
 
+export const getSubempresasOptions = (empresa = null) => {
+  const sources = [
+    ...(Array.isArray(empresa?.sub_empresas_data) ? empresa.sub_empresas_data : []),
+    ...(Array.isArray(empresa?.subempresas) ? empresa.subempresas : []),
+    ...(Array.isArray(empresa?.sub_empresas) ? empresa.sub_empresas : []),
+  ];
+
+  return [...new Set(
+    sources
+      .map((subempresa) => {
+        if (typeof subempresa === 'string') return subempresa.trim();
+        return (
+          subempresa?.fantasia ||
+          subempresa?.nombre ||
+          subempresa?.razon_social ||
+          subempresa?.name ||
+          ''
+        ).trim();
+      })
+      .filter(Boolean)
+  )];
+};
+
 export const getOptionsFromContext = (key, context = {}) => {
   const {
     proveedores = [],
@@ -123,15 +146,8 @@ export const getOptionsFromContext = (key, context = {}) => {
       return tagsExtra;
     case 'mediosPago':
       return mediosPago;
-    case 'subempresas': {
-      const list = empresa?.subempresas || empresa?.sub_empresas || [];
-      return list
-        .map((s) => {
-          if (typeof s === 'string') return s;
-          return s?.nombre || s?.razon_social || s?.name || '';
-        })
-        .filter(Boolean);
-    }
+    case 'subempresas':
+      return getSubempresasOptions(empresa);
     case 'etapas':
       return etapas.map((e) => e.nombre);
     case 'cuentasInternas':

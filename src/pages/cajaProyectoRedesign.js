@@ -9,7 +9,7 @@ import { Box, Container, Stack, Chip, Typography, TextField, InputAdornment, Pap
 
 import { Checkbox, Popover, FormControlLabel, Switch, CircularProgress, Backdrop } from '@mui/material';
 
-import { useTheme } from '@mui/material/styles';
+import { alpha, useTheme } from '@mui/material/styles';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import AddCircleIcon from '@mui/icons-material/AddCircle';
 import RefreshIcon from '@mui/icons-material/Refresh';
@@ -49,7 +49,6 @@ import OrdenarColumnasDialog from 'src/components/OrdenarColumnasDialog';
 import { getCajaColumnasConfig, applyColumnOrder, getHeaderLabel, getHeaderCellSx } from 'src/components/cajaProyecto/cajaColumnasConfig';
 import CajaTablaCell from 'src/components/cajaProyecto/CajaTablaCell';
 import ProyectoConfigDrawer from 'src/components/cajaProyecto/ProyectoConfigDrawer';
-import ExportCsvDialog, { moveItem } from 'src/components/cajaProyecto/ExportCsvDialog';
 import SettingsIcon from '@mui/icons-material/Settings';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import { buildCompletarPagoUpdateFields, puedeCompletarPagoEgreso } from 'src/utils/movimientoPagoCompleto';
@@ -95,6 +94,17 @@ const ellipsis = (maxWidth) => ({
   textOverflow: 'ellipsis',
 });
 
+const SURFACE_COLORS = {
+  background: '#f6f6f6',
+  panel: '#f3f3f3',
+  card: '#ffffff',
+  ink: '#1a1c1c',
+  blue: '#1e4469',
+  cyan: '#23b5d3',
+  cyanDeep: '#00687b',
+  green: '#22bb91',
+};
+
 const DEBUG_CAJA = true;
 
 const formatDebugValue = (value) => {
@@ -122,155 +132,6 @@ const logCajaDebug = (label, payload) => {
   console.log(`[CajaProyecto] ${label}`, formatDebugValue(payload));
 };
 
-const parseFechaCsv = (value) => {
-  if (!value) return '';
-  let date;
-  if (typeof value === 'object' && value.seconds != null) {
-    date = new Date(value.seconds * 1000);
-  } else if (typeof value === 'object' && value._seconds != null) {
-    date = new Date(value._seconds * 1000);
-  } else if (value?.toDate) {
-    date = value.toDate();
-  } else {
-    date = new Date(value);
-  }
-  return Number.isNaN(date?.getTime?.()) ? '' : date.toLocaleDateString('es-AR');
-};
-
-const formatCsvCell = (value) => {
-  if (value === null || typeof value === 'undefined') return '';
-  const normalized = String(value).replace(/\r?\n|\r/g, ' ').replace(/"/g, '""');
-  return /[",;]/.test(normalized) ? `"${normalized}"` : normalized;
-};
-
-const descargarArchivoCsv = (fileName, csvContent) => {
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const link = document.createElement('a');
-  const url = URL.createObjectURL(blob);
-  link.setAttribute('href', url);
-  link.setAttribute('download', fileName);
-  link.style.visibility = 'hidden';
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-};
-
-const getMovimientoCsvExportFields = () => [
-  {
-    key: 'id',
-    label: 'ID',
-    description: 'Identificador interno del movimiento',
-    getValue: (mov) => mov.id || '',
-  },
-  {
-    key: 'codigo',
-    label: 'Codigo',
-    description: 'Codigo de operacion visible en caja',
-    getValue: (mov) => mov.codigo_operacion || mov.codigo || '',
-  },
-  {
-    key: 'fecha',
-    label: 'Fecha',
-    description: 'Fecha de factura del movimiento',
-    getValue: (mov) => parseFechaCsv(mov.fecha_factura),
-  },
-  {
-    key: 'tipo',
-    label: 'Tipo',
-    description: 'Ingreso o egreso',
-    getValue: (mov) => mov.type || '',
-  },
-  {
-    key: 'monedaOriginal',
-    label: 'Moneda_Original',
-    description: 'Moneda original del comprobante',
-    getValue: (mov) => mov.moneda || '',
-  },
-  {
-    key: 'totalOriginal',
-    label: 'Total_Original',
-    description: 'Total en la moneda original',
-    getValue: (mov) => mov.total || 0,
-  },
-  {
-    key: 'proveedor',
-    label: 'Proveedor',
-    description: 'Proveedor o contraparte',
-    getValue: (mov) => mov.nombre_proveedor || '',
-  },
-  {
-    key: 'categoria',
-    label: 'Categoria',
-    description: 'Categoria contable',
-    getValue: (mov) => mov.categoria || '',
-  },
-  {
-    key: 'medioPago',
-    label: 'Medio_Pago',
-    description: 'Medio de pago registrado',
-    getValue: (mov) => mov.medio_pago || '',
-  },
-  {
-    key: 'estado',
-    label: 'Estado',
-    description: 'Estado actual del movimiento',
-    getValue: (mov) => mov.estado || '',
-  },
-  {
-    key: 'usdBlue',
-    label: 'USD_Blue',
-    description: 'Equivalencia a USD blue',
-    getValue: (mov) => mov.equivalencias?.total?.usd_blue ?? 'N/A',
-  },
-  {
-    key: 'usdOficial',
-    label: 'USD_Oficial',
-    description: 'Equivalencia a USD oficial',
-    getValue: (mov) => mov.equivalencias?.total?.usd_oficial ?? 'N/A',
-  },
-  {
-    key: 'usdMepMedio',
-    label: 'USD_MEP_Medio',
-    description: 'Equivalencia a USD MEP medio',
-    getValue: (mov) => mov.equivalencias?.total?.usd_mep_medio ?? 'N/A',
-  },
-  {
-    key: 'tieneEquivalencias',
-    label: 'Tiene_Equivalencias',
-    description: 'Indica si el movimiento tiene equivalencias calculadas',
-    getValue: (mov) => (mov.equivalencias ? 'SI' : 'NO'),
-  },
-  {
-    key: 'proyecto',
-    label: 'Proyecto',
-    description: 'Proyecto asociado al movimiento',
-    getValue: (mov) => mov.proyecto_nombre || '',
-  },
-  {
-    key: 'tcEjecutado',
-    label: 'TC_Ejecutado',
-    description: 'Tipo de cambio ejecutado',
-    getValue: (mov) => mov.tc ?? 'N/A',
-  },
-  {
-    key: 'ratioUsdBlue',
-    label: 'Ratio_USD_Blue_vs_Original',
-    description: 'Relacion entre USD blue y total original',
-    getValue: (mov) => {
-      const usdBlue = mov.equivalencias?.total?.usd_blue;
-      const total = Number(mov.total) || 0;
-      return usdBlue && total > 0 ? (usdBlue / total).toFixed(4) : 'N/A';
-    },
-  },
-  {
-    key: 'observacion',
-    label: 'Observacion',
-    description: 'Observacion cargada en el movimiento',
-    getValue: (mov) => mov.observacion || '',
-  },
-];
-
 
 const TotalesFiltrados = ({ t, fmt, moneda, showUsdBlue = false, usdBlue = null, chips = [], onOpenFilters, isMobile = false, showDetails = false, onToggleDetails }) => {
   const up = (moneda || '').toUpperCase();
@@ -280,119 +141,132 @@ const TotalesFiltrados = ({ t, fmt, moneda, showUsdBlue = false, usdBlue = null,
   const totalPeriodo = ingreso + egreso;
 
   return (
-    <Stack spacing={1.25} sx={{ mb: 2 }}>
-      <Stack direction="row" spacing={2} sx={{ flexWrap: 'wrap' }}>
-      <Box
-        sx={{
-          p: 2,
-          borderRadius: 2,
-          flex: 1,
-          minWidth: 260,
-          bgcolor: 'action.hover',
-          border: '1px solid',
-          borderColor: 'divider',
-          boxShadow: '0 6px 16px rgba(0,0,0,0.06)'
-        }}
-      >
-        <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1, gap: 1 }}>
-          <Typography variant="subtitle2" color="text.secondary">
-            Totales filtrados
-          </Typography>
-          <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-            {chips.length > 0 && (
-              <Box sx={{ display: 'flex', gap: 1, maxWidth: isMobile ? 220 : 'none', overflowX: isMobile ? 'auto' : 'visible' }}>
-                {chips.map((chip, idx) => (
-                  <Chip
-                    key={`${chip.label}-${idx}`}
-                    label={chip.label}
-                    onDelete={(e) => { e.stopPropagation(); chip.onDelete(); }}
-                    onClick={() => onOpenFilters?.()}
-                    size="small"
-                    variant="outlined"
-                    clickable
-                  />
-                ))}
-              </Box>
-            )}
-            <Chip size="small" label={up} variant="outlined" />
-          </Stack>
+    <Stack spacing={1.5} sx={{ mb: 2 }}>
+      {chips.length > 0 && (
+        <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }}>
+          {chips.map((chip, idx) => (
+            <Chip
+              key={`${chip.label}-${idx}`}
+              label={chip.label}
+              onDelete={(e) => {
+                e.stopPropagation();
+                chip.onDelete();
+              }}
+              onClick={() => onOpenFilters?.()}
+              clickable
+              size="small"
+              sx={{
+                bgcolor: alpha(SURFACE_COLORS.card, 0.92),
+                color: SURFACE_COLORS.blue,
+                borderRadius: 999,
+                border: 'none',
+                '& .MuiChip-deleteIcon': { color: alpha(SURFACE_COLORS.blue, 0.7) },
+              }}
+            />
+          ))}
         </Stack>
-        <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5, color: neto >= 0 ? 'success.main' : 'error.main' }}>
-          Neto: {fmt(up, neto)}
-        </Typography>
-        {isMobile ? (
-          <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap">
-            <Typography sx={{ color: 'text.secondary' }}>
-              Total período: {fmt(up, totalPeriodo)}
-            </Typography>
-            <Button size="small" variant="text" onClick={onToggleDetails}>
-              {showDetails ? 'Ocultar' : 'Ver más'}
-            </Button>
-            {showDetails && (
-              <Stack direction="row" spacing={1.5} flexWrap="wrap">
-                <Typography sx={{ color: 'success.main', fontWeight: 600 }}>
-                  + {fmt(up, ingreso)}
-                </Typography>
-                <Typography sx={{ color: 'error.main', fontWeight: 600 }}>
-                  - {fmt(up, egreso)}
-                </Typography>
-              </Stack>
-            )}
-          </Stack>
-        ) : (
-          <Stack direction="row" spacing={1.5} flexWrap="wrap">
-            <Typography sx={{ color: 'success.main', fontWeight: 600 }}>
-              + {fmt(up, ingreso)}
-            </Typography>
-            <Typography sx={{ color: 'error.main', fontWeight: 600 }}>
-              - {fmt(up, egreso)}
-            </Typography>
-          </Stack>
-        )}
-
-      </Box>
-
-      {showUsdBlue && usdBlue && (
+      )}
+      <Stack direction={isMobile ? 'column' : 'row'} spacing={2} sx={{ flexWrap: 'wrap' }}>
         <Box
           sx={{
-            p: 2,
-            borderRadius: 2,
+            p: { xs: 2, md: 3 },
+            borderRadius: 4,
             flex: 1,
             minWidth: 260,
-            bgcolor: 'background.paper',
-            border: '1px solid',
-            borderColor: 'divider',
-            boxShadow: '0 6px 16px rgba(0,0,0,0.06)'
+            bgcolor: SURFACE_COLORS.card,
+            boxShadow: `0 20px 50px ${alpha(SURFACE_COLORS.ink, 0.06)}`,
+            position: 'relative',
+            overflow: 'hidden',
+            '&::before': {
+              content: '""',
+              position: 'absolute',
+              inset: 0,
+              background: `linear-gradient(135deg, ${alpha(SURFACE_COLORS.cyan, 0.18)}, transparent 42%)`,
+              pointerEvents: 'none',
+            },
           }}
         >
-          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
-            <Typography variant="subtitle2" color="text.secondary">
-              Totales USD blue
-            </Typography>
-            <Chip size="small" label="USD" variant="outlined" />
+          <Stack direction="row" justifyContent="space-between" alignItems="flex-start" sx={{ position: 'relative', zIndex: 1, gap: 2 }}>
+            <Box>
+              <Typography sx={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.14em', color: alpha(SURFACE_COLORS.blue, 0.7), fontWeight: 800, mb: 0.75 }}>
+                Totales filtrados
+              </Typography>
+              <Typography sx={{ fontFamily: 'Manrope, Inter, sans-serif', fontSize: { xs: 28, md: 34 }, lineHeight: 1, fontWeight: 800, color: neto >= 0 ? 'success.main' : 'error.main' }}>
+                {fmt(up, neto)}
+              </Typography>
+            </Box>
+            <Chip size="small" label={up} sx={{ bgcolor: alpha(SURFACE_COLORS.blue, 0.1), color: SURFACE_COLORS.blue, fontWeight: 700, borderRadius: 999 }} />
           </Stack>
-          <Typography
-            variant="h6"
+          <Stack direction={isMobile ? 'column' : 'row'} spacing={isMobile ? 1 : 3} sx={{ mt: 2.25, position: 'relative', zIndex: 1 }}>
+            <Box>
+              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                Ingresos
+              </Typography>
+              <Typography sx={{ color: 'success.main', fontWeight: 700 }}>
+                + {fmt(up, ingreso)}
+              </Typography>
+            </Box>
+            <Box>
+              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                Egresos
+              </Typography>
+              <Typography sx={{ color: 'error.main', fontWeight: 700 }}>
+                - {fmt(up, egreso)}
+              </Typography>
+            </Box>
+            <Box>
+              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                Total del período
+              </Typography>
+              <Typography sx={{ color: SURFACE_COLORS.ink, fontWeight: 700 }}>
+                {fmt(up, totalPeriodo)}
+              </Typography>
+            </Box>
+            {isMobile && (
+              <Button size="small" variant="text" onClick={onToggleDetails} sx={{ alignSelf: 'flex-start', px: 0, color: SURFACE_COLORS.cyanDeep, fontWeight: 700 }}>
+                {showDetails ? 'Ocultar detalle' : 'Ver detalle'}
+              </Button>
+            )}
+          </Stack>
+          {isMobile && showDetails && (
+            <Typography variant="body2" sx={{ mt: 1.5, color: 'text.secondary', position: 'relative', zIndex: 1 }}>
+              Balance neto de ingresos y egresos para la vista activa.
+            </Typography>
+          )}
+        </Box>
+
+        {showUsdBlue && usdBlue && (
+          <Box
             sx={{
-              fontWeight: 700,
-              mb: 0.5,
-              color: (usdBlue.neto ?? 0) >= 0 ? 'success.main' : 'error.main'
+              p: { xs: 2, md: 3 },
+              borderRadius: 4,
+              flex: 1,
+              minWidth: 260,
+              bgcolor: alpha(SURFACE_COLORS.blue, 0.96),
+              color: '#fff',
+              boxShadow: `0 20px 50px ${alpha(SURFACE_COLORS.blue, 0.18)}`,
             }}
           >
-            Neto: {fmt('USD', usdBlue.neto)}
-          </Typography>
-          <Stack direction="row" spacing={1.5} flexWrap="wrap">
-            <Typography sx={{ color: 'success.main', fontWeight: 600 }}>
-              + {fmt('USD', usdBlue.ingreso)}
+            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.25 }}>
+              <Typography sx={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.14em', fontWeight: 800, opacity: 0.8 }}>
+                Totales USD blue
+              </Typography>
+              <Chip size="small" label="USD" sx={{ bgcolor: alpha('#fff', 0.16), color: '#fff', borderRadius: 999 }} />
+            </Stack>
+            <Typography sx={{ fontFamily: 'Manrope, Inter, sans-serif', fontSize: { xs: 28, md: 32 }, lineHeight: 1, fontWeight: 800, mb: 2 }}>
+              {fmt('USD', usdBlue.neto)}
             </Typography>
-            <Typography sx={{ color: 'error.main', fontWeight: 600 }}>
-              - {fmt('USD', usdBlue.egreso)}
-            </Typography>
-          </Stack>
-        </Box>
-      )}
+            <Stack direction="row" spacing={3} flexWrap="wrap">
+              <Typography sx={{ color: alpha('#fff', 0.92), fontWeight: 700 }}>
+                + {fmt('USD', usdBlue.ingreso)}
+              </Typography>
+              <Typography sx={{ color: alpha('#fff', 0.92), fontWeight: 700 }}>
+                - {fmt('USD', usdBlue.egreso)}
+              </Typography>
+            </Stack>
+          </Box>
+        )}
       </Stack>
-
     </Stack>
   );
 };
@@ -478,11 +352,6 @@ const ProyectoMovimientosPage = () => {
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
   const [configDrawerOpen, setConfigDrawerOpen] = useState(false);
-  const [csvDialogOpen, setCsvDialogOpen] = useState(false);
-  const [csvSelectedFields, setCsvSelectedFields] = useState([]);
-  const [csvFieldOrder, setCsvFieldOrder] = useState([]);
-  const [csvConfigHydrated, setCsvConfigHydrated] = useState(false);
-  const [csvExporting, setCsvExporting] = useState(false);
   const [confirmarPagoMov, setConfirmarPagoMov] = useState(null);
   const [confirmarPagoLoading, setConfirmarPagoLoading] = useState(false);
   const openImg = (url) => setImgPreview({ open: true, url });
@@ -519,9 +388,6 @@ const [topWidth, setTopWidth] = useState(0);
 const [page, setPage] = useState(0);           // página actual (0-based)
 const [rowsPerPage, setRowsPerPage] = useState(25);  // filas por página
 
-const csvExportFields = useMemo(() => getMovimientoCsvExportFields(), []);
-const csvDefaultOrder = useMemo(() => csvExportFields.map((field) => field.key), [csvExportFields]);
-
  // helper: metadatos de equivalencias (moneda objetivo y path en mov.equivalencias)
  const EQUIV_META = {
    none:        { out: null,        path: null },                          // usa mov.total
@@ -550,13 +416,6 @@ const getMax = () => {
   if (!el) return 0;
   return Math.max(0, el.scrollWidth - el.clientWidth);
 };
-
-useEffect(() => {
-  if (csvConfigHydrated || csvDefaultOrder.length === 0) return;
-  setCsvSelectedFields(csvDefaultOrder);
-  setCsvFieldOrder(csvDefaultOrder);
-  setCsvConfigHydrated(true);
-}, [csvConfigHydrated, csvDefaultOrder]);
 
 
 useEffect(() => {
@@ -1571,86 +1430,102 @@ const movimientosConProrrateo = useMemo(() => {
        return result;
      };
 
-  const movimientosExportables = useMemo(() => {
+  // Función para exportar CSV con análisis detallado
+  const exportarCSVAnalisis = () => {
     const movimientosUnicos = new Map();
-    [...movimientos, ...movimientosUSD].forEach((mov) => {
+    [...movimientos, ...movimientosUSD].forEach(mov => {
       movimientosUnicos.set(mov.id, mov);
     });
-    return Array.from(movimientosUnicos.values());
-  }, [movimientos, movimientosUSD]);
+    const allMovs = Array.from(movimientosUnicos.values());
 
-  const handleOpenExportCsvDialog = useCallback(() => {
-    if (!csvConfigHydrated) {
-      setCsvSelectedFields(csvDefaultOrder);
-      setCsvFieldOrder(csvDefaultOrder);
-      setCsvConfigHydrated(true);
-    }
-    setCsvDialogOpen(true);
-  }, [csvConfigHydrated, csvDefaultOrder]);
+    // Headers del CSV
+    const headers = [
+      'ID',
+      'Codigo',
+      'Fecha',
+      'Tipo',
+      'Moneda_Original',
+      'Total_Original',
+      'Proveedor',
+      'Categoria',
+      'Medio_Pago',
+      'Estado',
+      'USD_Blue',
+      'USD_Oficial',
+      'USD_MEP_Medio',
+      'Tiene_Equivalencias',
+      'Proyecto',
+      'TC_Ejecutado',
+      'Ratio_USD_Blue_vs_Original',
+      'Observacion'
+    ];
 
-  const handleToggleCsvField = useCallback((fieldKey) => {
-    setCsvSelectedFields((prev) => (
-      prev.includes(fieldKey)
-        ? prev.filter((key) => key !== fieldKey)
-        : [...prev, fieldKey]
-    ));
-  }, []);
+    // Convertir movimientos a filas CSV
+    const rows = allMovs.map(mov => {
+      const usdBlue = mov.equivalencias?.total?.usd_blue;
+      const total = mov.total || 0;
+      const ratio = (usdBlue && total > 0) ? (usdBlue / total).toFixed(4) : 'N/A';
+      
+      const parseFecha = (f) => {
+        if (!f) return '';
+        let d;
+        if (typeof f === 'object' && f.seconds != null) {
+          d = new Date(f.seconds * 1000);
+        } else {
+          d = new Date(f);
+        }
+        return isNaN(d.getTime()) ? '' : d.toLocaleDateString('es-AR');
+      };
 
-  const handleReorderCsvField = useCallback((fieldKey, direction) => {
-    setCsvFieldOrder((prev) => {
-      const currentIndex = prev.indexOf(fieldKey);
-      if (currentIndex === -1) return prev;
-      const nextIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
-      return moveItem(prev, currentIndex, nextIndex);
+      return [
+        mov.id || '',
+        mov.codigo_operacion || '',
+        parseFecha(mov.fecha_factura),
+        mov.type || '',
+        mov.moneda || '',
+        total,
+        mov.nombre_proveedor || '',
+        mov.categoria || '',
+        mov.medio_pago || '',
+        mov.estado || '',
+        usdBlue || 'N/A',
+        mov.equivalencias?.total?.usd_oficial || 'N/A',
+        mov.equivalencias?.total?.usd_mep_medio || 'N/A',
+        mov.equivalencias ? 'SI' : 'NO',
+        mov.proyecto_nombre || '',
+        mov.tc || 'N/A',
+        ratio,
+        mov.observacion || ''
+      ];
     });
-  }, []);
 
-  const handleResetCsvConfig = useCallback(() => {
-    setCsvSelectedFields(csvDefaultOrder);
-    setCsvFieldOrder(csvDefaultOrder);
-  }, [csvDefaultOrder]);
+    // Crear contenido CSV
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(cell => 
+        typeof cell === 'string' && cell.includes(',') 
+          ? `"${cell}"` 
+          : cell
+      ).join(','))
+    ].join('\n');
 
-  const handleExportCsvAnalisis = useCallback(() => {
-    const selectedFields = csvFieldOrder
-      .filter((fieldKey) => csvSelectedFields.includes(fieldKey))
-      .map((fieldKey) => csvExportFields.find((field) => field.key === fieldKey))
-      .filter(Boolean);
+    // Crear y descargar archivo
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `analisis_movimientos_${proyecto?.nombre || 'proyecto'}_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
 
-    if (selectedFields.length === 0) {
-      setAlert({
-        open: true,
-        message: 'Seleccioná al menos un campo para exportar',
-        severity: 'warning',
-      });
-      return;
-    }
-
-    setCsvExporting(true);
-    try {
-      const headers = selectedFields.map((field) => formatCsvCell(field.label));
-      const rows = movimientosExportables.map((mov) => (
-        selectedFields.map((field) => formatCsvCell(field.getValue(mov)))
-      ));
-      const csvContent = [
-        headers.join(','),
-        ...rows.map((row) => row.join(',')),
-      ].join('\n');
-
-      descargarArchivoCsv(
-        `analisis_movimientos_${proyecto?.nombre || 'proyecto'}_${new Date().toISOString().split('T')[0]}.csv`,
-        csvContent
-      );
-
-      setCsvDialogOpen(false);
-      setAlert({
-        open: true,
-        message: `CSV exportado con ${movimientosExportables.length} movimientos`,
-        severity: 'success',
-      });
-    } finally {
-      setCsvExporting(false);
-    }
-  }, [csvExportFields, csvFieldOrder, csvSelectedFields, movimientosExportables, proyecto?.nombre]);
+    setAlert({
+      open: true,
+      message: `CSV exportado con ${allMovs.length} movimientos`,
+      severity: 'success',
+    });
+  };
 
   const handleGuardarCaja = async () => {
     const nuevaCaja = {
@@ -1912,19 +1787,57 @@ useEffect(() => {
       <Head>
         <title>{tituloConCodigo}</title>
       </Head>
-      <Box component="main" sx={{ flexGrow: 1, py: 8, paddingTop: 2, position: 'relative' }}>
+      <Box
+        component="main"
+        sx={{
+          flexGrow: 1,
+          py: { xs: 3, md: 6 },
+          position: 'relative',
+          minHeight: '100%',
+          background: `radial-gradient(circle at top left, ${alpha(SURFACE_COLORS.cyan, 0.14)}, transparent 26%), linear-gradient(180deg, ${SURFACE_COLORS.background} 0%, #f2f4f5 100%)`,
+        }}
+      >
         {loadingPage && (
-          <Backdrop open sx={{ position: 'absolute', zIndex: 10, bgcolor: 'rgba(255,255,255,0.7)' }}>
+          <Backdrop open sx={{ position: 'absolute', zIndex: 10, bgcolor: alpha('#ffffff', 0.72), backdropFilter: 'blur(4px)' }}>
             <CircularProgress />
           </Backdrop>
         )}
         <Container maxWidth="xl">
           <Stack spacing={3}>
-            
-            <Stack direction={isMobile ? "column" : "row"} spacing={2} alignItems="stretch">
+            <Paper
+              elevation={0}
+              sx={{
+                p: { xs: 2, md: 3 },
+                borderRadius: 5,
+                bgcolor: alpha(SURFACE_COLORS.card, 0.92),
+                boxShadow: `0 24px 60px ${alpha(SURFACE_COLORS.ink, 0.06)}`,
+                backdropFilter: 'blur(12px)',
+              }}
+            >
+              <Stack spacing={2.5}>
+                <Stack direction={isMobile ? 'column' : 'row'} justifyContent="space-between" spacing={2} alignItems={isMobile ? 'flex-start' : 'center'}>
+                  <Box>
+                    <Typography sx={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.16em', color: alpha(SURFACE_COLORS.blue, 0.7), fontWeight: 800, mb: 0.75 }}>
+                      Sorby Caja Redesign
+                    </Typography>
+                    <Typography sx={{ fontFamily: 'Manrope, Inter, sans-serif', fontSize: { xs: 28, md: 42 }, lineHeight: 1, fontWeight: 800, color: SURFACE_COLORS.blue }}>
+                      {tituloConCodigo}
+                    </Typography>
+                    <Typography sx={{ mt: 1, maxWidth: 780, color: 'text.secondary' }}>
+                      Vista alternativa de caja con filtros estilo Notion, jerarquía editorial y foco en lectura financiera rápida.
+                    </Typography>
+                  </Box>
+                  <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }}>
+                    <Chip icon={<HomeIcon />} label={empresa?.nombre || 'Empresa'} sx={{ bgcolor: alpha(SURFACE_COLORS.blue, 0.08), color: SURFACE_COLORS.blue, fontWeight: 700 }} />
+                    <Chip icon={<FolderIcon />} label={proyecto?.nombre || 'Proyecto'} sx={{ bgcolor: alpha(SURFACE_COLORS.cyan, 0.12), color: SURFACE_COLORS.cyanDeep, fontWeight: 700 }} />
+                    <Chip icon={<AccountBalanceWalletIcon />} label={activeCaja?.nombre || 'Sin caja'} sx={{ bgcolor: alpha(SURFACE_COLORS.green, 0.14), color: '#00513d', fontWeight: 700 }} />
+                  </Stack>
+                </Stack>
+
+                <Stack direction={isMobile ? "column" : "row"} spacing={2} alignItems="stretch">
               {isMobile ? (
                 <Stack spacing={1}>
-                  <Button size="small" variant="text" onClick={() => setShowCajasMobile((v) => !v)}>
+                  <Button size="small" variant="text" onClick={() => setShowCajasMobile((v) => !v)} sx={{ px: 0, alignSelf: 'flex-start', color: SURFACE_COLORS.cyanDeep, fontWeight: 700 }}>
                     {showCajasMobile ? 'Ocultar cajas' : 'Mostrar cajas'}
                   </Button>
                   {!showCajasMobile && cajaSeleccionada && (
@@ -1935,10 +1848,9 @@ useEffect(() => {
                         justifyContent: 'space-between',
                         px: 1.5,
                         py: 1,
-                        borderRadius: 1.5,
-                        border: '1px solid',
-                        borderColor: 'primary.main',
-                        bgcolor: 'action.hover',
+                        borderRadius: 3,
+                        bgcolor: SURFACE_COLORS.card,
+                        boxShadow: `0 12px 30px ${alpha(SURFACE_COLORS.ink, 0.05)}`,
                       }}
                     >
                       <Stack spacing={0.25}>
@@ -1957,7 +1869,7 @@ useEffect(() => {
                     </Box>
                   )}
                   {showCajasMobile && (
-                    <Stack spacing={0.5}>
+                    <Stack spacing={1}>
                       {cajasVirtuales.map((caja, index) => {
                         const selected = cajaSeleccionada?.nombre === caja.nombre;
                         return (
@@ -1968,12 +1880,13 @@ useEffect(() => {
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'space-between',
-                              px: 1.5,
-                              py: 1,
-                              borderRadius: 1.5,
-                              border: '1px solid',
-                              borderColor: selected ? 'primary.main' : 'divider',
-                              bgcolor: selected ? 'action.hover' : 'background.paper',
+                              px: 2,
+                              py: 1.5,
+                              borderRadius: 3,
+                              bgcolor: selected ? alpha(SURFACE_COLORS.cyan, 0.16) : SURFACE_COLORS.card,
+                              boxShadow: selected
+                                ? `inset 0 0 0 1px ${alpha(SURFACE_COLORS.cyanDeep, 0.2)}`
+                                : `0 10px 25px ${alpha(SURFACE_COLORS.ink, 0.05)}`,
                             }}
                           >
                             <Stack spacing={0.25}>
@@ -2001,33 +1914,50 @@ useEffect(() => {
                     display: 'flex',
                     gap: 2,
                     overflowX: 'visible',
+                    flex: 1,
                   }}
                 >
                   {cajasVirtuales.map((caja, index) => (
                     <Box key={index} sx={{ position: 'relative', width: '100%', mb: 1, display: 'flex' }}>
                       <Button
                         fullWidth
-                        variant={cajaSeleccionada?.nombre === caja.nombre ? "contained" : "outlined"}
+                        variant="text"
                         onClick={() => onSelectCaja(caja)}
                         sx={{
                           justifyContent: 'space-between',
-                          pl: 2,
+                          pl: 2.5,
                           pr: 5,
-                          minHeight: 56,
+                          minHeight: 88,
                           alignItems: 'center',
                           textAlign: 'left',
+                          borderRadius: 4,
+                          bgcolor: cajaSeleccionada?.nombre === caja.nombre ? alpha(SURFACE_COLORS.blue, 0.95) : SURFACE_COLORS.card,
+                          color: cajaSeleccionada?.nombre === caja.nombre ? '#fff' : SURFACE_COLORS.ink,
+                          boxShadow: `0 14px 35px ${alpha(SURFACE_COLORS.ink, 0.06)}`,
+                          '&:hover': {
+                            bgcolor: cajaSeleccionada?.nombre === caja.nombre ? alpha(SURFACE_COLORS.blue, 0.92) : alpha(SURFACE_COLORS.card, 0.95),
+                          },
                         }}
                       >
-                        <Typography>{caja.nombre}</Typography>
-                        {caja.equivalencia && caja.equivalencia !== 'none' && (
-                          <Chip size="small" label={caja.equivalencia.replace('_', ' ')} sx={{ ml: 1 }} />
-                        )}
-                        <Typography>{formatCajaAmount(caja, calcularTotalParaCaja(caja))}</Typography>
+                        <Stack spacing={0.5} sx={{ alignItems: 'flex-start' }}>
+                          <Typography sx={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.12em', fontWeight: 800, opacity: 0.7 }}>
+                            Caja
+                          </Typography>
+                          <Typography sx={{ fontFamily: 'Manrope, Inter, sans-serif', fontSize: 20, fontWeight: 800 }}>
+                            {caja.nombre}
+                          </Typography>
+                          {caja.equivalencia && caja.equivalencia !== 'none' && (
+                            <Chip size="small" label={caja.equivalencia.replace('_', ' ')} sx={{ bgcolor: cajaSeleccionada?.nombre === caja.nombre ? alpha('#fff', 0.14) : alpha(SURFACE_COLORS.cyan, 0.14), color: 'inherit' }} />
+                          )}
+                        </Stack>
+                        <Typography sx={{ fontFamily: 'Manrope, Inter, sans-serif', fontSize: 22, fontWeight: 800 }}>
+                          {formatCajaAmount(caja, calcularTotalParaCaja(caja))}
+                        </Typography>
                       </Button>
                       <IconButton
                         size="small"
                         onClick={(event) => handleOpenCajaMenu(event, index)}
-                        sx={{ position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)' }}
+                        sx={{ position: 'absolute', right: 8, top: 8, color: cajaSeleccionada?.nombre === caja.nombre ? '#fff' : SURFACE_COLORS.blue }}
                       >
                         <MoreVertIcon fontSize="small" />
                       </IconButton>
@@ -2047,11 +1977,17 @@ useEffect(() => {
 <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', width: isMobile ? '100%' : 'auto' }}>
   {isMobile && (
     <Button
-      variant="outlined"
-      size="small"
+      variant="contained"
+      size="medium"
       startIcon={<FilterListIcon />}
       onClick={() => setFiltersOpen(true)}
       fullWidth
+      sx={{
+        borderRadius: 999,
+        py: 1.25,
+        background: `linear-gradient(135deg, ${SURFACE_COLORS.cyanDeep}, ${SURFACE_COLORS.cyan})`,
+        boxShadow: `0 14px 30px ${alpha(SURFACE_COLORS.cyanDeep, 0.22)}`,
+      }}
     >
       <Badge color="primary" badgeContent={filterChips.length} invisible={filterChips.length === 0}>
         <span>Filtros</span>
@@ -2061,23 +1997,23 @@ useEffect(() => {
 </Box>
 
 {!isMobile && (
-  <Stack spacing={0.75} sx={{ flexShrink: 0, justifyContent: 'center' }}>
+  <Stack spacing={1} sx={{ flexShrink: 0, justifyContent: 'center', minWidth: 210 }}>
     <Button
-      variant="outlined"
-      size="small"
+      variant="contained"
+      size="medium"
       fullWidth
       startIcon={<SortIcon />}
       onClick={() => setOpenOrdenar(true)}
-      sx={{ minWidth: 110, whiteSpace: 'nowrap' }}
+      sx={{ minWidth: 110, whiteSpace: 'nowrap', borderRadius: 999, bgcolor: alpha(SURFACE_COLORS.blue, 0.1), color: SURFACE_COLORS.blue, boxShadow: 'none', '&:hover': { bgcolor: alpha(SURFACE_COLORS.blue, 0.16), boxShadow: 'none' } }}
     >
       Ordenar columnas
     </Button>
     <Button
-      variant="outlined"
-      size="small"
+      variant="contained"
+      size="medium"
       fullWidth
       onClick={handleOpenCols}
-      sx={{ minWidth: 110, whiteSpace: 'nowrap' }}
+      sx={{ minWidth: 110, whiteSpace: 'nowrap', borderRadius: 999, bgcolor: alpha(SURFACE_COLORS.blue, 0.1), color: SURFACE_COLORS.blue, boxShadow: 'none', '&:hover': { bgcolor: alpha(SURFACE_COLORS.blue, 0.16), boxShadow: 'none' } }}
     >
       <Badge color="primary" badgeContent={hiddenColsCount} invisible={hiddenColsCount === 0}>
         <span>Columnas</span>
@@ -2085,19 +2021,21 @@ useEffect(() => {
     </Button>
     <Button
       variant="contained"
-      size="small"
+      size="medium"
       fullWidth
       startIcon={<MoreVertIcon />}
       onClick={handleOpenMenu}
-      sx={{ minWidth: 110, whiteSpace: 'nowrap' }}
+      sx={{ minWidth: 110, whiteSpace: 'nowrap', borderRadius: 999, py: 1.25, background: `linear-gradient(135deg, ${SURFACE_COLORS.cyanDeep}, ${SURFACE_COLORS.cyan})`, boxShadow: `0 14px 32px ${alpha(SURFACE_COLORS.cyanDeep, 0.22)}` }}
     >
       Acciones
     </Button>
   </Stack>
 )}
 
-            </Stack>
-            <Dialog open={showCrearCaja} onClose={() => setShowCrearCaja(false)}>
+                </Stack>
+              </Stack>
+            </Paper>
+            <Dialog open={showCrearCaja} onClose={() => setShowCrearCaja(false)} PaperProps={{ sx: { borderRadius: 4 } }}>
   <DialogTitle>Crear vista de caja personalizada</DialogTitle>
   <DialogContent>
     <TextField label="Nombre de la caja" fullWidth value={nombreCaja} onChange={(e) => setNombreCaja(e.target.value)} />
@@ -2191,20 +2129,30 @@ useEffect(() => {
 )}
 
 {!isMobile && (
-  <FilterBarCajaProyecto
-    filters={filters}
-    setFilters={setFilters}
-    options={options}
-    onRefresh={handleRefresh}
-    empresa={empresa}
-    expanded={filtersOpen}
-    onToggleExpanded={() => setFiltersOpen((o) => !o)}
-    storageKey={proyectoId}
-    empresaId={empresa?.id}
-    userId={authUserUid}
-  />
+  <Paper
+    elevation={0}
+    sx={{
+      p: 1.5,
+      borderRadius: 4,
+      bgcolor: SURFACE_COLORS.panel,
+      boxShadow: `inset 0 0 0 1px ${alpha(SURFACE_COLORS.ink, 0.04)}`,
+    }}
+  >
+    <FilterBarCajaProyecto
+      filters={filters}
+      setFilters={setFilters}
+      options={options}
+      onRefresh={handleRefresh}
+      empresa={empresa}
+      expanded={filtersOpen}
+      onToggleExpanded={() => setFiltersOpen((o) => !o)}
+      storageKey={proyectoId}
+      empresaId={empresa?.id}
+      userId={authUserUid}
+    />
+  </Paper>
 )}
-            <Paper>
+            <Paper elevation={0} sx={{ p: { xs: 1.5, md: 2 }, borderRadius: 5, bgcolor: SURFACE_COLORS.panel, boxShadow: `0 18px 48px ${alpha(SURFACE_COLORS.ink, 0.05)}` }}>
               <Snackbar open={alert.open} autoHideDuration={6000} onClose={handleCloseAlert}>
                 <Alert onClose={handleCloseAlert} severity={alert.severity} sx={{ width: '100%' }}>
                   {alert.message}
@@ -2219,7 +2167,7 @@ useEffect(() => {
                   moneda={activeTotalsCurrency}
                   showUsdBlue={false}
                   usdBlue={totalesUsdBlue}
-                  chips={[]}
+                  chips={filterChips}
                   onOpenFilters={() => setFiltersOpen((o) => !o)}
                   isMobile={isMobile}
                   showDetails={showTotalsDetails}
@@ -2230,7 +2178,7 @@ useEffect(() => {
                 {isMobile ? (
                   <Stack spacing={2}>
                     {paginatedMovs.length === 0 && (
-                      <Paper sx={{ p: 2 }}>
+                      <Paper elevation={0} sx={{ p: 3, borderRadius: 4, bgcolor: SURFACE_COLORS.card }}>
                         <Typography variant="subtitle1">Sin resultados</Typography>
                         <Typography variant="body2" color="text.secondary">
                           Probá ajustar fechas, categorías o limpiar filtros.
@@ -2246,7 +2194,7 @@ useEffect(() => {
                               const amountColor = mov.type === 'ingreso' ? 'success.main' : 'error.main';
                               
                               return (
-                                <Card key={`${item.grupoId}-${subIndex}`} sx={{ mb: 1, cursor: 'pointer', bgcolor: 'background.paper' }} onClick={() => openDetalle(mov)}>
+                                <Card key={`${item.grupoId}-${subIndex}`} elevation={0} sx={{ mb: 1, cursor: 'pointer', bgcolor: SURFACE_COLORS.card, borderRadius: 4, boxShadow: `0 14px 35px ${alpha(SURFACE_COLORS.ink, 0.06)}` }} onClick={() => openDetalle(mov)}>
                                   <CardContent>
                                     <Stack direction="row" justifyContent="space-between" alignItems="center">
                                       <Typography variant="body2" sx={{ fontWeight: 700 }}>
@@ -2280,7 +2228,7 @@ useEffect(() => {
                       // Si es un movimiento normal
                       const mov = item.data;
                       return (
-                        <Card key={index} sx={{ cursor: 'pointer', bgcolor: 'background.paper' }} onClick={() => openDetalle(mov)}>
+                        <Card key={index} elevation={0} sx={{ cursor: 'pointer', bgcolor: SURFACE_COLORS.card, borderRadius: 4, boxShadow: `0 14px 35px ${alpha(SURFACE_COLORS.ink, 0.06)}` }} onClick={() => openDetalle(mov)}>
                           <CardContent>
                             <Stack direction="row" justifyContent="space-between" alignItems="center">
                               <Typography variant="body2" sx={{ fontWeight: 700 }}>
@@ -2318,7 +2266,7 @@ useEffect(() => {
   onClose={handleCloseCols}
   anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
   transformOrigin={{ vertical: 'top', horizontal: 'right' }}
-  PaperProps={{ sx: { p: 1, width: 280 } }}
+  PaperProps={{ sx: { p: 1.25, width: 300, borderRadius: 4, bgcolor: SURFACE_COLORS.card } }}
 >
   <Stack spacing={1.25}>
     <FormControlLabel
@@ -2419,7 +2367,7 @@ useEffect(() => {
 />
 
 {/* ===== Scrollbar superior sincronizada ===== */}
-<Box sx={{ position: 'relative', mb: 0.5 }}>
+<Box sx={{ position: 'relative', mb: 0.75 }}>
 <Box
   ref={topScrollRef}
   onScroll={(e) => {
@@ -2484,8 +2432,7 @@ useEffect(() => {
         bottom: 0,
         width: 28,
         zIndex: 3,
-        background:
-          'linear-gradient(to right, rgba(0,0,0,0.10), rgba(0,0,0,0.06), rgba(0,0,0,0.0))',
+        background: `linear-gradient(to right, ${alpha(SURFACE_COLORS.blue, 0.14)}, ${alpha(SURFACE_COLORS.blue, 0.07)}, rgba(0,0,0,0.0))`,
         borderTopLeftRadius: 4,
         borderBottomLeftRadius: 4,
       }}
@@ -2501,8 +2448,7 @@ useEffect(() => {
         bottom: 0,
         width: 28,
         zIndex: 3,
-        background:
-          'linear-gradient(to left, rgba(0,0,0,0.10), rgba(0,0,0,0.06), rgba(0,0,0,0.0))',
+        background: `linear-gradient(to left, ${alpha(SURFACE_COLORS.blue, 0.14)}, ${alpha(SURFACE_COLORS.blue, 0.07)}, rgba(0,0,0,0.0))`,
         borderTopRightRadius: 4,
         borderBottomRightRadius: 4,
       }}
@@ -2520,9 +2466,9 @@ useEffect(() => {
         top: '50%',
         transform: 'translateY(-50%)',
         zIndex: 4,
-        bgcolor: 'background.paper',
-        boxShadow: 1,
-        '&:hover': { bgcolor: 'background.paper' },
+        bgcolor: SURFACE_COLORS.card,
+        boxShadow: `0 10px 24px ${alpha(SURFACE_COLORS.ink, 0.12)}`,
+        '&:hover': { bgcolor: SURFACE_COLORS.card },
       }}
     >
       <ChevronLeftIcon fontSize="small" />
@@ -2538,9 +2484,9 @@ useEffect(() => {
         top: '50%',
         transform: 'translateY(-50%)',
         zIndex: 4,
-        bgcolor: 'background.paper',
-        boxShadow: 1,
-        '&:hover': { bgcolor: 'background.paper' },
+        bgcolor: SURFACE_COLORS.card,
+        boxShadow: `0 10px 24px ${alpha(SURFACE_COLORS.ink, 0.12)}`,
+        '&:hover': { bgcolor: SURFACE_COLORS.card },
       }}
     >
       <ChevronRightIcon fontSize="small" />
@@ -2562,7 +2508,7 @@ useEffect(() => {
         position: 'absolute',
         right: 40,
         top: -30,
-        color: 'text.secondary',
+        color: SURFACE_COLORS.blue,
         display: 'flex',
         alignItems: 'center',
         gap: 0.5,
@@ -2579,12 +2525,25 @@ useEffect(() => {
   component={Paper}
   ref={scrollRef}
   sx={{
-    height: 'calc(100vh - 300px)',
+    height: 'calc(100vh - 320px)',
     overflowX: 'auto',
     overflowY: 'auto',
-    pr: 0, // espacio real lo aporta la barra
-    '&::-webkit-scrollbar': { height: 10 },                // “barra siempre visible” en WebKit
-    '&::-webkit-scrollbar-thumb': { background: 'rgba(0,0,0,0.25)', borderRadius: 8 },
+    pr: 0,
+    borderRadius: 4,
+    bgcolor: SURFACE_COLORS.card,
+    '&::-webkit-scrollbar': { height: 10, width: 10 },
+    '&::-webkit-scrollbar-thumb': { background: alpha(SURFACE_COLORS.blue, 0.22), borderRadius: 8 },
+    '& .MuiTableCell-root': {
+      borderBottomColor: alpha(SURFACE_COLORS.ink, 0.05),
+    },
+    '& .MuiTableHead-root .MuiTableCell-root': {
+      bgcolor: alpha(SURFACE_COLORS.panel, 0.92),
+      color: alpha(SURFACE_COLORS.blue, 0.82),
+      fontWeight: 800,
+      textTransform: 'uppercase',
+      letterSpacing: '0.08em',
+      fontSize: '0.72rem',
+    },
   }}
 >
   <Table ref={tableRef} stickyHeader size="small">
@@ -2638,7 +2597,7 @@ useEffect(() => {
                     key={`${item.grupoId}-${subIndex}`} 
                     hover
                     onClick={() => openDetalle(mov)}
-                    sx={{ cursor: 'pointer', ...(selectedIds.has(mov.id) && { bgcolor: 'action.selected' }) }}
+                    sx={{ cursor: 'pointer', ...(selectedIds.has(mov.id) && { bgcolor: alpha(SURFACE_COLORS.cyan, 0.12) }), '&:hover': { bgcolor: alpha(SURFACE_COLORS.panel, 0.7) } }}
                   >
                     <TableCell padding="checkbox" sx={{ position: 'sticky', left: 0, zIndex: 1, bgcolor: 'inherit' }}>
                       <Checkbox
@@ -2673,7 +2632,7 @@ useEffect(() => {
             : 'inherit';
 
         return (
-          <TableRow key={index} hover onClick={() => openDetalle(mov)} sx={{ cursor: 'pointer', ...(selectedIds.has(mov.id) && { bgcolor: 'action.selected' }) }}>
+          <TableRow key={index} hover onClick={() => openDetalle(mov)} sx={{ cursor: 'pointer', ...(selectedIds.has(mov.id) && { bgcolor: alpha(SURFACE_COLORS.cyan, 0.12) }), '&:hover': { bgcolor: alpha(SURFACE_COLORS.panel, 0.7) } }}>
             <TableCell padding="checkbox" sx={{ position: 'sticky', left: 0, zIndex: 1, bgcolor: 'inherit' }}>
               <Checkbox
                 size="small"
@@ -2706,6 +2665,15 @@ useEffect(() => {
       onPageChange={handleChangePage}
       onRowsPerPageChange={handleChangeRowsPerPage}
       labelRowsPerPage="Filas por página"
+      sx={{
+        mt: 1,
+        borderRadius: 3,
+        bgcolor: alpha(SURFACE_COLORS.card, 0.92),
+        '& .MuiTablePagination-selectLabel, & .MuiTablePagination-displayedRows': {
+          color: alpha(SURFACE_COLORS.blue, 0.72),
+          fontWeight: 600,
+        },
+      }}
     />
 </Box>
 </>
@@ -2792,7 +2760,7 @@ useEffect(() => {
   </MenuOption>
   
   <MenuOption onClick={() => {
-    handleOpenExportCsvDialog();
+    exportarCSVAnalisis();
     handleCloseMenu();
   }}>
     <DownloadIcon sx={{ mr: 1 }} />
@@ -3134,22 +3102,6 @@ useEffect(() => {
   proyecto={proyecto}
   empresa={empresa}
   onProyectoUpdated={(updated) => setProyecto((prev) => ({ ...prev, ...updated }))}
-/>
-
-<ExportCsvDialog
-  open={csvDialogOpen}
-  onClose={() => setCsvDialogOpen(false)}
-  fields={csvExportFields}
-  selectedKeys={csvSelectedFields}
-  orderedKeys={csvFieldOrder}
-  onToggleField={handleToggleCsvField}
-  onReorderField={handleReorderCsvField}
-  onSelectAll={() => setCsvSelectedFields(csvDefaultOrder)}
-  onClearAll={() => setCsvSelectedFields([])}
-  onReset={handleResetCsvConfig}
-  onExport={handleExportCsvAnalisis}
-  exporting={csvExporting}
-  totalRows={movimientosExportables.length}
 />
 
 
