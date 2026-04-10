@@ -30,18 +30,14 @@ api.interceptors.request.use(
     async config => {
         try {
             await waitForAuthReady();
-            const user = auth.currentUser || await waitForUser();
-            const token = await user.getIdToken();
+            const fallbackToken = window.localStorage.getItem('authToken');
+            const user = auth.currentUser || await waitForUser().catch(() => null);
+            const token = user ? await user.getIdToken() : fallbackToken;
             if (token) {
                 config.headers['Authorization'] = `Bearer ${token}`;
             }
         } catch (error) {
-            const fallbackToken = window.localStorage.getItem('authToken');
-            if (fallbackToken) {
-                config.headers['Authorization'] = `Bearer ${fallbackToken}`;
-                return config;
-            }
-            return config;
+            console.error("Error al obtener el token de Firebase:", error);
         }
         return config;
     },

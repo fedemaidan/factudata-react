@@ -156,14 +156,19 @@ export const invalidateEmpresaCache = async (empresaId) => {
  */
 export const getEmpresaDetailsFromUser = async (user) => {
   try {
-    if (!user || !user.empresa) {
+    // Si el perfil ya trae empresaData resuelto (MongoDB), usarlo directamente
+    if (user?.empresaData) {
+      return user.empresaData;
+    }
+
+    if (!user || (!user.empresa && !user.empresa_id)) {
       console.log('Información de la empresa no proporcionada');
       return null;
     }
 
     // Extraer empresaId de distintas formas
     let empresaId = null;
-    const e = user.empresa;
+    const e = user.empresa || user.empresa_id;
     if (typeof e === 'string') {
       empresaId = e.includes('/') ? e.split('/').pop() : e;
     } else if (e && typeof e === 'object') {

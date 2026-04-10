@@ -270,7 +270,7 @@ export const AuthProvider = (props) => {
     const response = await createUserWithEmailAndPassword(auth, email, password);
     console.log('SignUp response:', response);
 
-    const user = {
+    const profile = {
       user_id: response.user.uid,
       avatar: auth.currentUser.photoURL,
       firstName: '',
@@ -283,8 +283,9 @@ export const AuthProvider = (props) => {
       proyectos: [],
     };
 
-    const newUser = await profileService.createProfile(user, null);
-    await updateUser(newUser);
+    await profileService.createProfile(profile, null);
+    const idToken = await response.user.getIdToken(true);
+    const newUser = await getPayloadUserByUid(response.user.uid, idToken);
 
     dispatch({
       type: HANDLERS.UPDATE_USER,
@@ -304,6 +305,7 @@ export const AuthProvider = (props) => {
 
       // Update profile with the new email and user ID
       const updatedProfile = {
+        ...profile,
         user_id: userId,
         email,
         confirmed: true,
@@ -333,12 +335,12 @@ export const AuthProvider = (props) => {
   };
 
   const updateUser = async (user) => {
-    const { id, credit, token, empresaData, ...persistedUser } = user;
-    await profileService.updateProfile(id, persistedUser);
+    const updatedUser = await profileService.updateProfile(user.id, user);
+    const nextUser = { ...state.user, ...updatedUser };
 
     dispatch({
       type: HANDLERS.UPDATE_USER,
-      payload: { ...user, id },
+      payload: nextUser,
     });
   };
 
@@ -369,7 +371,7 @@ export const AuthProvider = (props) => {
       // 1) Cambiar en Firebase Auth
       await updateEmail(auth.currentUser, newEmail);
 
-      // 2) Cambiar en profile
+      // 2) Cambiar en profile API
       await profileService.updateProfile(userId, { email: newEmail });
 
       // 3) Refrescar estado
@@ -435,13 +437,13 @@ export const AuthProvider = (props) => {
       if (!targetUserData) {
         throw new Error('Usuario no encontrado');
       }
+
       const credit = await getTotalCreditsForUser(user.id);
 
       dispatch({
         type: HANDLERS.UPDATE_USER,
         payload: {
           ...targetUserData,
-          id: user.id,
           credit,
           admin: targetUserData.admin || false,
         },

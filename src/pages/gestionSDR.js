@@ -2414,6 +2414,7 @@ const GestionSDRPage = () => {
                 }
                 const userData = userDoc;
                 
+                // Verificar si ya es SDR
                 if (userData.sdr === true) {
                     setResultado({ tipo: 'warning', mensaje: 'Este usuario ya es SDR' });
                     return;
