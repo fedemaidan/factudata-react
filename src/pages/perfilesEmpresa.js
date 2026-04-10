@@ -85,12 +85,13 @@ const PerfilesEmpresaPage = () => {
   }, [saldosMap]);
 
   const fetchData = async () => {
-    if (!user?.empresa) return;
+    const empresaId = user?.empresa?.id || user?.empresaData?.id || user?.empresa_id;
+    if (!empresaId) return;
     setIsLoading(true);
     try {
       const [perfiles, saldos] = await Promise.all([
-        profileService.getProfileByEmpresa(user.empresa.id),
-        cajaChicaService.getSaldosPorEmpresa(user.empresa.id),
+        profileService.getProfileByEmpresa(empresaId),
+        cajaChicaService.getSaldosPorEmpresa(empresaId),
       ]);
       setProfiles(perfiles);
       const map = {};

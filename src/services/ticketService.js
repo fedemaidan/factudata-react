@@ -275,7 +275,7 @@ const ticketService = {
   },
   getCajaChicaDelUsuario: async (user, moneda = 'ARS') => {
     try {
-      const empresa_id = user.empresa?.id || user.empresaId;
+      const empresa_id = user.empresa?.id || user.empresaData?.id || user.empresaId || user.empresa_id;
       const response = await api.get('movimientos/caja-chica', {
         params: { user_phone: user.phone, moneda, empresa_id },
       });
@@ -357,7 +357,7 @@ const ticketService = {
       });
 
       if (!response.ok) {
-        throw new Error('Error al enviar el contacto');
+        throw new Error('Error al enviar el prcontacto');
       }
 
       // Aquí puedes manejar la respuesta exitosa

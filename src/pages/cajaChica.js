@@ -112,16 +112,18 @@ const CajaChicaPage = () => {
     }
     
     // Pass empresa context for proper filtering
-    const userWithEmpresa = { ...userU, empresa: userU.empresa || user.empresa, empresaId: userU.empresaId || user.empresa?.id };
+    const empresaId = userU.empresa?.id || userU.empresaData?.id || userU.empresa_id || user.empresa?.id || user.empresaData?.id || user.empresa_id;
+    const userWithEmpresa = { ...userU, empresaId };
     const movs = await ticketService.getCajaChicaDelUsuario(userWithEmpresa, moneda);
     setMovimientos(movs);
     
     // Cargar perfiles y saldos para transferencias
-    if (user?.empresa) {
+    const topEmpresaId = user?.empresa?.id || user?.empresaData?.id || user?.empresa_id;
+    if (topEmpresaId) {
       try {
         const [perfiles, saldos] = await Promise.all([
-          profileService.getProfileByEmpresa(user.empresa.id),
-          cajaChicaService.getSaldosPorEmpresa(user.empresa.id),
+          profileService.getProfileByEmpresa(topEmpresaId),
+          cajaChicaService.getSaldosPorEmpresa(topEmpresaId),
         ]);
         setProfiles(perfiles);
         const map = {};
@@ -168,7 +170,7 @@ const CajaChicaPage = () => {
       const dataToSend = {
         ...movimientoData,
         user_phone: targetUser.phone || targetUser.telefono,
-        empresa_id: user.empresa?.id,
+        empresa_id: user.empresa?.id || user.empresaData?.id || user.empresa_id,
       };
       const result = await movimientosService.addMovimiento(dataToSend);
       if (result.error) {
