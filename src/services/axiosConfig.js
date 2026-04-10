@@ -41,8 +41,7 @@ api.interceptors.request.use(
                 config.headers['Authorization'] = `Bearer ${fallbackToken}`;
                 return config;
             }
-            console.error("Error al obtener el token de Firebase:", error);
-            throw error;
+            return config;
         }
         return config;
     },
