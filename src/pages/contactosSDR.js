@@ -131,7 +131,7 @@ const DEFAULT_COLUMNAS_ORDEN = Object.keys(DEFAULT_COLUMNAS);
 const ContactosSDRPage = () => {
     const { user } = useAuthContext();
     const router = useRouter();
-    const empresaId = user?.empresa?.id || 'demo-empresa';
+    const empresaId = user?.empresa?.id || user?.empresaData?.id || user?.empresa_id || 'demo-empresa';
     // Usar el ID del documento Firestore para consistencia
     const sdrId = user?.user_id;
     const sdrNombre = `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || user?.email || 'SDR';
@@ -212,7 +212,7 @@ const ContactosSDRPage = () => {
     const [loadingConfig, setLoadingConfig] = useState(false);
 
     // Permiso para enviar templates via bot
-    const tienePermisoEnviarBot = user?.admin || (user?.empresa?.acciones || []).includes('ENVIAR_MENSAJE_BOT');
+    const tienePermisoEnviarBot = user?.admin || (user?.empresa?.acciones || user?.empresaData?.acciones || []).includes('ENVIAR_MENSAJE_BOT');
     
     // Métricas del SDR
     const [metricas, setMetricas] = useState(null);

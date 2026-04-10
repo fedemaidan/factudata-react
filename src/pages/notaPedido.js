@@ -267,7 +267,8 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
   
   const fetchProfiles = async () => {
     try {
-      const profilesData = await profileService.getProfileByEmpresa(user.empresa.id);
+      const empresaId = user?.empresa?.id || user?.empresaData?.id || user?.empresa_id;
+      const profilesData = await profileService.getProfileByEmpresa(empresaId);
       setProfiles(profilesData);
     } catch (error) {
       console.error('Error al obtener perfiles:', error);
@@ -457,7 +458,7 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
         owner: data.owner || user.id,
         owner_name: ownerObj ? (ownerObj.firstName + " " + ownerObj.lastName) : (user.firstName + " " + user.lastName),
         estado: notasEstados[0],
-        empresaId: user.empresa.id,
+        empresaId: user?.empresa?.id || user?.empresaData?.id || user?.empresa_id,
         creador: user.id,
         creador_name: user.firstName + " " + user.lastName,
         proyecto_id: data.proyecto_id,

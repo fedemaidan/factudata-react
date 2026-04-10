@@ -208,13 +208,13 @@ const GestionSDRPage = () => {
     const { user, isLoading: authLoading } = useAuthContext();
     const router = useRouter();
     const userId = user?.id || user?.user_id;
-    const empresaId = user?.empresa?.id || 'demo-empresa';
+    const empresaId = user?.empresa?.id || user?.empresaData?.id || user?.empresa_id || 'demo-empresa';
     // Usar user_id del perfil (que es el Firebase UID guardado en Firestore)
     const sdrId = user?.user_id;
     const sdrNombre = `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || user?.email || 'SDR';
 
     // Permiso para enviar templates via bot
-    const tienePermisoEnviarBot = user?.admin || (user?.empresa?.acciones || []).includes('ENVIAR_MENSAJE_BOT');
+    const tienePermisoEnviarBot = user?.admin || (user?.empresa?.acciones || user?.empresaData?.acciones || []).includes('ENVIAR_MENSAJE_BOT');
     
     // Control de carga inicial
     const initialLoadDone = useRef(false);

@@ -60,7 +60,7 @@ function ConversacionesContent() {
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const myNumber = "sorby";
   const { user } = useAuthContext();
-  const empresaId = user?.empresa?.id || null;
+  const empresaId = user?.empresa?.id || user?.empresaData?.id || user?.empresa_id || null;
 
   const {
     selected,

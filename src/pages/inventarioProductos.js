@@ -56,7 +56,7 @@ const InventarioProductos = () => {
   
   const [editingProduct, setEditingProduct] = useState(null);
 
-  const empresaId = user?.empresaId || user?.empresa?.id;
+  const empresaId = user?.empresaId || user?.empresa?.id || user?.empresaData?.id || user?.empresa_id;
 
   const categories = useMemo(() => {
     const cats = new Set(productos.map(p => p.categoria).filter(Boolean));

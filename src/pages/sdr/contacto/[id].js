@@ -322,7 +322,7 @@ const ContactoSDRDetailPage = () => {
     const router = useRouter();
     const { id } = router.query;
     const { user } = useAuthContext();
-    const empresaId = user?.empresa?.id || 'demo-empresa';
+    const empresaId = user?.empresa?.id || user?.empresaData?.id || user?.empresa_id || 'demo-empresa';
     const theme = useTheme();
     const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
@@ -367,7 +367,7 @@ const ContactoSDRDetailPage = () => {
 
     // Modal envío de template Meta (aprobado) via bot
     const [modalMetaTemplate, setModalMetaTemplate] = useState(false);
-    const tienePermisoEnviarBot = user?.admin || (user?.empresa?.acciones || []).includes('ENVIAR_MENSAJE_BOT');
+    const tienePermisoEnviarBot = user?.admin || (user?.empresa?.acciones || user?.empresaData?.acciones || []).includes('ENVIAR_MENSAJE_BOT');
 
     // Tab mobile para chat/historial
     const [tabMobile, setTabMobile] = useState(0);

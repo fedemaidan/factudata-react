@@ -98,7 +98,7 @@ const TABS = [
 const ReunionesSDRPage = () => {
     const { user } = useAuthContext();
     const router = useRouter();
-    const empresaId = user?.empresa?.id || 'demo-empresa';
+    const empresaId = user?.empresa?.id || user?.empresaData?.id || user?.empresa_id || 'demo-empresa';
     const sdrId = user?.user_id;
     const theme = useTheme();
     const isMobile = useMediaQuery(theme.breakpoints.down('md'));
