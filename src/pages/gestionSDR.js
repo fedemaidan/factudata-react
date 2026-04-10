@@ -11,9 +11,7 @@ import {
     InputAdornment, LinearProgress, useMediaQuery, useTheme, Fab, Badge, Collapse, Menu
 } from '@mui/material';
 
-// Firebase
-import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
-import { db } from 'src/config/firebase';
+import profileService from 'src/services/profileService';
 
 // Icons
 import PhoneIcon from '@mui/icons-material/Phone';
@@ -353,14 +351,10 @@ const GestionSDRPage = () => {
         if (authLoading || !userId) return;
         const fetchSDRs = async () => {
             try {
-                const snapshot = await getDocs(query(
-                    collection(db, 'profile'),
-                    where('sdr', '==', true)
-                ));
-                const sdrs = snapshot.docs
-                    .filter(doc => doc.data().user_id)
-                    .map(doc => {
-                        const data = doc.data();
+                const profiles = await profileService.getProfiles();
+                const sdrs = profiles
+                    .filter((data) => data.sdr === true && data.user_id)
+                    .map((data) => {
                         return {
                             id: data.user_id,
                             nombre: `${data.firstName || ''} ${data.lastName || ''}`.trim() || data.email
@@ -2126,25 +2120,18 @@ const GestionSDRPage = () => {
                 const fetchSDRs = async () => {
                     setLoadingSDRs(true);
                     try {
-                        // Buscar usuarios con sdr: true
-                        const snapshot = await getDocs(query(
-                            collection(db, 'profile'), 
-                            where('sdr', '==', true)
-                        ));
-                        
-                        const sdrs = snapshot.docs
-                            .filter(doc => {
-                                const data = doc.data();
+                        const profiles = await profileService.getProfiles();
+                        const sdrs = profiles
+                            .filter((data) => {
                                 if (!data.user_id) {
-                                    console.warn(`⚠️ SDR sin user_id excluido: ${data.email} - debe corregirse en Firestore`);
+                                    console.warn(`⚠️ SDR sin user_id excluido: ${data.email} - debe corregirse en profile`);
                                     return false;
                                 }
-                                return true;
+                                return data.sdr === true;
                             })
-                            .map(doc => {
-                                const data = doc.data();
+                            .map((data) => {
                                 return {
-                                    id: data.user_id, // Siempre usar Firebase UID
+                                    id: data.user_id,
                                     nombre: `${data.firstName || ''} ${data.lastName || ''}`.trim() || data.email,
                                     email: data.email
                                 };
@@ -2395,16 +2382,11 @@ const GestionSDRPage = () => {
                 const fetchSDRsActuales = async () => {
                     setLoadingLista(true);
                     try {
-                        // Buscar usuarios con sdr: true
-                        const snapshot = await getDocs(query(
-                            collection(db, 'profile'), 
-                            where('sdr', '==', true)
-                        ));
-                        
-                        setSdrsActuales(snapshot.docs.map(doc => {
-                            const data = doc.data();
+                        const profiles = await profileService.getProfiles();
+
+                        setSdrsActuales(profiles.filter((data) => data.sdr === true).map((data) => {
                             return {
-                                id: doc.id,
+                                id: data.id,
                                 nombre: `${data.firstName || ''} ${data.lastName || ''}`.trim() || data.email,
                                 email: data.email
                             };
@@ -2423,15 +2405,14 @@ const GestionSDRPage = () => {
             if (!emailSDR.trim()) return;
             setLoadingAgregar(true);
             try {
-                // Buscar usuario por email
-                const snapshot = await getDocs(query(collection(db, 'profile'), where('email', '==', emailSDR.trim().toLowerCase())));
-                if (snapshot.empty) {
+                const profiles = await profileService.getProfiles();
+                const userDoc = profiles.find((profile) => profile.email === emailSDR.trim().toLowerCase());
+
+                if (!userDoc) {
                     setResultado({ tipo: 'error', mensaje: 'No se encontró el usuario' });
                     return;
                 }
-                
-                const userDoc = snapshot.docs[0];
-                const userData = userDoc.data();
+                const userData = userDoc;
                 
                 // Verificar si ya es SDR
                 if (userData.sdr === true) {
@@ -2439,8 +2420,7 @@ const GestionSDRPage = () => {
                     return;
                 }
                 
-                // Marcar usuario como SDR
-                await updateDoc(doc(db, 'profile', userDoc.id), { sdr: true });
+                await profileService.updateProfile(userDoc.id, { sdr: true });
                 
                 setResultado({ tipo: 'success', mensaje: 'SDR agregado correctamente' });
                 setEmailSDR('');
@@ -2462,8 +2442,7 @@ const GestionSDRPage = () => {
         const handleQuitarSDR = async (sdr) => {
             setLoadingAgregar(true);
             try {
-                // Quitar el flag sdr del usuario
-                await updateDoc(doc(db, 'profile', sdr.id), { sdr: false });
+                await profileService.updateProfile(sdr.id, { sdr: false });
                 
                 setResultado({ tipo: 'success', mensaje: `${sdr.nombre} ya no es SDR` });
                 setSdrsActuales(prev => prev.filter(s => s.id !== sdr.id));

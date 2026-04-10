@@ -11,18 +11,6 @@ import {
   reauthenticateWithCredential,
   EmailAuthProvider,
 } from 'firebase/auth';
-import {
-  collection,
-  addDoc,
-  getDocs,
-  getDoc,
-  doc,
-  query,
-  where,
-  updateDoc,
-  serverTimestamp,
-} from 'firebase/firestore';
-import { db } from 'src/config/firebase';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { storage } from 'src/config/firebase';
 import { getTotalCreditsForUser, addCreditsForUser } from 'src/services/creditService';
@@ -238,23 +226,18 @@ export const AuthProvider = (props) => {
   }, [state.isAuthenticated, state.originalUser]);
 
   const getPayloadUserByUid = async (uid, idToken) => {
-    const userRef = collection(db, 'profile');
-    const q = query(userRef, where('user_id', '==', uid));
-    const querySnapshot = await getDocs(q);
+    const user = await profileService.getProfileByUserId(uid);
 
-    if (querySnapshot.docs.length == 0) {
+    if (!user) {
       const error = new Error('Perfil no encontrado.');
       error.code = 'sorby/deleted-user';
       throw error;
     }
 
-    const user = querySnapshot.docs[0].data();
-    const id = querySnapshot.docs[0].id;
-    const credit = await getTotalCreditsForUser(id);
+    const credit = await getTotalCreditsForUser(user.id);
     return {
       ...user,
       credit,
-      id,
       admin: user.admin || false,
       token: idToken,
     };
@@ -287,9 +270,8 @@ export const AuthProvider = (props) => {
     const response = await createUserWithEmailAndPassword(auth, email, password);
     console.log('SignUp response:', response);
 
-    const user = {
+    const profile = {
       user_id: response.user.uid,
-      id: '',
       avatar: auth.currentUser.photoURL,
       firstName: '',
       lastName: '',
@@ -297,20 +279,13 @@ export const AuthProvider = (props) => {
       phone: '',
       state: '',
       country: '',
-      created_at: serverTimestamp(),
       admin: false,
-      empresa: null,
       proyectos: [],
     };
 
-    const usersCollectionRef = collection(db, 'profile');
-    const userRef = await addDoc(usersCollectionRef, user);
-
-    const newUser = {
-      ...user,
-      id: userRef.id,
-    };
-    await updateUser(newUser);
+    await profileService.createProfile(profile, null);
+    const idToken = await response.user.getIdToken(true);
+    const newUser = await getPayloadUserByUid(response.user.uid, idToken);
 
     dispatch({
       type: HANDLERS.UPDATE_USER,
@@ -336,7 +311,7 @@ export const AuthProvider = (props) => {
         confirmed: true,
       };
 
-      await updateDoc(doc(db, 'profile', profile.id), updatedProfile);
+      await profileService.updateProfile(profile.id, updatedProfile);
       const idToken = await response.user.getIdToken(true);
 
       const payload = await getPayloadUserByUid(userId, idToken);
@@ -360,12 +335,12 @@ export const AuthProvider = (props) => {
   };
 
   const updateUser = async (user) => {
-    const userRef = doc(db, 'profile', user.id);
-    await updateDoc(userRef, user);
+    const updatedUser = await profileService.updateProfile(user.id, user);
+    const nextUser = { ...state.user, ...updatedUser };
 
     dispatch({
       type: HANDLERS.UPDATE_USER,
-      payload: user,
+      payload: nextUser,
     });
   };
 
@@ -396,9 +371,8 @@ export const AuthProvider = (props) => {
       // 1) Cambiar en Firebase Auth
       await updateEmail(auth.currentUser, newEmail);
 
-      // 2) Cambiar en Firestore (colección profile)
-      const userRef = doc(db, 'profile', userId);
-      await updateDoc(userRef, { email: newEmail });
+      // 2) Cambiar en profile API
+      await profileService.updateProfile(userId, { email: newEmail });
 
       // 3) Refrescar estado
       const updatedUser = { ...state.user, email: newEmail };
@@ -458,21 +432,18 @@ export const AuthProvider = (props) => {
         throw new Error('Solo los administradores pueden espiar cuentas');
       }
 
-      const userRef = doc(db, 'profile', user.id);
-      const userDoc = await getDoc(userRef);
+      const targetUserData = await profileService.getProfileById(user.id);
 
-      if (!userDoc.exists()) {
+      if (!targetUserData) {
         throw new Error('Usuario no encontrado');
       }
 
-      const targetUserData = userDoc.data();
       const credit = await getTotalCreditsForUser(user.id);
 
       dispatch({
         type: HANDLERS.UPDATE_USER,
         payload: {
           ...targetUserData,
-          id: user.id,
           credit,
           admin: targetUserData.admin || false,
         },
