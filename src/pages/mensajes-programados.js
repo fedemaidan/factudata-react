@@ -9,6 +9,7 @@ import PlusIcon from '@heroicons/react/24/solid/PlusIcon';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import ClearIcon from '@mui/icons-material/Clear';
 import SearchIcon from '@mui/icons-material/Search';
+import RefreshIcon from '@mui/icons-material/Refresh';
 import { SvgIcon } from '@mui/material';
 import { useAuthContext } from 'src/contexts/auth-context';
 
@@ -164,6 +165,14 @@ const Page = () => {
                 </Typography>
               </Stack>
               <Stack direction="row" spacing={2}>
+                <Button
+                  variant="outlined"
+                  startIcon={<RefreshIcon />}
+                  onClick={() => { fetchMensajes(); fetchStats(); }}
+                  disabled={isLoading}
+                >
+                  Refrescar
+                </Button>
                 <Button
                   variant="outlined"
                   startIcon={<FilterListIcon />}
