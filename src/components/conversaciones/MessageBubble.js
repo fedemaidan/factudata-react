@@ -4,6 +4,10 @@ import ImageIcon from '@mui/icons-material/Image';
 import VideocamIcon from '@mui/icons-material/Videocam';
 import AddIcon from '@mui/icons-material/Add';
 import DescriptionIcon from '@mui/icons-material/Description';
+import DoneIcon from '@mui/icons-material/Done';
+import DoneAllIcon from '@mui/icons-material/DoneAll';
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
+import ScheduleIcon from '@mui/icons-material/Schedule';
 
 // Helper to check if src is a valid media URL (not an internal event identifier)
 const isValidMediaUrl = (src) => {
@@ -354,7 +358,7 @@ export default function MessageBubble({
             ))}
           </Stack>
         ) : null}
-          <Box mt={0.5} display="flex" justifyContent="flex-end" gap={1}>
+          <Box mt={0.5} display="flex" justifyContent="flex-end" alignItems="center" gap={0.5}>
             {dateStr ? (
               <Typography variant="caption" color="text.secondary">
                 {dateStr}
@@ -365,6 +369,26 @@ export default function MessageBubble({
                 {timeStr}
               </Typography>
             ) : null}
+            {isMine && message.deliveryStatus && (
+              <Tooltip title={{
+                sent: 'Enviado',
+                delivered: 'Entregado',
+                read: 'Leído',
+                failed: 'Error de envío',
+              }[message.deliveryStatus] || message.deliveryStatus} arrow>
+                {message.deliveryStatus === 'read' ? (
+                  <DoneAllIcon sx={{ fontSize: 16, color: '#53bdeb' }} />
+                ) : message.deliveryStatus === 'delivered' ? (
+                  <DoneAllIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
+                ) : message.deliveryStatus === 'sent' ? (
+                  <DoneIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
+                ) : message.deliveryStatus === 'failed' ? (
+                  <ErrorOutlineIcon sx={{ fontSize: 16, color: 'error.main' }} />
+                ) : (
+                  <ScheduleIcon sx={{ fontSize: 14, color: 'text.disabled' }} />
+                )}
+              </Tooltip>
+            )}
           </Box>
 
           {notes && notes.length > 0 ? (
