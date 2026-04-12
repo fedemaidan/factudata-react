@@ -74,6 +74,7 @@ export default function BulkSendTemplateDialog({ open, onClose, contacts = [], o
     return templates.find(t => t._id === selectedTemplateId) || null;
   }, [templates, selectedTemplateId]);
 
+  // Sin 'phone' que se auto-inyecta en backend con el teléfono del contacto
   const allParameters = useMemo(() => {
     if (!selectedTemplate) return [];
     return selectedTemplate.components?.flatMap((comp, ci) =>
@@ -85,7 +86,7 @@ export default function BulkSendTemplateDialog({ open, onClose, contacts = [], o
         componentSubType: comp.sub_type,
         key: `${comp.type}_${pi}_${param.name}`,
       }))
-    ) || [];
+    )?.filter(p => p.name !== 'phone') || [];
   }, [selectedTemplate]);
 
   const preview = useMemo(() => {
@@ -112,6 +113,8 @@ export default function BulkSendTemplateDialog({ open, onClose, contacts = [], o
     return null;
   }, [selectedTemplate]);
 
+  const [defaultNombre, setDefaultNombre] = useState('👋');
+
   const URL_DEFAULT = 'FbWSUoTVc82oDU6F9';
 
   const handleSelectTemplate = (e) => {
@@ -120,14 +123,17 @@ export default function BulkSendTemplateDialog({ open, onClose, contacts = [], o
     setError('');
     setResults(null);
 
-    // Pre-cargar URL por defecto para botones de tipo URL
+    // Pre-cargar URL por defecto para botones de tipo URL (excepto 'phone' que se inyecta por contacto)
     const tpl = templates.find(t => t._id === tplId);
     const prefilled = {};
     if (tpl) {
       tpl.components?.forEach(comp => {
         if (comp.sub_type === 'url') {
           (comp.parameters || []).forEach(param => {
-            prefilled[param.name] = URL_DEFAULT;
+            const n = (param.name || '').toLowerCase();
+            if (n !== 'phone') {
+              prefilled[param.name] = URL_DEFAULT;
+            }
           });
         }
       });
@@ -172,13 +178,19 @@ export default function BulkSendTemplateDialog({ open, onClose, contacts = [], o
       }
 
       try {
-        // Si hay parámetro de nombre, reemplazar con el nombre del contacto
+        // Si hay parámetro de nombre, reemplazar con el nombre del contacto (o fallback)
         const contactParamValues = { ...paramValues };
         if (nombreParamKey) {
-          contactParamValues[nombreParamKey] = contact.name || contact.nombre || '';
+          const nombre = contact.name || contact.nombre || '';
+          contactParamValues[nombreParamKey] = nombre || defaultNombre || '👋';
+        }
+        // Inyectar el phone del contacto para el parámetro 'phone' del botón URL
+        const cleanPhone = phone.replace(/\D/g, '');
+        if (!contactParamValues.phone) {
+          contactParamValues.phone = cleanPhone;
         }
         const payload = {
-          phone: phone.replace(/\D/g, ''),
+          phone: cleanPhone,
           templateId: selectedTemplateId,
           parameterValues: contactParamValues,
         };
@@ -291,6 +303,18 @@ export default function BulkSendTemplateDialog({ open, onClose, contacts = [], o
                         );
                       })}
                     </Stack>
+                    {nombreParamKey && (
+                      <TextField
+                        label="Si no tiene nombre, usar:"
+                        value={defaultNombre}
+                        onChange={(e) => setDefaultNombre(e.target.value)}
+                        size="small"
+                        fullWidth
+                        sx={{ mt: 1.5 }}
+                        placeholder="👋"
+                        helperText="Se usa cuando el contacto no tiene nombre cargado"
+                      />
+                    )}
                   </Box>
                 )}
 

@@ -72,7 +72,7 @@ export default function SendTemplateDialog({ open, onClose, phone, contactName, 
     return templates.find(t => t._id === selectedTemplateId) || null;
   }, [templates, selectedTemplateId]);
 
-  // Todos los parámetros del template seleccionado
+  // Todos los parámetros del template seleccionado (sin 'phone' que se auto-inyecta en backend)
   const allParameters = useMemo(() => {
     if (!selectedTemplate) return [];
     return selectedTemplate.components?.flatMap((comp, ci) =>
@@ -84,7 +84,7 @@ export default function SendTemplateDialog({ open, onClose, phone, contactName, 
         componentSubType: comp.sub_type,
         key: `${comp.type}_${pi}_${param.name}`,
       }))
-    ) || [];
+    )?.filter(p => p.name !== 'phone') || [];
   }, [selectedTemplate]);
 
   // Preview del texto del template con los valores ingresados
@@ -116,12 +116,12 @@ export default function SendTemplateDialog({ open, onClose, phone, contactName, 
       tpl.components?.forEach(comp => {
         (comp.parameters || []).forEach(param => {
           const n = (param.name || '').toLowerCase();
-          // Pre-cargar nombre del contacto si existe
-          if (contactName && (n === 'nombre' || n === 'nombre_cliente' || n === 'nombre_usuario')) {
-            prefilled[param.name] = contactName;
+          // Pre-cargar nombre del contacto si existe, o fallback 👋
+          if (n === 'nombre' || n === 'nombre_cliente' || n === 'nombre_usuario') {
+            prefilled[param.name] = contactName || '👋';
           }
-          // Pre-cargar URL por defecto para botones de tipo URL
-          if (comp.sub_type === 'url' && (n.includes('url') || param.type === 'text')) {
+          // Pre-cargar URL por defecto para botones de tipo URL (excepto 'phone' que se auto-inyecta)
+          if (comp.sub_type === 'url' && n !== 'phone' && (n.includes('url') || param.type === 'text')) {
             prefilled[param.name] = URL_DEFAULT;
           }
         });
