@@ -49,7 +49,7 @@ import { loadImageAsDataUrl } from 'src/utils/presupuestos/loadLogoForPdf';
 import { calcularCostoM2DataForPdf } from 'src/utils/presupuestos/exportPresupuestoToPdfRenderer';
 import { buildPresupuestoDraftForPdfPreview } from 'src/utils/presupuestos/buildPresupuestoDraftForPdfPreview';
 import PresupuestoPdfFullPreviewDialog from './PresupuestoPdfFullPreviewDialog';
-import { sumaIncidenciasObjetivo } from './incidenciaHelpers';
+import { sumaIncidenciasObjetivo, sumaIncidenciasObjetivoTareas } from './incidenciaHelpers';
 import MonedasService from 'src/services/monedasService';
 import cacService from 'src/services/cacService';
 import {
@@ -657,6 +657,8 @@ const PresupuestoFormDialog = ({
   addTarea,
   removeTarea,
   updateTarea,
+  onUpdateTareaMonto,
+  onUpdateTareaIncidenciaObjetivo,
   moveTarea,
   focusRef,
   logoUploading = false,
@@ -1009,61 +1011,179 @@ const PresupuestoFormDialog = ({
                 </Tooltip>
               </Stack>
 
-              <Box sx={{ ml: 4 }}>
-                {(rubro.tareas || []).map((tarea, ti) => (
-                  <Stack key={ti} direction="row" spacing={1} alignItems="center" mb={0.5}>
-                    <Typography variant="caption" color="text.secondary" sx={{ minWidth: 20 }}>
-                      {ri + 1}.{ti + 1}
-                    </Typography>
-                    <TextField
-                      size="small"
-                      fullWidth
-                      placeholder="Descripción de tarea"
-                      value={tarea.descripcion}
-                      onChange={(e) => updateTarea(ri, ti, e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && !e.shiftKey) {
-                          e.preventDefault();
-                          if (e.ctrlKey || e.metaKey) {
-                            addRubro();
-                          } else {
-                            addTarea(ri);
-                          }
-                        }
-                      }}
-                      inputRef={(el) => {
-                        if (el && focusRef?.current?.type === 'tarea' && focusRef.current.rubroIdx === ri && focusRef.current.tareaIdx === ti) {
-                          setTimeout(() => el.focus(), 0);
-                          focusRef.current = null;
-                        }
-                      }}
-                    />
-                    <Tooltip title="Subir">
-                      <span>
-                        <IconButton size="small" disabled={ti === 0} onClick={() => moveTarea?.(ri, ti, -1)}>
-                          <ArrowUpwardIcon fontSize="small" />
-                        </IconButton>
-                      </span>
-                    </Tooltip>
-                    <Tooltip title="Bajar">
-                      <span>
-                        <IconButton
+              <Box sx={{ ml: { xs: 0, sm: 4 } }}>
+                {(rubro.tareas || []).length > 0 && (
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1, maxWidth: 560 }}>
+                    Montos e incidencias por subrubro son opcionales: podés dejar solo la descripción y definir el importe
+                    únicamente en el rubro.
+                  </Typography>
+                )}
+                {(rubro.tareas || []).some((t) => (Number(t.monto) || 0) > 0 || t.incidencia_objetivo_pct != null) && (
+                  <Typography
+                    variant="caption"
+                    display="block"
+                    sx={{
+                      mb: 0.75,
+                      color:
+                        sumaIncidenciasObjetivoTareas(rubro.tareas) > 100
+                          ? 'error.main'
+                          : sumaIncidenciasObjetivoTareas(rubro.tareas) > 0 &&
+                              sumaIncidenciasObjetivoTareas(rubro.tareas) < 99.5
+                            ? 'warning.main'
+                            : 'text.secondary',
+                    }}
+                  >
+                    Subrubros: suma incidencias {sumaIncidenciasObjetivoTareas(rubro.tareas).toFixed(1)}% del rubro
+                    {sumaIncidenciasObjetivoTareas(rubro.tareas) > 100 && ' — no puede superar 100%'}
+                    {sumaIncidenciasObjetivoTareas(rubro.tareas) > 0 &&
+                      sumaIncidenciasObjetivoTareas(rubro.tareas) < 99.5 &&
+                      sumaIncidenciasObjetivoTareas(rubro.tareas) <= 100 &&
+                      ' — falta completar hasta 100% si usás distribución por %'}
+                  </Typography>
+                )}
+                {(rubro.tareas || []).map((tarea, ti) => {
+                  const montoRubro = Number(rubro.monto) || 0;
+                  const pctDelRubro =
+                    montoRubro > 0 ? ((Number(tarea.monto) || 0) / montoRubro) * 100 : 0;
+                  return (
+                    <Stack key={ti} spacing={0.5} mb={1}>
+                      <Stack direction="row" spacing={1} alignItems="flex-start" flexWrap="wrap">
+                        <Typography variant="caption" color="text.secondary" sx={{ minWidth: 28, pt: 1 }}>
+                          {ri + 1}.{ti + 1}
+                        </Typography>
+                        <TextField
                           size="small"
-                          disabled={ti === (rubro.tareas || []).length - 1}
-                          onClick={() => moveTarea?.(ri, ti, 1)}
-                        >
-                          <ArrowDownwardIcon fontSize="small" />
+                          sx={{ flex: '1 1 220px', minWidth: 160 }}
+                          placeholder="Descripción (subrubro)"
+                          value={tarea.descripcion}
+                          onChange={(e) => updateTarea(ri, ti, e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                              e.preventDefault();
+                              if (e.ctrlKey || e.metaKey) {
+                                addRubro();
+                              } else {
+                                addTarea(ri);
+                              }
+                            }
+                          }}
+                          inputRef={(el) => {
+                            if (
+                              el &&
+                              focusRef?.current?.type === 'tarea' &&
+                              focusRef.current.rubroIdx === ri &&
+                              focusRef.current.tareaIdx === ti
+                            ) {
+                              setTimeout(() => el.focus(), 0);
+                              focusRef.current = null;
+                            }
+                          }}
+                        />
+                        <TextField
+                          size="small"
+                          label="Monto"
+                          placeholder="Opcional"
+                          value={
+                            tarea.monto == null ? '' : formatNumberForInput(tarea.monto, 2)
+                          }
+                          onChange={(e) => {
+                            const raw = e.target.value;
+                            if (raw === '') {
+                              onUpdateTareaMonto?.(ri, ti, '');
+                              return;
+                            }
+                            const v = parseNumberInput(raw);
+                            if (v !== null) onUpdateTareaMonto?.(ri, ti, String(v));
+                          }}
+                          onKeyDown={handleNumericKeyDown}
+                          sx={{ width: 130 }}
+                          InputProps={{
+                            startAdornment: <InputAdornment position="start">$</InputAdornment>,
+                          }}
+                          inputProps={{ inputMode: 'decimal', autoComplete: 'off' }}
+                        />
+                        {((modoDistribuir && puedeDistribuirPorIncidencias) ||
+                          ((Number(rubro.monto) || 0) > 0 && (rubro.tareas || []).length > 0)) && (
+                          <TextField
+                            size="small"
+                            label="% del rubro"
+                            value={
+                              typeof tarea.incidencia_objetivo_pct === 'string' &&
+                              /[.,]$/.test(tarea.incidencia_objetivo_pct)
+                                ? tarea.incidencia_objetivo_pct
+                                : formatNumberForInput(tarea.incidencia_objetivo_pct ?? '', 1)
+                            }
+                            onChange={(e) => {
+                              const raw = e.target.value;
+                              if (raw === '') {
+                                onUpdateTareaIncidenciaObjetivo?.(ri, ti, '');
+                                return;
+                              }
+                              if (/[.,]$/.test(raw)) {
+                                onUpdateTareaIncidenciaObjetivo?.(ri, ti, raw);
+                                return;
+                              }
+                              const v = parseNumberInput(raw);
+                              if (v !== null) onUpdateTareaIncidenciaObjetivo?.(ri, ti, v);
+                            }}
+                            onBlur={(e) => {
+                              const v = parseNumberInput(e.target.value);
+                              if (e.target.value !== '' && v !== null) {
+                                if (v < 0) onUpdateTareaIncidenciaObjetivo?.(ri, ti, 0);
+                                else if (v > 100) onUpdateTareaIncidenciaObjetivo?.(ri, ti, 100);
+                              }
+                            }}
+                            onKeyDown={handleNumericKeyDown}
+                            placeholder="Opcional"
+                            sx={{ width: 118, minWidth: 118 }}
+                            inputProps={{ inputMode: 'decimal', autoComplete: 'off' }}
+                            error={
+                              tarea.incidencia_objetivo_pct != null &&
+                              (Number(tarea.incidencia_objetivo_pct) < 0 ||
+                                Number(tarea.incidencia_objetivo_pct) > 100)
+                            }
+                          />
+                        )}
+                        {!modoDistribuir && montoRubro > 0 && (Number(tarea.monto) || 0) > 0 && (
+                          <Typography variant="caption" color="text.secondary" sx={{ pt: 1, minWidth: 56 }}>
+                            {formatPct(pctDelRubro)}
+                          </Typography>
+                        )}
+                        <Tooltip title="Subir">
+                          <span>
+                            <IconButton size="small" disabled={ti === 0} onClick={() => moveTarea?.(ri, ti, -1)}>
+                              <ArrowUpwardIcon fontSize="small" />
+                            </IconButton>
+                          </span>
+                        </Tooltip>
+                        <Tooltip title="Bajar">
+                          <span>
+                            <IconButton
+                              size="small"
+                              disabled={ti === (rubro.tareas || []).length - 1}
+                              onClick={() => moveTarea?.(ri, ti, 1)}
+                            >
+                              <ArrowDownwardIcon fontSize="small" />
+                            </IconButton>
+                          </span>
+                        </Tooltip>
+                        <IconButton size="small" color="error" onClick={() => removeTarea(ri, ti)}>
+                          <DeleteIcon fontSize="inherit" />
                         </IconButton>
-                      </span>
-                    </Tooltip>
-                    <IconButton size="small" color="error" onClick={() => removeTarea(ri, ti)}>
-                      <DeleteIcon fontSize="inherit" />
-                    </IconButton>
-                  </Stack>
-                ))}
-                <Button size="small" onClick={() => addTarea(ri)} sx={{ mt: 0.5 }}>
-                  + Tarea
-                </Button>
+                      </Stack>
+                    </Stack>
+                  );
+                })}
+                <Tooltip
+                  title="Podés agregar líneas solo con texto, o cargar monto y % del rubro cuando quieras desglosar el importe."
+                  placement="top"
+                >
+                  <span>
+                    <Button size="small" onClick={() => addTarea(ri)} sx={{ mt: 0.5 }}>
+                      + Subrubro
+                    </Button>
+                  </span>
+                </Tooltip>
               </Box>
             </Paper>
           ))}

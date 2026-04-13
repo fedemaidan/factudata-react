@@ -14,7 +14,16 @@ export const buildPresupuestoDraftForPdfPreview = (form, empresaNombre = '') => 
       orden: i + 1,
       tareas: (r.tareas || [])
         .filter((t) => t.descripcion?.trim())
-        .map((t) => ({ descripcion: t.descripcion.trim() })),
+        .map((t) => {
+          const tm = Number(t.monto) || 0;
+          const montoRubro = Number(r.monto) || 0;
+          const incidencia_pct = montoRubro > 0 ? (tm / montoRubro) * 100 : 0;
+          return {
+            descripcion: t.descripcion.trim(),
+            monto: tm,
+            incidencia_pct,
+          };
+        }),
     }));
 
   const total_neto = rubros.reduce((s, r) => s + r.monto, 0);

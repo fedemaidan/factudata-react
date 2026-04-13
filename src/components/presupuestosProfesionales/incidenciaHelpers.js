@@ -20,12 +20,92 @@ export function plantillaRubrosToPresupuestoRubros(rubros = []) {
     nombre: r.nombre || '',
     monto: 0,
     incidencia_objetivo_pct: parseIncidenciaSugerida(r.incidencia_pct_sugerida),
-    tareas: (r.tareas || []).map((t) => ({ descripcion: t.descripcion || '' })),
+    tareas: (r.tareas || []).map((t) => ({
+      descripcion: t.descripcion || '',
+      monto: null,
+      incidencia_objetivo_pct: parseIncidenciaSugerida(t.incidencia_pct_sugerida),
+    })),
   }));
 }
 
 export function sumaIncidenciasObjetivo(rubros) {
   return (rubros || []).reduce((s, r) => s + (Number(r.incidencia_objetivo_pct) || 0), 0);
+}
+
+/** Suma de incidencias objetivo de subrubros dentro de un rubro (respecto del total del rubro). */
+export function sumaIncidenciasObjetivoTareas(tareas) {
+  return (tareas || []).reduce((s, t) => s + (Number(t.incidencia_objetivo_pct) || 0), 0);
+}
+
+/**
+ * Reparte el monto del rubro entre subrubros (tareas) según incidencia_objetivo_pct.
+ * Misma lógica que a nivel presupuesto/rubros.
+ */
+export function distribuirMontosPorIncidenciaTareas(totalRubro, tareas) {
+  if (!Array.isArray(tareas) || tareas.length === 0) return tareas || [];
+  const totalNum = Number(totalRubro) || 0;
+  const tareasConPct = tareas.map((t) => {
+    const pct = parseIncidencia(t.incidencia_objetivo_pct);
+    const valido = !Number.isNaN(pct) && pct >= 0 && pct <= 100;
+    return { ...t, _pctValido: valido, _pct: valido ? pct : 0, _pctParsed: pct };
+  });
+  const sumaPct = tareasConPct.reduce((s, t) => s + t._pct, 0);
+  if (sumaPct <= 0) {
+    const sumT = tareas.reduce((s, t) => s + (Number(t.monto) || 0), 0);
+    if (sumT > 0 && totalNum > 0) {
+      const scaled = tareas.map((t) => Math.round((((Number(t.monto) || 0) / sumT) * totalNum * 100)) / 100);
+      const diff = Math.round((totalNum - scaled.reduce((s, m) => s + m, 0)) * 100) / 100;
+      const last = scaled.length - 1;
+      if (last >= 0 && Math.abs(diff) > 0.001) scaled[last] = Math.round((scaled[last] + diff) * 100) / 100;
+      return tareas.map((t, j) => ({
+        ...t,
+        monto: scaled[j],
+        incidencia_pct: totalNum > 0 ? (scaled[j] / totalNum) * 100 : 0,
+        orden: j + 1,
+      }));
+    }
+    return tareas.map((t, j) => {
+      const tm = Number(t.monto) || 0;
+      const incidencia_pct = totalNum > 0 ? (tm / totalNum) * 100 : 0;
+      return { ...t, monto: tm, incidencia_pct, orden: j + 1 };
+    });
+  }
+  const montos = tareasConPct.map((t) =>
+    t._pctValido ? Math.round((totalNum * t._pct) / 100 * 100) / 100 : Number(t.monto) || 0
+  );
+  const sumaMontos = montos.reduce((s, m) => s + m, 0);
+  const diff = Math.round((totalNum - sumaMontos) * 100) / 100;
+  const sumaCercaDe100 = Math.abs(sumaPct - 100) < 0.01;
+  let lastIdx = -1;
+  if (sumaCercaDe100) {
+    for (let i = tareasConPct.length - 1; i >= 0; i -= 1) {
+      if (tareasConPct[i]._pctValido) {
+        lastIdx = i;
+        break;
+      }
+    }
+    if (lastIdx >= 0 && Math.abs(diff) > 0.001) {
+      montos[lastIdx] = Math.round((montos[lastIdx] + diff) * 100) / 100;
+    }
+  }
+  return tareasConPct.map((t, i) => {
+    const { _pctValido, _pct, _pctParsed, ...resto } = t;
+    const monto = montos[i];
+    const incidencia_pct = totalNum > 0 ? (monto / totalNum) * 100 : 0;
+    const keepRawIncidencia =
+      typeof t.incidencia_objetivo_pct === 'string' && /[.,]$/.test(t.incidencia_objetivo_pct);
+    return {
+      ...resto,
+      monto,
+      incidencia_pct,
+      incidencia_objetivo_pct: keepRawIncidencia
+        ? t.incidencia_objetivo_pct
+        : _pctParsed != null && !Number.isNaN(_pctParsed)
+          ? _pctParsed
+          : null,
+      orden: i + 1,
+    };
+  });
 }
 
 /**
@@ -73,6 +153,7 @@ export function distribuirMontosPorIncidencia(total, rubros) {
     const incidencia_pct = totalNum > 0 ? (monto / totalNum) * 100 : 0;
     const keepRawIncidencia =
       typeof r.incidencia_objetivo_pct === 'string' && /[.,]$/.test(r.incidencia_objetivo_pct);
+    const tareasInternas = distribuirMontosPorIncidenciaTareas(monto, r.tareas || []);
     return {
       ...resto,
       monto,
@@ -82,7 +163,7 @@ export function distribuirMontosPorIncidencia(total, rubros) {
         : _pctParsed != null && !Number.isNaN(_pctParsed)
           ? _pctParsed
           : null,
-      tareas: (r.tareas || []).map((t, j) => ({ ...t, orden: j + 1 })),
+      tareas: tareasInternas,
       orden: i + 1,
     };
   });
