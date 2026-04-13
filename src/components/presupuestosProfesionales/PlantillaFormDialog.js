@@ -25,6 +25,9 @@ import DeleteIcon from '@mui/icons-material/Delete';
 const sumaIncidenciasPlantilla = (rubros) =>
   (rubros || []).reduce((s, r) => s + (Number(r.incidencia_pct_sugerida) || 0), 0);
 
+const sumaIncidenciasSubrubros = (tareas) =>
+  (tareas || []).reduce((s, t) => s + (Number(t.incidencia_pct_sugerida) || 0), 0);
+
 const PlantillaFormDialog = ({
   open,
   onClose,
@@ -40,11 +43,16 @@ const PlantillaFormDialog = ({
   addTarea,
   removeTarea,
   updateTarea,
+  updateTareaIncidencia,
   moveTarea,
   focusRef,
 }) => {
   const sumaIncidencias = useMemo(() => sumaIncidenciasPlantilla(form.rubros), [form.rubros]);
   const sumaInvalida = sumaIncidencias > 100;
+  const sumaSubrubrosInvalida = useMemo(
+    () => (form.rubros || []).some((r) => sumaIncidenciasSubrubros(r.tareas) > 100),
+    [form.rubros]
+  );
   const sumaOk = sumaIncidencias >= 99.5 && sumaIncidencias <= 100.5;
   const sumaBaja = sumaIncidencias < 99.5 && sumaIncidencias >= 0;
 
@@ -162,15 +170,33 @@ const PlantillaFormDialog = ({
             </Stack>
 
             <Box sx={{ ml: 4 }}>
+              {(rubro.tareas || []).length > 0 && (
+                <Typography
+                  variant="caption"
+                  display="block"
+                  sx={{
+                    mb: 0.5,
+                    color:
+                      sumaIncidenciasSubrubros(rubro.tareas) > 100
+                        ? 'error.main'
+                        : 'text.secondary',
+                  }}
+                >
+                  Subrubros (incid. % sobre el rubro): suma{' '}
+                  {sumaIncidenciasSubrubros(rubro.tareas).toFixed(1)}%
+                  {sumaIncidenciasSubrubros(rubro.tareas) > 100 && ' — excede 100%'}
+                </Typography>
+              )}
               {(rubro.tareas || []).map((tarea, ti) => (
-                <Stack key={ti} direction="row" spacing={1} alignItems="center" mb={0.5}>
+                <Stack key={ti} direction="row" spacing={1} alignItems="center" mb={0.5} flexWrap="wrap">
                   <Typography variant="caption" color="text.secondary" sx={{ minWidth: 20 }}>
                     {ri + 1}.{ti + 1}
                   </Typography>
                   <TextField
                     size="small"
                     fullWidth
-                    placeholder="Descripción de tarea"
+                    sx={{ flex: '1 1 200px', minWidth: 160 }}
+                    placeholder="Descripción (subrubro)"
                     value={tarea.descripcion}
                     onChange={(e) => updateTarea(ri, ti, e.target.value)}
                     onKeyDown={(e) => {
@@ -189,6 +215,23 @@ const PlantillaFormDialog = ({
                         focusRef.current = null;
                       }
                     }}
+                  />
+                  <TextField
+                    size="small"
+                    label="% rubro"
+                    type="number"
+                    value={tarea.incidencia_pct_sugerida ?? ''}
+                    onChange={(e) => updateTareaIncidencia?.(ri, ti, e.target.value)}
+                    onBlur={(e) => {
+                      const v = Number(e.target.value);
+                      if (e.target.value !== '' && !Number.isNaN(v)) {
+                        if (v < 0) updateTareaIncidencia?.(ri, ti, 0);
+                        else if (v > 100) updateTareaIncidencia?.(ri, ti, 100);
+                      }
+                    }}
+                    placeholder="%"
+                    sx={{ width: 100 }}
+                    inputProps={{ min: 0, max: 100, step: 0.1 }}
                   />
                   <Tooltip title="Subir">
                     <span>
@@ -223,7 +266,7 @@ const PlantillaFormDialog = ({
     </DialogContent>
     <DialogActions>
       <Button onClick={onClose}>Cancelar</Button>
-      <Button variant="contained" onClick={onSave} disabled={saving || sumaInvalida}>
+      <Button variant="contained" onClick={onSave} disabled={saving || sumaInvalida || sumaSubrubrosInvalida}>
         {saving ? <CircularProgress size={20} /> : isEdit ? 'Guardar cambios' : 'Crear plantilla'}
       </Button>
     </DialogActions>
