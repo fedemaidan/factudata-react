@@ -39,7 +39,7 @@ const buildMessageRecord = (message) => {
   if (!message) return null;
   const conversationId = String(message.id_conversacion || message.conversationId || "");
   if (!conversationId) return null;
-  const createdAtValue = message.createdAt
+  const createdAtValue = message.createdAt;
   const createdAt = normalizeDate(createdAtValue) || new Date();
   return {
     ...message,
