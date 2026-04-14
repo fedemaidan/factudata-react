@@ -467,6 +467,20 @@ const movimientosService = {
     }
   },
 
+  getCajasOptions: async (params = {}) => {
+    try {
+      const response = await api.get('movimientos/options', { params });
+      return {
+        success: !!response.data?.success,
+        options: response.data?.options || null,
+        scope: response.data?.scope || null,
+      };
+    } catch (err) {
+      console.error('Error al obtener options de cajas:', err);
+      throw err;
+    }
+  },
+
   getCajasTotales: async (params = {}) => {
     try {
       const response = await api.get('movimientos/totales', { params });

@@ -387,7 +387,7 @@ const buildCajaDashboardParams = ({ filters, caja, page, limit, includeOptions =
 
   if (typeof page === 'number') params.page = page + 1;
   if (typeof limit === 'number') params.limit = limit;
-  if (includeOptions) params.includeOptions = 'true';
+  params.includeOptions = includeOptions ? 'true' : 'false';
 
   const sortField = getSortFieldForColumn(filters?.ordenarPor) || filters?.ordenarPor || 'fecha_factura';
   params.sort = sortField;
@@ -747,6 +747,7 @@ const CajasPage = () => {
     ),
     [availableProjectIds, projectScopeMode, selectedProjectIds]
   );
+  const scopeProjectIdsKey = useMemo(() => scopeProjectIds.join(','), [scopeProjectIds]);
   const activeProjectId = useMemo(
     () => (projectScopeMode === 'selection' && selectedProjectIds.length === 1 ? selectedProjectIds[0] : null),
     [projectScopeMode, selectedProjectIds]
@@ -1511,6 +1512,18 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
     }
   }, [cajaSeleccionada, empresa?.id, filters, page, rowsPerPage, scopeProjectIds]);
 
+  const fetchDashboardOptions = useCallback(async () => {
+    if (!empresa?.id) return null;
+
+    const response = await movimientosService.getCajasOptions({
+      empresaId: empresa.id,
+      ...(scopeProjectIds.length > 0 ? { proyectoIds: scopeProjectIds.join(',') } : {}),
+    });
+
+    if (response?.options) setBackendOptions(response.options);
+    return response;
+  }, [empresa?.id, scopeProjectIds]);
+
   const fetchTotalsForCajas = useCallback(async (cajas = []) => {
     if (!empresa?.id || cajas.length === 0) {
       setCajasTotalsMap({});
@@ -1670,8 +1683,19 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
 
   useEffect(() => {
     if (!empresa?.id) return;
-    fetchAndHydrateMovimientos({ includeOptions: !backendOptions });
-  }, [backendOptions, empresa?.id, fetchAndHydrateMovimientos]);
+    fetchAndHydrateMovimientos({ includeOptions: false });
+  }, [empresa?.id, fetchAndHydrateMovimientos]);
+
+  useEffect(() => {
+    setBackendOptions(null);
+  }, [empresa?.id, scopeProjectIdsKey]);
+
+  useEffect(() => {
+    if (!empresa?.id || backendOptions) return;
+    fetchDashboardOptions().catch((error) => {
+      console.error('Error cargando options de cajas:', error);
+    });
+  }, [backendOptions, empresa?.id, fetchDashboardOptions]);
 
   useEffect(() => {
     if (!empresa?.id || cajasVirtuales.length === 0) return;
@@ -2231,7 +2255,9 @@ useEffect(() => {
                         const totalCaja = calcularTotalParaCaja(caja);
                         const tone = getCajaAccent(caja, totalCaja);
                         const ToneIcon = tone.Icon;
-                        const totalColor = totalCaja < 0 ? '#E53935' : (selected ? 'inherit' : tone.color);
+                        const totalColor = totalCaja < 0
+                          ? (selected ? '#FFCDD2' : '#E53935')
+                          : (selected ? 'inherit' : tone.color);
                         return (
                           <Box
                             key={`${caja.nombre}-${index}`}
