@@ -5,6 +5,7 @@
 
 export const CAJA_COL_DEFAULT_ORDER = [
   'codigo',
+  'proyecto',
   'fechas',
   'fechaFactura',
   'fechaCreacion',
@@ -36,6 +37,7 @@ export const CAJA_COL_DEFAULT_ORDER = [
 
 const LABELS = {
   codigo: 'Código',
+  proyecto: 'Proyecto',
   fechas: 'Fechas',
   fechaFactura: 'Fecha factura',
   fechaCreacion: 'Fecha creación',
@@ -73,6 +75,7 @@ export function getCajaColumnasConfig(visibleCols, compactCols, empresa, options
   const result = [];
 
   if (visibleCols?.codigo) result.push(['codigo', LABELS.codigo]);
+  if (visibleCols?.proyecto) result.push(['proyecto', LABELS.proyecto]);
 
   if (compactCols) {
     if (visibleCols?.fechas) result.push(['fechas', LABELS.fechas]);
@@ -141,6 +144,7 @@ export function getHeaderLabel(key, compactCols) {
   if (key === 'categoria') return compactCols ? 'CATEGORÍA / SUBCAT.' : 'CATEGORÍA';
   const map = {
     codigo: 'CÓDIGO',
+    proyecto: 'PROYECTO',
     fechas: 'FECHAS',
     fechaFactura: 'FECHA FACTURA',
     fechaCreacion: 'FECHA CREACIÓN',
@@ -173,14 +177,25 @@ export function getHeaderLabel(key, compactCols) {
 
 /** Retorna sx para TableCell del header según la key. COLS es el objeto de anchos. */
 export function getHeaderCellSx(key, COLS, cellBase) {
-  const base = { ...cellBase };
-  const stickyLeft = { position: 'sticky', left: 0, zIndex: 2, bgcolor: 'background.paper' };
+  const base = {
+    ...cellBase,
+    bgcolor: 'rgba(246, 246, 246, 0.96)',
+    color: '#1E4469',
+    fontSize: '0.68rem',
+    fontWeight: 800,
+    letterSpacing: '0.08em',
+    textTransform: 'uppercase',
+    borderBottom: '1px solid',
+    borderColor: 'divider',
+  };
+  const stickyLeft = { position: 'sticky', left: 0, zIndex: 2, bgcolor: 'rgba(246, 246, 246, 0.98)' };
   const stickyRight = {
-    position: 'sticky', right: 0, zIndex: 2, bgcolor: 'background.paper',
+    position: 'sticky', right: 0, zIndex: 2, bgcolor: 'rgba(246, 246, 246, 0.98)',
     boxShadow: 'inset 8px 0 8px -8px rgba(0,0,0,0.15)',
   };
   const configs = {
     codigo: { minWidth: COLS.codigo, ...stickyLeft },
+    proyecto: { minWidth: COLS.proyecto },
     fechas: { minWidth: COLS.fecha + 40 },
     fechaFactura: { minWidth: COLS.fecha },
     fechaCreacion: { minWidth: COLS.fecha },

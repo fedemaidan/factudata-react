@@ -640,6 +640,20 @@ export const SideNav = (props) => {
         // proyectos activos
         let proys = await getProyectosFromUser(user);
         proys = (proys || []).filter((p) => p.activo);
+
+        // Cajas (beta) — visible para todos los que pueden ver cajaProyecto
+        if (proys.length > 0) {
+          baseItems.push({
+            title: "Cajas (beta)",
+            path: "/cajas",
+            icon: (
+              <SvgIcon fontSize="small">
+                <AccountBalanceWallet />
+              </SvgIcon>
+            ),
+          });
+        }
+
         setProyectos(proys);
       } else {
         setProyectos([]);
