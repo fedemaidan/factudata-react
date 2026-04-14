@@ -303,7 +303,7 @@ const SyncDetailPage = () => {
   }, []);
 
   const handleResolverDuplicado = useCallback(
-    async ({ action, manualPatch } = {}) => {
+    async ({ action, manualPatch, newRecord } = {}) => {
       if (!resolverDuplicadoRow || !action) return;
       setResolverDuplicadoLoading(true);
       setResolverDuplicadoAction(action);
@@ -311,7 +311,8 @@ const SyncDetailPage = () => {
         const resp = await DhnDriveService.resolveDuplicate(
           resolverDuplicadoRow._id,
           action,
-          manualPatch
+          manualPatch,
+          newRecord
         );
         if (!resp?.ok) {
           throw new Error(resp?.error?.message || "No se pudo resolver el duplicado");
@@ -319,6 +320,10 @@ const SyncDetailPage = () => {
         const successMessage =
           action === "keepExisting"
             ? "Se conservó el registro original"
+            : action === "keepBoth"
+            ? "Se agregaron ambos documentos"
+            : action === "splitIntoTwo"
+            ? "Se creó el segundo trabajo y se actualizó el existente"
             : "Se reemplazó el comprobante";
         setAlert({
           open: true,
