@@ -26,6 +26,7 @@ const BLOCK_TYPE_LABELS = {
   budget_vs_actual: 'Presupuesto vs Real',
   chart: 'Gráfico',
   grouped_detail: 'Detalle por Grupo',
+  balance_between_partners: 'Balance entre Socios',
 };
 
 const FILTRO_FIELDS = [
@@ -96,6 +97,34 @@ const ReportEditor = ({
     if (eq?.default_values?.length > 0) return eq.default_values;
     return [config.display_currency || 'ARS'];
   }, [config]);
+
+  const excludeOptions = useMemo(() => {
+    const normalize = (value) => String(value || '')
+      .trim()
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/\s+/g, ' ');
+
+    const collect = (values = []) => {
+      const labelsByKey = new Map();
+      for (const value of values) {
+        const label = String(value || '').trim();
+        if (!label) continue;
+        const key = normalize(label);
+        if (!key || labelsByKey.has(key)) continue;
+        labelsByKey.set(key, label);
+      }
+      return [...labelsByKey.values()].sort((a, b) => a.localeCompare(b, 'es'));
+    };
+
+    const categorias = collect([
+      ...movimientos.map((m) => m.categoria),
+      ...presupuestos.map((p) => p.categoria || p.rubro),
+    ]);
+
+    return { categorias };
+  }, [movimientos, presupuestos]);
 
   // Config general
   const updateField = (field, value) => {
@@ -237,6 +266,9 @@ const ReportEditor = ({
         break;
       case 'grouped_detail':
         detail = 'Por ' + (block.agrupar_por || 'etapa') + ' · ' + (block.chips_style === 'chip' ? 'Chips' : 'Mini-cards') + ' · ' + (block.columnas_visibles?.length || 7) + ' col';
+        break;
+      case 'balance_between_partners':
+        detail = 'Movimientos por telefono · reparto equitativo · resumen de deudas';
         break;
       default:
         detail = '';
@@ -631,6 +663,7 @@ const ReportEditor = ({
             presupuestos={presupuestos}
             displayCurrencies={liveCurrencies}
             cotizaciones={cotizaciones}
+            reportContext={{ usuariosEmpresa }}
           />
         )}
       </Paper>
@@ -662,6 +695,8 @@ const ReportEditor = ({
         onSave={handleBlockSave}
         initialBlock={editingBlockIdx !== null ? config.layout[editingBlockIdx] : null}
         proyectos={proyectos}
+        sociosOptions={usuariosEmpresa}
+        excludeOptions={excludeOptions}
       />
     </Box>
   );

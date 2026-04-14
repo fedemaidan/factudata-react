@@ -4,11 +4,79 @@ import { getProyectosFromUser } from 'src/services/proyectosService';
 import PresupuestoService from 'src/services/presupuestoService';
 import ReportService from 'src/services/reportService';
 import MonedasService from 'src/services/monedasService';
+import profileService from 'src/services/profileService';
 import {
   filterMovimientos,
   buildDefaultFilters,
   getUniqueValues,
 } from 'src/tools/reportEngine';
+
+function buildUserOptions(usuariosEmpresa = [], movimientos = []) {
+  const normalize = (value) => String(value || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ');
+
+  const labelsByKey = new Map();
+  const add = (value) => {
+    const label = String(value || '').trim();
+    if (!label) return;
+    const key = normalize(label);
+    if (!key) return;
+    if (!labelsByKey.has(key)) labelsByKey.set(key, label);
+  };
+
+  for (const u of usuariosEmpresa || []) {
+    const nombre = `${u.firstName || u.nombre || ''} ${u.lastName || u.apellido || ''}`.trim();
+    add(nombre);
+    add(u.nombre);
+  }
+
+  for (const m of movimientos || []) {
+    const nombre = m.usuario_nombre || m.usuario || m.userName;
+    if (typeof nombre === 'object') {
+      add(`${nombre.firstName || nombre.nombre || ''} ${nombre.lastName || nombre.apellido || ''}`);
+      add(nombre.name || nombre.nombre || nombre.usuario_nombre || nombre.usuario || nombre.userName);
+    } else {
+      add(nombre);
+    }
+  }
+
+  return [...labelsByKey.values()].sort((a, b) => a.localeCompare(b, 'es'));
+}
+
+function toMovimientoDate(mov) {
+  const raw = mov?.fecha_factura || mov?.fecha;
+  if (!raw) return null;
+  if (raw?.toDate) {
+    const d = raw.toDate();
+    return isNaN(d?.getTime?.()) ? null : d;
+  }
+  if (raw?.seconds) {
+    const d = new Date(raw.seconds * 1000);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  const d = new Date(raw);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+function applyDateBoundsToFilters(defaultFilters, filtrosSchema, movimientos) {
+  if (!filtrosSchema?.fecha?.enabled) return defaultFilters;
+
+  const dates = (movimientos || []).map(toMovimientoDate).filter(Boolean);
+  if (dates.length === 0) return defaultFilters;
+
+  const minDate = new Date(Math.min(...dates.map((d) => d.getTime())));
+  const today = new Date();
+
+  return {
+    ...defaultFilters,
+    fecha_from: minDate,
+    fecha_to: today,
+  };
+}
 
 /**
  * Hook que gestiona toda la carga de datos para el módulo de reportes.
@@ -28,6 +96,7 @@ export function useReportData(user, empresaId) {
   const [allMovimientos, setAllMovimientos] = useState([]);
   const [presupuestos, setPresupuestos] = useState([]);
   const [proyectos, setProyectos] = useState([]);
+  const [usuariosEmpresa, setUsuariosEmpresa] = useState([]);
   const [loadingData, setLoadingData] = useState(false);
 
   // ─── Filtros ───
@@ -42,6 +111,7 @@ export function useReportData(user, empresaId) {
     etapas: [],
     mediosPago: [],
     monedas: [],
+    usuarios: [],
   });
 
   // ─── Error ───
@@ -108,6 +178,17 @@ export function useReportData(user, empresaId) {
       console.error('Error cargando proyectos:', err);
     }
   }, [user]);
+
+  const loadUsuariosEmpresa = useCallback(async () => {
+    if (!empresaId) return;
+    try {
+      const users = await profileService.getProfileByEmpresa(empresaId);
+      setUsuariosEmpresa(Array.isArray(users) ? users : []);
+    } catch (err) {
+      console.error('Error cargando usuarios de la empresa:', err);
+      setUsuariosEmpresa([]);
+    }
+  }, [empresaId]);
 
   // ═══════════════════════════════════════════
   //  3. Cargar movimientos por proyecto(s) via API
@@ -194,7 +275,6 @@ export function useReportData(user, empresaId) {
 
       // Construir filtros por defecto del reporte
       const defaultFilters = buildDefaultFilters(fullReport.filtros_schema);
-      setFilters(defaultFilters);
 
       // Determinar qué proyectos cargar
       let proyectoIds;
@@ -214,6 +294,9 @@ export function useReportData(user, empresaId) {
       const movs = await fetchMovimientosForProyectos(proyectoIds);
       setAllMovimientos(movs);
 
+      const boundedFilters = applyDateBoundsToFilters(defaultFilters, fullReport.filtros_schema, movs);
+      setFilters(boundedFilters);
+
       // Cargar presupuestos si el reporte los usa
       if (fullReport.datasets?.presupuestos) {
         await loadPresupuestos();
@@ -227,11 +310,11 @@ export function useReportData(user, empresaId) {
         etapas: getUniqueValues(movs, 'etapa'),
         mediosPago: getUniqueValues(movs, 'medio_pago'),
         monedas: getUniqueValues(movs, 'moneda'),
-        usuarios: getUniqueValues(movs, 'usuario'),
+        usuarios: buildUserOptions(usuariosEmpresa, movs),
       }));
 
       // Aplicar filtros iniciales
-      const filtered = filterMovimientos(movs, defaultFilters);
+      const filtered = filterMovimientos(movs, boundedFilters, { usuariosEmpresa });
       setFilteredMovimientos(filtered);
     } catch (err) {
       console.error('Error cargando datos del reporte:', err);
@@ -239,7 +322,7 @@ export function useReportData(user, empresaId) {
     } finally {
       setLoadingData(false);
     }
-  }, [empresaId, proyectos, fetchMovimientosForProyectos, loadPresupuestos]);
+  }, [empresaId, proyectos, usuariosEmpresa, fetchMovimientosForProyectos, loadPresupuestos]);
 
   // ═══════════════════════════════════════════
   //  6. Cuando cambian los filtros, re-filtrar movimientos
@@ -264,12 +347,12 @@ export function useReportData(user, empresaId) {
         }
       }
 
-      const filtered = filterMovimientos(movs, filters);
+      const filtered = filterMovimientos(movs, filters, { usuariosEmpresa });
       setFilteredMovimientos(filtered);
     };
 
     handleFilterChange();
-  }, [filters, allMovimientos, fetchMovimientosForProyectos]);
+  }, [filters, allMovimientos, usuariosEmpresa, fetchMovimientosForProyectos]);
 
   // ═══════════════════════════════════════════
   //  Init
@@ -277,7 +360,8 @@ export function useReportData(user, empresaId) {
   useEffect(() => {
     loadReports();
     loadProyectos();
-  }, [loadReports, loadProyectos]);
+    loadUsuariosEmpresa();
+  }, [loadReports, loadProyectos, loadUsuariosEmpresa]);
   // Fetch cotizaciones live (dólar + CAC) una vez al montar
   useEffect(() => {
     const fetchCotizaciones = async () => {
@@ -379,6 +463,7 @@ export function useReportData(user, empresaId) {
     filteredMovimientos,
     presupuestos,
     proyectos,
+    usuariosEmpresa,
     filters,
     availableOptions,
     loadingReports,

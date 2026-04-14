@@ -157,7 +157,7 @@ const TEMPLATES = [
       fecha: { enabled: true, default_range: 'current_year' },
       proyectos: { enabled: true },
       tipo: { enabled: false },
-      categorias: { enabled: true },
+      categorias: { enabled: false },
     },
     layout: [
       {
@@ -198,6 +198,27 @@ const TEMPLATES = [
         label_total_presupuesto: 'Total presupuesto',
         label_recibido: 'Recibido',
         label_saldo: 'Saldo',
+      },
+    ],
+  },
+  {
+    nombre: 'Balance entre Socios',
+    descripcion: 'Calcula cuanto aporto cada socio en movimientos y quien debe a quien para equilibrar aportes',
+    display_currency: 'ARS',
+    datasets: { movimientos: true, presupuestos: false },
+    filtros_schema: {
+      fecha: { enabled: true, default_range: 'current_month' },
+      proyectos: { enabled: true },
+      tipo: { enabled: false },
+      categorias: { enabled: false },
+      usuarios: { enabled: true },
+    },
+    layout: [
+      {
+        type: 'balance_between_partners',
+        titulo: 'Balance entre socios',
+        show_summary_cards: true,
+        socios_telefonos: [],
       },
     ],
   },

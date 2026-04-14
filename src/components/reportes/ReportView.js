@@ -7,6 +7,7 @@ import BudgetVsActualBlock from './blocks/BudgetVsActualBlock';
 import ChartBlock from './blocks/ChartBlock';
 import GroupedDetailBlock from './blocks/GroupedDetailBlock';
 import CategoryBudgetMatrixBlock from './blocks/CategoryBudgetMatrixBlock';
+import BalanceBetweenPartnersBlock from './blocks/BalanceBetweenPartnersBlock';
 import DrillDownDialog from './DrillDownDialog';
 import { executeReport } from 'src/tools/reportEngine';
 
@@ -18,6 +19,7 @@ const BLOCK_COMPONENTS = {
   category_budget_matrix: CategoryBudgetMatrixBlock,
   chart: ChartBlock,
   grouped_detail: GroupedDetailBlock,
+  balance_between_partners: BalanceBetweenPartnersBlock,
 };
 
 /**
@@ -27,7 +29,7 @@ const BLOCK_COMPONENTS = {
  * @param {Array}  movimientos   - Movimientos ya filtrados por filtros globales
  * @param {Array}  presupuestos  - Presupuestos de control (opcional)
  */
-const ReportView = ({ reportConfig, movimientos = [], presupuestos = [], displayCurrencies, cotizaciones }) => {
+const ReportView = ({ reportConfig, movimientos = [], presupuestos = [], displayCurrencies, cotizaciones, reportContext = {} }) => {
   const currencies = displayCurrencies && displayCurrencies.length > 0
     ? displayCurrencies
     : [reportConfig?.display_currency || 'ARS'];
@@ -47,8 +49,8 @@ const ReportView = ({ reportConfig, movimientos = [], presupuestos = [], display
 
   const results = useMemo(() => {
     if (!reportConfig?.layout?.length) return [];
-    return executeReport(reportConfig, movimientos, presupuestos, currencies, cotizaciones);
-  }, [reportConfig, movimientos, presupuestos, currencies, cotizaciones]);
+    return executeReport(reportConfig, movimientos, presupuestos, currencies, cotizaciones, reportContext);
+  }, [reportConfig, movimientos, presupuestos, currencies, cotizaciones, reportContext]);
 
   if (!reportConfig) {
     return (

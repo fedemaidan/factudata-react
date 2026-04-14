@@ -50,6 +50,37 @@ function parseFiltersFromURL() {
   return filters;
 }
 
+function toMovimientoDate(mov) {
+  const raw = mov?.fecha_factura || mov?.fecha;
+  if (!raw) return null;
+  if (raw?.toDate) {
+    const d = raw.toDate();
+    return isNaN(d?.getTime?.()) ? null : d;
+  }
+  if (raw?.seconds) {
+    const d = new Date(raw.seconds * 1000);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  const d = new Date(raw);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+function applyDateBoundsToFilters(defaultFilters, filtrosSchema, movimientos) {
+  if (!filtrosSchema?.fecha?.enabled) return defaultFilters;
+
+  const dates = (movimientos || []).map(toMovimientoDate).filter(Boolean);
+  if (dates.length === 0) return defaultFilters;
+
+  const minDate = new Date(Math.min(...dates.map((d) => d.getTime())));
+  const today = new Date();
+
+  return {
+    ...defaultFilters,
+    fecha_from: minDate,
+    fecha_to: today,
+  };
+}
+
 const PublicReportPage = () => {
   const [report, setReport] = useState(null);
   const [allMovimientos, setAllMovimientos] = useState([]);
@@ -112,12 +143,13 @@ const PublicReportPage = () => {
             if (rpt.filtros_schema?.proyectos?.fijos && rpt.filtros_schema?.proyectos?.proyecto_ids?.length > 0) {
               defaults.proyectos = rpt.filtros_schema.proyectos.proyecto_ids;
             }
+            const boundedDefaults = applyDateBoundsToFilters(defaults, rpt.filtros_schema, movs);
             // Mergear filtros de URL sobre los defaults (URL tiene prioridad)
             const urlFilters = parseFiltersFromURL();
             if (Object.keys(urlFilters).length > 0) {
-              setFilters({ ...defaults, ...urlFilters });
+              setFilters({ ...boundedDefaults, ...urlFilters });
             } else {
-              setFilters(defaults);
+              setFilters(boundedDefaults);
             }
           }
         }
@@ -241,7 +273,7 @@ const PublicReportPage = () => {
             disabled={filteredMovimientos.length === 0}
             onClick={async () => {
               try {
-                const results = executeReport(report, filteredMovimientos, presupuestos, displayCurrencies, null);
+                const results = executeReport(report, filteredMovimientos, presupuestos, displayCurrencies, null, { filters });
                 const res = await axios.post(
                   `${config.apiUrl}/reports/export-pdf`,
                   {
@@ -291,6 +323,7 @@ const PublicReportPage = () => {
           presupuestos={presupuestos}
           displayCurrencies={displayCurrencies}
           cotizaciones={null}
+          reportContext={{ filters }}
         />
 
         {/* Footer */}

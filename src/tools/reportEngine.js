@@ -69,38 +69,209 @@ function toDate(mov) {
   return isNaN(d.getTime()) ? null : d;
 }
 
+function parseFilterDate(value) {
+  if (!value) return null;
+  if (value instanceof Date) return isNaN(value.getTime()) ? null : value;
+
+  const raw = String(value).trim();
+  const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) {
+    const y = Number(m[1]);
+    const mm = Number(m[2]);
+    const dd = Number(m[3]);
+    const date = new Date(y, mm - 1, dd);
+    if (
+      date.getFullYear() === y
+      && date.getMonth() === mm - 1
+      && date.getDate() === dd
+    ) {
+      return date;
+    }
+    return null;
+  }
+
+  const parsed = new Date(raw);
+  return isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function normalizeFilterText(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ');
+}
+
+function toNormalizedSet(values = []) {
+  return new Set((values || []).map((v) => normalizeFilterText(v)).filter(Boolean));
+}
+
+function getMovimientoUserCandidates(m) {
+  const values = [];
+
+  const push = (v) => {
+    if (v == null) return;
+    if (typeof v === 'string') {
+      values.push(v);
+      return;
+    }
+    if (typeof v === 'object') {
+      const composed = `${v.firstName || v.nombre || ''} ${v.lastName || v.apellido || ''}`.trim();
+      if (composed) values.push(composed);
+      if (v.name) values.push(v.name);
+      if (v.nombre) values.push(v.nombre);
+      if (v.usuario_nombre) values.push(v.usuario_nombre);
+      if (v.usuario) values.push(v.usuario);
+      if (v.userName) values.push(v.userName);
+    }
+  };
+
+  push(m?.usuario_nombre);
+  push(m?.usuario);
+  push(m?.userName);
+  push(m?.user_name);
+  push(m?.user);
+  push(m?.creador);
+
+  return values.map((v) => String(v || '').trim()).filter(Boolean);
+}
+
+function getUserDisplayCandidates(user) {
+  if (!user || typeof user !== 'object') return [];
+  const values = [];
+  const full = `${user.firstName || user.nombre || ''} ${user.lastName || user.apellido || ''}`.trim();
+  if (full) values.push(full);
+  if (user.nombre) values.push(user.nombre);
+  if (user.name) values.push(user.name);
+  if (user.usuario_nombre) values.push(user.usuario_nombre);
+  if (user.usuario) values.push(user.usuario);
+  return values.map((v) => String(v || '').trim()).filter(Boolean);
+}
+
+function getMovimientoUserIdCandidates(m) {
+  const values = [
+    m?.user_id,
+    m?.userId,
+    m?.usuario_id,
+    m?.usuarioId,
+    m?.creado_por_id,
+    m?.creadoPorId,
+    m?.created_by_id,
+    m?.createdById,
+    typeof m?.usuario === 'object' ? m.usuario?.id : null,
+    typeof m?.user === 'object' ? m.user?.id : null,
+    typeof m?.creador === 'object' ? m.creador?.id : null,
+  ];
+  return values.map((v) => String(v || '').trim()).filter(Boolean);
+}
+
+function buildCompanyUsersLookup(extraContext = {}) {
+  const source = extraContext?.usuariosEmpresa || extraContext?.users || extraContext?.profiles || [];
+  const users = Array.isArray(source) ? source : [];
+  const byId = new Map();
+  const byPhone = new Map();
+
+  for (const u of users) {
+    if (!u || typeof u !== 'object') continue;
+
+    const uid = String(u.id || u._id || u.uid || u.user_id || '').trim();
+    if (uid) byId.set(uid, u);
+
+    const phoneValues = [u.phone, u.telefono, u.numero_telefono, u.whatsapp, u.user_phone];
+    for (const phone of phoneValues) {
+      const normalized = normalizePhone(phone);
+      if (!normalized) continue;
+      for (const candidate of getPhoneCandidates(normalized)) {
+        if (!byPhone.has(candidate)) byPhone.set(candidate, u);
+      }
+    }
+  }
+
+  return { byId, byPhone };
+}
+
+function getMovimientoPhoneCandidates(m) {
+  const fromUsuario = typeof m?.usuario === 'object' ? m.usuario : null;
+  const fromUser = typeof m?.user === 'object' ? m.user : null;
+  const fromCreador = typeof m?.creador === 'object' ? m.creador : null;
+
+  const values = [
+    m?.user_phone,
+    m?.userPhone,
+    m?.usuario_telefono,
+    m?.usuarioTelefono,
+    m?.numero_telefono,
+    m?.numeroTelefono,
+    m?.telefono,
+    m?.phone,
+    m?.whatsapp,
+    m?.from,
+    m?.creado_por_phone,
+    m?.creadoPorPhone,
+    m?.created_by_phone,
+    m?.createdByPhone,
+    fromUsuario?.telefono,
+    fromUsuario?.phone,
+    fromUsuario?.numero_telefono,
+    fromUser?.telefono,
+    fromUser?.phone,
+    fromUser?.numero_telefono,
+    fromCreador?.telefono,
+    fromCreador?.phone,
+    fromCreador?.numero_telefono,
+  ];
+
+  const set = new Set();
+  for (const value of values) {
+    const normalized = normalizePhone(value);
+    if (!normalized) continue;
+    for (const candidate of getPhoneCandidates(normalized)) {
+      set.add(candidate);
+    }
+  }
+
+  return [...set];
+}
+
 // ─── Filtrado ───
 
 /**
  * Filtra movimientos según filtros runtime del usuario
  * @param {Array} movimientos
  * @param {Object} filters - { fecha_from, fecha_to, proyectos[], tipo, categorias[], proveedores[], etapas[], medio_pago[], moneda_movimiento[] }
+ * @param {Object} extraContext - { usuariosEmpresa?: Array }
  * @returns {Array}
  */
-export function filterMovimientos(movimientos, filters = {}) {
+export function filterMovimientos(movimientos, filters = {}, extraContext = {}) {
   let result = movimientos;
 
   // Fecha
   if (filters.fecha_from) {
-    const from = new Date(filters.fecha_from);
-    result = result.filter((m) => {
-      const d = toDate(m);
-      return d && d >= from;
-    });
+    const from = parseFilterDate(filters.fecha_from);
+    if (from) {
+      from.setHours(0, 0, 0, 0);
+      result = result.filter((m) => {
+        const d = toDate(m);
+        return d && d >= from;
+      });
+    }
   }
   if (filters.fecha_to) {
-    const to = new Date(filters.fecha_to);
-    to.setHours(23, 59, 59, 999);
-    result = result.filter((m) => {
-      const d = toDate(m);
-      return d && d <= to;
-    });
+    const to = parseFilterDate(filters.fecha_to);
+    if (to) {
+      to.setHours(23, 59, 59, 999);
+      result = result.filter((m) => {
+        const d = toDate(m);
+        return d && d <= to;
+      });
+    }
   }
 
   // Proyectos (multi-select)
   if (filters.proyectos?.length > 0) {
-    const ids = new Set(filters.proyectos);
-    result = result.filter((m) => ids.has(m.proyecto_id));
+    const ids = new Set(filters.proyectos.map((id) => String(id)));
+    result = result.filter((m) => ids.has(String(m.proyecto_id)));
   }
 
   // Tipo (egreso/ingreso)
@@ -110,44 +281,57 @@ export function filterMovimientos(movimientos, filters = {}) {
 
   // Categorías
   if (filters.categorias?.length > 0) {
-    const set = new Set(filters.categorias.map((c) => c.toLowerCase()));
-    result = result.filter((m) => m.categoria && set.has(m.categoria.toLowerCase()));
+    const set = toNormalizedSet(filters.categorias);
+    result = result.filter((m) => set.has(normalizeFilterText(m.categoria)));
   }
 
   // Proveedores
   if (filters.proveedores?.length > 0) {
-    const set = new Set(filters.proveedores.map((p) => p.toLowerCase()));
+    const set = toNormalizedSet(filters.proveedores);
     result = result.filter(
-      (m) => m.nombre_proveedor && set.has(m.nombre_proveedor.toLowerCase()),
+      (m) => set.has(normalizeFilterText(m.nombre_proveedor)),
     );
   }
 
   // Etapas
   if (filters.etapas?.length > 0) {
-    const set = new Set(filters.etapas.map((e) => e.toLowerCase()));
-    result = result.filter((m) => m.etapa && set.has(m.etapa.toLowerCase()));
+    const set = toNormalizedSet(filters.etapas);
+    result = result.filter((m) => set.has(normalizeFilterText(m.etapa)));
   }
 
   // Medio de pago
   if (filters.medio_pago?.length > 0) {
-    const set = new Set(filters.medio_pago.map((mp) => mp.toLowerCase()));
-    result = result.filter((m) => m.medio_pago && set.has(m.medio_pago.toLowerCase()));
+    const set = toNormalizedSet(filters.medio_pago);
+    result = result.filter((m) => set.has(normalizeFilterText(m.medio_pago)));
   }
 
   // Usuarios
   if (filters.usuarios?.length > 0) {
-    const set = new Set(filters.usuarios.map((u) => u.toLowerCase()));
+    const set = new Set(filters.usuarios.map((u) => normalizeFilterText(u)).filter(Boolean));
+    const usersLookup = buildCompanyUsersLookup(extraContext);
+
     result = result.filter((m) => {
-      const uname = (m.usuario_nombre || m.usuario || '').toLowerCase();
-      return uname && set.has(uname);
+      const candidates = [...getMovimientoUserCandidates(m)];
+
+      for (const uid of getMovimientoUserIdCandidates(m)) {
+        const profile = usersLookup.byId.get(uid);
+        if (profile) candidates.push(...getUserDisplayCandidates(profile));
+      }
+
+      for (const phone of getMovimientoPhoneCandidates(m)) {
+        const profile = usersLookup.byPhone.get(phone);
+        if (profile) candidates.push(...getUserDisplayCandidates(profile));
+      }
+
+      return candidates.some((candidate) => set.has(normalizeFilterText(candidate)));
     });
   }
 
   // Moneda original
   if (filters.moneda_movimiento?.length > 0) {
-    const set = new Set(filters.moneda_movimiento.map((mon) => mon.toLowerCase()));
+    const set = toNormalizedSet(filters.moneda_movimiento);
     result = result.filter(
-      (m) => m.moneda && set.has(m.moneda.toLowerCase()),
+      (m) => set.has(normalizeFilterText(m.moneda)),
     );
   }
 
@@ -174,18 +358,18 @@ export function applyBlockFilters(movimientos, block) {
   const fe = block.filtros_extra;
   if (fe) {
     if (fe.categorias?.length > 0) {
-      const set = new Set(fe.categorias.map((c) => c.toLowerCase()));
-      result = result.filter((m) => m.categoria && set.has(m.categoria.toLowerCase()));
+      const set = toNormalizedSet(fe.categorias);
+      result = result.filter((m) => set.has(normalizeFilterText(m.categoria)));
     }
     if (fe.proveedores?.length > 0) {
-      const set = new Set(fe.proveedores.map((p) => p.toLowerCase()));
+      const set = toNormalizedSet(fe.proveedores);
       result = result.filter(
-        (m) => m.nombre_proveedor && set.has(m.nombre_proveedor.toLowerCase()),
+        (m) => set.has(normalizeFilterText(m.nombre_proveedor)),
       );
     }
     if (fe.etapas?.length > 0) {
-      const set = new Set(fe.etapas.map((e) => e.toLowerCase()));
-      result = result.filter((m) => m.etapa && set.has(m.etapa.toLowerCase()));
+      const set = toNormalizedSet(fe.etapas);
+      result = result.filter((m) => set.has(normalizeFilterText(m.etapa)));
     }
   }
 
@@ -193,22 +377,23 @@ export function applyBlockFilters(movimientos, block) {
   const ex = block.excluir;
   if (ex) {
     if (ex.categorias?.length > 0) {
-      const set = new Set(ex.categorias.map((c) => c.toLowerCase()));
-      result = result.filter((m) => !m.categoria || !set.has(m.categoria.toLowerCase()));
+      const set = toNormalizedSet(ex.categorias);
+      result = result.filter((m) => !set.has(normalizeFilterText(m.categoria)));
     }
     if (ex.proveedores?.length > 0) {
-      const set = new Set(ex.proveedores.map((p) => p.toLowerCase()));
-      result = result.filter((m) => !m.nombre_proveedor || !set.has(m.nombre_proveedor.toLowerCase()));
+      const set = toNormalizedSet(ex.proveedores);
+      result = result.filter((m) => !set.has(normalizeFilterText(m.nombre_proveedor)));
     }
     if (ex.etapas?.length > 0) {
-      const set = new Set(ex.etapas.map((e) => e.toLowerCase()));
-      result = result.filter((m) => !m.etapa || !set.has(m.etapa.toLowerCase()));
+      const set = toNormalizedSet(ex.etapas);
+      result = result.filter((m) => !set.has(normalizeFilterText(m.etapa)));
     }
     if (ex.usuarios?.length > 0) {
-      const set = new Set(ex.usuarios.map((u) => u.toLowerCase()));
+      const set = new Set(ex.usuarios.map((u) => normalizeFilterText(u)).filter(Boolean));
       result = result.filter((m) => {
-        const uname = (m.usuario_nombre || m.usuario || '').toLowerCase();
-        return !uname || !set.has(uname);
+        const candidates = getMovimientoUserCandidates(m);
+        if (candidates.length === 0) return true;
+        return !candidates.some((candidate) => set.has(normalizeFilterText(candidate)));
       });
     }
   }
@@ -255,7 +440,7 @@ const GROUP_KEYS = {
   mes: (m) => getMes(m),
   moneda_original: (m) => m.moneda || 'ARS',
   medio_pago: (m) => m.medio_pago || 'Sin medio de pago',
-  usuario: (m) => m.usuario_nombre || m.usuario || 'Sin usuario',
+  usuario: (m) => getMovimientoUserCandidates(m)[0] || 'Sin usuario',
 };
 
 /**
@@ -296,18 +481,18 @@ export function processMetricCards(block, movimientos, _presupuestos, currencies
     const fe = metrica.filtros_extra;
     if (fe) {
       if (fe.categorias?.length > 0) {
-        const set = new Set(fe.categorias.map((c) => c.toLowerCase()));
-        data = data.filter((m) => m.categoria && set.has(m.categoria.toLowerCase()));
+        const set = toNormalizedSet(fe.categorias);
+        data = data.filter((m) => set.has(normalizeFilterText(m.categoria)));
       }
       if (fe.proveedores?.length > 0) {
-        const set = new Set(fe.proveedores.map((p) => p.toLowerCase()));
+        const set = toNormalizedSet(fe.proveedores);
         data = data.filter(
-          (m) => m.nombre_proveedor && set.has(m.nombre_proveedor.toLowerCase()),
+          (m) => set.has(normalizeFilterText(m.nombre_proveedor)),
         );
       }
       if (fe.etapas?.length > 0) {
-        const set = new Set(fe.etapas.map((e) => e.toLowerCase()));
-        data = data.filter((m) => m.etapa && set.has(m.etapa.toLowerCase()));
+        const set = toNormalizedSet(fe.etapas);
+        data = data.filter((m) => set.has(normalizeFilterText(m.etapa)));
       }
     }
 
@@ -497,10 +682,11 @@ export function processMovementsTable(block, movimientos, _presupuestos, currenc
  * Cruza presupuestos de control con movimientos reales agrupados por categoría
  * @returns {{ headers, rows }}
  */
-export function processBudgetVsActual(block, movimientos, presupuestos, currencies, cotizaciones) {
+export function processBudgetVsActual(block, movimientos, presupuestos, currencies, cotizaciones, extraContext = {}) {
   const displayCurrency = currencies[0];
   const data = applyBlockFilters(movimientos, block);
   const agruparPor = block.agrupar_por || 'categoria';
+  const runtimeProjectIds = new Set((extraContext?.filters?.proyectos || []).map((id) => String(id)));
 
   // Filtrar presupuestos por tipo si corresponde
   let presFiltered = presupuestos || [];
@@ -516,6 +702,11 @@ export function processBudgetVsActual(block, movimientos, presupuestos, currenci
       if (campoReq === 'proveedor') return !!(p.proveedor || p.nombre_proveedor);
       return true;
     });
+  }
+
+  // Respetar filtro global de proyectos en bloques que usan presupuestos
+  if (runtimeProjectIds.size > 0) {
+    presFiltered = presFiltered.filter((p) => runtimeProjectIds.has(getPresupuestoProjectInfo(p).id));
   }
 
   // Excluir presupuestos específicos
@@ -545,6 +736,17 @@ export function processBudgetVsActual(block, movimientos, presupuestos, currenci
     }
   };
 
+  const exclusionFieldByGroup = {
+    categoria: 'categorias',
+    etapa: 'etapas',
+    proveedor: 'proveedores',
+  };
+  const exclusionField = exclusionFieldByGroup[agruparPor];
+  const exclusionSet = exclusionField ? toNormalizedSet(block.excluir?.[exclusionField] || []) : new Set();
+  if (exclusionSet.size > 0) {
+    presFiltered = presFiltered.filter((p) => !exclusionSet.has(normalizeFilterText(getPresNombre(p))));
+  }
+
   // Mapear presupuestos por campo de agrupación
   const presMap = new Map();
   for (const p of presFiltered) {
@@ -572,6 +774,7 @@ export function processBudgetVsActual(block, movimientos, presupuestos, currenci
   const rows = [];
   for (const key of allKeys) {
     const presData = presMap.get(key) || { nombre: key, presupuestado: 0 };
+
     const movs = movGrouped.get(
       [...movGrouped.keys()].find((k) => k.toLowerCase() === key),
     ) || [];
@@ -625,10 +828,11 @@ export function processBudgetVsActual(block, movimientos, presupuestos, currenci
  * - Recibido/Ejecutado
  * - Saldo
  */
-export function processCategoryBudgetMatrix(block, movimientos, presupuestos, currencies, cotizaciones) {
+export function processCategoryBudgetMatrix(block, movimientos, presupuestos, currencies, cotizaciones, extraContext = {}) {
   const displayCurrency = currencies[0];
   const list = Array.isArray(presupuestos) ? presupuestos : [];
   const movs = Array.isArray(movimientos) ? movimientos : [];
+  const runtimeProjectIds = new Set((extraContext?.filters?.proyectos || []).map((id) => String(id)));
 
   // Mapa proyecto_id -> nombre para fallback en reportes públicos
   const projectNameById = new Map();
@@ -651,6 +855,11 @@ export function processCategoryBudgetMatrix(block, movimientos, presupuestos, cu
   const projectTiposCreacion = new Map(); // Guardar tipos de creación por proyecto
 
   for (const p of list) {
+    if (runtimeProjectIds.size > 0) {
+      const { id: runtimeProjectId } = getPresupuestoProjectInfo(p, projectNameById);
+      if (!runtimeProjectIds.has(runtimeProjectId)) continue;
+    }
+
     // Filtrar por tipo de presupuesto
     if (tipoTarget !== 'ambos' && (p.tipo || 'egreso') !== tipoTarget) {
       continue;
@@ -925,6 +1134,191 @@ function getPresupuestoAmount(pres, displayCurrency, cotizaciones) {
   return amount;
 }
 
+function round2(value) {
+  return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+}
+
+function normalizePhone(value) {
+  if (value == null) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+  const withoutWhatsapp = raw.replace(/@s\.whatsapp\.net$/i, '');
+  const digits = withoutWhatsapp.replace(/\D/g, '');
+  return digits || withoutWhatsapp;
+}
+
+function getPhoneCandidates(value) {
+  const normalized = normalizePhone(value);
+  if (!normalized) return [];
+
+  const candidates = new Set([normalized]);
+
+  // Normalizar variantes comunes AR (con/sin 9 despues de codigo pais 54).
+  if (normalized.length >= 12 && normalized.startsWith('549')) {
+    candidates.add(`54${normalized.slice(3)}`);
+  }
+  if (normalized.length >= 11 && normalized.startsWith('54') && normalized[2] !== '9') {
+    candidates.add(`549${normalized.slice(2)}`);
+  }
+
+  return [...candidates];
+}
+
+function buildSociosLookup(extraContext = {}) {
+  const source = extraContext?.usuariosEmpresa || extraContext?.users || extraContext?.profiles || [];
+  const users = Array.isArray(source) ? source : [];
+
+  const byPhone = new Map();
+  const byId = new Map();
+
+  for (const u of users) {
+    if (!u || typeof u !== 'object') continue;
+
+    const userId = String(u.id || u._id || u.uid || u.user_id || '').trim();
+    if (userId) byId.set(userId, u);
+
+    const phoneValues = [u.phone, u.telefono, u.user_phone, u.numero_telefono, u.whatsapp];
+    for (const phoneValue of phoneValues) {
+      for (const candidate of getPhoneCandidates(phoneValue)) {
+        if (!byPhone.has(candidate)) byPhone.set(candidate, u);
+      }
+    }
+  }
+
+  return { byPhone, byId };
+}
+
+function getUserDisplayName(user) {
+  if (!user || typeof user !== 'object') return '';
+
+  const first = String(user.firstName || user.nombre || '').trim();
+  const last = String(user.lastName || user.apellido || '').trim();
+  const full = `${first} ${last}`.trim();
+  if (full) return full;
+
+  const fallback = [user.name, user.usuario_nombre, user.usuario, user.email]
+    .map((v) => String(v || '').trim())
+    .find(Boolean);
+  return fallback || '';
+}
+
+function resolveSocioPhone(m) {
+  const fromUsuario = typeof m?.usuario === 'object' ? m.usuario : null;
+  const fromUser = typeof m?.user === 'object' ? m.user : null;
+  const fromCreador = typeof m?.creador === 'object' ? m.creador : null;
+  const candidates = [
+    m?.user_phone,
+    m?.userPhone,
+    m?.user_phone_number,
+    m?.userPhoneNumber,
+    m?.usuario_phone,
+    m?.usuarioPhone,
+    m?.usuario_telefono,
+    m?.usuarioTelefono,
+    m?.numero_telefono,
+    m?.numeroTelefono,
+    m?.telefono,
+    m?.celular,
+    m?.movil,
+    m?.phone,
+    m?.whatsapp,
+    m?.from,
+    m?.creado_por_phone,
+    m?.creadoPorPhone,
+    m?.created_by_phone,
+    m?.createdByPhone,
+    m?.author_phone,
+    m?.authorPhone,
+    fromUsuario?.telefono,
+    fromUsuario?.phone,
+    fromUsuario?.numero_telefono,
+    fromUser?.telefono,
+    fromUser?.phone,
+    fromUser?.numero_telefono,
+    fromCreador?.telefono,
+    fromCreador?.phone,
+    fromCreador?.numero_telefono,
+  ];
+
+  for (const c of candidates) {
+    const normalized = normalizePhone(c);
+    if (normalized) return normalized;
+  }
+
+  return null;
+}
+
+function resolveSocioNombre(m, phone) {
+  const fromUsuario = typeof m?.usuario === 'object' ? m.usuario : null;
+  const fromUser = typeof m?.user === 'object' ? m.user : null;
+  const fromCreador = typeof m?.creador === 'object' ? m.creador : null;
+  const candidates = [
+    m?.usuario_nombre,
+    m?.usuarioName,
+    typeof m?.usuario === 'string' ? m.usuario : null,
+    m?.nombre_usuario,
+    m?.user_name,
+    m?.userName,
+    m?.creado_por_nombre,
+    m?.creadoPorNombre,
+    fromUsuario?.nombre,
+    fromUsuario?.name,
+    fromUser?.nombre,
+    fromUser?.name,
+    fromCreador?.nombre,
+    fromCreador?.name,
+  ];
+
+  for (const c of candidates) {
+    const text = String(c || '').trim();
+    if (text) return text;
+  }
+
+  return phone ? `Socio ${phone}` : 'Socio sin telefono';
+}
+
+function buildDebtTransfers(socios) {
+  const epsilon = 0.01;
+  // diferencia > 0: tiene saldo por encima del ideal, por lo tanto debe transferir
+  const deudores = socios
+    .filter((s) => s.diferencia > epsilon)
+    .map((s) => ({ ...s, restante: round2(s.diferencia) }))
+    .sort((a, b) => b.restante - a.restante);
+  // diferencia < 0: esta por debajo del ideal, por lo tanto debe recibir
+  const acreedores = socios
+    .filter((s) => s.diferencia < -epsilon)
+    .map((s) => ({ ...s, restante: round2(-s.diferencia) }))
+    .sort((a, b) => b.restante - a.restante);
+
+  const transfers = [];
+  let i = 0;
+  let j = 0;
+
+  while (i < deudores.length && j < acreedores.length) {
+    const deudor = deudores[i];
+    const acreedor = acreedores[j];
+    const monto = round2(Math.min(deudor.restante, acreedor.restante));
+
+    if (monto > epsilon) {
+      transfers.push({
+        fromPhone: deudor.telefono,
+        fromName: deudor.socio,
+        toPhone: acreedor.telefono,
+        toName: acreedor.socio,
+        amount: monto,
+      });
+    }
+
+    deudor.restante = round2(deudor.restante - monto);
+    acreedor.restante = round2(acreedor.restante - monto);
+
+    if (deudor.restante <= epsilon) i += 1;
+    if (acreedor.restante <= epsilon) j += 1;
+  }
+
+  return transfers;
+}
+
 // ─── Procesador principal ───
 
 /**
@@ -987,6 +1381,133 @@ export function processGroupedDetail(block, movimientos, _presupuestos, currenci
 }
 
 /**
+ * Procesa un bloque balance_between_partners
+ * Balancea aportes entre socios usando movimientos de ingreso y egreso,
+ * agrupados por numero de telefono.
+ */
+export function processBalanceBetweenPartners(block, movimientos, _presupuestos, currencies, _cotizaciones, extraContext = {}) {
+  const displayCurrency = currencies?.[0] || 'ARS';
+
+  let data = applyBlockFilters(movimientos, block);
+
+  const selectedPhones = Array.isArray(block.socios_telefonos) ? block.socios_telefonos : [];
+  const selectedPhonesCount = selectedPhones.filter(Boolean).length;
+  if (selectedPhones.length > 0) {
+    const selectedSet = new Set(selectedPhones.map((p) => normalizePhone(p)).filter(Boolean));
+    data = data.filter((m) => selectedSet.has(resolveSocioPhone(m)));
+  }
+
+  const sociosMap = new Map();
+  const sociosLookup = buildSociosLookup(extraContext);
+
+  const resolveProfileByMovement = (m, phoneNormalized) => {
+    for (const candidate of getPhoneCandidates(phoneNormalized)) {
+      const byPhone = sociosLookup.byPhone.get(candidate);
+      if (byPhone) return byPhone;
+    }
+
+    const idCandidates = [
+      m?.user_id,
+      m?.userId,
+      m?.usuario_id,
+      m?.usuarioId,
+      m?.creado_por_id,
+      m?.creadoPorId,
+      m?.created_by_id,
+      m?.createdById,
+      typeof m?.usuario === 'object' ? m.usuario?.id : null,
+      typeof m?.user === 'object' ? m.user?.id : null,
+      typeof m?.creador === 'object' ? m.creador?.id : null,
+    ];
+
+    for (const idCandidate of idCandidates) {
+      const uid = String(idCandidate || '').trim();
+      if (!uid) continue;
+      const byId = sociosLookup.byId.get(uid);
+      if (byId) return byId;
+    }
+
+    return null;
+  };
+
+  for (const m of data) {
+    let telefonoResolved = resolveSocioPhone(m);
+    const profile = resolveProfileByMovement(m, telefonoResolved);
+
+    if (!telefonoResolved && profile) {
+      telefonoResolved = normalizePhone(profile.phone || profile.telefono || profile.numero_telefono);
+    }
+
+    const telefono = telefonoResolved || 'sin-telefono';
+    const socioDefault = telefono === 'sin-telefono' ? 'Socio sin telefono' : `Socio ${telefono}`;
+    const profileName = getUserDisplayName(profile);
+    const socioMov = resolveSocioNombre(m, telefono === 'sin-telefono' ? null : telefono);
+    const socio = profileName || socioMov || socioDefault;
+    const amount = getAmount(m, displayCurrency, 'total');
+    const signedAmount = m?.type === 'ingreso' ? Math.abs(amount) : -Math.abs(amount);
+
+    const current = sociosMap.get(telefono) || {
+      telefono,
+      socio: socioDefault,
+      saldo: 0,
+      movimientos: [],
+    };
+
+    current.saldo += signedAmount;
+    current.movimientos.push(m);
+    if (current.socio === socioDefault && socio) {
+      current.socio = socio;
+    }
+
+    sociosMap.set(telefono, current);
+  }
+
+  const sociosBase = [...sociosMap.values()].map((s) => ({
+    ...s,
+    saldo: round2(s.saldo),
+  }));
+
+  const sociosCount = sociosBase.length;
+  const saldoNetoTotal = round2(sociosBase.reduce((acc, s) => acc + s.saldo, 0));
+  const aporteIdeal = sociosCount > 0 ? round2(saldoNetoTotal / sociosCount) : 0;
+
+  const socios = sociosBase
+    .map((s) => {
+      const diferencia = round2(s.saldo - aporteIdeal);
+      return {
+        socio: s.socio,
+        telefono: s.telefono,
+        saldo: s.saldo,
+        aporteIdeal,
+        diferencia,
+        estado:
+          Math.abs(diferencia) <= 0.01
+            ? 'Balanceado'
+            : diferencia > 0
+              ? 'Debe'
+              : 'Le deben',
+        movimientosCount: s.movimientos.length,
+        _movimientos: s.movimientos,
+      };
+    })
+    .sort((a, b) => b.saldo - a.saldo);
+
+  const transfers = buildDebtTransfers(socios);
+  const isBalanced = transfers.length === 0;
+
+  return {
+    socios,
+    saldoNetoTotal,
+    sociosCount,
+    aporteIdeal,
+    transfers,
+    isBalanced,
+    showSummaryCards: block.show_summary_cards !== false,
+    selectedPhonesCount,
+  };
+}
+
+/**
  * Procesa un bloque chart — reutiliza processSummaryTable para obtener datos
  * y los formatea para renderizar en gráficos (bar, pie, line, doughnut)
  */
@@ -1007,6 +1528,7 @@ const BLOCK_PROCESSORS = {
   category_budget_matrix: processCategoryBudgetMatrix,
   chart: processChart,
   grouped_detail: processGroupedDetail,
+  balance_between_partners: processBalanceBetweenPartners,
 };
 
 /**
@@ -1017,7 +1539,7 @@ const BLOCK_PROCESSORS = {
  * @param {Array}  presupuestos  - Presupuestos de control (si datasets.presupuestos=true)
  * @returns {Array<{ type, titulo, data }>}
  */
-export function executeReport(reportConfig, movimientos, presupuestos = [], displayCurrencies, cotizaciones) {
+export function executeReport(reportConfig, movimientos, presupuestos = [], displayCurrencies, cotizaciones, extraContext = {}) {
   const currencies = displayCurrencies && displayCurrencies.length > 0
     ? displayCurrencies
     : [reportConfig.display_currency || 'ARS'];
@@ -1030,7 +1552,7 @@ export function executeReport(reportConfig, movimientos, presupuestos = [], disp
     }
 
     try {
-      const data = processor(block, movimientos, presupuestos, currencies, cotizaciones);
+      const data = processor(block, movimientos, presupuestos, currencies, cotizaciones, extraContext);
       return { type: block.type, titulo: block.titulo || '', data };
     } catch (err) {
       console.error(`Error procesando bloque ${block.type}:`, err);
@@ -1057,7 +1579,7 @@ export function getUniqueValues(movimientos, campo) {
     proyecto: (m) => m.proyecto,
     medio_pago: (m) => m.medio_pago,
     moneda: (m) => m.moneda,
-    usuario: (m) => m.usuario_nombre || m.usuario,
+    usuario: (m) => getMovimientoUserCandidates(m)[0],
   };
   const fn = map[campo];
   if (!fn) return [];

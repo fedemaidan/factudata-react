@@ -11,6 +11,7 @@ import { executeReport } from 'src/tools/reportEngine';
  * @param {Array}  params.displayCurrencies - ['ARS', 'USD', ...]
  * @param {Object} params.cotizaciones     - { dolar_blue, cac }
  * @param {Object} [params.filters]        - Filtros aplicados (para mostrar en el PDF)
+ * @param {Object} [params.reportContext]  - Contexto adicional (ej: usuarios de empresa)
  */
 export async function exportReportToPDF({
   reportConfig,
@@ -19,9 +20,17 @@ export async function exportReportToPDF({
   displayCurrencies,
   cotizaciones,
   filters = {},
+  reportContext = {},
 }) {
   // 1. Ejecutar el engine para obtener los resultados
-  const results = executeReport(reportConfig, movimientos, presupuestos, displayCurrencies, cotizaciones);
+  const results = executeReport(
+    reportConfig,
+    movimientos,
+    presupuestos,
+    displayCurrencies,
+    cotizaciones,
+    reportContext,
+  );
   const displayCurrency = displayCurrencies?.[0] || reportConfig.display_currency || 'ARS';
 
   // 2. Construir texto descriptivo de filtros
