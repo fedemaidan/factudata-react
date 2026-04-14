@@ -64,6 +64,25 @@ import { codeFromDescription } from 'src/utils/importar/codeFromDescription';
 import TooltipHelp from 'src/components/TooltipHelp';
 import { TOOLTIP_EDITAR_ACOPIO, TOOLTIP_REVISION_FINAL } from 'src/constant/tooltipTexts';
 
+const mapComprasToProductos = (comprasData = [], acopioId = '') => (
+  (comprasData || []).map((compra, i) => {
+    const valorUnitario = compra.valorUnitario || 0;
+    const valorOperacion = compra.valorOperacion || 0;
+    const cantidadCalculada = valorUnitario > 0 ? valorOperacion / valorUnitario : 1;
+    const mongoId = compra.id || null;
+
+    return {
+      id: `${acopioId}-${i}-${mongoId || Math.random()}`,
+      mongoId,
+      codigo: compra.codigo || '',
+      descripcion: compra.descripcion || '',
+      cantidad: compra.cantidad || cantidadCalculada || 1,
+      valorUnitario,
+      valorTotal: compra.valorTotal || valorOperacion || 0,
+    };
+  })
+);
+
 export default function EditarAcopioPage() {
   const router = useRouter();
   const { empresaId, acopioId } = router.query;
@@ -203,25 +222,7 @@ const goNext = () => setCurrentIdx((i) => (i + 1) % (urls?.length || 0));
         
         console.log('Productos finales desde compras:', productosData);
         
-        const productosFinales = productosData.map((compra, i) => {
-          // Calcular cantidad desde valorOperacion / valorUnitario si no existe cantidad
-          const valorUnitario = compra.valorUnitario || 0;
-          const valorOperacion = compra.valorOperacion || 0;
-          const cantidadCalculada = valorUnitario > 0 ? valorOperacion / valorUnitario : 1;
-          
-          // mongoId = ObjectId real del material en MongoDB (para sincronización)
-          // id = clave única para el DataGrid de MUI
-          const mongoId = compra.id || null;
-          return {
-            id: `${acopioId}-${i}-${mongoId || Math.random()}`,
-            mongoId,
-            codigo: compra.codigo || '',
-            descripcion: compra.descripcion || '',
-            cantidad: compra.cantidad || cantidadCalculada || 1,
-            valorUnitario: valorUnitario,
-            valorTotal: compra.valorTotal || valorOperacion || 0,
-          };
-        });
+        const productosFinales = mapComprasToProductos(productosData, acopioId);
 
         setProductos(productosFinales);
 
@@ -406,8 +407,18 @@ const goNext = () => setCurrentIdx((i) => (i + 1) % (urls?.length || 0));
       const resultadoSync = await AcopioService.sincronizarProductosAcopio(acopioId, productosParaSync);
       console.log('2. Resultado sincronización:', resultadoSync);
       
-      if (!resultadoSync.success && resultadoSync.errores?.length > 0) {
-        console.warn('Algunos productos tuvieron errores:', resultadoSync.errores);
+      if (!resultadoSync.success) {
+        throw new Error(resultadoSync.message || (resultadoSync.errores || []).join(' | ') || 'Falló la sincronización de productos');
+      }
+
+      const productosPersistidos = mapComprasToProductos(resultadoSync.productos || [], acopioId);
+      if (productosPersistidos.length !== productosActuales.length) {
+        throw new Error('La cantidad de productos guardados no coincide con la enviada. No se aplicaron los cambios completos.');
+      }
+
+      setProductos(productosPersistidos);
+      if (resultadoSync.valor_acopio != null && actualizacionAutomatica) {
+        setValorTotal(resultadoSync.valor_acopio);
       }
       
       // 4. Actualizar campos del acopio (PATCH) - tipo, url_image
@@ -428,6 +439,9 @@ const goNext = () => setCurrentIdx((i) => (i + 1) % (urls?.length || 0));
       let mensaje = '✅ Acopio actualizado con éxito.';
       if (resultadoSync.creados > 0 || resultadoSync.actualizados > 0 || resultadoSync.eliminados > 0) {
         mensaje += ` (${resultadoSync.creados} creados, ${resultadoSync.actualizados} actualizados, ${resultadoSync.eliminados} eliminados)`;
+      }
+      if (resultadoSync.autocorregidos > 0) {
+        mensaje += ` Se recuperaron ${resultadoSync.autocorregidos} producto(s) que no habían quedado persistidos en el primer intento.`;
       }
       
       setAlert({ open: true, message: mensaje, severity: 'success' });

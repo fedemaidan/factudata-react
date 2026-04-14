@@ -42,6 +42,7 @@ import { dateToTimestamp, formatCurrency, formatTimestamp } from 'src/utils/form
 import { buildCompletarPagoUpdateFields, puedeCompletarPagoEgreso } from 'src/utils/movimientoPagoCompleto';
 import MovementFields from 'src/components/movementFields';
 import {
+  DEFINICION_CAMPOS,
   computeNetSubtotalFromTotalImpuestos,
   isSubtotalFieldEnabled,
 } from 'src/components/movementFieldsConfig';
@@ -55,6 +56,42 @@ import PagoEntreCajasInfo from 'src/components/PagoEntreCajasInfo';
 import MovimientoLogsPanel from 'src/components/movimientos/MovimientoLogsPanel';
 import ComprobanteModal from 'src/components/celulandia/ComprobanteModal';
 import ComprobantePdfModal from 'src/components/celulandia/ComprobantePdfModal';
+
+const getTodayLocalDate = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = `${now.getMonth() + 1}`.padStart(2, '0');
+  const day = `${now.getDate()}`.padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const ensureFechaFactura = (fecha) => fecha || getTodayLocalDate();
+
+const BASE_REQUIRED_FIELDS = ['fecha_factura', 'type', 'moneda', 'total'];
+const DEFAULT_EMPRESA_REQUIRED_FIELDS = ['proyecto', 'categoria', 'total'];
+const EMPTY_REQUIRED_VALUES = new Set([null, undefined, '', 'No definido', 'No encontrado', 'null']);
+const FIELD_LABELS = DEFINICION_CAMPOS.reduce(
+  (acc, campo) => ({ ...acc, [campo.name]: campo.label }),
+  {
+    proyecto: 'Proyecto',
+    type: 'Tipo',
+    moneda: 'Moneda',
+    total: 'Total',
+    categoria: 'Categoria',
+    observacion: 'Observacion',
+    detalle: 'Detalle',
+    nombre_proveedor: 'Proveedor',
+    fecha_factura: 'Fecha de la Factura',
+    factura_cliente: 'Factura de cliente',
+  }
+);
+
+const isEmptyRequiredValue = (value) => EMPTY_REQUIRED_VALUES.has(value);
+
+const getEmpresaRequiredFields = (empresa) => {
+  const configuredFields = Array.isArray(empresa?.camposObligatorios) ? empresa.camposObligatorios.filter(Boolean) : [];
+  return configuredFields.length > 0 ? configuredFields : DEFAULT_EMPRESA_REQUIRED_FIELDS;
+};
 
 // Componente para mostrar información de prorrateo
 const ProrrateoInfo = ({ movimiento, onVerRelacionados }) => {
@@ -364,7 +401,11 @@ const MovementFormPage = () => {
             setNuevoArchivo(null);
             if (fileInputRef.current) fileInputRef.current.value = '';
           }
-          formik.setValues(prev => ({ ...prev, ...result }));
+          formik.setValues(prev => ({
+            ...prev,
+            ...result,
+            fecha_factura: ensureFechaFactura(result?.fecha_factura || prev.fecha_factura),
+          }));
           setAlert({ open: true, message: '¡Datos extraídos con éxito!', severity: 'success' });
         } catch (err) {
           const msg = err?.response?.data?.error || 'No se pudieron extraer los datos.';
@@ -587,7 +628,11 @@ const MovementFormPage = () => {
         archivo,
         { proyecto_id: effectiveProyectoId, proyecto_nombre: effectiveProyectoName }
       );
-      formik.setValues({ ...formik.values, ...result });
+      formik.setValues(prev => ({
+        ...prev,
+        ...result,
+        fecha_factura: ensureFechaFactura(result?.fecha_factura || prev.fecha_factura),
+      }));
       setAlert({ open: true, message: 'Datos extraídos con éxito!', severity: 'success' });
     } catch (err) {
       const msg = err?.response?.data?.error || 'No se pudieron extraer los datos.';
@@ -617,10 +662,69 @@ const createdAtStr = (() => {
   }
 })();
 
+  const requiredFieldNames = useMemo(
+    () => [...new Set([...BASE_REQUIRED_FIELDS, ...getEmpresaRequiredFields(empresa)])],
+    [empresa]
+  );
+
+  const getValidationLabel = (fieldName) => FIELD_LABELS[fieldName] || fieldName;
+
+  const validateMovementForm = (values) => {
+    const errors = {};
+
+    requiredFieldNames.forEach((fieldName) => {
+      if (fieldName === 'proyecto') {
+        const hasProject = !isEmptyRequiredValue(effectiveProyectoId)
+          || !isEmptyRequiredValue(effectiveProyectoName)
+          || !isEmptyRequiredValue(values?.proyecto_id)
+          || !isEmptyRequiredValue(values?.proyecto_nombre);
+
+        if (!hasProject) {
+          errors.proyecto = 'El proyecto es obligatorio';
+        }
+        return;
+      }
+
+      if (isEmptyRequiredValue(values?.[fieldName])) {
+        errors[fieldName] = `${getValidationLabel(fieldName)} es obligatorio`;
+      }
+    });
+
+    return errors;
+  };
+
+  const handleSubmitForm = async () => {
+    const validationErrors = await formik.validateForm();
+    const errorKeys = Object.keys(validationErrors || {});
+
+    if (errorKeys.length > 0) {
+      const touchedFields = errorKeys.reduce((acc, key) => {
+        if (Object.prototype.hasOwnProperty.call(formik.values, key)) {
+          acc[key] = true;
+        }
+        return acc;
+      }, {});
+
+      if (Object.keys(touchedFields).length > 0) {
+        formik.setTouched({ ...formik.touched, ...touchedFields }, true);
+      }
+
+      const labels = errorKeys.map(getValidationLabel);
+      setAlert({
+        open: true,
+        message: `Completá los campos obligatorios: ${labels.join(', ')}`,
+        severity: 'error',
+      });
+      return;
+    }
+
+    await formik.submitForm();
+  };
+
 
   const formik = useFormik({
     initialValues: {
-      fecha_factura: '',
+      fecha_factura: getTodayLocalDate(),
       type: 'egreso',
       total: '',
       subtotal: '',
@@ -650,12 +754,13 @@ const createdAtStr = (() => {
       factura_cliente: false
     },
     validationSchema: Yup.object({}),
-    validate: () => ({}),
+    validate: validateMovementForm,
     onSubmit: async (values) => {
       setIsLoading(true);
+      const fechaFactura = ensureFechaFactura(values.fecha_factura);
       const payload = {
         ...values,
-        fecha_factura: dateToTimestamp(values.fecha_factura),
+        fecha_factura: dateToTimestamp(fechaFactura),
         fecha_pago: values.fecha_pago ? dateToTimestamp(values.fecha_pago) : null,
         proyecto: effectiveProyectoName,
         proyecto_id: effectiveProyectoId,
@@ -959,6 +1064,7 @@ const createdAtStr = (() => {
     clientesOptions,
     parcialMonto,
     onParcialMontoChange: handleParcialMontoChange,
+    requiredFieldNames,
     hideFooterButtons: true,
   };
   const renderSummaryBody = () => {
@@ -1283,7 +1389,7 @@ const createdAtStr = (() => {
               </button>
               <button
                 type="button"
-                onClick={() => formik.submitForm()}
+                onClick={handleSubmitForm}
                 disabled={isLoading}
                 className="inline-flex min-w-[5.5rem] items-center justify-center rounded-lg bg-primary-main px-4 py-1.5 text-sm font-semibold text-white shadow hover:bg-primary-dark disabled:opacity-50"
               >
@@ -1636,6 +1742,7 @@ const createdAtStr = (() => {
           }}
           datosBase={{
             ...formik.values,
+            fecha_factura: ensureFechaFactura(formik.values.fecha_factura),
             proyecto_id: effectiveProyectoId,
             proyecto_nombre: effectiveProyectoName,
           }}

@@ -857,10 +857,14 @@ sincronizarProductosAcopio: async (acopioId, productos) => {
       console.log('✅ Productos sincronizados:', response.data.message);
       return { 
         success: true, 
+        message: response.data.message,
         creados: response.data.creados,
         actualizados: response.data.actualizados,
         eliminados: response.data.eliminados,
-        errores: response.data.errores || []
+        errores: response.data.errores || [],
+        autocorregidos: response.data.autocorregidos || 0,
+        productos: response.data.productos || [],
+        valor_acopio: response.data.valor_acopio ?? null,
       };
     } else {
       console.error('❌ Error al sincronizar productos');
@@ -868,7 +872,12 @@ sincronizarProductosAcopio: async (acopioId, productos) => {
     }
   } catch (error) {
     console.error('❌ Error en sincronizarProductosAcopio:', error);
-    return { success: false, errores: [error.message] };
+    return {
+      success: false,
+      errores: error?.response?.data?.errores || [error?.response?.data?.msg || error.message],
+      message: error?.response?.data?.msg || 'Error al sincronizar productos',
+      productos: error?.response?.data?.productosPersistidos || [],
+    };
   }
 },
 

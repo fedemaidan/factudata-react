@@ -51,7 +51,6 @@ const CajaTablaCell = ({ colKey, mov, amountColor, ctx, isProrrateo = false }) =
   switch (colKey) {
     case 'codigo': {
       const codigoText = mov.codigo_operacion || mov.codigo || mov.id || 'Sin código';
-      const fueModificado = Array.isArray(mov.logs) && mov.logs.length > 0;
       return cell(
         stickyLeft,
         <Stack direction="row" spacing={0.75} alignItems="center">
@@ -59,11 +58,6 @@ const CajaTablaCell = ({ colKey, mov, amountColor, ctx, isProrrateo = false }) =
             <Typography variant="caption" sx={{ fontWeight: 800, color: 'info.main' }}>P</Typography>
           )}
           <Typography variant="body2" sx={{ fontWeight: 700, color: '#1E4469' }}>{codigoText}</Typography>
-          {fueModificado && (
-            <Tooltip title="Movimiento con historial de cambios">
-              <ErrorOutlineIcon sx={{ fontSize: 16, color: 'warning.main' }} />
-            </Tooltip>
-          )}
         </Stack>
       );
     }
