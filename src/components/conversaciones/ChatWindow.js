@@ -45,6 +45,7 @@ export default function ChatWindow({ myNumber = "X", onOpenList }) {
   const [errorMessage, setErrorMessage] = useState("");
   const [userConfigOpen, setUserConfigOpen] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const {
     messages,
     hasMore,
@@ -94,22 +95,29 @@ export default function ChatWindow({ myNumber = "X", onOpenList }) {
   };
 
   const handleLoadMore = async () => {
-    if (!loadMore) return;
+    if (!loadMore || loadingMore) return;
     const el = scrollContainerRef.current;
-    if (!el) {
-      await loadMore();
-      return;
-    }
-    const prevScrollHeight = el.scrollHeight;
-    const prevScrollTop = el.scrollTop;
-    await Promise.resolve(loadMore());
-    requestAnimationFrame(() => {
+    setLoadingMore(true);
+    try {
+      if (!el) {
+        await loadMore();
+        return;
+      }
+      const prevScrollHeight = el.scrollHeight;
+      const prevScrollTop = el.scrollTop;
+      await Promise.resolve(loadMore());
       requestAnimationFrame(() => {
-        const newScrollHeight = el.scrollHeight;
-        const delta = newScrollHeight - prevScrollHeight;
-        el.scrollTop = prevScrollTop + delta;
+        requestAnimationFrame(() => {
+          const newScrollHeight = el.scrollHeight;
+          const delta = newScrollHeight - prevScrollHeight;
+          el.scrollTop = prevScrollTop + delta;
+        });
       });
-    });
+    } catch (error) {
+      console.error("Error al cargar más mensajes:", error);
+    } finally {
+      setLoadingMore(false);
+    }
   };
 
   const handleMediaClick = ({ src, type }) => {
@@ -297,15 +305,17 @@ export default function ChatWindow({ myNumber = "X", onOpenList }) {
           <Button
             size="small"
             onClick={handleLoadMore}
-            variant="text"
+            variant="outlined"
+            disabled={loadingMore}
+            aria-busy={loadingMore}
+            aria-label="Cargar más mensajes anteriores a los ya mostrados"
+            startIcon={loadingMore ? <CircularProgress size={16} color="inherit" /> : null}
             sx={{
               textTransform: 'none',
-              color: 'text.secondary',
               fontSize: '0.813rem',
-              '&:hover': { bgcolor: 'action.hover' }
             }}
           >
-            Cargar mensajes anteriores
+            {loadingMore ? "Cargando…" : "Cargar más mensajes"}
           </Button>
         </Box>
       ) : null}

@@ -88,10 +88,11 @@ export function useMessagesFetch({
           params.sinceCreatedAt = sinceDate.toISOString();
         }
 
-        const { items = [] } = await fetchMessages(conversationId, params);
+        const { items = [], total: apiTotal = 0 } = await fetchMessages(conversationId, params);
         if (!activeRef.current) return;
 
         let fetchedItems = items;
+        let totalForHasMore = apiTotal;
         if (
           !fetchedItems.length &&
           needsFullWindow &&
@@ -103,6 +104,9 @@ export function useMessagesFetch({
             sort: "desc",
           });
           fetchedItems = fallback?.items?.length ? fallback.items : fetchedItems;
+          if (fetchedItems.length && typeof fallback?.total === "number") {
+            totalForHasMore = fallback.total;
+          }
         }
 
         if (fetchedItems.length) {
@@ -119,9 +123,22 @@ export function useMessagesFetch({
           if (!activeRef.current) return;
           onMessagesLoaded?.(refreshedMessages);
           onOffsetUpdated?.(refreshedMessages.length);
+          const backendMaxPerRequest = 500;
+          const requestedLimit = params.limit ?? backendMaxPerRequest;
+          const effectiveLimit = Math.min(requestedLimit, backendMaxPerRequest);
+          const hasMoreFromTotal =
+            typeof totalForHasMore === "number" && totalForHasMore > 0
+              ? refreshedMessages.length < totalForHasMore
+              : fetchedItems.length >= effectiveLimit;
+          onHasMoreUpdated?.(hasMoreFromTotal);
+        } else {
+          const hasMoreWhenEmpty =
+            typeof totalForHasMore === "number" && totalForHasMore > 0
+              ? cachedMessages.length < totalForHasMore
+              : false;
+          onHasMoreUpdated?.(hasMoreWhenEmpty);
         }
 
-        onHasMoreUpdated?.(false);
         onScrollToBottom?.(true);
       } catch (error) {
         console.error("Error al cargar mensajes:", error);
