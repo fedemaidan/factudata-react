@@ -200,13 +200,10 @@ const BackupsPage = () => {
     tipoDeCambio: (value, item) => formatearCampo("tipoDeCambio", value, item),
     estado: (value, item) => formatearCampo("estado", value, item),
     cliente: (value, item) => {
-      let clienteValue;
-      if (value && typeof value === "object" && value.nombre) {
-        clienteValue = value.nombre;
-      } else {
-        clienteValue = value || "-";
+      if (value && typeof value === "object") {
+        return value.nombre ?? item?.nombreCliente ?? "-";
       }
-      return clienteValue;
+      return value ?? item?.nombreCliente ?? "-";
     },
   };
 

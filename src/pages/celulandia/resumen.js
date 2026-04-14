@@ -679,10 +679,10 @@ export default function ResumenPage() {
                     : {}),
                   cliente: (value, item) => {
                     let clienteValue;
-                    if (value && typeof value === "object" && value.nombre) {
-                      clienteValue = value.nombre;
+                    if (value && typeof value === "object") {
+                      clienteValue = value.nombre ?? item?.nombreCliente ?? "-";
                     } else {
-                      clienteValue = value || "-";
+                      clienteValue = value ?? item?.nombreCliente ?? "-";
                     }
                     return formatearCampo("default", clienteValue, item);
                   },

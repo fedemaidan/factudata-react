@@ -63,7 +63,11 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true; // Marcar la solicitud como ya reintentada
       try {
-        const token = await auth.currentUser.getIdToken(true); // Forzar la actualización del token
+        const currentUser = auth.currentUser;
+        if (!currentUser) {
+          return Promise.reject(error);
+        }
+        const token = await currentUser.getIdToken(true); // Forzar la actualización del token
         window.localStorage.setItem("authToken", token); // Opcional: Guardar el nuevo token
         originalRequest.headers["Authorization"] = `Bearer ${token}`;
         return api(originalRequest); // Reenviar la solicitud original con el nuevo token
