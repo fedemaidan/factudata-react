@@ -1,10 +1,10 @@
 import React from 'react';
 import PropTypes from 'prop-types';
 import {
+  Box,
   TableCell,
   Stack,
   Typography,
-  Chip,
   IconButton,
   Tooltip,
   Badge,
@@ -16,6 +16,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import { puedeCompletarPagoEgreso } from 'src/utils/movimientoPagoCompleto';
+import { formatCurrencyWithCode } from 'src/utils/formatters';
 
 const CajaTablaCell = ({ colKey, mov, amountColor, ctx, isProrrateo = false }) => {
   const {
@@ -55,12 +56,24 @@ const CajaTablaCell = ({ colKey, mov, amountColor, ctx, isProrrateo = false }) =
         stickyLeft,
         <Stack direction="row" spacing={0.75} alignItems="center">
           {isProrrateo && (
-            <Chip size="small" label="P" variant="outlined" color="info" sx={{ fontSize: '0.7rem', height: 16 }} />
+            <Typography variant="caption" sx={{ fontWeight: 800, color: 'info.main' }}>P</Typography>
           )}
-          <Typography variant="body2">{codigoText}</Typography>
+          <Typography variant="body2" sx={{ fontWeight: 700, color: '#1E4469' }}>{codigoText}</Typography>
+          {fueModificado && (
+            <Tooltip title="Movimiento con historial de cambios">
+              <ErrorOutlineIcon sx={{ fontSize: 16, color: 'warning.main' }} />
+            </Tooltip>
+          )}
         </Stack>
       );
     }
+    case 'proyecto':
+      return cell(
+        ellipsis(COLS.proyecto),
+        <Tooltip title={mov.proyecto_nombre || mov.proyecto || ''}>
+          <span>{mov.proyecto_nombre || mov.proyecto || '—'}</span>
+        </Tooltip>
+      );
     case 'fechas':
       return cell(
         { ...cellBase, minWidth: COLS.fecha + 40 },
@@ -78,38 +91,47 @@ const CajaTablaCell = ({ colKey, mov, amountColor, ctx, isProrrateo = false }) =
     case 'tipo':
       return cell(
         { ...cellBase, minWidth: COLS.tipo },
-        <Chip label={mov.type === 'ingreso' ? 'Ingreso' : 'Egreso'} color={mov.type === 'ingreso' ? 'success' : 'error'} size="small" />
+        <Typography variant="body2" sx={{ fontWeight: 700, color: mov.type === 'ingreso' ? 'success.main' : 'text.primary', textTransform: 'capitalize' }}>
+          {mov.type === 'ingreso' ? 'Ingreso' : 'Egreso'}
+        </Typography>
       );
     case 'total':
       return cell(
-        { ...cellBase, minWidth: COLS.total, textAlign: 'right', fontWeight: 700, color: amountColor },
-        formatCurrency(mov.total)
+        { ...cellBase, minWidth: COLS.total, textAlign: 'right', fontWeight: 800, color: amountColor },
+        formatCurrencyWithCode(Number(mov.total) || 0, mov.moneda || 'ARS')
       );
     case 'montoPagado':
       return cell(
         { ...cellBase, minWidth: COLS.montoPagado, textAlign: 'right' },
         mov.monto_pagado != null && mov.monto_pagado !== ''
-          ? formatCurrency(mov.monto_pagado)
+          ? formatCurrencyWithCode(Number(mov.monto_pagado) || 0, mov.moneda || 'ARS')
           : '—'
       );
     case 'categoria':
       return cell(
         { ...cellBase, minWidth: COLS.categoria },
         compactCols ? (
-          <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-            <span>{mov.categoria}</span>
+          <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+            <Typography variant="body2" sx={{ fontWeight: 700 }}>{mov.categoria || 'Sin categoría'}</Typography>
             {empresa?.comprobante_info?.subcategoria && mov.subcategoria && (
               <Typography variant="caption" color="text.secondary">/ {mov.subcategoria}</Typography>
             )}
           </Stack>
-        ) : mov.categoria
+        ) : (
+          <Stack spacing={0.25}>
+            <Typography variant="body2" sx={{ fontWeight: 700 }}>{mov.categoria || '—'}</Typography>
+            {mov.subcategoria && (
+              <Typography variant="caption" color="text.secondary">{mov.subcategoria}</Typography>
+            )}
+          </Stack>
+        )
       );
     case 'subcategoria':
       return cell({ ...cellBase, minWidth: COLS.subcategoria }, mov.subcategoria);
     case 'medioPago':
       return cell(
         { ...cellBase, minWidth: COLS.medioPago },
-        <Chip size="small" label={mov.medio_pago || '-'} />
+        <Typography variant="body2">{mov.medio_pago || '-'}</Typography>
       );
     case 'proveedor':
       return cell(
@@ -139,9 +161,16 @@ const CajaTablaCell = ({ colKey, mov, amountColor, ctx, isProrrateo = false }) =
         mov.equivalencias ? `US$ ${mov.equivalencias.total.usd_mep_medio?.toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : '-'
       );
     case 'estado':
+      const estadoColor = mov.estado === 'Pagado' || mov.estado === 'Aprobado'
+        ? 'success.main'
+        : mov.estado === 'Pendiente' || mov.estado === 'Parcialmente Pagado'
+          ? 'warning.main'
+          : mov.estado === 'Rechazado'
+            ? 'error.main'
+            : 'text.primary';
       return cell(
         { ...cellBase, minWidth: COLS.estado },
-        mov.estado ? <Chip size="small" label={mov.estado} /> : ''
+        mov.estado ? <Typography variant="body2" sx={{ fontWeight: 700, color: estadoColor }}>{mov.estado}</Typography> : ''
       );
     case 'empresaFacturacion':
       return cell({ ...cellBase, minWidth: COLS.empresaFacturacion }, mov.empresa_facturacion || '—');
@@ -153,7 +182,7 @@ const CajaTablaCell = ({ colKey, mov, amountColor, ctx, isProrrateo = false }) =
       return cell(
         { ...cellBase, minWidth: COLS.tagsExtra },
         Array.isArray(mov.tags_extra) && mov.tags_extra.length > 0
-          ? mov.tags_extra.map((tag, i) => <Chip key={i} size="small" label={tag} sx={{ mr: 0.5, mb: 0.25 }} />)
+          ? <Typography variant="body2">{mov.tags_extra.join(', ')}</Typography>
           : '—'
       );
     case 'dolarReferencia':

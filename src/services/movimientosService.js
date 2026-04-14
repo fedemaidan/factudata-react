@@ -385,6 +385,102 @@ const movimientosService = {
       };
     }
   },
+
+  getCajaProyectoDashboard: async (proyectoId, params = {}) => {
+    try {
+      const response = await api.get(`movimientos/proyecto/${proyectoId}/dashboard`, { params });
+      const items = (response.data?.items || []).map((item) => {
+        if (item?.tipo === 'grupo_prorrateo') {
+          return {
+            ...item,
+            movimientos: (item.movimientos || []).map((mov) => ({ ...mov, id: mov._id || mov.id })),
+          };
+        }
+        if (item?.data) {
+          return {
+            ...item,
+            data: { ...item.data, id: item.data._id || item.data.id },
+          };
+        }
+        return item;
+      });
+
+      return {
+        success: !!response.data?.success,
+        items,
+        pagination: response.data?.pagination || null,
+        totals: response.data?.totals || null,
+        options: response.data?.options || null,
+        appliedFilters: response.data?.appliedFilters || null,
+      };
+    } catch (err) {
+      console.error('Error al obtener dashboard de caja proyecto:', err);
+      throw err;
+    }
+  },
+
+  getCajaProyectoTotales: async (proyectoId, params = {}) => {
+    try {
+      const response = await api.get(`movimientos/proyecto/${proyectoId}/totales`, { params });
+      return {
+        success: !!response.data?.success,
+        totals: response.data?.totals || null,
+        appliedFilters: response.data?.appliedFilters || null,
+      };
+    } catch (err) {
+      console.error('Error al obtener totales de caja proyecto:', err);
+      throw err;
+    }
+  },
+
+  getCajasDashboard: async (params = {}) => {
+    try {
+      const response = await api.get('movimientos/dashboard', { params });
+      const items = (response.data?.items || []).map((item) => {
+        if (item?.tipo === 'grupo_prorrateo') {
+          return {
+            ...item,
+            movimientos: (item.movimientos || []).map((mov) => ({ ...mov, id: mov._id || mov.id })),
+          };
+        }
+        if (item?.data) {
+          return {
+            ...item,
+            data: { ...item.data, id: item.data._id || item.data.id },
+          };
+        }
+        return item;
+      });
+
+      return {
+        success: !!response.data?.success,
+        items,
+        pagination: response.data?.pagination || null,
+        totals: response.data?.totals || null,
+        options: response.data?.options || null,
+        appliedFilters: response.data?.appliedFilters || null,
+        scope: response.data?.scope || null,
+      };
+    } catch (err) {
+      console.error('Error al obtener dashboard de cajas:', err);
+      throw err;
+    }
+  },
+
+  getCajasTotales: async (params = {}) => {
+    try {
+      const response = await api.get('movimientos/totales', { params });
+      return {
+        success: !!response.data?.success,
+        totals: response.data?.totals || null,
+        appliedFilters: response.data?.appliedFilters || null,
+        scope: response.data?.scope || null,
+      };
+    } catch (err) {
+      console.error('Error al obtener totales de cajas:', err);
+      throw err;
+    }
+  },
   
   
 };

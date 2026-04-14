@@ -24,6 +24,7 @@ const OrdenarColumnasDialog = ({
   columnasOrden,
   onOrdenChange,
   ordenPredeterminado,
+  embedded = false,
 }) => {
   const draggingIndex = useRef(null);
 
@@ -78,6 +79,15 @@ const OrdenarColumnasDialog = ({
   const orden = ordenActual();
 
   if (orden.length === 0) {
+    if (embedded) {
+      return (
+        <Box sx={{ p: 2 }}>
+          <Typography variant="body2" color="text.secondary">
+            No hay columnas visibles. Activá columnas en la sección de la izquierda.
+          </Typography>
+        </Box>
+      );
+    }
     return (
       <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
         <DialogTitle>Ordenar columnas</DialogTitle>
@@ -93,10 +103,10 @@ const OrdenarColumnasDialog = ({
     );
   }
 
-  return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Ordenar columnas</DialogTitle>
-      <DialogContent dividers>
+  const content = (
+    <>
+      {!embedded && <DialogTitle>Ordenar columnas</DialogTitle>}
+      <DialogContent dividers={!embedded} sx={embedded ? { p: 2 } : undefined}>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           Arrastrá las columnas para cambiar el orden en la tabla.
         </Typography>
@@ -141,17 +151,29 @@ const OrdenarColumnasDialog = ({
           ))}
         </Stack>
       </DialogContent>
-      <DialogActions>
+      <DialogActions sx={embedded ? { px: 2, pb: 2 } : undefined}>
         {ordenPredeterminado?.length > 0 && (
           <Button onClick={handleRestablecer} color="inherit" sx={{ mr: 'auto' }}>
             Restablecer orden
           </Button>
         )}
-        <Button onClick={onClose}>Cancelar</Button>
-        <Button variant="contained" onClick={handleGuardar}>
-          Guardar orden
-        </Button>
+        {!embedded && <Button onClick={onClose}>Cancelar</Button>}
+        {!embedded && (
+          <Button variant="contained" onClick={handleGuardar}>
+            Guardar orden
+          </Button>
+        )}
       </DialogActions>
+    </>
+  );
+
+  if (embedded) {
+    return content;
+  }
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+      {content}
     </Dialog>
   );
 };
@@ -163,6 +185,7 @@ OrdenarColumnasDialog.propTypes = {
   columnasOrden: PropTypes.arrayOf(PropTypes.string),
   onOrdenChange: PropTypes.func.isRequired,
   ordenPredeterminado: PropTypes.arrayOf(PropTypes.string),
+  embedded: PropTypes.bool,
 };
 
 export default OrdenarColumnasDialog;
