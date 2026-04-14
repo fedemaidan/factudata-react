@@ -82,7 +82,7 @@ export function useMessagesFetch({
 
         const params = {
           limit: needsFullWindow ? 1000 : PAGE * 2,
-          sort: "asc",
+          sort: "desc",
         };
         if (sinceDate.getTime()) {
           params.sinceCreatedAt = sinceDate.toISOString();

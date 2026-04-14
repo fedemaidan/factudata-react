@@ -374,6 +374,7 @@ export function ConversationsProvider({ children }) {
           fetchRecentConversations(convParams),
         ]);
         if (cancelled) return;
+        const activeConversationId = selectedRef.current?.ultimoMensaje?.id_conversacion;
 
         if (conversationItems.length) {
           await cacheConversations(conversationItems).catch(() => {});
@@ -387,7 +388,6 @@ export function ConversationsProvider({ children }) {
 
         if (messageItems.length) {
           await cacheMessages(messageItems);
-          const activeConversationId = selectedRef.current?.ultimoMensaje?.id_conversacion;
           if (activeConversationId) {
             const limit = Math.max(messagesRef.current.length + messageItems.length, 200);
             const refreshedMessages = await getCachedMessagesForConversation(activeConversationId, { limit });
