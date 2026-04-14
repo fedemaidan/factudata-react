@@ -38,6 +38,14 @@ const formatAmountInput = (value) => {
   });
 };
 
+const parsePercentageInput = (value) => {
+  const parsed = parseAmountInput(value);
+  if (parsed === '') return '';
+  const numeric = Number(parsed);
+  if (!Number.isFinite(numeric)) return '';
+  return String(Math.min(100, Math.max(0, numeric)));
+};
+
 const CURRENCY_OPTIONS = [
   { value: 'ARS', label: 'ARS' },
   { value: 'USD', label: 'USD' },
@@ -66,8 +74,26 @@ const MovementFields = ({
   clientesOptions = [],
   parcialMonto = '',
   onParcialMontoChange,
+  requiredFieldNames = [],
   hideFooterButtons = false,
 }) => {
+  const requiredFieldSet = useMemo(() => new Set(requiredFieldNames), [requiredFieldNames]);
+
+  const shouldShowFieldError = (fieldName) =>
+    Boolean(formik.errors?.[fieldName]) && (formik.submitCount > 0 || formik.touched?.[fieldName]);
+
+  const getFieldError = (fieldName) => (shouldShowFieldError(fieldName) ? formik.errors?.[fieldName] : '');
+
+  const renderLabel = (campo, fallbackLabel = campo.label) => (
+    requiredFieldSet.has(campo.name) ? `${fallbackLabel} *` : fallbackLabel
+  );
+
+  const renderErrorText = (fieldName) => {
+    const errorText = getFieldError(fieldName);
+    if (!errorText) return null;
+    return <p className="mt-1 text-xs text-error-main">{errorText}</p>;
+  };
+
   const setFieldValuePreservingScroll = (fieldName, nextValue, shouldValidate = true) => {
     const scrollContainer =
       typeof document !== 'undefined'
@@ -101,26 +127,64 @@ const MovementFields = ({
     const totalFactura = Number(formik.values.total) || 0;
     const pagado = Number(parcialMonto) || 0;
     const pendiente = Math.max(0, totalFactura - pagado);
+    const porcentajePagado = totalFactura > 0
+      ? Number(((pagado / totalFactura) * 100).toFixed(2))
+      : 0;
 
     return (
       <div className="mt-2 space-y-2">
-        <div>
-          <label className={labelCls}>Monto pagado</label>
-          <input
-            className={inputCls}
-            type="text"
-            inputMode="decimal"
-            value={formatAmountInput(parcialMonto)}
-            onChange={(event) => {
-              const parsed = parseAmountInput(event.target.value);
-              onParcialMontoChange(parsed);
-            }}
-          />
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <div>
+            <label className={labelCls}>Monto pagado</label>
+            <input
+              className={inputCls}
+              type="text"
+              inputMode="decimal"
+              value={formatAmountInput(parcialMonto)}
+              onChange={(event) => {
+                const parsed = parseAmountInput(event.target.value);
+                if (parsed === '') {
+                  onParcialMontoChange('');
+                  return;
+                }
+                const normalizedAmount = totalFactura > 0
+                  ? Math.min(totalFactura, Math.max(0, Number(parsed)))
+                  : Math.max(0, Number(parsed));
+                onParcialMontoChange(String(normalizedAmount));
+              }}
+            />
+          </div>
+          <div>
+            <label className={labelCls}>Porcentaje pagado</label>
+            <div className="relative">
+              <input
+                className={`${inputCls} pr-8`}
+                type="text"
+                inputMode="decimal"
+                value={totalFactura > 0 ? formatAmountInput(porcentajePagado) : ''}
+                placeholder={totalFactura > 0 ? '0' : 'Cargá total'}
+                disabled={totalFactura <= 0}
+                onChange={(event) => {
+                  const parsed = parsePercentageInput(event.target.value);
+                  if (parsed === '') {
+                    onParcialMontoChange('');
+                    return;
+                  }
+                  const porcentaje = Number(parsed);
+                  const montoCalculado = ((totalFactura * porcentaje) / 100).toFixed(2);
+                  onParcialMontoChange(String(Number(montoCalculado)));
+                }}
+              />
+              <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-neutral-500">
+                %
+              </span>
+            </div>
+          </div>
         </div>
         {totalFactura > 0 && (
           <div className="flex flex-col items-start gap-1">
             <span className="rounded-full border border-success-main/40 bg-success-main/5 px-2 py-0.5 text-xs font-medium text-success-dark">
-              Pagado: {formatCurrency(pagado, 2)}
+              Pagado: {formatCurrency(pagado, 2)} ({formatAmountInput(porcentajePagado)}%)
             </span>
             <span className="rounded-full border border-warning-main/40 bg-warning-main/5 px-2 py-0.5 text-xs font-medium text-warning-dark">
               Saldo pendiente: {formatCurrency(pendiente, 2)}
@@ -218,26 +282,30 @@ const MovementFields = ({
       if (campo.type === 'date') {
         const isFechaPago = campo.name === 'fecha_pago';
         return (
-          <PanelOutlineDateField
-            key={campo.name}
-            label={campo.label}
-            name={campo.name}
-            value={value || ''}
-            optional={isFechaPago}
-            onChange={(event) => setFieldValuePreservingScroll(campo.name, event.target.value)}
-            disabled={Boolean(campo.readonly)}
-            readOnly={Boolean(campo.readonly)}
-          />
+          <div key={campo.name}>
+            <PanelOutlineDateField
+              label={renderLabel(campo, campo.label)}
+              name={campo.name}
+              value={value || ''}
+              optional={isFechaPago && !requiredFieldSet.has(campo.name)}
+              onChange={(event) => setFieldValuePreservingScroll(campo.name, event.target.value)}
+              disabled={Boolean(campo.readonly)}
+              readOnly={Boolean(campo.readonly)}
+              aria-invalid={shouldShowFieldError(campo.name)}
+            />
+            {renderErrorText(campo.name)}
+          </div>
         );
       }
 
       if (campo.name === 'dolar_referencia') {
+        const hasError = shouldShowFieldError(campo.name);
         const isManual = Boolean(formik.values.dolar_referencia_manual);
         return (
           <div key={campo.name} className="flex flex-col gap-1">
-            <label className={labelCls}>{campo.label}</label>
+            <label className={labelCls}>{renderLabel(campo, campo.label)}</label>
             <input
-              className={isManual ? `${inputCls} bg-warning-main/10` : inputCls}
+              className={`${isManual ? `${inputCls} bg-warning-main/10` : inputCls} ${hasError ? 'border-error-main focus:border-error-main focus:ring-error-main' : ''}`}
               type={campo.type}
               name={campo.name}
               value={value}
@@ -263,15 +331,17 @@ const MovementFields = ({
                 {isManual ? 'Manual' : 'Automático'}
               </span>
             )}
+            {renderErrorText(campo.name)}
           </div>
         );
       }
 
       const strVal = value === undefined || value === null ? '' : String(value);
+      const hasError = shouldShowFieldError(campo.name);
       const commonInput = (
         <input
           key={campo.name}
-          className={campo.readonly ? inputReadonlyCls : inputCls}
+          className={`${campo.readonly ? inputReadonlyCls : inputCls} ${hasError ? 'border-error-main focus:border-error-main focus:ring-error-main' : ''}`}
           type={campo.type}
           name={campo.name}
           value={strVal}
@@ -294,7 +364,7 @@ const MovementFields = ({
           return (
             <div key={campo.name}>
               <InputWithSelect
-                label="Total y moneda"
+                label={requiredFieldSet.has('total') || requiredFieldSet.has('moneda') ? 'Total y moneda *' : 'Total y moneda'}
                 placeholder="0.00"
                 value={value}
                 formatDisplay={formatAmountInput}
@@ -310,6 +380,8 @@ const MovementFields = ({
                 onIncrement={handleIncrement}
                 onDecrement={handleDecrement}
               />
+              {renderErrorText('total')}
+              {renderErrorText('moneda')}
               {renderPagoParcialDetalle()}
             </div>
           );
@@ -317,9 +389,9 @@ const MovementFields = ({
 
         return (
           <div key={campo.name}>
-            <label className={labelCls}>{campo.label}</label>
+            <label className={labelCls}>{renderLabel(campo, campo.label)}</label>
             <input
-              className={campo.readonly ? inputReadonlyCls : inputCls}
+              className={`${campo.readonly ? inputReadonlyCls : inputCls} ${hasError ? 'border-error-main focus:border-error-main focus:ring-error-main' : ''}`}
               type="text"
               name={campo.name}
               inputMode="decimal"
@@ -330,6 +402,7 @@ const MovementFields = ({
                 formik.setFieldValue('total', parseAmountInput(event.target.value), false);
               }}
             />
+            {renderErrorText(campo.name)}
             {renderPagoParcialDetalle()}
           </div>
         );
@@ -337,23 +410,26 @@ const MovementFields = ({
 
       return (
         <div key={campo.name}>
-          <label className={labelCls}>{campo.label}</label>
+          <label className={labelCls}>{renderLabel(campo, campo.label)}</label>
           {commonInput}
+          {renderErrorText(campo.name)}
         </div>
       );
     }
 
     if (campo.type === 'textarea') {
+      const hasError = shouldShowFieldError(campo.name);
       return (
         <div key={campo.name}>
-          <label className={labelCls}>{campo.label}</label>
+          <label className={labelCls}>{renderLabel(campo, campo.label)}</label>
           <textarea
-            className={`${inputCls} min-h-[2.5rem] resize-none`}
+            className={`${inputCls} min-h-[2.5rem] resize-none ${hasError ? 'border-error-main focus:border-error-main focus:ring-error-main' : ''}`}
             rows={2}
             name={campo.name}
             value={value}
             onChange={formik.handleChange}
           />
+          {renderErrorText(campo.name)}
         </div>
       );
     }
@@ -363,27 +439,29 @@ const MovementFields = ({
       return (
         <div key={campo.name}>
           <SelectOne
-            label={campo.label}
+            label={renderLabel(campo, campo.label)}
             name={campo.name}
             value={value}
             options={options.map((opt) => ({ value: opt, label: opt }))}
             onChange={(nextValue) => setFieldValuePreservingScroll(campo.name, nextValue)}
           />
+          {renderErrorText(campo.name)}
         </div>
       );
     }
 
     if (campo.type === 'autocomplete') {
+      const hasError = shouldShowFieldError(campo.name);
       const acOptions = getOptionsFromContext(campo.optionsKey, optionsContext);
       const listId = `dl-${campo.name}`;
       return (
         <div key={campo.name}>
           <label className={labelCls} htmlFor={campo.name}>
-            {campo.label}
+            {renderLabel(campo, campo.label)}
           </label>
           <input
             id={campo.name}
-            className={inputCls}
+            className={`${inputCls} ${hasError ? 'border-error-main focus:border-error-main focus:ring-error-main' : ''}`}
             list={listId}
             value={value || ''}
             onChange={(e) => formik.setFieldValue(campo.name, e.target.value)}
@@ -393,6 +471,7 @@ const MovementFields = ({
               <option key={opt} value={opt} />
             ))}
           </datalist>
+          {renderErrorText(campo.name)}
         </div>
       );
     }
@@ -403,7 +482,7 @@ const MovementFields = ({
       const listId = `dl-tags-${campo.name}`;
       return (
         <div key={campo.name} className="sm:col-span-2">
-          <label className={labelCls}>{campo.label}</label>
+          <label className={labelCls}>{renderLabel(campo, campo.label)}</label>
           <div className="mb-1 flex flex-wrap gap-1">
             {tags.map((t) => (
               <span
@@ -445,6 +524,7 @@ const MovementFields = ({
               <option key={opt} value={opt} />
             ))}
           </datalist>
+          {renderErrorText(campo.name)}
         </div>
       );
     }
@@ -454,7 +534,7 @@ const MovementFields = ({
       return (
         <div key={campo.name}>
           <SelectOne
-            label={campo.label}
+            label={renderLabel(campo, campo.label)}
             name={campo.name}
             value={strVal}
             options={[
@@ -465,6 +545,7 @@ const MovementFields = ({
               setFieldValuePreservingScroll(campo.name, nextValue === 'true')
             }
           />
+          {renderErrorText(campo.name)}
         </div>
       );
     }

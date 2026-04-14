@@ -1517,10 +1517,9 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
       return;
     }
 
-    const baseFilters = { ...filters, caja: null };
     const entries = await Promise.all(cajas.map(async (caja) => {
       const params = buildCajaDashboardParams({
-        filters: baseFilters,
+        filters: {},
         caja,
       });
       const response = await movimientosService.getCajasTotales({
@@ -1532,7 +1531,7 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
     }));
 
     setCajasTotalsMap(Object.fromEntries(entries));
-  }, [empresa?.id, filters, scopeProjectIds]);
+  }, [empresa?.id, scopeProjectIds]);
 
   const handleOpenConfirmarPago = useCallback((mov) => {
     setConfirmarPagoMov(mov);
