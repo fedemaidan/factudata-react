@@ -144,14 +144,6 @@ const PasoRevisarProyectos = ({
 
   return (
     <Box>
-      <Typography variant="h5" gutterBottom>
-        Paso 4: Revisar Proyectos
-      </Typography>
-      
-      <Typography variant="body1" color="text.secondary" paragraph>
-        Revisa los proyectos detectados en el CSV y decide si usar proyectos existentes o crear nuevos.
-      </Typography>
-
       {/* Resumen */}
       <Grid container spacing={2} sx={{ mb: 3 }}>
         <Grid item xs={12} sm={4}>

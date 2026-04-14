@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, forwardRef, useImperativeHandle, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -20,22 +20,25 @@ import WarningAmberIcon from '@mui/icons-material/WarningAmber';
  * Paso para agregar aclaraciones/instrucciones que se inyectarán en el prompt de análisis
  * Estas instrucciones tienen prioridad sobre las reglas del sistema
  */
-const PasoAclaracionesMovimientos = ({ 
-  empresa, 
-  wizardData, 
-  updateWizardData, 
-  onNext, 
-  onBack, 
-  setLoading, 
-  setError 
-}) => {
+const PasoAclaracionesMovimientos = forwardRef(({
+  wizardData,
+  updateWizardData,
+  onNext,
+  onBack,
+  hideNavigation = false,
+}, ref) => {
   const [aclaraciones, setAclaraciones] = useState(wizardData.aclaracionesUsuario || '');
 
-  const handleContinuar = () => {
-    // Guardar aclaraciones en wizardData
+  const handleContinuar = useCallback(({ skipOnNext = false } = {}) => {
     updateWizardData({ aclaracionesUsuario: aclaraciones.trim() });
-    onNext();
-  };
+    if (!skipOnNext) {
+      onNext();
+    }
+  }, [aclaraciones, updateWizardData, onNext]);
+
+  useImperativeHandle(ref, () => ({
+    submitStep: () => handleContinuar({ skipOnNext: true }),
+  }), [handleContinuar]);
 
   const ejemplosAclaraciones = [
     'La última columna ignorala, es el mismo total pero con el 20% de descuento.',
@@ -55,15 +58,6 @@ const PasoAclaracionesMovimientos = ({
 
   return (
     <Box>
-      <Typography variant="h5" gutterBottom>
-        Aclaraciones para el Análisis
-      </Typography>
-      
-      <Typography variant="body1" color="text.secondary" paragraph>
-        Agrega instrucciones especiales que el sistema debe seguir al analizar cada movimiento.
-        Estas aclaraciones tienen <strong>prioridad máxima</strong> sobre las reglas del sistema.
-      </Typography>
-
       {/* Alert informativo */}
       <Alert 
         severity="info" 
@@ -172,41 +166,33 @@ Ejemplo:
 
       <Divider sx={{ my: 3 }} />
 
-      {/* Botones de navegación */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-        <Button
-          variant="outlined"
-          onClick={onBack}
-          size="large"
-        >
-          Volver
-        </Button>
-        
-        <Stack direction="row" spacing={2}>
-          <Button
-            variant="text"
-            onClick={() => {
-              setAclaraciones('');
-              updateWizardData({ aclaracionesUsuario: '' });
-              onNext();
-            }}
-            size="large"
-          >
-            Omitir este paso
+      {!hideNavigation && (
+        <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+          <Button variant="outlined" onClick={onBack} size="large">
+            Volver
           </Button>
-          
-          <Button
-            variant="contained"
-            color="primary"
-            onClick={handleContinuar}
-            size="large"
-          >
-            {aclaraciones.trim() ? 'Continuar con aclaraciones' : 'Continuar'}
-          </Button>
-        </Stack>
-      </Box>
+          <Stack direction="row" spacing={2}>
+            <Button
+              variant="text"
+              onClick={() => {
+                setAclaraciones('');
+                updateWizardData({ aclaracionesUsuario: '' });
+                onNext();
+              }}
+              size="large"
+            >
+              Omitir este paso
+            </Button>
+            <Button variant="contained" color="primary" onClick={() => handleContinuar({ skipOnNext: false })} size="large">
+              {aclaraciones.trim() ? 'Continuar con aclaraciones' : 'Continuar'}
+            </Button>
+          </Stack>
+        </Box>
+      )}
     </Box>
   );
-};
+});
+
+PasoAclaracionesMovimientos.displayName = 'PasoAclaracionesMovimientos';
 
 export default PasoAclaracionesMovimientos;

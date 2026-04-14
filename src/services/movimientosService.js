@@ -360,6 +360,82 @@ const movimientosService = {
     }
   },
 
+  /**
+   * Genera preguntas dinámicas con GPT (muestra de archivos + metadata del lote).
+   * @param {File[]} archivosMuestra - hasta 5 archivos
+   * @param {object} metadata_lote - { total, archivos: [{ name, type, size }] }
+   */
+  sugerirPreguntasCargaMasiva: async (archivosMuestra, metadata_lote = {}) => {
+    try {
+      const formData = new FormData();
+      (archivosMuestra || []).forEach((f) => {
+        formData.append('muestra', f);
+      });
+      formData.append('metadata_lote', JSON.stringify(metadata_lote || {}));
+      const response = await api.post('/movimiento/carga-masiva/sugerir-preguntas', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      if (response.status === 200) {
+        return { error: false, data: response.data };
+      }
+      return { error: true, message: 'Error al generar preguntas' };
+    } catch (err) {
+      console.error('sugerirPreguntasCargaMasiva:', err);
+      return {
+        error: true,
+        message: err.response?.data?.error || err.response?.data?.details || err.message,
+      };
+    }
+  },
+
+  /**
+   * Analiza un lote de archivos (imágenes/PDF) sin crear borradores.
+   * @param {File[]} archivos
+   * @param {object} contexto_lote - proyecto_id, proyecto_nombre, default_type, default_moneda, etc.
+   */
+  analizarCargaMasiva: async (archivos, contexto_lote = {}) => {
+    try {
+      const formData = new FormData();
+      (archivos || []).forEach((f) => {
+        formData.append('archivos', f);
+      });
+      formData.append('contexto_lote', JSON.stringify(contexto_lote || {}));
+      const response = await api.post('/movimiento/carga-masiva/analizar', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      if (response.status === 200) {
+        return { error: false, data: response.data };
+      }
+      return { error: true, message: 'Error al analizar el lote' };
+    } catch (err) {
+      console.error('analizarCargaMasiva:', err);
+      return {
+        error: true,
+        message: err.response?.data?.error || err.response?.data?.details || err.message,
+      };
+    }
+  },
+
+  /**
+   * Crea movimientos reales a partir del payload validado en cliente.
+   * @param {object[]} movimientos - incluir omitido: true para saltar ítems
+   */
+  confirmarCargaMasiva: async (movimientos) => {
+    try {
+      const response = await api.post('/movimiento/carga-masiva/confirmar', { movimientos });
+      if (response.status === 200) {
+        return { error: false, data: response.data };
+      }
+      return { error: true, message: 'Error al confirmar el lote' };
+    } catch (err) {
+      console.error('confirmarCargaMasiva:', err);
+      return {
+        error: true,
+        message: err.response?.data?.error || err.response?.data?.details || err.message,
+      };
+    }
+  },
+
   createEgresoConCajaPagadora: async (datosEgreso, proyectoPagadorId, proyectoPagadorNombre) => {
     try {
       const payload = {

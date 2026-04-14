@@ -43,14 +43,15 @@ import importMovimientosService from 'src/services/importMovimientosService';
 import { useAuthContext } from 'src/contexts/auth-context';
 import { getProyectosByEmpresa } from 'src/services/proyectosService';
 
-const PasoResumen = ({ 
-  empresa, 
-  wizardData, 
-  updateWizardData, 
-  onFinish, 
-  onBack, 
-  setLoading, 
-  setError 
+const PasoResumen = ({
+  empresa,
+  wizardData,
+  updateWizardData,
+  onFinish,
+  onBack,
+  setLoading,
+  setError,
+  hideNavigation = false,
 }) => {
   const { user } = useAuthContext();
   const [importando, setImportando] = useState(false);
@@ -89,7 +90,30 @@ const PasoResumen = ({
   }, []);
 
   const calcularResumen = () => {
-    const { mapeosCategorias = [], mapeosProveedores = [], analisisCsv, tipoImportacion, proyectoSeleccionado, aclaracionesUsuario } = wizardData;
+    const {
+      mapeosCategorias = [],
+      mapeosProveedores = [],
+      analisisCsv,
+      tipoImportacion,
+      proyectoSeleccionado,
+      aclaracionesUsuario,
+      movimientosValidadosParaCrear = null,
+    } = wizardData;
+
+    const listaValidada = Array.isArray(movimientosValidadosParaCrear)
+      ? movimientosValidadosParaCrear.filter((m) => !m.omitido)
+      : [];
+
+    const movimientosDesdeValidacion =
+      listaValidada.length > 0
+        ? {
+            total: listaValidada.length,
+            ars: listaValidada.filter((m) => (m.ia_data?.moneda || 'ARS') === 'ARS').length,
+            usd: listaValidada.filter((m) => m.ia_data?.moneda === 'USD').length,
+            egresos: listaValidada.filter((m) => m.ia_data?.accion === 'CREAR_EGRESO').length,
+            ingresos: listaValidada.filter((m) => m.ia_data?.accion === 'CREAR_INGRESO').length,
+          }
+        : null;
 
     const resumen = {
       categorias: {
@@ -103,7 +127,7 @@ const PasoResumen = ({
         existentes: mapeosProveedores.filter(m => m.accion === 'usar_existente').length,
         total: mapeosProveedores.length
       },
-      movimientos: {
+      movimientos: movimientosDesdeValidacion || {
         total: analisisCsv?.movimientosValidos || 0,
         ars: analisisCsv?.todosMovimientos?.filter(m => m.moneda === 'ARS').length || 0,
         usd: analisisCsv?.todosMovimientos?.filter(m => m.moneda === 'USD').length || 0,
@@ -144,40 +168,53 @@ const PasoResumen = ({
       setEtapaActual('Preparando archivos...');
       setProgresoImport(10);
       
-      const archivosUrls = wizardData.analisisCsv?._archivosUrls;
-      if (!archivosUrls || archivosUrls.length === 0) {
-        throw new Error('No hay archivos subidos para procesar');
+      const movimientosValidados = wizardData.movimientosValidadosParaCrear;
+
+      let inicioImportacion;
+
+      if (Array.isArray(movimientosValidados) && movimientosValidados.length > 0) {
+        setEtapaActual('Iniciando creación de movimientos validados...');
+        setProgresoImport(20);
+        inicioImportacion = await importMovimientosService.confirmarMovimientosValidados(
+          movimientosValidados,
+          empresa.id,
+          user.id,
+          `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email || 'Usuario',
+        );
+      } else {
+        const archivosUrls = wizardData.analisisCsv?._archivosUrls;
+        if (!archivosUrls || archivosUrls.length === 0) {
+          throw new Error('No hay archivos subidos para procesar');
+        }
+
+        setEtapaActual('Iniciando procesamiento...');
+        setProgresoImport(20);
+
+        const proyectoId = wizardData.tipoImportacion === 'proyecto_especifico'
+          ? wizardData.proyectoSeleccionado?.id
+          : null;
+
+        const aclaracionesUsuario = wizardData.aclaracionesUsuario || '';
+
+        const mapeosCategoriasDescartadas = wizardData.mapeosCategorias
+          ?.filter(m => m.accion === 'mapear_a_existente' && m.categoriaDestino)
+          ?.map(m => ({
+            categoriaOriginal: m.nombre,
+            categoriaDestino: m.categoriaDestino
+          })) || [];
+
+        inicioImportacion = await importMovimientosService.importarDirecto(
+          archivosUrls,
+          empresa.id,
+          user.id,
+          user.firstName + ' ' + user.lastName,
+          proyectoId,
+          aclaracionesUsuario,
+          mapeosCategoriasDescartadas,
+          wizardData.hojasSeleccionadas || null,
+          wizardData.analisisCsv?._archivoNombresOrden || null,
+        );
       }
-      
-      // 2. Iniciar importación (retorna inmediatamente con código)
-      setEtapaActual('Iniciando procesamiento...');
-      setProgresoImport(20);
-      
-      // Si tipoImportacion es 'proyecto_especifico', pasar el ID del proyecto
-      const proyectoId = wizardData.tipoImportacion === 'proyecto_especifico' 
-        ? wizardData.proyectoSeleccionado?.id 
-        : null;
-      
-      // Obtener aclaraciones del usuario (instrucciones prioritarias para el prompt)
-      const aclaracionesUsuario = wizardData.aclaracionesUsuario || '';
-      
-      // Obtener mapeo de categorías descartadas (para interpretación inteligente)
-      const mapeosCategoriasDescartadas = wizardData.mapeosCategorias
-        ?.filter(m => m.accion === 'mapear_a_existente' && m.categoriaDestino)
-        ?.map(m => ({
-          categoriaOriginal: m.nombre,
-          categoriaDestino: m.categoriaDestino
-        })) || [];
-      
-      const inicioImportacion = await importMovimientosService.importarDirecto(
-        archivosUrls,
-        empresa.id,
-        user.id,
-        user.firstName + ' ' + user.lastName,
-        proyectoId,
-        aclaracionesUsuario,
-        mapeosCategoriasDescartadas
-      );
 
       // inicioImportacion = { codigo: "N242R", resultado: null }
 
@@ -281,10 +318,6 @@ const PasoResumen = ({
   if (importando) {
     return (
       <Box>
-        <Typography variant="h5" gutterBottom>
-          Importando movimientos...
-        </Typography>
-        
         <Card>
           <CardContent>
             <Box sx={{ textAlign: 'center', py: 4 }}>
@@ -445,7 +478,7 @@ const PasoResumen = ({
           <Button
             variant="contained"
             size="large"
-            onClick={onFinish}
+            onClick={() => onFinish?.(resultadoImport)}
           >
             Finalizar
           </Button>
@@ -487,14 +520,6 @@ const PasoResumen = ({
 
   return (
     <Box>
-      <Typography variant="h5" gutterBottom>
-        Resumen de Importación
-      </Typography>
-      
-      <Typography variant="body1" color="text.secondary" paragraph>
-        Revisa los datos detectados antes de confirmar la importación.
-      </Typography>
-
       {/* Resumen compacto */}
       <Grid container spacing={2} sx={{ mb: 3 }}>
         <Grid item xs={12} sm={6}>
@@ -578,16 +603,18 @@ const PasoResumen = ({
         </Alert>
       )}
 
-      {/* Navegación */}
-      <Box sx={{ mt: 4, display: 'flex', justifyContent: 'space-between' }}>
-        <Button
-          variant="outlined"
-          onClick={onBack}
-          size="large"
-        >
-          Volver
-        </Button>
-        
+      <Box
+        sx={{
+          mt: 4,
+          display: 'flex',
+          justifyContent: hideNavigation ? 'flex-end' : 'space-between',
+        }}
+      >
+        {!hideNavigation && (
+          <Button variant="outlined" onClick={onBack} size="large">
+            Volver
+          </Button>
+        )}
         <Button
           variant="contained"
           color="primary"
@@ -595,7 +622,7 @@ const PasoResumen = ({
           size="large"
           startIcon={<CloudUploadIcon />}
         >
-          Importar Movimientos
+          Importar movimientos
         </Button>
       </Box>
 

@@ -59,6 +59,7 @@ import autoTable from 'jspdf-autotable';
 import { Tooltip } from '@mui/material';
 import { ColumnSelector } from 'src/components/columnSelector';
 import OrdenarColumnasDialog, { STORAGE_KEY as COLUMNAS_ORDEN_KEY } from 'src/components/OrdenarColumnasDialog';
+import CargaMasivaDialog from 'src/components/movimientos/cargaMasiva/CargaMasivaDialog';
 
 const TodosProyectosPage = () => {
   const { user } = useAuthContext();
@@ -102,6 +103,7 @@ const TodosProyectosPage = () => {
   const [csvFile, setCsvFile] = useState(null);
   const [openImportDialog, setOpenImportDialog] = useState(false);
   const [importLoading, setImportLoading] = useState(false);
+  const [cargaMasivaOpen, setCargaMasivaOpen] = useState(false);
 
   const [filtroFechaDesde, setFiltroFechaDesde] = useState(subDays(new Date(), 7));
   const [filtroFechaHasta, setFiltroFechaHasta] = useState(new Date());
@@ -1026,6 +1028,9 @@ const TodosProyectosPage = () => {
                   <Button variant="contained" onClick={fetchData}>
                     Actualizar
                   </Button>
+                  <Button variant="contained" color="success" onClick={() => setCargaMasivaOpen(true)}>
+                    Carga masiva
+                  </Button>
                     <div>
                       {user.admin && (
                         <Button
@@ -1204,6 +1209,40 @@ const TodosProyectosPage = () => {
               </>
             )}
           </Stack>
+          <CargaMasivaDialog
+            open={cargaMasivaOpen}
+            onClose={() => setCargaMasivaOpen(false)}
+            empresa={empresa}
+            proyectos={proyectos}
+            user={user}
+            onSuccess={({ ok, errores, tabularImport, resultado }) => {
+              if (tabularImport) {
+                const exitosos = resultado?.exitosos ?? resultado?.total;
+                setAlert({
+                  open: true,
+                  severity: resultado?.fallidos > 0 ? 'warning' : 'success',
+                  message:
+                    exitosos != null
+                      ? `Planilla: ${exitosos} movimiento(s) importados${resultado?.fallidos ? `. ${resultado.fallidos} con error.` : '.'}`
+                      : 'Importación por planilla finalizada.',
+                });
+                fetchData();
+                return;
+              }
+              const nOk = ok?.length ?? 0;
+              const nErr = errores?.length ?? 0;
+              setAlert({
+                open: true,
+                severity: nErr ? 'warning' : 'success',
+                message:
+                  nErr > 0
+                    ? `Creados ${nOk} movimiento(s). ${nErr} error(es).`
+                    : `Se crearon ${nOk} movimiento(s) correctamente.`,
+              });
+              fetchData();
+            }}
+          />
+
           <Dialog
             open={openImportDialog}
             onClose={() => setOpenImportDialog(false)}

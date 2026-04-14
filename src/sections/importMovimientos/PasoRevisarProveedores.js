@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, forwardRef, useImperativeHandle, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -31,15 +31,16 @@ import {
 } from '@mui/icons-material';
 import importMovimientosService from 'src/services/importMovimientosService';
 
-const PasoRevisarProveedores = ({ 
-  empresa, 
-  wizardData, 
-  updateWizardData, 
-  onNext, 
-  onBack, 
-  setLoading, 
-  setError 
-}) => {
+const PasoRevisarProveedores = forwardRef(({
+  empresa,
+  wizardData,
+  updateWizardData,
+  onNext,
+  onBack,
+  setLoading,
+  setError,
+  hideNavigation = false,
+}, ref) => {
   const [mapeosProveedores, setMapeosProveedores] = useState([]);
   const [editandoProveedor, setEditandoProveedor] = useState(null);
   const [proveedorEditado, setProveedorEditado] = useState({
@@ -83,8 +84,10 @@ const PasoRevisarProveedores = ({
       // Extraer proveedores específicamente del backend
       const analisisProveedores = await importMovimientosService.extraerProveedores(
         archivosUrls,
-        empresaId, 
-        especificacionUsuario || ''
+        empresaId,
+        especificacionUsuario || '',
+        wizardData.hojasSeleccionadas || null,
+        wizardData.analisisCsv?._archivoNombresOrden || null,
       );
       
       console.log('[PasoRevisarProveedores] Proveedores extraídos:', analisisProveedores);
@@ -220,7 +223,7 @@ const PasoRevisarProveedores = ({
     setMapeosProveedores(nuevosMapeos);
   };
 
-  const handleContinuar = async () => {
+  const handleContinuar = useCallback(async ({ skipOnNext = false } = {}) => {
     try {
       setLoading(true);
       console.log('[PasoRevisarProveedores] Persistiendo proveedores');
@@ -236,21 +239,27 @@ const PasoRevisarProveedores = ({
       console.log('[PasoRevisarProveedores] Persistencia exitosa:', resultadoPersistencia);
       
       // Actualizar wizard data
-      updateWizardData({ 
+      updateWizardData({
         mapeosProveedores,
         proveedoresPersistidos: true,
-        mapeosFinalProveedores: resultadoPersistencia.mapeos_finales
+        mapeosFinalProveedores: resultadoPersistencia.mapeos_finales,
       });
-      
-      onNext();
-      
+
+      if (!skipOnNext) {
+        onNext();
+      }
     } catch (error) {
       console.error('[PasoRevisarProveedores] Error persistiendo:', error);
       setError(`Error persistiendo proveedores: ${error.message}`);
+      throw error;
     } finally {
       setLoading(false);
     }
-  };
+  }, [wizardData, empresa, mapeosProveedores, updateWizardData, onNext, setLoading, setError]);
+
+  useImperativeHandle(ref, () => ({
+    submitStep: () => handleContinuar({ skipOnNext: true }),
+  }), [handleContinuar]);
 
   const getEstadoColor = (estado) => {
     switch (estado) {
@@ -273,14 +282,6 @@ const PasoRevisarProveedores = ({
 
   return (
     <Box>
-      <Typography variant="h5" gutterBottom>
-        Paso 3: Revisar Proveedores
-      </Typography>
-      
-      <Typography variant="body1" color="text.secondary" paragraph>
-        Revisa los proveedores detectados en el CSV y decide si usar proveedores existentes o crear nuevos.
-      </Typography>
-
       {/* Debug / Cargar manualmente si no se cargó automáticamente */}
       {!cargaInicial && (
         <Alert severity="warning" sx={{ mb: 3 }}>
@@ -369,7 +370,7 @@ const PasoRevisarProveedores = ({
 
       {/* Tabla de proveedores */}
     
-      { <Card>
+      <Card>
         <CardContent>
           <Typography variant="h6" gutterBottom>
             Proveedores detectados
@@ -576,7 +577,7 @@ const PasoRevisarProveedores = ({
             </Box>
           )}
         </CardContent>
-      </Card> }
+      </Card>
 
       {/* Información adicional */}
       {mapeosProveedores.length > 0 && (
@@ -600,26 +601,20 @@ const PasoRevisarProveedores = ({
         </Card>
       )}
 
-      {/* Navegación */}
-      <Box sx={{ mt: 4, display: 'flex', justifyContent: 'space-between' }}>
-        <Button
-          variant="outlined"
-          onClick={onBack}
-          size="large"
-        >
-          Volver
-        </Button>
-        
-        <Button
-          variant="contained"
-          onClick={handleContinuar}
-          size="large"
-        >
-          Continuar al Resumen
-        </Button>
-      </Box>
+      {!hideNavigation && (
+        <Box sx={{ mt: 4, display: 'flex', justifyContent: 'space-between' }}>
+          <Button variant="outlined" onClick={onBack} size="large">
+            Volver
+          </Button>
+          <Button variant="contained" onClick={() => handleContinuar({ skipOnNext: false })} size="large">
+            Continuar al Resumen
+          </Button>
+        </Box>
+      )}
     </Box>
   );
-};
+});
+
+PasoRevisarProveedores.displayName = 'PasoRevisarProveedores';
 
 export default PasoRevisarProveedores;
