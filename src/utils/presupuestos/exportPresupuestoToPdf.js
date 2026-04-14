@@ -67,11 +67,18 @@ const buildRubroRows = (rubros = [], totalNeto) => {
 
     (rubro.tareas || []).forEach((tarea, tareaIdx) => {
       const taskIndex = `${orden}.${tareaIdx + 1}`;
+      const tm = Number(tarea.monto) || 0;
+      const incTarea = Number.isFinite(Number(tarea.incidencia_pct))
+        ? Number(tarea.incidencia_pct)
+        : monto > 0
+        ? (tm / monto) * 100
+        : 0;
+      const mostrar = tm > 0 || (Number(tarea.incidencia_pct) || 0) > 0;
       body.push([
         taskIndex,
         `  ${tarea.descripcion || 'Tarea sin descripción'}`,
-        '-',
-        '-',
+        mostrar ? formatCurrency(tm, rubro.moneda || 'ARS') : '-',
+        mostrar ? `${incTarea.toFixed(1)}%` : '-',
       ]);
       metadata.push({ type: 'tarea' });
     });

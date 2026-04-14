@@ -591,7 +591,7 @@ export const SideNav = (props) => {
         });
 
 
-     //   if (permisosUsuario.includes("VER_PRESUPUESTOS_PROFESIONALES")) {
+        if (permisosUsuario.includes("VER_PRESUPUESTOS_PROFESIONALES")) {
         baseItems.push({
           title: "Presupuestos Profesionales",
           path: "/presupuestosProfesionales",
@@ -601,7 +601,7 @@ export const SideNav = (props) => {
               </SvgIcon>
             ),
           });
-     //   }
+        }
 
         const todos = {
           title: "Todos los movimientos",

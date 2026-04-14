@@ -58,6 +58,19 @@ const INITIAL_FORM_STATE = {
   fechaHasta: dayjs(),
 };
 
+const formatTrabajadorSeleccionLabel = (sel) => {
+  if (!sel) return "";
+  const d = sel.data || sel;
+  const ap = trimValue(d.apellido);
+  const nom = trimValue(d.nombre);
+  const dni = trimValue(d.dni);
+  const name = ap && nom ? `${ap}, ${nom}` : ap || nom || "";
+  if (dni) {
+    return name ? `${name} · DNI ${dni}` : `DNI ${dni}`;
+  }
+  return name || "—";
+};
+
 const ResolverLicenciaManualForm = ({
   open,
   urlStorage,
@@ -69,6 +82,10 @@ const ResolverLicenciaManualForm = ({
   progreso,
   rowId = null,
   initialData = null,
+  /** Oculta Enviar/Cancelar (p. ej. asistente “dos trabajos” paso 1). */
+  suppressActions = false,
+  /** Notifica borrador para armar manualPatch en el padre sin guardar aún. */
+  onDraftChange = null,
 }) => {
   const [formState, setFormState] = useState(INITIAL_FORM_STATE);
   const [isSaving, setIsSaving] = useState(false);
@@ -102,6 +119,41 @@ const ResolverLicenciaManualForm = ({
     fechaDesde,
     fechaHasta,
   } = formState;
+
+  useEffect(() => {
+    if (!suppressActions || !onDraftChange) return;
+    const desde = useRange ? fechaDesde : fechaIndividual;
+    const tid = trabajadorSeleccionado?._id || trabajadorSeleccionado?.data?._id;
+    let fechaLabel = "—";
+    if (useRange && fechaDesde?.isValid?.() && fechaHasta?.isValid?.()) {
+      fechaLabel = `${fechaDesde.format("DD/MM/YYYY")} → ${fechaHasta.format("DD/MM/YYYY")}`;
+    } else if (fechaIndividual?.isValid?.()) {
+      fechaLabel = fechaIndividual.format("DD/MM/YYYY");
+    }
+    const fechaNorm = normalizeDayjs(desde);
+    const payload = {
+      tipoLicencia,
+      fechaLicencia: true,
+      trabajadorLabel: formatTrabajadorSeleccionLabel(trabajadorSeleccionado) || "—",
+      fechaLabel,
+    };
+    if (fechaNorm) {
+      payload.fecha = fechaNorm;
+    }
+    if (tid) {
+      payload.trabajadorId = tid;
+    }
+    onDraftChange(payload);
+  }, [
+    suppressActions,
+    onDraftChange,
+    trabajadorSeleccionado,
+    tipoLicencia,
+    useRange,
+    fechaIndividual,
+    fechaDesde,
+    fechaHasta,
+  ]);
 
   useEffect(() => {
     if (open === false) return;
@@ -363,18 +415,22 @@ const ResolverLicenciaManualForm = ({
           </Select>
         </FormControl>
 
-        <Button
-          variant="contained"
-          color="primary"
-          onClick={handleEnviar}
-          disabled={isSaving || !trabajadorSeleccionado}
-          fullWidth
-        >
-          {isSaving ? <CircularProgress size={18} color="inherit" /> : "Enviar resolución"}
-        </Button>
-        <Button variant="text" onClick={() => handleClose("cancel")} disabled={isSaving} fullWidth>
-          Cancelar
-        </Button>
+        {!suppressActions && (
+          <>
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={handleEnviar}
+              disabled={isSaving || !trabajadorSeleccionado}
+              fullWidth
+            >
+              {isSaving ? <CircularProgress size={18} color="inherit" /> : "Enviar resolución"}
+            </Button>
+            <Button variant="text" onClick={() => handleClose("cancel")} disabled={isSaving} fullWidth>
+              Cancelar
+            </Button>
+          </>
+        )}
       </Stack>
 
       <Snackbar

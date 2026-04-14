@@ -8,7 +8,13 @@ const mapRubrosImportados = (rubros = []) => {
       r.incidencia_pct_sugerida != null && !Number.isNaN(Number(r.incidencia_pct_sugerida))
         ? Number(r.incidencia_pct_sugerida)
         : null,
-    tareas: (r.tareas || []).map((t) => ({ descripcion: t.descripcion || '' })),
+    tareas: (r.tareas || []).map((t) => ({
+      descripcion: t.descripcion || '',
+      incidencia_pct_sugerida:
+        t.incidencia_pct_sugerida != null && !Number.isNaN(Number(t.incidencia_pct_sugerida))
+          ? Number(t.incidencia_pct_sugerida)
+          : null,
+    })),
   }));
 };
 

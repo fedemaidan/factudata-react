@@ -128,6 +128,7 @@ const TrabajadorPage = () => {
     trabajadorId: trabajadorId ? String(trabajadorId) : undefined,
     incluirTrabajador: false,
     defaultLimit: 200,
+    defaultSort: 'fecha:asc',
     onOpenComprobante: handleOpenComprobante,
   });
 

@@ -213,16 +213,20 @@ const DhnDriveService = {
     }
   },
 
-  resolveDuplicate: async (urlStorageId, action, manualPatch) => {
+  resolveDuplicate: async (urlStorageId, action, manualPatch, newRecord) => {
     if (!urlStorageId || !action) {
       return { ok: false, error: { code: 0, message: "urlStorageId y action son requeridos" } };
     }
     try {
-      const response = await api.post(`/dhn/trabajo-diario-registrado/resolver-duplicado`, {
+      const body = {
         urlStorageId,
         action,
         manualPatch,
-      });
+      };
+      if (newRecord !== undefined && newRecord !== null) {
+        body.newRecord = newRecord;
+      }
+      const response = await api.post(`/dhn/trabajo-diario-registrado/resolver-duplicado`, body);
       return response?.data ?? { ok: false, error: { code: 0, message: "Respuesta inválida" } };
     } catch (error) {
       const code = error?.response?.status ?? 0;
