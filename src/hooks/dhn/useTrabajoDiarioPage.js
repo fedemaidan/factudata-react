@@ -59,6 +59,7 @@ export default function useTrabajoDiarioPage(options = {}) {
     trabajadorId,
     incluirTrabajador = true,
     defaultLimit = 200,
+    defaultSort,
     onOpenComprobante,
   } = options || {};
 
@@ -77,7 +78,10 @@ export default function useTrabajoDiarioPage(options = {}) {
     setPage,
     setLimit,
     setSort,
-  } = useTrabajoDiarioFilters({ defaultLimit });
+  } = useTrabajoDiarioFilters({
+    defaultLimit,
+    ...(defaultSort ? { defaultSort } : {}),
+  });
 
   const [logsModalOpen, setLogsModalOpen] = useState(false);
   const [logsTrabajo, setLogsTrabajo] = useState(null);
