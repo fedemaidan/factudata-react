@@ -5,12 +5,14 @@ import {
   Box, Container, Typography, Table, TableBody, TableCell, TableHead, TableRow,
   CircularProgress, Button, Stack, Snackbar, Alert,
   Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions,
-  IconButton, Tooltip, Chip, Tabs, Tab, TablePagination,
+  IconButton, Tooltip, Chip, Tabs, Tab, TablePagination, Checkbox,
 } from '@mui/material';
 import ImageIcon from '@mui/icons-material/Image';
 import EditIcon from '@mui/icons-material/Edit';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
+import TaskAltIcon from '@mui/icons-material/TaskAlt';
+import BlockIcon from '@mui/icons-material/Block';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import movimientosService from 'src/services/movimientosService';
 import { getEmpresaById } from 'src/services/empresaService';
@@ -23,7 +25,7 @@ import useAssistedCorrectionFlow from 'src/hooks/common/useAssistedCorrectionFlo
 import AssistedCorrectionNavigator from 'src/components/common/AssistedCorrectionNavigator';
 import { getCamposConfig } from 'src/components/movementFieldsConfig';
 
-/** Coincide con el máximo que acepta GET panel-validacion/borradores en el backend. */
+/** Tamaño de lote para construir el set completo de corrección asistida. */
 const BORRADORES_FETCH_LIMIT = 100;
 
 const PanelValidacionPage = () => {
@@ -34,6 +36,8 @@ const PanelValidacionPage = () => {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(100);
+  const pageRef = useRef(0);
+  const rowsPerPageRef = useRef(100);
   const [isLoading, setIsLoading] = useState(true);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success', autoHideDuration: 4000 });
   const [notifications, setNotifications] = useState([]);
@@ -57,7 +61,13 @@ const PanelValidacionPage = () => {
   });
   const [savingEdit, setSavingEdit] = useState(false);
   const [rechazoDialog, setRechazoDialog] = useState({ open: false, mov: null });
+  const [confirmacionDialog, setConfirmacionDialog] = useState({ open: false, mov: null });
+  const [confirmacionMasivaDialogOpen, setConfirmacionMasivaDialogOpen] = useState(false);
   const [rechazando, setRechazando] = useState(false);
+  const [isPreparingCorreccion, setIsPreparingCorreccion] = useState(false);
+  const [confirmandoDirectoIds, setConfirmandoDirectoIds] = useState({});
+  const [confirmandoSeleccionados, setConfirmandoSeleccionados] = useState(false);
+  const [selectedItemsMap, setSelectedItemsMap] = useState(() => new Map());
 
   const [filtros, setFiltros] = useState({
     fechaDesde: '',
@@ -70,6 +80,29 @@ const PanelValidacionPage = () => {
 
   const filtrosRef = useRef(filtros);
   filtrosRef.current = filtros;
+  pageRef.current = page;
+  rowsPerPageRef.current = rowsPerPage;
+
+  const getBorradorId = useCallback((item) => item?.id ?? null, []);
+
+  const clearSelectedItems = useCallback(() => {
+    setSelectedItemsMap(new Map());
+  }, []);
+
+  const removeSelectedItemsByIds = useCallback((ids) => {
+    const validIds = (Array.isArray(ids) ? ids : []).filter(Boolean);
+    if (validIds.length === 0) return;
+    setSelectedItemsMap((prev) => {
+      const next = new Map(prev);
+      validIds.forEach((id) => next.delete(id));
+      return next;
+    });
+  }, []);
+
+  const selectedItems = useMemo(
+    () => Array.from(selectedItemsMap.values()),
+    [selectedItemsMap]
+  );
 
   const addNotification = useCallback(({ message, severity = 'info', autoHideDuration = 4000 }) => {
     const id = (notificationIdRef.current += 1);
@@ -83,6 +116,28 @@ const PanelValidacionPage = () => {
 
   const removeNotification = useCallback((id) => {
     setNotifications((prev) => prev.filter((n) => n.id !== id));
+  }, []);
+
+  /**
+   * Misma llamada y mismo formato de respuesta que el backend POST panel-validacion/confirmar
+   * (un solo request con todos los ids; el servidor procesa cada id en el mismo handler).
+   */
+  const ejecutarConfirmarBorradores = useCallback(async (rawIds) => {
+    const ids = [...new Set((Array.isArray(rawIds) ? rawIds : []).filter(Boolean))];
+    if (ids.length === 0) {
+      return { ok: false, razon: 'sin_ids' };
+    }
+    const confirmRes = await movimientosService.confirmarBorradores(ids);
+    if (confirmRes.error) {
+      return { ok: false, razon: 'http', message: confirmRes.message };
+    }
+    const data = confirmRes.data || {};
+    return {
+      ok: true,
+      okList: data.ok || [],
+      erroresList: data.errores || [],
+      data,
+    };
   }, []);
 
   const panelCorreccionStrategies = useMemo(
@@ -136,36 +191,41 @@ const PanelValidacionPage = () => {
   }, []);
 
   const fetchBorradores = useCallback(async (filtrosToUse, options = {}) => {
-    const { resetPagination = false } = options;
+    const {
+      targetPage = pageRef.current,
+      targetRowsPerPage = rowsPerPageRef.current,
+    } = options;
     if (!empresaId) {
       setIsLoading(false);
       return;
     }
-    if (resetPagination) {
-      setPage(0);
-    }
     setIsLoading(true);
     try {
       const f = filtrosToUse ?? filtrosRef.current;
-      const apiBase = buildApiFilters(f);
-      const allItems = [];
-      let reportedTotal = 0;
-      for (let offset = 0; ; offset += BORRADORES_FETCH_LIMIT) {
-        const res = await movimientosService.getBorradores(empresaId, {
-          ...apiBase,
-          limit: BORRADORES_FETCH_LIMIT,
-          offset,
-        });
-        const batch = res.items || [];
-        if (typeof res.total === 'number') {
-          reportedTotal = res.total;
+      const apiFilters = buildApiFilters(f);
+      const res = await movimientosService.getBorradores(empresaId, {
+        ...apiFilters,
+        limit: targetRowsPerPage,
+        offset: targetPage * targetRowsPerPage,
+      });
+      const pageItems = res.items || [];
+      const totalCount = typeof res.total === 'number' ? res.total : pageItems.length;
+      if (targetPage > 0 && pageItems.length === 0 && totalCount > 0) {
+        const lastPage = Math.max(0, Math.ceil(totalCount / targetRowsPerPage) - 1);
+        if (lastPage !== targetPage) {
+          const retryRes = await movimientosService.getBorradores(empresaId, {
+            ...apiFilters,
+            limit: targetRowsPerPage,
+            offset: lastPage * targetRowsPerPage,
+          });
+          setPage(lastPage);
+          setItems(retryRes.items || []);
+          setTotal(typeof retryRes.total === 'number' ? retryRes.total : totalCount);
+          return;
         }
-        allItems.push(...batch);
-        if (batch.length < BORRADORES_FETCH_LIMIT) break;
-        if (reportedTotal > 0 && allItems.length >= reportedTotal) break;
       }
-      setItems(allItems);
-      setTotal(reportedTotal > 0 ? reportedTotal : allItems.length);
+      setItems(pageItems);
+      setTotal(totalCount);
     } catch (e) {
       setSnackbar({ open: true, message: e.message || 'Error al cargar borradores', severity: 'error' });
       setItems([]);
@@ -175,13 +235,38 @@ const PanelValidacionPage = () => {
     }
   }, [empresaId, buildApiFilters]);
 
+  const fetchBorradoresParaCorreccion = useCallback(async (filtrosToUse) => {
+    if (!empresaId) return [];
+    const f = filtrosToUse ?? filtrosRef.current;
+    const apiBase = buildApiFilters(f);
+    const allItems = [];
+    let reportedTotal = 0;
+    for (let offset = 0; ; offset += BORRADORES_FETCH_LIMIT) {
+      const res = await movimientosService.getBorradores(empresaId, {
+        ...apiBase,
+        limit: BORRADORES_FETCH_LIMIT,
+        offset,
+      });
+      const batch = res.items || [];
+      if (typeof res.total === 'number') {
+        reportedTotal = res.total;
+      }
+      allItems.push(...batch);
+      if (batch.length < BORRADORES_FETCH_LIMIT) break;
+      if (reportedTotal > 0 && allItems.length >= reportedTotal) break;
+    }
+    return allItems;
+  }, [empresaId, buildApiFilters]);
+
   const aplicarFiltroEstado = useCallback(
     (nuevoEstado) => {
       const next = { ...filtrosRef.current, estado: nuevoEstado };
       setFiltros(next);
-      fetchBorradores(next, { resetPagination: true });
+      clearSelectedItems();
+      setPage(0);
+      fetchBorradores(next, { targetPage: 0 });
     },
-    [fetchBorradores]
+    [clearSelectedItems, fetchBorradores]
   );
 
   const handleActualizar = useCallback(() => {
@@ -189,27 +274,23 @@ const PanelValidacionPage = () => {
   }, [fetchBorradores]);
 
   useEffect(() => {
-    if (empresaId) fetchBorradores(undefined, { resetPagination: true });
-  }, [empresaId, fetchBorradores]);
-
-  const displayedItems = useMemo(
-    () => items.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage),
-    [items, page, rowsPerPage]
-  );
-
-  useEffect(() => {
-    const maxPage = Math.max(0, Math.ceil(items.length / rowsPerPage) - 1);
-    if (page > maxPage) setPage(maxPage);
-  }, [items.length, rowsPerPage, page]);
+    if (!empresaId) return;
+    clearSelectedItems();
+    setPage(0);
+    fetchBorradores(undefined, { targetPage: 0 });
+  }, [empresaId, clearSelectedItems, fetchBorradores]);
 
   const handleChangePage = useCallback((_event, newPage) => {
     setPage(newPage);
-  }, []);
+    fetchBorradores(undefined, { targetPage: newPage });
+  }, [fetchBorradores]);
 
   const handleChangeRowsPerPage = useCallback((event) => {
-    setRowsPerPage(parseInt(event.target.value, 10));
+    const nextRowsPerPage = parseInt(event.target.value, 10);
+    setRowsPerPage(nextRowsPerPage);
     setPage(0);
-  }, []);
+    fetchBorradores(undefined, { targetPage: 0, targetRowsPerPage: nextRowsPerPage });
+  }, [fetchBorradores]);
 
   useEffect(() => {
     if (!empresaId) {
@@ -333,6 +414,7 @@ const PanelValidacionPage = () => {
         severity: 'success',
         autoHideDuration: 4000,
       });
+      removeSelectedItemsByIds([mov.id]);
       setEditDrawer({ open: false, mov: null, form: {} });
     } catch (e) {
       setItems(previousItems);
@@ -341,7 +423,7 @@ const PanelValidacionPage = () => {
     } finally {
       setSavingEdit(false);
     }
-  }, [editDrawer, items, buildPayloadFromForm]);
+  }, [editDrawer, items, buildPayloadFromForm, removeSelectedItemsByIds]);
 
   const handleCloseCorreccionFlow = useCallback(() => {
     detenerCorreccion();
@@ -357,6 +439,51 @@ const PanelValidacionPage = () => {
       !m.borrador_rechazado,
     []
   );
+
+  const selectableItemsInPage = useMemo(
+    () => items.filter((item) => borradorPendienteRevision(item)),
+    [items, borradorPendienteRevision]
+  );
+
+  const selectedCountInPage = useMemo(
+    () => selectableItemsInPage.filter((item) => selectedItemsMap.has(getBorradorId(item))).length,
+    [selectableItemsInPage, selectedItemsMap, getBorradorId]
+  );
+
+  const allSelectedInPage = selectableItemsInPage.length > 0 && selectedCountInPage === selectableItemsInPage.length;
+  const someSelectedInPage = selectedCountInPage > 0 && !allSelectedInPage;
+
+  const handleToggleItemSelection = useCallback((item) => {
+    if (!borradorPendienteRevision(item)) return;
+    const id = getBorradorId(item);
+    if (!id) return;
+    setSelectedItemsMap((prev) => {
+      const next = new Map(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.set(id, item);
+      }
+      return next;
+    });
+  }, [borradorPendienteRevision, getBorradorId]);
+
+  const handleToggleSelectAllInPage = useCallback((event) => {
+    const checked = event.target.checked;
+    setSelectedItemsMap((prev) => {
+      const next = new Map(prev);
+      selectableItemsInPage.forEach((item) => {
+        const id = getBorradorId(item);
+        if (!id) return;
+        if (checked) {
+          next.set(id, item);
+          return;
+        }
+        next.delete(id);
+      });
+      return next;
+    });
+  }, [selectableItemsInPage, getBorradorId]);
 
   const handleGuardarEdicionConAvance = useCallback(() => {
     const { mov, form } = editDrawer;
@@ -404,6 +531,7 @@ const PanelValidacionPage = () => {
         const firstErr = erroresList.find((e) => e.borradorId === mov.id);
 
         if (firstOk?.codigoOperacion) {
+          removeSelectedItemsByIds([mov.id]);
           updateNotification(notificationId, {
             message: `Movimiento confirmado: ${firstOk.codigoOperacion}`,
             severity: 'success',
@@ -417,6 +545,7 @@ const PanelValidacionPage = () => {
           });
           setItems(previousItems);
         } else {
+          removeSelectedItemsByIds([mov.id]);
           updateNotification(notificationId, {
             message: 'Movimiento confirmado',
             severity: 'success',
@@ -442,26 +571,170 @@ const PanelValidacionPage = () => {
     handleCloseCorreccionFlow,
     fetchBorradores,
     handleEditar,
+    removeSelectedItemsByIds,
   ]);
 
-  const handleIniciarCorreccion = useCallback(() => {
-    const firstRow = iniciarCorreccion(items);
-    if (!firstRow) {
+  const handleIniciarCorreccion = useCallback(async () => {
+    if (!empresaId) return;
+    setIsPreparingCorreccion(true);
+    try {
+      const allItems = await fetchBorradoresParaCorreccion();
+      const firstRow = iniciarCorreccion(allItems);
+      if (!firstRow) {
+        setSnackbar({
+          open: true,
+          message: 'No hay borradores pendientes para corrección asistida',
+          severity: 'info',
+          autoHideDuration: 4000,
+        });
+        return;
+      }
+      handleEditar(firstRow);
+    } catch (e) {
       setSnackbar({
         open: true,
-        message: 'No hay borradores pendientes para corrección asistida',
-        severity: 'info',
+        message: e.message || 'Error al iniciar corrección asistida',
+        severity: 'error',
         autoHideDuration: 4000,
       });
-      return;
+    } finally {
+      setIsPreparingCorreccion(false);
     }
-    handleEditar(firstRow);
-  }, [iniciarCorreccion, items]);
+  }, [empresaId, fetchBorradoresParaCorreccion, iniciarCorreccion, handleEditar]);
 
   const handleOpenRechazoDialog = useCallback((mov) => {
     if (!mov?.id) return;
     setRechazoDialog({ open: true, mov });
   }, []);
+
+  const handleOpenConfirmacionDialog = useCallback((mov) => {
+    if (!mov?.id) return;
+    setConfirmacionDialog({ open: true, mov });
+  }, []);
+
+  const handleCloseConfirmacionDialog = useCallback(() => {
+    const id = confirmacionDialog.mov?.id;
+    if (id && confirmandoDirectoIds[id]) return;
+    setConfirmacionDialog({ open: false, mov: null });
+  }, [confirmacionDialog.mov, confirmandoDirectoIds]);
+
+  const handleOpenConfirmacionMasivaDialog = useCallback(() => {
+    if (selectedItems.length === 0) return;
+    setConfirmacionMasivaDialogOpen(true);
+  }, [selectedItems.length]);
+
+  const handleCloseConfirmacionMasivaDialog = useCallback(() => {
+    if (confirmandoSeleccionados) return;
+    setConfirmacionMasivaDialogOpen(false);
+  }, [confirmandoSeleccionados]);
+
+  const handleConfirmarDirecto = useCallback(async (mov) => {
+    const id = mov?.id;
+    if (!id) return;
+
+    setConfirmandoDirectoIds((prev) => ({ ...prev, [id]: true }));
+    try {
+      const result = await ejecutarConfirmarBorradores([id]);
+      if (!result.ok) {
+        if (result.razon === 'sin_ids') return;
+        throw new Error(result.message || 'Error al confirmar movimiento');
+      }
+
+      const errEntry = result.erroresList.find((e) => e.borradorId === id);
+      if (errEntry) throw new Error(errEntry.error);
+
+      const codigo = result.okList.find((o) => o.borradorId === id)?.codigoOperacion;
+      setSnackbar({
+        open: true,
+        message: codigo ? `Movimiento confirmado: ${codigo}` : 'Movimiento confirmado',
+        severity: 'success',
+        autoHideDuration: 3500,
+      });
+      removeSelectedItemsByIds([id]);
+      setConfirmacionDialog({ open: false, mov: null });
+      await fetchBorradores();
+    } catch (e) {
+      setSnackbar({
+        open: true,
+        message: e.message || 'Error al confirmar movimiento',
+        severity: 'error',
+        autoHideDuration: 4000,
+      });
+    } finally {
+      setConfirmandoDirectoIds((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+    }
+  }, [ejecutarConfirmarBorradores, fetchBorradores, removeSelectedItemsByIds]);
+
+  const handleConfirmarDirectoDesdeDialog = useCallback(() => {
+    handleConfirmarDirecto(confirmacionDialog.mov);
+  }, [handleConfirmarDirecto, confirmacionDialog.mov]);
+
+  const handleConfirmarSeleccionados = useCallback(async () => {
+    const ids = selectedItems.map((item) => getBorradorId(item)).filter(Boolean);
+    if (ids.length === 0) return;
+
+    setConfirmandoSeleccionados(true);
+    try {
+      const result = await ejecutarConfirmarBorradores(ids);
+      if (!result.ok) {
+        if (result.razon === 'sin_ids') return;
+        throw new Error(result.message || 'Error al confirmar movimientos seleccionados');
+      }
+
+      const { okList, erroresList } = result;
+      const okIds = okList.map((item) => item?.borradorId).filter(Boolean);
+
+      removeSelectedItemsByIds(okIds);
+      setConfirmacionMasivaDialogOpen(false);
+      await fetchBorradores();
+
+      if (erroresList.length > 0 && okIds.length > 0) {
+        setSnackbar({
+          open: true,
+          message: `Se confirmaron ${okIds.length} movimientos y ${erroresList.length} quedaron con error`,
+          severity: 'warning',
+          autoHideDuration: 4500,
+        });
+        return;
+      }
+
+      if (erroresList.length > 0) {
+        throw new Error(erroresList[0]?.error || 'Error al confirmar movimientos seleccionados');
+      }
+
+      if (okIds.length === 1) {
+        const soloId = okIds[0];
+        const codigo = okList.find((o) => o.borradorId === soloId)?.codigoOperacion;
+        setSnackbar({
+          open: true,
+          message: codigo ? `Movimiento confirmado: ${codigo}` : 'Movimiento confirmado',
+          severity: 'success',
+          autoHideDuration: 3500,
+        });
+        return;
+      }
+
+      setSnackbar({
+        open: true,
+        message: `${okIds.length} movimiento${okIds.length !== 1 ? 's' : ''} confirmado${okIds.length !== 1 ? 's' : ''}`,
+        severity: 'success',
+        autoHideDuration: 3500,
+      });
+    } catch (e) {
+      setSnackbar({
+        open: true,
+        message: e.message || 'Error al confirmar movimientos seleccionados',
+        severity: 'error',
+        autoHideDuration: 4000,
+      });
+    } finally {
+      setConfirmandoSeleccionados(false);
+    }
+  }, [selectedItems, getBorradorId, ejecutarConfirmarBorradores, removeSelectedItemsByIds, fetchBorradores]);
 
   const handleCloseRechazoDialog = useCallback(() => {
     if (rechazando) return;
@@ -479,6 +752,7 @@ const PanelValidacionPage = () => {
       const errEntry = res.data?.errores?.find((e) => e.borradorId === id);
       if (errEntry) throw new Error(errEntry.error);
       setRechazoDialog({ open: false, mov: null });
+      removeSelectedItemsByIds([id]);
       setEditDrawer((d) => (d.mov?.id === id ? { open: false, mov: null, form: {} } : d));
       if (correccionActiva) {
         detenerCorreccion();
@@ -500,7 +774,7 @@ const PanelValidacionPage = () => {
     } finally {
       setRechazando(false);
     }
-  }, [rechazoDialog.mov, correccionActiva, detenerCorreccion, fetchBorradores]);
+  }, [rechazoDialog.mov, correccionActiva, detenerCorreccion, fetchBorradores, removeSelectedItemsByIds]);
 
   const handleCorreccionAnterior = useCallback(() => {
     const row = irCorreccionAnterior();
@@ -631,7 +905,11 @@ const PanelValidacionPage = () => {
                   setNombre_user={(v) => setFiltros((f) => ({ ...f, nombre_user: v }))}
                   estado={filtros.estado}
                   onEstadoAplicar={aplicarFiltroEstado}
-                  onFiltrar={() => fetchBorradores(undefined, { resetPagination: true })}
+                  onFiltrar={() => {
+                    clearSelectedItems();
+                    setPage(0);
+                    fetchBorradores(undefined, { targetPage: 0 });
+                  }}
                   onRestablecer={() => {
                     const defaultFiltros = {
                       fechaDesde: '',
@@ -643,7 +921,9 @@ const PanelValidacionPage = () => {
                     };
                     setFiltros(defaultFiltros);
                     filtrosRef.current = defaultFiltros;
-                    fetchBorradores(defaultFiltros, { resetPagination: true });
+                    clearSelectedItems();
+                    setPage(0);
+                    fetchBorradores(defaultFiltros, { targetPage: 0 });
                   }}
                 />
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
@@ -672,6 +952,7 @@ const PanelValidacionPage = () => {
                     onClick={handleIniciarCorreccion}
                     disabled={
                       isLoading ||
+                      isPreparingCorreccion ||
                       !empresaId ||
                       items.length === 0 ||
                       filtros.estado === 'confirmado'
@@ -684,7 +965,7 @@ const PanelValidacionPage = () => {
                       '&:hover': { boxShadow: 2 },
                     }}
                   >
-                    Corrección asistida
+                    {isPreparingCorreccion ? 'Preparando...' : 'Corrección asistida'}
                   </Button>
                 </Box>
               </Stack>
@@ -736,6 +1017,48 @@ const PanelValidacionPage = () => {
               </Typography>
             </Box>
 
+            {selectedItems.length > 0 && filtros.estado !== 'confirmado' && (
+              <Stack
+                direction={{ xs: 'column', sm: 'row' }}
+                spacing={1}
+                alignItems={{ xs: 'stretch', sm: 'center' }}
+                justifyContent="space-between"
+                sx={{
+                  px: 1.5,
+                  py: 1.25,
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  borderRadius: 2,
+                  bgcolor: 'background.paper',
+                }}
+              >
+                <Typography variant="body2" color="text.secondary">
+                  {selectedItems.length} movimiento{selectedItems.length !== 1 ? 's' : ''} seleccionado{selectedItems.length !== 1 ? 's' : ''}
+                </Typography>
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <Button
+                    size="small"
+                    variant="text"
+                    color="inherit"
+                    onClick={clearSelectedItems}
+                    disabled={confirmandoSeleccionados}
+                  >
+                    Limpiar selección
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="contained"
+                    color="success"
+                    startIcon={<TaskAltIcon />}
+                    onClick={handleOpenConfirmacionMasivaDialog}
+                    disabled={confirmandoSeleccionados}
+                  >
+                    Confirmar seleccionados ({selectedItems.length})
+                  </Button>
+                </Stack>
+              </Stack>
+            )}
+
             {isLoading ? (
               <Box display="flex" justifyContent="center" alignItems="center" minHeight={200}>
                 <CircularProgress />
@@ -747,6 +1070,18 @@ const PanelValidacionPage = () => {
               <Table size="small">
                 <TableHead>
                   <TableRow>
+                    {filtros.estado !== 'confirmado' && (
+                      <TableCell padding="checkbox">
+                        <Checkbox
+                          color="primary"
+                          indeterminate={someSelectedInPage}
+                          checked={allSelectedInPage}
+                          onChange={handleToggleSelectAllInPage}
+                          disabled={selectableItemsInPage.length === 0 || rechazando || confirmandoSeleccionados}
+                          inputProps={{ 'aria-label': 'Seleccionar movimientos de la página' }}
+                        />
+                      </TableCell>
+                    )}
                     <TableCell>{tablaUsaFechaPago ? 'Fecha de pago' : 'Fecha factura'}</TableCell>
                     <TableCell>Proyecto</TableCell>
                     <TableCell>Proveedor</TableCell>
@@ -758,8 +1093,19 @@ const PanelValidacionPage = () => {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {displayedItems.map((m) => (
+                  {items.map((m) => (
                     <TableRow key={m.id} hover>
+                      {filtros.estado !== 'confirmado' && (
+                        <TableCell padding="checkbox">
+                          <Checkbox
+                            color="primary"
+                            checked={selectedItemsMap.has(getBorradorId(m))}
+                            onChange={() => handleToggleItemSelection(m)}
+                            disabled={!borradorPendienteRevision(m) || rechazando || Boolean(confirmandoDirectoIds[m.id]) || confirmandoSeleccionados}
+                            inputProps={{ 'aria-label': `Seleccionar movimiento ${m.id}` }}
+                          />
+                        </TableCell>
+                      )}
                       <TableCell>
                         {formatTimestamp(tablaUsaFechaPago ? (m.fecha_pago || m.fecha_factura) : m.fecha_factura)}
                       </TableCell>
@@ -800,18 +1146,44 @@ const PanelValidacionPage = () => {
                           <Typography variant="caption" color="text.secondary">-</Typography>
                         ) : (
                           <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap alignItems="center">
-                            <Button size="small" variant="outlined" startIcon={<EditIcon />} onClick={() => handleEditar(m)}>
-                              Revisar
-                            </Button>
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              color="warning"
-                              onClick={() => handleOpenRechazoDialog(m)}
-                              disabled={rechazando}
-                            >
-                              Rechazar
-                            </Button>
+                            <Tooltip title="Confirmar movimiento">
+                              <span>
+                                <IconButton
+                                  size="small"
+                                  color="success"
+                                  aria-label="Confirmar movimiento"
+                                  onClick={() => handleOpenConfirmacionDialog(m)}
+                                  disabled={rechazando || confirmandoSeleccionados || Boolean(confirmandoDirectoIds[m.id])}
+                                >
+                                  <TaskAltIcon fontSize="small" />
+                                </IconButton>
+                              </span>
+                            </Tooltip>
+                            <Tooltip title="Revisar borrador">
+                              <span>
+                                <IconButton
+                                  size="small"
+                                  aria-label="Revisar borrador"
+                                  onClick={() => handleEditar(m)}
+                                  disabled={confirmandoSeleccionados || Boolean(confirmandoDirectoIds[m.id])}
+                                >
+                                  <EditIcon fontSize="small" />
+                                </IconButton>
+                              </span>
+                            </Tooltip>
+                            <Tooltip title="Rechazar borrador">
+                              <span>
+                                <IconButton
+                                  size="small"
+                                  color="error"
+                                  aria-label="Rechazar borrador"
+                                  onClick={() => handleOpenRechazoDialog(m)}
+                                  disabled={rechazando || confirmandoSeleccionados || Boolean(confirmandoDirectoIds[m.id])}
+                                >
+                                  <BlockIcon fontSize="small" />
+                                </IconButton>
+                              </span>
+                            </Tooltip>
                           </Stack>
                         )}
                       </TableCell>
@@ -821,7 +1193,7 @@ const PanelValidacionPage = () => {
               </Table>
               <TablePagination
                 component="div"
-                count={items.length}
+                count={total}
                 page={page}
                 onPageChange={handleChangePage}
                 rowsPerPage={rowsPerPage}
@@ -893,6 +1265,54 @@ const PanelValidacionPage = () => {
           position="top"
         />
       )}
+
+      <Dialog open={confirmacionDialog.open} onClose={handleCloseConfirmacionDialog} maxWidth="xs" fullWidth>
+        <DialogTitle>¿Confirmar movimiento?</DialogTitle>
+        <DialogContent>
+          <DialogContentText component="div">
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              El comprobante se registrará en caja como movimiento confirmado y dejará de mostrarse como borrador en este listado.
+            </Typography>
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={handleCloseConfirmacionDialog} disabled={Boolean(confirmacionDialog.mov?.id && confirmandoDirectoIds[confirmacionDialog.mov.id])}>
+            Cancelar
+          </Button>
+          <Button
+            variant="contained"
+            color="success"
+            onClick={handleConfirmarDirectoDesdeDialog}
+            disabled={Boolean(confirmacionDialog.mov?.id && confirmandoDirectoIds[confirmacionDialog.mov.id])}
+          >
+            {confirmacionDialog.mov?.id && confirmandoDirectoIds[confirmacionDialog.mov.id] ? 'Confirmando...' : 'Confirmar'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={confirmacionMasivaDialogOpen} onClose={handleCloseConfirmacionMasivaDialog} maxWidth="xs" fullWidth>
+        <DialogTitle>¿Confirmar movimientos seleccionados?</DialogTitle>
+        <DialogContent>
+          <DialogContentText component="div">
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              Se confirmarán {selectedItems.length} movimiento{selectedItems.length !== 1 ? 's' : ''} y dejarán de mostrarse como borradores en este listado.
+            </Typography>
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={handleCloseConfirmacionMasivaDialog} disabled={confirmandoSeleccionados}>
+            Cancelar
+          </Button>
+          <Button
+            variant="contained"
+            color="success"
+            onClick={handleConfirmarSeleccionados}
+            disabled={confirmandoSeleccionados || selectedItems.length === 0}
+          >
+            {confirmandoSeleccionados ? 'Confirmando...' : 'Confirmar'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog open={rechazoDialog.open} onClose={handleCloseRechazoDialog} maxWidth="xs" fullWidth>
         <DialogTitle>¿Rechazar borrador?</DialogTitle>
