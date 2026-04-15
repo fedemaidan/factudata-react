@@ -19,7 +19,7 @@ import RestartAltIcon from '@mui/icons-material/RestartAlt';
 
 const ESTADOS_OPCIONES = [
   { value: '', label: 'Todos' },
-  { value: 'completado', label: 'Listo' },
+  { value: 'completado', label: 'Por revisar' },
   { value: 'error', label: 'Error' },
   { value: 'confirmado', label: 'Confirmado' },
   { value: 'rechazado', label: 'Rechazado' },
@@ -129,12 +129,15 @@ const PanelValidacionFiltersBar = ({
                 }}
               >
                 {ESTADOS_OPCIONES.map((opt) => (
-                  <MenuItem key={opt.value} value={opt.value}>
+                  <MenuItem key={opt.value === '' ? 'estado-todos' : opt.value} value={opt.value}>
                     {opt.label}
                   </MenuItem>
                 ))}
               </Select>
             </FormControl>
+            <Box sx={{ fontSize: '0.75rem', color: 'text.secondary', lineHeight: 1.35 }}>
+              Por revisar y Confirmado también están en las pestañas de arriba. Acá podés usar Todos, Error o Rechazado.
+            </Box>
 
             <TextField
               type="date"

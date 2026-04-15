@@ -5,7 +5,7 @@ import {
   Box, Container, Typography, Table, TableBody, TableCell, TableHead, TableRow,
   CircularProgress, Button, Stack, Snackbar, Alert,
   Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions,
-  IconButton, Tooltip, Chip,
+  IconButton, Tooltip, Chip, Tabs, Tab, TablePagination,
 } from '@mui/material';
 import ImageIcon from '@mui/icons-material/Image';
 import EditIcon from '@mui/icons-material/Edit';
@@ -23,12 +23,17 @@ import useAssistedCorrectionFlow from 'src/hooks/common/useAssistedCorrectionFlo
 import AssistedCorrectionNavigator from 'src/components/common/AssistedCorrectionNavigator';
 import { getCamposConfig } from 'src/components/movementFieldsConfig';
 
+/** Coincide con el máximo que acepta GET panel-validacion/borradores en el backend. */
+const BORRADORES_FETCH_LIMIT = 100;
+
 const PanelValidacionPage = () => {
   const router = useRouter();
   const { empresaId } = router.query;
 
   const [items, setItems] = useState([]);
   const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(100);
   const [isLoading, setIsLoading] = useState(true);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success', autoHideDuration: 4000 });
   const [notifications, setNotifications] = useState([]);
@@ -130,21 +135,41 @@ const PanelValidacionPage = () => {
     return api;
   }, []);
 
-  const fetchBorradores = useCallback(async (filtrosToUse) => {
+  const fetchBorradores = useCallback(async (filtrosToUse, options = {}) => {
+    const { resetPagination = false } = options;
     if (!empresaId) {
       setIsLoading(false);
       return;
     }
+    if (resetPagination) {
+      setPage(0);
+    }
     setIsLoading(true);
     try {
       const f = filtrosToUse ?? filtrosRef.current;
-      const apiFilters = buildApiFilters(f);
-      const res = await movimientosService.getBorradores(empresaId, apiFilters);
-      setItems(res.items || []);
-      setTotal(res.total ?? 0);
+      const apiBase = buildApiFilters(f);
+      const allItems = [];
+      let reportedTotal = 0;
+      for (let offset = 0; ; offset += BORRADORES_FETCH_LIMIT) {
+        const res = await movimientosService.getBorradores(empresaId, {
+          ...apiBase,
+          limit: BORRADORES_FETCH_LIMIT,
+          offset,
+        });
+        const batch = res.items || [];
+        if (typeof res.total === 'number') {
+          reportedTotal = res.total;
+        }
+        allItems.push(...batch);
+        if (batch.length < BORRADORES_FETCH_LIMIT) break;
+        if (reportedTotal > 0 && allItems.length >= reportedTotal) break;
+      }
+      setItems(allItems);
+      setTotal(reportedTotal > 0 ? reportedTotal : allItems.length);
     } catch (e) {
       setSnackbar({ open: true, message: e.message || 'Error al cargar borradores', severity: 'error' });
       setItems([]);
+      setTotal(0);
     } finally {
       setIsLoading(false);
     }
@@ -154,7 +179,7 @@ const PanelValidacionPage = () => {
     (nuevoEstado) => {
       const next = { ...filtrosRef.current, estado: nuevoEstado };
       setFiltros(next);
-      fetchBorradores(next);
+      fetchBorradores(next, { resetPagination: true });
     },
     [fetchBorradores]
   );
@@ -164,8 +189,27 @@ const PanelValidacionPage = () => {
   }, [fetchBorradores]);
 
   useEffect(() => {
-    if (empresaId) fetchBorradores();
+    if (empresaId) fetchBorradores(undefined, { resetPagination: true });
   }, [empresaId, fetchBorradores]);
+
+  const displayedItems = useMemo(
+    () => items.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage),
+    [items, page, rowsPerPage]
+  );
+
+  useEffect(() => {
+    const maxPage = Math.max(0, Math.ceil(items.length / rowsPerPage) - 1);
+    if (page > maxPage) setPage(maxPage);
+  }, [items.length, rowsPerPage, page]);
+
+  const handleChangePage = useCallback((_event, newPage) => {
+    setPage(newPage);
+  }, []);
+
+  const handleChangeRowsPerPage = useCallback((event) => {
+    setRowsPerPage(parseInt(event.target.value, 10));
+    setPage(0);
+  }, []);
 
   useEffect(() => {
     if (!empresaId) {
@@ -401,7 +445,7 @@ const PanelValidacionPage = () => {
   ]);
 
   const handleIniciarCorreccion = useCallback(() => {
-    const firstRow = iniciarCorreccion();
+    const firstRow = iniciarCorreccion(items);
     if (!firstRow) {
       setSnackbar({
         open: true,
@@ -412,7 +456,7 @@ const PanelValidacionPage = () => {
       return;
     }
     handleEditar(firstRow);
-  }, [iniciarCorreccion]);
+  }, [iniciarCorreccion, items]);
 
   const handleOpenRechazoDialog = useCallback((mov) => {
     if (!mov?.id) return;
@@ -482,11 +526,50 @@ const PanelValidacionPage = () => {
     );
   }, [editDrawer.form, drawerCatalogos.comprobanteInfo, drawerCatalogos.ingresoInfo, savingEdit]);
 
+  const tabPrincipalValue = useMemo(() => {
+    if (filtros.estado === 'completado') return 'por_revisar';
+    if (filtros.estado === 'confirmado') return 'confirmados';
+    return false;
+  }, [filtros.estado]);
+
+  const handleTabPrincipalChange = useCallback(
+    (_event, newValue) => {
+      if (newValue === 'por_revisar') {
+        aplicarFiltroEstado('completado');
+        return;
+      }
+      if (newValue === 'confirmados') {
+        aplicarFiltroEstado('confirmado');
+      }
+    },
+    [aplicarFiltroEstado]
+  );
+
+  const totalContexto = useMemo(() => {
+    const estadoLabels = {
+      '': 'Total (todos)',
+      completado: 'Total por revisar',
+      error: 'Total con error',
+      confirmado: 'Total confirmados',
+      rechazado: 'Total rechazados',
+    };
+    const label = estadoLabels[filtros.estado] ?? 'Total';
+    return { label };
+  }, [filtros.estado]);
+
+  const emptyListMessage = useMemo(() => {
+    if (filtros.estado === 'completado') return 'No hay borradores para revisar';
+    if (filtros.estado === 'confirmado') return 'No hay borradores confirmados con los filtros actuales';
+    if (filtros.estado === 'error') return 'No hay borradores con error';
+    if (filtros.estado === 'rechazado') return 'No hay borradores rechazados';
+    return 'No hay borradores con los filtros actuales';
+  }, [filtros.estado]);
+
   const filterChips = useMemo(() => {
     const chips = [];
     const estadoLabels = {
       '': 'Todos',
-      completado: 'Listo',
+      completado: 'Por revisar',
       error: 'Error',
       confirmado: 'Confirmado',
       rechazado: 'Rechazado',
@@ -520,7 +603,7 @@ const PanelValidacionPage = () => {
     const ep = mov?.estado_procesamiento;
     if (!ep) return null;
     if (ep === 'pendiente') return { label: 'Procesando...', color: 'warning', variant: 'filled' };
-    if (ep === 'completado') return { label: 'Listo', color: 'success', variant: 'outlined' };
+    if (ep === 'completado') return { label: 'Por revisar', color: 'success', variant: 'outlined' };
     if (ep === 'error') return { label: 'Error', color: 'error', variant: 'filled', title: mov?.procesamiento_error };
     return null;
   };
@@ -548,7 +631,7 @@ const PanelValidacionPage = () => {
                   setNombre_user={(v) => setFiltros((f) => ({ ...f, nombre_user: v }))}
                   estado={filtros.estado}
                   onEstadoAplicar={aplicarFiltroEstado}
-                  onFiltrar={() => fetchBorradores()}
+                  onFiltrar={() => fetchBorradores(undefined, { resetPagination: true })}
                   onRestablecer={() => {
                     const defaultFiltros = {
                       fechaDesde: '',
@@ -560,7 +643,7 @@ const PanelValidacionPage = () => {
                     };
                     setFiltros(defaultFiltros);
                     filtrosRef.current = defaultFiltros;
-                    fetchBorradores(defaultFiltros);
+                    fetchBorradores(defaultFiltros, { resetPagination: true });
                   }}
                 />
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
@@ -587,7 +670,12 @@ const PanelValidacionPage = () => {
                     variant="outlined"
                     startIcon={<AutoFixHighIcon />}
                     onClick={handleIniciarCorreccion}
-                    disabled={isLoading || !empresaId || items.length === 0}
+                    disabled={
+                      isLoading ||
+                      !empresaId ||
+                      items.length === 0 ||
+                      filtros.estado === 'confirmado'
+                    }
                     sx={{
                       borderRadius: 2,
                       border: '1px solid',
@@ -599,9 +687,6 @@ const PanelValidacionPage = () => {
                     Corrección asistida
                   </Button>
                 </Box>
-                <Typography variant="body2">
-                  Total: {total} borradores
-                </Typography>
               </Stack>
               {filterChips.length > 0 && (
                 <Stack
@@ -625,13 +710,40 @@ const PanelValidacionPage = () => {
               )}
             </Stack>
 
+            <Box
+              sx={{
+                borderBottom: 1,
+                borderColor: 'divider',
+              }}
+            >
+              <Tabs
+                value={tabPrincipalValue}
+                onChange={handleTabPrincipalChange}
+                aria-label="Vista principal del panel de validación"
+                variant="standard"
+              >
+                <Tab label="Por revisar" value="por_revisar" />
+                <Tab label="Confirmados" value="confirmados" />
+              </Tabs>
+              <Typography variant="body2" color="text.secondary" sx={{ py: 1.5 }}>
+                <Box component="span" sx={{ fontWeight: 600, color: 'text.primary' }}>
+                  {totalContexto.label}
+                </Box>
+                {': '}
+                {total}
+                {' '}
+                {total === 1 ? 'borrador' : 'borradores'}
+              </Typography>
+            </Box>
+
             {isLoading ? (
               <Box display="flex" justifyContent="center" alignItems="center" minHeight={200}>
                 <CircularProgress />
               </Box>
             ) : items.length === 0 ? (
-              <Typography color="text.secondary">No hay borradores pendientes</Typography>
+              <Typography color="text.secondary">{emptyListMessage}</Typography>
             ) : (
+              <Box>
               <Table size="small">
                 <TableHead>
                   <TableRow>
@@ -646,7 +758,7 @@ const PanelValidacionPage = () => {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {items.map((m) => (
+                  {displayedItems.map((m) => (
                     <TableRow key={m.id} hover>
                       <TableCell>
                         {formatTimestamp(tablaUsaFechaPago ? (m.fecha_pago || m.fecha_factura) : m.fecha_factura)}
@@ -707,6 +819,18 @@ const PanelValidacionPage = () => {
                   ))}
                 </TableBody>
               </Table>
+              <TablePagination
+                component="div"
+                count={items.length}
+                page={page}
+                onPageChange={handleChangePage}
+                rowsPerPage={rowsPerPage}
+                onRowsPerPageChange={handleChangeRowsPerPage}
+                rowsPerPageOptions={[25, 50, 100, 200]}
+                labelRowsPerPage="Filas por página"
+                labelDisplayedRows={({ from, to, count }) => `${from}–${to} de ${count}`}
+              />
+              </Box>
             )}
           </Stack>
         </Container>
