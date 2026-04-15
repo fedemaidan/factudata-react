@@ -877,7 +877,7 @@ const PanelValidacionPage = () => {
     const ep = mov?.estado_procesamiento;
     if (!ep) return null;
     if (ep === 'pendiente') return { label: 'Procesando...', color: 'warning', variant: 'filled' };
-    if (ep === 'completado') return { label: 'Por revisar', color: 'success', variant: 'outlined' };
+    if (ep === 'completado') return { label: 'Pendiente de revisión', color: 'warning', variant: 'outlined' };
     if (ep === 'error') return { label: 'Error', color: 'error', variant: 'filled', title: mov?.procesamiento_error };
     return null;
   };
