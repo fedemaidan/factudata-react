@@ -216,6 +216,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
     "VER_VALIDACION_BORRADORES",
     "VER_PRESUPUESTOS_PROFESIONALES",
     "VER_PLANES_COBRO",
+    "DHN_SYNC_DRIVE",
   ];
 
   const celulandiaAcciones = [

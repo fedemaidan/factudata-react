@@ -8,9 +8,11 @@ import TableComponent from "src/components/TableComponent";
 import DhnDriveService from "src/services/dhn/cargarUrlDriveService";
 import { formatearFechaHora, formatDateToPeriod } from "src/utils/handleDates";
 import { StatusChip, ResyncSyncCell } from "src/components/dhn/sync/cells";
+import { useAuthContext } from "src/contexts/auth-context";
 
 const CargarDrive = () => {
   const router = useRouter();
+  const { user } = useAuthContext();
   const [items, setItems] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [urlDrive, setUrlDrive] = useState("");
@@ -33,6 +35,7 @@ const CargarDrive = () => {
     message: "",
     severity: "error",
   });
+  const canManageDhnSync = user?.admin || (user?.empresa?.acciones || user?.empresaData?.acciones || []).includes("DHN_SYNC_DRIVE");
 
   useEffect(() => {
     fetchSyncs();
@@ -325,19 +328,23 @@ const CargarDrive = () => {
         <Box sx={{ py: 3 }}>
           <Box sx={{ display: "flex", gap: 2, mb: 2, justifyContent: "space-between" }}>
             <Box sx={{ display: "flex", gap: 2, alignItems: "flex-start" }}>
-              <Button
-                variant="contained"
-                onClick={() => setSheetDialogOpen(true)}
-              >
-                Escribir en Google Sheet
-              </Button>
-              <Button
-                variant="contained"
-                onClick={() => setDriveDialogOpen(true)}
-                disabled={isSyncing}
-              >
-                {isSyncing ? "Sincronizando..." : "Sincronizar"}
-              </Button>
+              {canManageDhnSync && (
+                <Button
+                  variant="contained"
+                  onClick={() => setSheetDialogOpen(true)}
+                >
+                  Escribir en Google Sheet
+                </Button>
+              )}
+              {canManageDhnSync && (
+                <Button
+                  variant="contained"
+                  onClick={() => setDriveDialogOpen(true)}
+                  disabled={isSyncing}
+                >
+                  {isSyncing ? "Sincronizando..." : "Sincronizar"}
+                </Button>
+              )}
               <Button
                 variant="outlined"
                 onClick={fetchSyncs}
