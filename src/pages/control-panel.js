@@ -21,6 +21,7 @@ import CurrencyExchangeIcon from '@mui/icons-material/CurrencyExchange';
 import HistoryIcon from '@mui/icons-material/History';
 import LeaderboardIcon from '@mui/icons-material/Leaderboard';
 import PsychologyIcon from '@mui/icons-material/Psychology';
+import PersonSearchIcon from '@mui/icons-material/PersonSearch';
 import RocketLaunchIcon from '@mui/icons-material/RocketLaunch';
 import SettingsIcon from '@mui/icons-material/Settings';
 import ScienceIcon from '@mui/icons-material/Science';
@@ -114,6 +115,7 @@ const ControlPanelPage = () => {
         { title: 'Analytics Empresas', description: 'Uso y engagement por empresa', icon: AnalyticsIcon, color: 'primary', path: '/analyticsEmpresas' },
         { title: 'Analytics Onboarding', description: 'Adopción en primeros días', icon: RocketLaunchIcon, color: 'success', path: '/analyticsOnboarding' },
         { title: 'Empresas', description: 'Gestión y configuraciones', icon: BusinessIcon, color: 'primary', path: '/empresas' },
+        { title: 'Perfiles Globales', description: 'Todos los perfiles con filtros cruzados', icon: PersonSearchIcon, color: 'warning', path: '/profiles-overview' },
         { title: 'Usuarios del Bot', description: 'Estados activos en WhatsApp', icon: SmartToyIcon, color: 'info', path: '/bot-users', badge: !loading && stats.botUsers !== null ? `${stats.botUsers} activos` : null },
         { title: 'Conversaciones', description: 'Historial de mensajes', icon: ChatIcon, color: 'secondary', path: '/conversaciones' },
         { title: 'Monedas', description: 'Dólar, Blue, MEP e índices CAC', icon: CurrencyExchangeIcon, color: 'error', path: '/monedas' },
