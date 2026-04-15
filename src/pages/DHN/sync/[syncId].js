@@ -16,6 +16,8 @@ import {
   Divider,
   MenuItem,
   Tooltip,
+  ToggleButton,
+  ToggleButtonGroup,
 } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import FilterListIcon from "@mui/icons-material/FilterList";
@@ -39,6 +41,8 @@ import {
   ObservacionCell,
   StatusChip,
 } from "src/components/dhn/sync/cells";
+import SyncDriveExplorer from "src/components/dhn/sync/SyncDriveExplorer";
+import { computeSyncRootPrefixSegments } from "src/utils/dhn/driveViewModel";
 
 const DEFAULT_PAGE_LIMIT = 100;
 
@@ -85,6 +89,11 @@ const SyncDetailPage = () => {
   const [trabajadorSeleccionado, setTrabajadorSeleccionado] = useState(null);
   const [urlStorageSeleccionado, setUrlStorageSeleccionado] = useState(null);
 
+  const [viewMode, setViewMode] = useState("classic");
+  const [drivePathSegments, setDrivePathSegments] = useState([]);
+  const [driveAllItems, setDriveAllItems] = useState([]);
+  const [driveFetchLoading, setDriveFetchLoading] = useState(false);
+
   const tipo = String(tipoQuery || "").toLowerCase()
   const isParte = tipo === "parte";
   const isLicencia = tipo === "licencia";
@@ -118,6 +127,48 @@ const SyncDetailPage = () => {
       setIsLoading(false);
     }
   }, [syncId, paginationLimit, paginationOffset, searchQuery, statusFilter]);
+
+  const fetchDriveFullList = useCallback(async () => {
+    if (!syncId) return;
+    setDriveFetchLoading(true);
+    try {
+      const limit = 500;
+      let offset = 0;
+      let total = Infinity;
+      const acc = [];
+      while (offset < total) {
+        const page = await DhnDriveService.getSyncChildren(String(syncId), {
+          limit,
+          offset,
+          search: searchQuery || undefined,
+          status: statusFilter || undefined,
+        });
+        const batch = Array.isArray(page?.items) ? page.items : [];
+        const t = Number(page?.total);
+        if (Number.isFinite(t)) {
+          total = t;
+        }
+        acc.push(...batch);
+        offset += batch.length;
+        if (batch.length === 0) break;
+        if (acc.length >= total) break;
+      }
+      setDriveAllItems(acc);
+    } catch (e) {
+      console.error("fetchDriveFullList", e);
+      setDriveAllItems([]);
+      setAlert({ open: true, message: "Error cargando vista Drive", severity: "error" });
+    } finally {
+      setDriveFetchLoading(false);
+    }
+  }, [syncId, searchQuery, statusFilter]);
+
+  const refreshAfterMutation = useCallback(async () => {
+    await fetchDetails();
+    if (viewMode === "drive") {
+      await fetchDriveFullList();
+    }
+  }, [fetchDetails, fetchDriveFullList, viewMode]);
 
   const openImageModal = (url, fileName, row) => {
     if (!url) return;
@@ -196,11 +247,11 @@ const SyncDetailPage = () => {
 
   const handleTrabajadorResuelto = useCallback(async () => {
     try {
-      await fetchDetails();
+      await refreshAfterMutation();
     } catch (e) {
       console.error("Error recargando datos:", e);
     }
-  }, [fetchDetails]);
+  }, [refreshAfterMutation]);
 
   const handleLicenciaResuelta = async (resp) => {
     const registros = resp?.registrosCreados ?? resp?.data?.registrosCreados ?? 0;
@@ -215,7 +266,7 @@ const SyncDetailPage = () => {
       message: fechas ? `${baseMessage} (${fechas})` : baseMessage,
     });
     handleCloseResolverLicencia();
-    await fetchDetails();
+    await refreshAfterMutation();
   };
 
   const handleParteResuelta = async (resp) => {
@@ -231,7 +282,7 @@ const SyncDetailPage = () => {
       message: fechas ? `${baseMessage} (${fechas})` : baseMessage,
     });
     handleCloseResolverParte();
-    await fetchDetails();
+    await refreshAfterMutation();
   };
 
   const handleResyncUrlStorage = async (row) => {
@@ -265,8 +316,17 @@ const SyncDetailPage = () => {
       });
 
       await new Promise((resolve) => setTimeout(resolve, 1000));
-      const data = await DhnDriveService.getSyncChildren(String(syncId));
-      setItems(Array.isArray(data) ? data : []);
+      const data = await DhnDriveService.getSyncChildren(String(syncId), {
+        limit: paginationLimit,
+        offset: paginationOffset,
+        search: searchQuery || undefined,
+        status: statusFilter || undefined,
+      });
+      const list = Array.isArray(data?.items) ? data.items : [];
+      setItems(list);
+      if (viewMode === "drive") {
+        await fetchDriveFullList();
+      }
     } catch (error) {
       console.error("Error resincronizando urlStorage:", error);
       setAlert({
@@ -275,8 +335,17 @@ const SyncDetailPage = () => {
         message: error?.message || "Error al resincronizar",
       });
       try {
-        const data = await DhnDriveService.getSyncChildren(String(syncId));
-        setItems(Array.isArray(data) ? data : []);
+        const data = await DhnDriveService.getSyncChildren(String(syncId), {
+          limit: paginationLimit,
+          offset: paginationOffset,
+          search: searchQuery || undefined,
+          status: statusFilter || undefined,
+        });
+        const list = Array.isArray(data?.items) ? data.items : [];
+        setItems(list);
+        if (viewMode === "drive") {
+          await fetchDriveFullList();
+        }
       } catch (e) {
         // noop
       }
@@ -291,6 +360,33 @@ const SyncDetailPage = () => {
     };
     run();
   }, [fetchDetails, searchVersion]);
+
+  useEffect(() => {
+    if (viewMode !== "drive" || !syncId) return;
+    fetchDriveFullList();
+  }, [viewMode, syncId, fetchDriveFullList]);
+
+  useEffect(() => {
+    setDrivePathSegments([]);
+  }, [searchQuery, statusFilter]);
+
+  const handleRefreshClick = useCallback(async () => {
+    await fetchDetails();
+    if (viewMode === "drive") {
+      await fetchDriveFullList();
+    }
+  }, [fetchDetails, fetchDriveFullList, viewMode]);
+
+  const handleViewModeChange = useCallback(
+    (event, mode) => {
+      if (mode === null) return;
+      setViewMode(mode);
+      if (mode === "drive") {
+        setDrivePathSegments([]);
+      }
+    },
+    []
+  );
 
   const handleOpenResolverDuplicado = useCallback((row) => {
     if (!row?.duplicateInfo) return;
@@ -331,7 +427,7 @@ const SyncDetailPage = () => {
           message: successMessage,
         });
         handleCloseResolverDuplicado();
-        await fetchDetails();
+        await refreshAfterMutation();
         return true;
       } catch (error) {
         console.error("Error resolviendo duplicado:", error);
@@ -346,7 +442,7 @@ const SyncDetailPage = () => {
         setResolverDuplicadoAction(null);
       }
     },
-    [resolverDuplicadoRow, fetchDetails, handleCloseResolverDuplicado]
+    [resolverDuplicadoRow, refreshAfterMutation, handleCloseResolverDuplicado]
   );
 
   const handleChangePage = useCallback((direction) => {
@@ -509,6 +605,10 @@ const SyncDetailPage = () => {
     return result;
   }, [statusFilter]);
 
+  const driveSyncRootSegments = useMemo(
+    () => computeSyncRootPrefixSegments(driveAllItems),
+    [driveAllItems]
+  );
 
   return (
     <DashboardLayout title="Detalle de sincronización">
@@ -586,8 +686,8 @@ const SyncDetailPage = () => {
             <Tooltip title="Actualizar datos">
               <IconButton
                 size="small"
-                onClick={fetchDetails}
-                disabled={isLoading}
+                onClick={handleRefreshClick}
+                disabled={isLoading || (viewMode === "drive" && driveFetchLoading)}
                 sx={{
                   borderRadius: 2,
                   px: 1,
@@ -599,7 +699,10 @@ const SyncDetailPage = () => {
               >
                 <RefreshIcon
                   sx={{
-                    animation: isLoading ? "spin 1s linear infinite" : "none",
+                    animation:
+                      isLoading || (viewMode === "drive" && driveFetchLoading)
+                        ? "spin 1s linear infinite"
+                        : "none",
                     "@keyframes spin": {
                       "0%": { transform: "rotate(0deg)" },
                       "100%": { transform: "rotate(360deg)" },
@@ -608,6 +711,21 @@ const SyncDetailPage = () => {
                 />
               </IconButton>
             </Tooltip>
+            <ToggleButtonGroup
+              value={viewMode}
+              exclusive
+              size="small"
+              onChange={handleViewModeChange}
+              aria-label="Modo de vista de sincronización"
+              sx={{ ml: { xs: 0, sm: 1 } }}
+            >
+              <ToggleButton value="classic" aria-label="Vista clásica">
+                Vista clásica
+              </ToggleButton>
+              <ToggleButton value="drive" aria-label="Vista tipo Drive">
+                Vista Drive
+              </ToggleButton>
+            </ToggleButtonGroup>
           </Stack>
 
           <Popover
@@ -722,87 +840,103 @@ const SyncDetailPage = () => {
                 <Box component="span" sx={{ textTransform: "uppercase" }}>
                   {tipo || ""}
                 </Box>
+                {viewMode === "drive" ? (
+                  <Chip size="small" label="Vista Drive" variant="outlined" sx={{ ml: 1 }} />
+                ) : null}
               </Box>
 
-              <Box
-                sx={{
-                  "& .MuiPaper-root": {
-                    boxShadow: "none",
-                    borderRadius: 0,
-                  },
-                  "& .MuiTable-root": {
-                    "& .MuiTableCell-root": {
-                      fontSize: "0.8rem",
-                      padding: "12px 16px",
-                      borderBottom: "1px solid rgba(224, 224, 224, 0.5)",
-                    },
-                    "& .MuiTableHead-root .MuiTableCell-root": {
-                      backgroundColor: "grey.50",
-                      fontWeight: 600,
-                      fontSize: "0.75rem",
-                      color: "text.secondary",
-                      textTransform: "uppercase",
-                      letterSpacing: "0.5px",
-                      padding: "10px 16px",
-                      borderBottom: "2px solid",
-                      borderColor: "divider",
-                    },
-                    "& .MuiTableBody-root .MuiTableRow-root": {
-                      "&:hover": {
-                        backgroundColor: "action.hover",
-                      },
-                      "&:last-child .MuiTableCell-root": {
-                        borderBottom: "none",
-                      },
-                    },
-                  },
-                }}
-              >
-                <TableComponent
-                  data={sortedItems}
-                  columns={columns}
-                  isLoading={isLoading}
-                  sortField={sortConfig.key}
-                  sortDirection={sortConfig.direction}
-                  onSortChange={handleSort}
-                  onRowClick={(row) => {
-                    console.log("[DHN Sync] row click:", row);
-                  }}
-                />
+              {viewMode === "drive" ? (
+                <Box sx={{ px: 2, pb: 2, pt: 1 }}>
+                  <SyncDriveExplorer
+                    flatRows={driveAllItems}
+                    isLoading={driveFetchLoading}
+                    columns={columns}
+                    currentPathSegments={drivePathSegments}
+                    syncRootSegments={driveSyncRootSegments}
+                    onFolderNavigate={setDrivePathSegments}
+                  />
+                </Box>
+              ) : (
                 <Box
                   sx={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    px: 2,
-                    py: 1,
-                    borderTop: "1px solid",
-                    borderColor: "divider",
+                    "& .MuiPaper-root": {
+                      boxShadow: "none",
+                      borderRadius: 0,
+                    },
+                    "& .MuiTable-root": {
+                      "& .MuiTableCell-root": {
+                        fontSize: "0.8rem",
+                        padding: "12px 16px",
+                        borderBottom: "1px solid rgba(224, 224, 224, 0.5)",
+                      },
+                      "& .MuiTableHead-root .MuiTableCell-root": {
+                        backgroundColor: "grey.50",
+                        fontWeight: 600,
+                        fontSize: "0.75rem",
+                        color: "text.secondary",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.5px",
+                        padding: "10px 16px",
+                        borderBottom: "2px solid",
+                        borderColor: "divider",
+                      },
+                      "& .MuiTableBody-root .MuiTableRow-root": {
+                        "&:hover": {
+                          backgroundColor: "action.hover",
+                        },
+                        "&:last-child .MuiTableCell-root": {
+                          borderBottom: "none",
+                        },
+                      },
+                    },
                   }}
                 >
-                  <Stack direction="row" spacing={1}>
-                    <Button
-                      variant="text"
-                      size="small"
-                      onClick={() => handleChangePage(-1)}
-                      disabled={!hasPrevPage}
-                    >
-                      Anterior
-                    </Button>
-                    <Button
-                      variant="text"
-                      size="small"
-                      onClick={() => handleChangePage(1)}
-                      disabled={!hasNextPage}
-                    >
-                      Siguiente
-                    </Button>
-                  </Stack>
-                  <Typography variant="caption" color="text.secondary">
-                    {pageLabel}
-                  </Typography>
+                  <TableComponent
+                    data={sortedItems}
+                    columns={columns}
+                    isLoading={isLoading}
+                    sortField={sortConfig.key}
+                    sortDirection={sortConfig.direction}
+                    onSortChange={handleSort}
+                    onRowClick={(row) => {
+                      console.log("[DHN Sync] row click:", row);
+                    }}
+                  />
+                  <Box
+                    sx={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      px: 2,
+                      py: 1,
+                      borderTop: "1px solid",
+                      borderColor: "divider",
+                    }}
+                  >
+                    <Stack direction="row" spacing={1}>
+                      <Button
+                        variant="text"
+                        size="small"
+                        onClick={() => handleChangePage(-1)}
+                        disabled={!hasPrevPage}
+                      >
+                        Anterior
+                      </Button>
+                      <Button
+                        variant="text"
+                        size="small"
+                        onClick={() => handleChangePage(1)}
+                        disabled={!hasNextPage}
+                      >
+                        Siguiente
+                      </Button>
+                    </Stack>
+                    <Typography variant="caption" color="text.secondary">
+                      {pageLabel}
+                    </Typography>
+                  </Box>
                 </Box>
-              </Box>
+              )}
             </Box>
           </Box>
         </Stack>
