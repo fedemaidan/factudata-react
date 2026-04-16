@@ -76,7 +76,11 @@ import { Timestamp } from 'firebase/firestore';
 import { Router } from 'react-router-dom';
 import { useRouter } from 'next/router';
 import { NotaPedidoAddDialog } from 'src/components/NotaPedidoAddDialog';
+import NotaPedidoPdfTemplateDialog, { NotaPedidoLogoRequeridoDialog } from 'src/components/NotaPedidoPdfDialogs';
 import { useBreadcrumbs } from 'src/contexts/breadcrumbs-context';
+import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
+import SettingsIcon from '@mui/icons-material/Settings';
+import { downloadNotaPedidoPdf } from 'src/utils/notaPedido/exportNotaPedidoToPdf';
 
 const NotaPedidoPage = () => {
   const router = useRouter();
@@ -111,6 +115,12 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
   const [mobileMenuAnchor, setMobileMenuAnchor] = useState(null);
   const [mobileMenuNota, setMobileMenuNota] = useState(null);
+
+  const [openPdfPlantillasDialog, setOpenPdfPlantillasDialog] = useState(false);
+  const [openLogoRequeridoModal, setOpenLogoRequeridoModal] = useState(false);
+  const [pdfDownloading, setPdfDownloading] = useState(false);
+  const [basePdfTemplate, setBasePdfTemplate] = useState(null);
+  const [pdfUiLoading, setPdfUiLoading] = useState(false);
 
   const [formData, setFormData] = useState({
     descripcion: '', proyecto_id: '', estado: '', owner: '', creador: '', proveedor: ''
@@ -262,6 +272,103 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
       console.error('Error al exportar a Excel:', error);
       setAlert({ open: true, message: 'Error al exportar a Excel', severity: 'error' });
     }
+  };
+
+  const getEmpresaId = () => user?.empresa?.id || user?.empresaData?.id || user?.empresa_id;
+
+  const loadPdfBaseForDrawer = useCallback(async () => {
+    const eid = getEmpresaId();
+    if (!eid) return;
+    const base = await notaPedidoService.getPdfBaseTemplate(eid);
+    setBasePdfTemplate(base);
+  }, [user]);
+
+  useEffect(() => {
+    if (comentariosDialogNota) {
+      loadPdfBaseForDrawer();
+    }
+  }, [comentariosDialogNota, loadPdfBaseForDrawer]);
+
+  const handleDownloadPdfNota = async () => {
+    if (!comentariosDialogNota) return;
+    const eid = getEmpresaId();
+    if (!eid) {
+      setAlert({ open: true, message: 'No se pudo identificar la empresa', severity: 'error' });
+      return;
+    }
+    setPdfDownloading(true);
+    try {
+      const result = await notaPedidoService.postPdfRenderConfig({
+        notaId: comentariosDialogNota.id,
+        empresaId: eid,
+      });
+      if (!result.success) {
+        if (result.needsLogo) {
+          setOpenLogoRequeridoModal(true);
+          return;
+        }
+        setAlert({
+          open: true,
+          message: result.errorMessage || 'No se pudo generar el PDF',
+          severity: 'error',
+        });
+        return;
+      }
+      const cfg = result.config;
+      if (!cfg?.layout) throw new Error('Sin configuración de PDF');
+      await downloadNotaPedidoPdf({
+        nota: comentariosDialogNota,
+        layout: cfg.layout,
+        logoUrl: cfg.logoUrl,
+        empresaNombre: cfg.empresaNombre,
+      });
+      setAlert({ open: true, message: 'PDF descargado', severity: 'success' });
+    } catch (err) {
+      console.error(err);
+      setAlert({ open: true, message: 'No se pudo generar el PDF', severity: 'error' });
+    } finally {
+      setPdfDownloading(false);
+    }
+  };
+
+  const handleSaveLogoFromDialog = async (file) => {
+    const eid = getEmpresaId();
+    if (!eid || !file) return;
+    setPdfUiLoading(true);
+    try {
+      const url = await notaPedidoService.uploadPdfTemplateLogo(eid, file);
+      if (!url) throw new Error('Upload falló');
+      const updatedBase = await notaPedidoService.putPdfBaseLogo(eid, { logo_url: url });
+      setBasePdfTemplate(updatedBase);
+      await loadPdfBaseForDrawer();
+      setAlert({ open: true, message: 'Logo guardado', severity: 'success' });
+    } catch (e) {
+      console.error(e);
+      setAlert({ open: true, message: 'Error al guardar el logo', severity: 'error' });
+    } finally {
+      setPdfUiLoading(false);
+    }
+  };
+
+  const handleLogoRequiredSaveAndDownload = async (file) => {
+    const eid = getEmpresaId();
+    if (!eid || !file) return;
+    setPdfUiLoading(true);
+    try {
+      const url = await notaPedidoService.uploadPdfTemplateLogo(eid, file);
+      if (!url) throw new Error('Upload falló');
+      const updatedBase = await notaPedidoService.putPdfBaseLogo(eid, { logo_url: url });
+      setBasePdfTemplate(updatedBase);
+      setOpenLogoRequeridoModal(false);
+      await loadPdfBaseForDrawer();
+    } catch (e) {
+      console.error(e);
+      setAlert({ open: true, message: 'Error al guardar el logo', severity: 'error' });
+      setPdfUiLoading(false);
+      return;
+    }
+    setPdfUiLoading(false);
+    await handleDownloadPdfNota();
   };
 
   
@@ -1320,6 +1427,21 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
   </DialogActions>
 </Dialog>
 
+<NotaPedidoLogoRequeridoDialog
+  open={openLogoRequeridoModal}
+  onClose={() => setOpenLogoRequeridoModal(false)}
+  loading={pdfUiLoading}
+  onSaveAndDownload={handleLogoRequiredSaveAndDownload}
+/>
+
+<NotaPedidoPdfTemplateDialog
+  open={openPdfPlantillasDialog}
+  onClose={() => setOpenPdfPlantillasDialog(false)}
+  baseTemplate={basePdfTemplate}
+  loading={pdfUiLoading}
+  onSaveLogo={handleSaveLogoFromDialog}
+/>
+
 {/* Drawer lateral estilo Notion para ver detalles de la nota */}
 <Drawer
   anchor="right"
@@ -1454,6 +1576,32 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
           >
             Eliminar
           </Button>
+        </Stack>
+
+        <Stack direction="row" spacing={1} mt={1.5} flexWrap="wrap" justifyContent="center" alignItems="center">
+          <Button
+            size="small"
+            variant="outlined"
+            color="primary"
+            startIcon={pdfDownloading ? <CircularProgress size={14} color="inherit" /> : <PictureAsPdfIcon />}
+            disabled={pdfDownloading}
+            onClick={handleDownloadPdfNota}
+            sx={{ textTransform: 'none' }}
+          >
+            Descargar PDF
+          </Button>
+          <Tooltip title="Configurar logo PDF">
+            <IconButton
+              size="small"
+              onClick={() => {
+                setOpenPdfPlantillasDialog(true);
+                loadPdfBaseForDrawer();
+              }}
+              aria-label="Configurar logo PDF"
+            >
+              <SettingsIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
         </Stack>
       </Box>
 
