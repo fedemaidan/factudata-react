@@ -1,4 +1,4 @@
-import { useState, useEffect, Fragment } from 'react';
+import { useState, useEffect, Fragment, useRef } from 'react';
 import {
   Drawer,
   Box,
@@ -30,6 +30,10 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  Paper,
+  List,
+  ListItem,
+  ListItemText,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -45,6 +49,9 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
+import AttachFileIcon from '@mui/icons-material/AttachFile';
+import CloudUploadIcon from '@mui/icons-material/CloudUpload';
+import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
@@ -53,6 +60,12 @@ import 'dayjs/locale/es';
 import presupuestoService from 'src/services/presupuestoService';
 import MonedasService from 'src/services/monedasService';
 import { formatCurrency } from 'src/utils/formatters';
+import {
+  PRESUPUESTO_ADJUNTOS_MAX,
+  validatePresupuestoAdjuntoFile,
+  uploadPresupuestoAdjunto,
+  deletePresupuestoAdjuntoStorage,
+} from 'src/utils/presupuestos/presupuestoAdjuntosFirebase';
 
 // Helper: calcular la fecha YYYY-MM del CAC aplicado (regla -2 meses)
 const calcularFechaCACAplicada = (fechaStr) => {
@@ -166,9 +179,11 @@ const PresupuestoDrawer = ({
   const [mostrarHistorial, setMostrarHistorial] = useState(false);
 
   // === Estado: Tabs del drawer (modo editar) ===
-  const TAB_MAP = { full: 0, adicional: 1, historial: 2, movimientos: 3 };
-  // En modo editar, abrir en movimientos por defecto
-  const defaultTab = mode === 'editar' && (!drawerView || drawerView === 'full') ? TAB_MAP.movimientos : (TAB_MAP[drawerView] ?? 0);
+  const TAB_MAP = { full: 0, adicional: 1, historial: 2, movimientos: 3, adjuntos: 4 };
+  // En modo editar: si hay adjuntos, abrir en esa pestaña; si no, en movimientos
+  const defaultTab = mode === 'editar' && (!drawerView || drawerView === 'full')
+    ? TAB_MAP.movimientos
+    : (TAB_MAP[drawerView] ?? 0);
   const [activeTab, setActiveTab] = useState(defaultTab);
 
   // === Estado: Movimientos (tab desglose) ===
@@ -184,6 +199,14 @@ const PresupuestoDrawer = ({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmGuardar, setConfirmGuardar] = useState(false);
   const [recalculando, setRecalculando] = useState(false);
+
+  /** Archivos seleccionados antes de crear el presupuesto (se suben tras el POST) */
+  const [pendingAdjuntosFiles, setPendingAdjuntosFiles] = useState([]);
+  /** Copia editable de adjuntos en modo editar */
+  const [adjuntosEdit, setAdjuntosEdit] = useState([]);
+  const [adjuntosBusy, setAdjuntosBusy] = useState(false);
+  const adjuntosInputCrearRef = useRef(null);
+  const adjuntosInputEditarRef = useRef(null);
 
   // === Estado: Indexación ===
   const [indexacion, setIndexacion] = useState(null); // null | 'CAC' | 'USD'
@@ -307,8 +330,11 @@ const PresupuestoDrawer = ({
       setAdicionalCacOverride('');
       setAdicionalDolarOverride('');
       setMostrarAdicional(drawerView === 'adicional');
-      // En modo editar, abrir en movimientos por defecto
-      setActiveTab(mode === 'editar' && (!drawerView || drawerView === 'full') ? TAB_MAP.movimientos : (TAB_MAP[drawerView] ?? 0));
+      setActiveTab(
+        mode === 'editar' && (!drawerView || drawerView === 'full')
+          ? (Array.isArray(presupuesto?.adjuntos) && presupuesto.adjuntos.length > 0 ? TAB_MAP.adjuntos : TAB_MAP.movimientos)
+          : (TAB_MAP[drawerView] ?? 0),
+      );
       setAdicionalConcepto('');
       setAdicionalMonto('');
       setLoading(false);
@@ -327,6 +353,8 @@ const PresupuestoDrawer = ({
         setEtapaSel('');
         setFechaPresupuesto(hoyStr);
         setCacFechaAplicada(calcularFechaCACAplicada(hoyStr));
+        setPendingAdjuntosFiles([]);
+        setAdjuntosEdit([]);
       } else if (mode === 'editar' && presupuesto) {
         setNuevoMonto(presupuesto.monto_ingresado || presupuesto.monto || '');
         setNuevaMoneda(presupuesto.moneda_display || presupuesto.moneda || 'ARS');
@@ -344,6 +372,8 @@ const PresupuestoDrawer = ({
         // Reset estados de edición de adicionales
         setEditandoAdicionalId(null);
         setConfirmEliminarAdicId(null);
+        setAdjuntosEdit(Array.isArray(presupuesto.adjuntos) ? [...presupuesto.adjuntos] : []);
+        setPendingAdjuntosFiles([]);
       }
     }
   }, [open, mode, tipoDefault, presupuesto, drawerView]);
@@ -408,6 +438,96 @@ const PresupuestoDrawer = ({
       return movOrdenAsc ? fa - fb : fb - fa;
     });
   })();
+
+  const handlePendingAdjuntosChange = (event) => {
+    const files = Array.from(event.target.files || []);
+    event.target.value = '';
+    setPendingAdjuntosFiles((prev) => {
+      const next = [...prev];
+      for (const f of files) {
+        if (next.length >= PRESUPUESTO_ADJUNTOS_MAX) {
+          setError(`Máximo ${PRESUPUESTO_ADJUNTOS_MAX} archivos por presupuesto`);
+          return next;
+        }
+        const v = validatePresupuestoAdjuntoFile(f);
+        if (!v.ok) {
+          setError(v.message);
+          continue;
+        }
+        next.push(f);
+      }
+      if (files.length && next.length > prev.length) setError(null);
+      return next;
+    });
+  };
+
+  const handleRemovePendingAdjunto = (index) => {
+    setPendingAdjuntosFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleEditAdjuntosInputChange = async (event) => {
+    const files = Array.from(event.target.files || []);
+    event.target.value = '';
+    if (!presupuesto?.id || !empresaId) return;
+    const room = PRESUPUESTO_ADJUNTOS_MAX - adjuntosEdit.length;
+    if (room <= 0) {
+      setError(`Máximo ${PRESUPUESTO_ADJUNTOS_MAX} archivos`);
+      return;
+    }
+    setAdjuntosBusy(true);
+    setError(null);
+    try {
+      let newList = [...adjuntosEdit];
+      let added = 0;
+      for (const f of files.slice(0, room)) {
+        const v = validatePresupuestoAdjuntoFile(f);
+        if (!v.ok) {
+          setError(v.message);
+          continue;
+        }
+        const meta = await uploadPresupuestoAdjunto(f, {
+          empresaId,
+          presupuestoId: presupuesto.id,
+          userId,
+        });
+        newList.push(meta);
+        added += 1;
+      }
+      if (added === 0) return;
+      await presupuestoService.actualizarAdjuntos(presupuesto.id, {
+        adjuntos: newList,
+        empresa_id: empresaId,
+      });
+      setAdjuntosEdit(newList);
+      onSuccess?.('Adjuntos actualizados');
+    } catch (err) {
+      console.error(err);
+      setError('Error al subir adjuntos. Intentá de nuevo.');
+    } finally {
+      setAdjuntosBusy(false);
+    }
+  };
+
+  const handleRemoveAdjuntoEdit = async (adj) => {
+    if (!presupuesto?.id || !empresaId) return;
+    setAdjuntosBusy(true);
+    setError(null);
+    try {
+      await deletePresupuestoAdjuntoStorage(adj.path);
+      const newList = adjuntosEdit.filter((a) => a.id !== adj.id);
+      await presupuestoService.actualizarAdjuntos(presupuesto.id, {
+        adjuntos: newList,
+        empresa_id: empresaId,
+      });
+      setAdjuntosEdit(newList);
+      onSuccess?.('Adjunto eliminado');
+    } catch (err) {
+      console.error(err);
+      setError('Error al eliminar el adjunto');
+    } finally {
+      setAdjuntosBusy(false);
+    }
+  };
 
   // === Handlers ===
 
@@ -475,7 +595,36 @@ const PresupuestoDrawer = ({
       }
 
       const result = await presupuestoService.crearPresupuesto(data);
-      onSuccess?.('Presupuesto creado correctamente', result?.presupuesto);
+      const created = result?.presupuesto;
+      if (pendingAdjuntosFiles.length > 0 && created?.id) {
+        setAdjuntosBusy(true);
+        try {
+          const metas = [];
+          for (const f of pendingAdjuntosFiles) {
+            const v = validatePresupuestoAdjuntoFile(f);
+            if (!v.ok) continue;
+            const meta = await uploadPresupuestoAdjunto(f, {
+              empresaId,
+              presupuestoId: created.id,
+              userId,
+            });
+            metas.push(meta);
+          }
+          if (metas.length > 0) {
+            await presupuestoService.actualizarAdjuntos(created.id, {
+              adjuntos: metas,
+              empresa_id: empresaId,
+            });
+          }
+        } catch (uploadErr) {
+          console.error(uploadErr);
+          setError('Presupuesto creado, pero hubo un error al subir algunos adjuntos.');
+        } finally {
+          setAdjuntosBusy(false);
+        }
+      }
+      setPendingAdjuntosFiles([]);
+      onSuccess?.('Presupuesto creado correctamente', created);
       onClose();
     } catch (err) {
       console.error('Error al crear presupuesto:', err);
@@ -689,7 +838,7 @@ const PresupuestoDrawer = ({
       anchor="right"
       open={open}
       onClose={onClose}
-      PaperProps={{ sx: { width: { xs: '100%', sm: activeTab === TAB_MAP.movimientos ? 720 : 480 }, transition: 'width 0.3s ease' } }}
+      PaperProps={{ sx: { width: { xs: '100%', sm: (activeTab === TAB_MAP.movimientos || activeTab === TAB_MAP.adjuntos) ? 720 : 480 }, transition: 'width 0.3s ease' } }}
     >
       <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
         {/* Header */}
@@ -1154,6 +1303,62 @@ const PresupuestoDrawer = ({
                 </>
               )}
 
+              {/* Adjuntos (se suben al guardar, después de crear el presupuesto) */}
+              <Paper variant="outlined" sx={{ p: 2, borderStyle: 'dashed', borderColor: 'divider', bgcolor: 'grey.50' }}>
+                <Stack spacing={1.5}>
+                  <Stack direction="row" alignItems="center" spacing={1}>
+                    <AttachFileIcon color="primary" fontSize="small" />
+                    <Typography variant="subtitle2" fontWeight={600}>
+                      Adjuntos
+                    </Typography>
+                  </Stack>
+                  <Typography variant="caption" color="text.secondary">
+                    Imágenes, PDF y documentos comunes. Máx. {PRESUPUESTO_ADJUNTOS_MAX} archivos, 16 MB c/u. Se suben al crear el presupuesto.
+                  </Typography>
+                  <Stack direction="row" spacing={1} flexWrap="wrap" alignItems="center">
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={<CloudUploadIcon />}
+                      disabled={loading || adjuntosBusy || pendingAdjuntosFiles.length >= PRESUPUESTO_ADJUNTOS_MAX}
+                      onClick={() => adjuntosInputCrearRef.current?.click()}
+                    >
+                      Agregar archivos
+                    </Button>
+                    <input
+                      ref={adjuntosInputCrearRef}
+                      type="file"
+                      multiple
+                      hidden
+                      onChange={handlePendingAdjuntosChange}
+                    />
+                  </Stack>
+                  {pendingAdjuntosFiles.length > 0 && (
+                    <List dense disablePadding sx={{ maxHeight: 200, overflow: 'auto' }}>
+                      {pendingAdjuntosFiles.map((f, idx) => (
+                        <ListItem
+                          key={`${f.name}-${idx}`}
+                          secondaryAction={
+                            <IconButton edge="end" size="small" onClick={() => handleRemovePendingAdjunto(idx)} disabled={loading || adjuntosBusy}>
+                              <DeleteIcon fontSize="small" />
+                            </IconButton>
+                          }
+                          sx={{ py: 0.25, pr: 4 }}
+                        >
+                          <InsertDriveFileIcon sx={{ mr: 1, color: 'text.secondary', fontSize: 20 }} />
+                          <ListItemText
+                            primary={f.name}
+                            secondary={`${(f.size / 1024).toFixed(1)} KB`}
+                            primaryTypographyProps={{ variant: 'body2', noWrap: true }}
+                            secondaryTypographyProps={{ variant: 'caption' }}
+                          />
+                        </ListItem>
+                      ))}
+                    </List>
+                  )}
+                </Stack>
+              </Paper>
+
               {/* Preview */}
               {monto && parseFloat(monto) > 0 && (
                 <Alert severity="info" variant="outlined" icon={<InfoOutlinedIcon fontSize="small" />}>
@@ -1299,6 +1504,15 @@ const PresupuestoDrawer = ({
                   icon={<ReceiptLongIcon sx={{ fontSize: 16 }} />}
                   iconPosition="start"
                   label={`Movim.${movimientosFetched ? ` (${movimientosFiltrados.length})` : ''}`}
+                />
+                <Tab
+                  icon={<AttachFileIcon sx={{ fontSize: 16 }} />}
+                  iconPosition="start"
+                  label={`Adjuntos${
+                    (adjuntosEdit?.length || presupuesto?.adjuntos?.length)
+                      ? ` (${adjuntosEdit?.length || presupuesto?.adjuntos?.length || 0})`
+                      : ''
+                  }`}
                 />
               </Tabs>
 
@@ -1533,6 +1747,98 @@ const PresupuestoDrawer = ({
                       </ToggleButton>
                     </ToggleButtonGroup>
                   </Box>
+                </Stack>
+              )}
+
+              {/* ── TAB 4: Adjuntos (imágenes, PDFs, documentos) ── */}
+              {activeTab === 4 && (
+                <Stack spacing={2} sx={{ p: 2 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    Documentación asociada a este presupuesto. Podés abrir cada archivo en una pestaña nueva o agregar más.
+                  </Typography>
+                  <Paper variant="outlined" sx={{ p: 2, borderStyle: 'dashed', borderColor: 'divider', bgcolor: 'background.default' }}>
+                    <Stack spacing={1.5}>
+                      <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap">
+                        <AttachFileIcon color="primary" fontSize="small" />
+                        <Typography variant="subtitle2" fontWeight={600}>
+                          Adjuntos
+                        </Typography>
+                        {adjuntosBusy && <CircularProgress size={16} />}
+                      </Stack>
+                      <Typography variant="caption" color="text.secondary">
+                        Máx. {PRESUPUESTO_ADJUNTOS_MAX} archivos, 16 MB c/u. Los cambios se guardan al subir o eliminar.
+                      </Typography>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        startIcon={<CloudUploadIcon />}
+                        disabled={loading || adjuntosBusy || adjuntosEdit.length >= PRESUPUESTO_ADJUNTOS_MAX}
+                        onClick={() => adjuntosInputEditarRef.current?.click()}
+                      >
+                        Agregar archivos
+                      </Button>
+                      <input
+                        ref={adjuntosInputEditarRef}
+                        type="file"
+                        multiple
+                        hidden
+                        onChange={handleEditAdjuntosInputChange}
+                      />
+                      {adjuntosEdit.length > 0 ? (
+                        <List dense disablePadding sx={{ maxHeight: 280, overflow: 'auto' }}>
+                          {adjuntosEdit.map((adj) => (
+                            <ListItem
+                              key={adj.id}
+                              secondaryAction={
+                                <Stack direction="row" spacing={0} alignItems="center">
+                                  <Tooltip title="Abrir en nueva pestaña" arrow>
+                                    <IconButton
+                                      size="small"
+                                      href={adj.url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      component="a"
+                                    >
+                                      <OpenInNewIcon fontSize="small" />
+                                    </IconButton>
+                                  </Tooltip>
+                                  <Tooltip title="Quitar" arrow>
+                                    <span>
+                                      <IconButton
+                                        size="small"
+                                        color="error"
+                                        disabled={loading || adjuntosBusy}
+                                        onClick={() => handleRemoveAdjuntoEdit(adj)}
+                                      >
+                                        <DeleteIcon fontSize="small" />
+                                      </IconButton>
+                                    </span>
+                                  </Tooltip>
+                                </Stack>
+                              }
+                              sx={{ py: 0.5, pr: 10, alignItems: 'flex-start' }}
+                            >
+                              <InsertDriveFileIcon sx={{ mr: 1, color: 'text.secondary', fontSize: 20, mt: 0.25 }} />
+                              <ListItemText
+                                primary={adj.name || 'Archivo'}
+                                secondary={
+                                  adj.size
+                                    ? `${(adj.size / 1024).toFixed(adj.size > 1024 * 1024 ? 1 : 0)} ${adj.size > 1024 * 1024 ? 'MB' : 'KB'}`
+                                    : ''
+                                }
+                                primaryTypographyProps={{ variant: 'body2', noWrap: true }}
+                                secondaryTypographyProps={{ variant: 'caption' }}
+                              />
+                            </ListItem>
+                          ))}
+                        </List>
+                      ) : (
+                        <Typography variant="body2" color="text.disabled">
+                          Sin archivos adjuntos. Usá «Agregar archivos» o el botón del resumen superior.
+                        </Typography>
+                      )}
+                    </Stack>
+                  </Paper>
                 </Stack>
               )}
 
@@ -2191,10 +2497,10 @@ const PresupuestoDrawer = ({
               variant="contained"
               fullWidth
               onClick={handleCrear}
-              disabled={loading || !monto || parseFloat(monto) <= 0 || (showFullForm && !proyectoSel)}
-              startIcon={loading ? <CircularProgress size={16} color="inherit" /> : null}
+              disabled={loading || adjuntosBusy || !monto || parseFloat(monto) <= 0 || (showFullForm && !proyectoSel)}
+              startIcon={loading || adjuntosBusy ? <CircularProgress size={16} color="inherit" /> : null}
             >
-              {loading ? 'Creando...' : tipo === 'ingreso' ? 'Crear control de cobros' : 'Crear control de gastos'}
+              {loading || adjuntosBusy ? 'Creando...' : tipo === 'ingreso' ? 'Crear control de cobros' : 'Crear control de gastos'}
             </Button>
           )}
 

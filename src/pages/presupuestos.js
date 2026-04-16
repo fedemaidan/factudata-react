@@ -315,6 +315,7 @@ const PresupuestosPage = () => {
         cac_tipo: p.cac_tipo || null,
         fecha_presupuesto: p.fecha_presupuesto || null,
         adicionales: p.adicionales || [],
+        adjuntos: p.adjuntos || [],
         proyecto_id: p.proyecto_id || null,
         proveedor: p.proveedor || null,
         categoria: p.categoria || null,

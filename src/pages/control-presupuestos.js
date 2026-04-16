@@ -721,6 +721,7 @@ const ControlPresupuestosPage = () => {
       id: item.id,
       historial: item.historial || [],
       adicionales: item.adicionales || [],
+      adjuntos: item.adjuntos || [],
       moneda: item.moneda || 'ARS',
       moneda_display: item.moneda_display || item.moneda || 'ARS',
       indexacion: item.indexacion || null,
@@ -791,6 +792,7 @@ const ControlPresupuestosPage = () => {
         label: label,
         historial: item.historial || [],
         adicionales: item.adicionales || [],
+        adjuntos: item.adjuntos || [],
         ejecutado: item.ejecutado || 0,
         cotizacion_snapshot: item.cotizacion_snapshot || null,
         cac_tipo: item.cac_tipo || null,
@@ -799,6 +801,7 @@ const ControlPresupuestosPage = () => {
         categoria: item.categoria || null,
         subcategoria: item.subcategoria || null,
         etapa: item.etapa || null,
+        proyecto_id: item.proyecto_id || proyectoSeleccionado || null,
       },
     });
   };
@@ -816,6 +819,7 @@ const ControlPresupuestosPage = () => {
     label: label,
     historial: item.historial || [],
     adicionales: item.adicionales || [],
+    adjuntos: item.adjuntos || [],
     ejecutado: item.ejecutado || 0,
     cotizacion_snapshot: item.cotizacion_snapshot || null,
     cac_tipo: item.cac_tipo || null,
@@ -824,6 +828,7 @@ const ControlPresupuestosPage = () => {
     categoria: item.categoria || null,
     subcategoria: item.subcategoria || null,
     etapa: item.etapa || null,
+    proyecto_id: item.proyecto_id || proyectoSeleccionado || null,
   });
 
   // Helper: abrir drawer directo en modo adicional
