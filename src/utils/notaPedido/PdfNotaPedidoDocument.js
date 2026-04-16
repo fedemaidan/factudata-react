@@ -137,46 +137,6 @@ const baseStyles = (layout) => {
       borderBottomColor: '#E6EAF2',
       marginBottom: compact ? 8 : 11,
     },
-    materialesHeader: {
-      flexDirection: 'row',
-      backgroundColor: SOFT,
-      borderBottomWidth: 1,
-      borderBottomColor: BORDER,
-      paddingVertical: 5,
-      paddingHorizontal: 8,
-    },
-    checkHeader: {
-      width: 22,
-      textAlign: 'center',
-      fontWeight: 'bold',
-      color: MUTED,
-      fontSize: fs - 1,
-    },
-    descHeader: {
-      flex: 1,
-      fontWeight: 'bold',
-      fontSize: fs - 0.4,
-    },
-    materialRow: {
-      flexDirection: 'row',
-      borderBottomWidth: 1,
-      borderBottomColor: '#EDF0F6',
-      paddingVertical: 5,
-      paddingHorizontal: 8,
-      minHeight: 24,
-    },
-    checkBox: {
-      width: 22,
-      alignItems: 'center',
-      justifyContent: 'center',
-      color: '#9CA3AF',
-      fontSize: fs - 1,
-    },
-    materialText: {
-      flex: 1,
-      fontSize: fs - 0.3,
-      paddingLeft: 2,
-    },
     muted: {
       color: MUTED,
     },
@@ -198,15 +158,6 @@ function formatFechaNota(fechaCreacion) {
   }
 }
 
-function splitDescripcionMateriales(descripcion) {
-  const t = String(descripcion || '').trim();
-  if (!t) return [];
-  return t
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter(Boolean);
-}
-
 function chunkPairs(list) {
   const out = [];
   for (let i = 0; i < list.length; i += 2) {
@@ -218,9 +169,7 @@ function chunkPairs(list) {
 export function NotaPedidoPdfDocument({ nota, layout = {}, logoDataUrl, empresaNombre = '' }) {
   const styles = baseStyles(layout);
   const fechaStr = formatFechaNota(nota?.fechaCreacion);
-  const observacionLines = Math.min(11, Math.max(4, Number(layout.observacionLines) || 6));
-  const lineasCheck = Math.min(7, Math.max(2, Number(layout.lineasCheck) || 4));
-  const materiales = splitDescripcionMateriales(nota?.descripcion);
+  const observacionLines = Math.min(14, Math.max(4, Number(layout.observacionLines) || 8));
   const comentarios = Array.isArray(nota?.comentarios) ? nota.comentarios.filter((c) => (c.texto || '').trim() || c.url) : [];
   const codigo = String(nota?.codigo ?? '').padStart(5, '0');
 
@@ -275,35 +224,14 @@ export function NotaPedidoPdfDocument({ nota, layout = {}, logoDataUrl, empresaN
 
         <View style={styles.sectionCard}>
           <View style={styles.sectionHead}>
-            <Text style={styles.sectionHeadText}>Observación</Text>
+            <Text style={styles.sectionHeadText}>Descripción</Text>
           </View>
           <View style={styles.sectionBody}>
             <Text style={styles.paragraph}>{nota?.descripcion || ' '}</Text>
             {Array.from({ length: observacionLines }).map((_, i) => (
-              <View key={`obs-line-${i}`} style={styles.ruledLine} />
+              <View key={`desc-line-${i}`} style={styles.ruledLine} />
             ))}
           </View>
-        </View>
-
-        <View style={styles.sectionCard}>
-          <View style={styles.sectionHead}>
-            <Text style={styles.sectionHeadText}>Materiales / items</Text>
-          </View>
-          <View style={styles.materialesHeader}>
-            <Text style={styles.descHeader}>Descripción</Text>
-          </View>
-          {(materiales.length ? materiales : ['(Sin líneas cargadas)']).map((line, idx) => (
-            <View key={`mat-${idx}`} style={styles.materialRow}>
-              <Text style={styles.checkBox}>□</Text>
-              <Text style={styles.materialText}>{line}</Text>
-            </View>
-          ))}
-          {Array.from({ length: lineasCheck }).map((_, i) => (
-            <View key={`mat-extra-${i}`} style={styles.materialRow}>
-              <Text style={styles.checkBox}>□</Text>
-              <Text style={styles.materialText}> </Text>
-            </View>
-          ))}
         </View>
 
         <View style={styles.sectionCard}>
