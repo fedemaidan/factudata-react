@@ -321,6 +321,7 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
         layout: cfg.layout,
         logoUrl: cfg.logoUrl,
         empresaNombre: cfg.empresaNombre,
+        componentUrl: cfg.componentUrl || null,
       });
       setAlert({ open: true, message: 'PDF descargado', severity: 'success' });
     } catch (err) {
@@ -1440,6 +1441,11 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
   baseTemplate={basePdfTemplate}
   loading={pdfUiLoading}
   onSaveLogo={handleSaveLogoFromDialog}
+  empresaId={getEmpresaId()}
+  sampleNota={comentariosDialogNota}
+  onPlantillaGuardada={() => {
+    setAlert({ open: true, message: 'Plantilla guardada correctamente', severity: 'success' });
+  }}
 />
 
 {/* Drawer lateral estilo Notion para ver detalles de la nota */}

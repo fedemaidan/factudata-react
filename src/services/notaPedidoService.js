@@ -162,6 +162,26 @@ const notaPedidoService = {
     }
   },
 
+  aiChatPlantilla: async ({ messages, empresaId }) => {
+    try {
+      const res = await api.post('nota-pedido/pdf-templates/ai-chat', { messages, empresaId });
+      return res.status === 200 ? res.data : null;
+    } catch (e) {
+      console.error('aiChatPlantilla', e);
+      return null;
+    }
+  },
+
+  saveComponentPlantilla: async ({ code, empresaId }) => {
+    try {
+      const res = await api.post('nota-pedido/pdf-templates/save-component', { code, empresaId });
+      return res.status === 200 ? res.data?.url : null;
+    } catch (e) {
+      console.error('saveComponentPlantilla', e);
+      return null;
+    }
+  },
+
   subirArchivo: async (notaId, archivo) => {
     try {
       const formData = new FormData();
