@@ -28,7 +28,7 @@ const NotaPedidoPdfPreviewInner = dynamic(
   { ssr: false, loading: () => <CircularProgress sx={{ m: 'auto', display: 'block', mt: 6 }} /> }
 );
 
-const GREETING = '¡Hola! Soy tu asistente para diseñar plantillas PDF. Describime cómo querés que se vea tu nota de pedido: colores, estilo, qué secciones mostrar, posición del logo, tipografía... Por ejemplo: "quiero un diseño minimalista con cabecera azul oscuro y logo centrado arriba".';
+const GREETING = '¡Hola! Te ayudo a diseñar cómo se ve el PDF de tu nota de pedido. Contame qué estilo querés: por ejemplo, "más formal", "con colores de mi empresa", "más moderno"... Con pocas palabras ya puedo hacer un diseño para que lo veas.';
 
 const MOCK_NOTA = {
   codigo: 1,
@@ -98,6 +98,7 @@ export default function NotaPedidoPlantillaChatDialog({
   const [loading, setLoading] = useState(false);
   const [currentCode, setCurrentCode] = useState(null);
   const [CompiledComponent, setCompiledComponent] = useState(null);
+  const [previewVersion, setPreviewVersion] = useState(0);
   const [compileError, setCompileError] = useState(null);
   const [templateName, setTemplateName] = useState('');
   const [saving, setSaving] = useState(false);
@@ -132,6 +133,7 @@ export default function NotaPedidoPlantillaChatDialog({
     try {
       const Component = await compileComponent(code);
       setCompiledComponent(() => Component);
+      setPreviewVersion((v) => v + 1);
     } catch (err) {
       setCompileError(err.message);
       setCompiledComponent(null);
@@ -151,6 +153,7 @@ export default function NotaPedidoPlantillaChatDialog({
     const result = await notaPedidoService.aiChatPlantilla({
       messages: nextMessages,
       empresaId,
+      currentCode: currentCode || null,
     });
 
     if (result) {
@@ -202,8 +205,8 @@ export default function NotaPedidoPlantillaChatDialog({
 
   const previewKey = useMemo(() => {
     if (!CompiledComponent) return null;
-    return `${CompiledComponent.name || 'comp'}-${nota?.codigo}`;
-  }, [CompiledComponent, nota]);
+    return `preview-${previewVersion}`;
+  }, [CompiledComponent, previewVersion]);
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="xl" fullWidth PaperProps={{ sx: { height: '90vh' } }}>

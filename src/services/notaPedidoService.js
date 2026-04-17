@@ -162,9 +162,9 @@ const notaPedidoService = {
     }
   },
 
-  aiChatPlantilla: async ({ messages, empresaId }) => {
+  aiChatPlantilla: async ({ messages, empresaId, currentCode }) => {
     try {
-      const res = await api.post('nota-pedido/pdf-templates/ai-chat', { messages, empresaId });
+      const res = await api.post('nota-pedido/pdf-templates/ai-chat', { messages, empresaId, currentCode: currentCode || null });
       return res.status === 200 ? res.data : null;
     } catch (e) {
       console.error('aiChatPlantilla', e);
