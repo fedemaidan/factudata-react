@@ -612,12 +612,6 @@ const NotaPedidoPage = () => {
             <Box sx={{ mb: 3.5, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <Box>
                 <Typography
-                  variant="overline"
-                  sx={{ color: C.slate400, letterSpacing: '0.12em', fontFamily: font, fontWeight: 600, fontSize: '0.7rem' }}
-                >
-                  Gestión de compras
-                </Typography>
-                <Typography
                   variant="h4"
                   sx={{ fontFamily: font, fontWeight: 800, color: C.slate900, lineHeight: 1.15, mt: 0.25 }}
                 >
@@ -636,7 +630,7 @@ const NotaPedidoPage = () => {
                         key={estado}
                         label={`${count} ${estado}`}
                         size="small"
-                        color={getEstadoColor(idx)}
+                        color="primary"
                         variant="outlined"
                         sx={{ fontFamily: font, fontWeight: 500, borderRadius: 1.5 }}
                       />
@@ -657,18 +651,15 @@ const NotaPedidoPage = () => {
                 </Tooltip>
                 <Button
                   variant="contained"
+                  color="primary"
                   startIcon={<AddIcon />}
                   onClick={() => setOpenAddDialog(true)}
                   sx={{
-                    bgcolor: C.slate900,
-                    color: 'white',
                     fontFamily: font,
                     fontWeight: 700,
                     borderRadius: 2,
                     px: 2.5,
                     py: 1,
-                    boxShadow: `0 4px 14px ${alpha(C.slate900, 0.25)}`,
-                    '&:hover': { bgcolor: C.slate800 },
                   }}
                 >
                   Nueva nota
@@ -715,7 +706,7 @@ const NotaPedidoPage = () => {
                       key={estado}
                       label={`${estado} (${estadoCountMap[estado] || 0})`}
                       size="small"
-                      color={filters.estado === estado ? getEstadoColor(index) : 'default'}
+                      color={filters.estado === estado ? 'primary' : 'default'}
                       variant={filters.estado === estado ? 'filled' : 'outlined'}
                       onClick={() => setEstado(estado)}
                       sx={{ flexShrink: 0, fontFamily: font, fontWeight: filters.estado === estado ? 600 : 400, borderRadius: 10 }}
@@ -766,15 +757,15 @@ const NotaPedidoPage = () => {
                   <Stack direction="row" spacing={0.5} alignItems="center" sx={{ flexWrap: 'wrap' }}>
                     <Button
                       size="small"
+                      color="primary"
                       variant={filters.estado === '' ? 'contained' : 'text'}
                       onClick={() => setEstado('')}
                       sx={{
                         borderRadius: 10, textTransform: 'none', fontFamily: font,
                         fontWeight: filters.estado === '' ? 700 : 500,
                         px: 1.5, minWidth: 'auto',
-                        bgcolor: filters.estado === '' ? C.slate900 : 'transparent',
-                        color: filters.estado === '' ? 'white' : C.slate600,
-                        '&:hover': { bgcolor: filters.estado === '' ? C.slate800 : C.slate100 },
+                        color: filters.estado === '' ? undefined : C.slate600,
+                        '&:hover': { bgcolor: filters.estado === '' ? undefined : C.slate100 },
                       }}
                     >
                       Todos · {notas.length}
@@ -784,7 +775,7 @@ const NotaPedidoPage = () => {
                         key={estado}
                         size="small"
                         variant={filters.estado === estado ? 'contained' : 'text'}
-                        color={filters.estado === estado ? getEstadoColor(index) : 'inherit'}
+                        color="primary"
                         onClick={() => setEstado(estado)}
                         sx={{
                           borderRadius: 10, textTransform: 'none', fontFamily: font,
@@ -1240,10 +1231,10 @@ const NotaPedidoPage = () => {
               }}
             >
               <Button
-                size="small" variant="contained"
+                size="small" variant="contained" color="primary"
                 startIcon={<AddIcon />}
                 onClick={() => setOpenAddDialog(true)}
-                sx={{ flex: 1, textTransform: 'none', fontWeight: 700, fontFamily: font, bgcolor: C.slate900, '&:hover': { bgcolor: C.slate800 }, borderRadius: 2 }}
+                sx={{ flex: 1, textTransform: 'none', fontWeight: 700, fontFamily: font, borderRadius: 2 }}
               >
                 Agregar
               </Button>
@@ -1548,6 +1539,7 @@ const NotaPedidoPage = () => {
                   onChange={(e, v) => setDrawerTab(v)}
                   sx={{
                     bgcolor: 'white',
+                    px: 1,
                     borderBottom: `1px solid ${C.slate200}`,
                     '& .MuiTab-root': { textTransform: 'none', fontFamily: font, fontWeight: 600, fontSize: '0.85rem', minHeight: 44 },
                     '& .MuiTabs-indicator': { height: 3, borderRadius: 3 },
@@ -1583,7 +1575,7 @@ const NotaPedidoPage = () => {
                 </Tabs>
 
                 {/* Tab Content */}
-                <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
+                <Box sx={{ flex: 1, overflow: 'auto', p: 2.5 }}>
 
                   {/* TAB 0: Detalles */}
                   {drawerTab === 0 && (
