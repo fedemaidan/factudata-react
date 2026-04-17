@@ -1088,23 +1088,6 @@ function SheetConfigsSection({ empresa }) {
                 );
               })()}
             </Box>
-
-            {/* Estado */}
-            <FormControlLabel
-              control={
-                <Switch
-                  size="small"
-                  checked={form.activo !== false}
-                  onChange={(e) => setField("activo", e.target.checked)}
-                  color="success"
-                />
-              }
-              label={
-                <Typography variant="body2" sx={{ fontSize: "0.85rem" }}>
-                  {form.activo !== false ? "Activa" : "Inactiva"}
-                </Typography>
-              }
-            />
           </Stack>
         </DialogContent>
 
