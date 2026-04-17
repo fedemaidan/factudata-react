@@ -7,6 +7,7 @@ import {
   Checkbox,
   Chip,
   CircularProgress,
+  Divider,
   FormControl,
   IconButton,
   InputLabel,
@@ -27,8 +28,236 @@ import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
 import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
 import FolderIcon from "@mui/icons-material/Folder";
 import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
+import TableChartIcon from "@mui/icons-material/TableChart";
 import { getProyectosByEmpresa } from "src/services/proyectosService";
 import ColumnasSheetConfig from "src/sections/empresa/columnasSheetConfig";
+
+// ────────────────────────────────────────────────────────────────
+//  Campos disponibles para condiciones de reglas de sheets
+// ────────────────────────────────────────────────────────────────
+const CAMPOS_CONDICION = [
+  { value: "categoria", label: "Categoría" },
+  { value: "subcategoria", label: "Subcategoría" },
+  { value: "etapa", label: "Etapa" },
+  { value: "estado", label: "Estado" },
+  { value: "type", label: "Tipo", hint: "ingreso / egreso" },
+  { value: "moneda", label: "Moneda", hint: "ARS / USD" },
+  { value: "medio_pago", label: "Medio de Pago" },
+  { value: "tipo_factura", label: "Tipo de Factura" },
+  { value: "nombre_proveedor", label: "Proveedor" },
+  { value: "caja_chica", label: "Caja Chica", hint: "true / false" },
+  { value: "factura_cliente", label: "Factura Cliente", hint: "true / false" },
+];
+
+function getLabelCampo(value) {
+  return CAMPOS_CONDICION.find((c) => c.value === value)?.label || value;
+}
+
+function getHintCampo(value) {
+  return CAMPOS_CONDICION.find((c) => c.value === value)?.hint || "";
+}
+
+// ────────────────────────────────────────────────────────────────
+//  Preview de una regla de sheet
+// ────────────────────────────────────────────────────────────────
+function PreviewReglaSheet({ regla }) {
+  if (!regla.nombre || !regla.condiciones?.length) return null;
+  return (
+    <Box
+      sx={{
+        mt: 1,
+        p: 1.5,
+        borderRadius: 1,
+        bgcolor: "action.hover",
+        border: "1px dashed",
+        borderColor: "divider",
+      }}
+    >
+      <Typography variant="caption" color="text.secondary">
+        {regla.condiciones
+          .filter((c) => c.campo && c.valor !== "")
+          .map((c, i) => (
+            <span key={i}>
+              {i > 0 && <strong> AND </strong>}
+              <strong>{getLabelCampo(c.campo)}</strong> = &quot;{c.valor}&quot;
+            </span>
+          ))}
+        {" → escribe en solapa "}
+        <strong>&quot;{regla.nombre}&quot;</strong>
+      </Typography>
+    </Box>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────
+//  Sección de reglas de sheets condicionales
+// ────────────────────────────────────────────────────────────────
+function ReglasSheets({ reglasSheets, setReglasSheets }) {
+  const agregarRegla = () => {
+    setReglasSheets([
+      ...reglasSheets,
+      { nombre: "", condiciones: [{ campo: "categoria", valor: "" }] },
+    ]);
+  };
+
+  const eliminarRegla = (idx) => {
+    setReglasSheets(reglasSheets.filter((_, i) => i !== idx));
+  };
+
+  const actualizarRegla = (idx, campo, valor) => {
+    setReglasSheets(reglasSheets.map((r, i) => (i === idx ? { ...r, [campo]: valor } : r)));
+  };
+
+  const agregarCondicion = (reglaIdx) => {
+    const regla = reglasSheets[reglaIdx];
+    actualizarRegla(reglaIdx, "condiciones", [
+      ...regla.condiciones,
+      { campo: "categoria", valor: "" },
+    ]);
+  };
+
+  const eliminarCondicion = (reglaIdx, condIdx) => {
+    const regla = reglasSheets[reglaIdx];
+    actualizarRegla(
+      reglaIdx,
+      "condiciones",
+      regla.condiciones.filter((_, i) => i !== condIdx)
+    );
+  };
+
+  const actualizarCondicion = (reglaIdx, condIdx, campo, valor) => {
+    const regla = reglasSheets[reglaIdx];
+    actualizarRegla(
+      reglaIdx,
+      "condiciones",
+      regla.condiciones.map((c, i) => (i === condIdx ? { ...c, [campo]: valor } : c))
+    );
+  };
+
+  return (
+    <>
+      <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 4, mb: 1 }}>
+        <TableChartIcon color="primary" fontSize="small" />
+        <Typography variant="h6">Hojas adicionales condicionales</Typography>
+      </Stack>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        Cada regla define una solapa extra en el mismo spreadsheet del proyecto. Si un movimiento
+        cumple todas las condiciones, se escribe también en esa solapa (además de{" "}
+        <strong>sorby_movimientos</strong> que siempre recibe todos los movimientos).
+      </Typography>
+
+      <Stack spacing={2}>
+        {reglasSheets.map((regla, reglaIdx) => (
+          <Card key={reglaIdx} variant="outlined" sx={{ borderRadius: 2 }}>
+            <CardContent>
+              <Stack spacing={2}>
+                {/* Nombre de la solapa + delete */}
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <TextField
+                    label="Nombre de la solapa (tab name)"
+                    value={regla.nombre}
+                    onChange={(e) => actualizarRegla(reglaIdx, "nombre", e.target.value)}
+                    size="small"
+                    fullWidth
+                    helperText="Nombre exacto de la solapa en Google Sheets. Se crea automáticamente si no existe."
+                    placeholder="ej: Materiales, Ingresos USD, Mano de Obra"
+                  />
+                  <Tooltip title="Eliminar regla">
+                    <IconButton color="error" onClick={() => eliminarRegla(reglaIdx)} size="small">
+                      <DeleteIcon />
+                    </IconButton>
+                  </Tooltip>
+                </Stack>
+
+                {/* Condiciones */}
+                <Box>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Condiciones (AND — todas deben cumplirse)
+                  </Typography>
+                  <Stack spacing={1}>
+                    {regla.condiciones.map((cond, condIdx) => (
+                      <Stack key={condIdx} direction="row" spacing={1} alignItems="flex-start">
+                        <FormControl size="small" sx={{ minWidth: 180 }}>
+                          <InputLabel>Campo</InputLabel>
+                          <Select
+                            value={cond.campo}
+                            label="Campo"
+                            onChange={(e) =>
+                              actualizarCondicion(reglaIdx, condIdx, "campo", e.target.value)
+                            }
+                          >
+                            {CAMPOS_CONDICION.map((c) => (
+                              <MenuItem key={c.value} value={c.value}>
+                                <Stack>
+                                  <span>{c.label}</span>
+                                  {c.hint && (
+                                    <Typography variant="caption" color="text.secondary">
+                                      {c.hint}
+                                    </Typography>
+                                  )}
+                                </Stack>
+                              </MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                        <Typography sx={{ pt: 1.2, color: "text.secondary", fontWeight: 600 }}>
+                          =
+                        </Typography>
+                        <TextField
+                          size="small"
+                          label="Valor"
+                          value={cond.valor}
+                          onChange={(e) =>
+                            actualizarCondicion(reglaIdx, condIdx, "valor", e.target.value)
+                          }
+                          helperText={getHintCampo(cond.campo) || undefined}
+                          sx={{ flex: 1 }}
+                          placeholder={`ej: ${getHintCampo(cond.campo) || "Materiales"}`}
+                        />
+                        {regla.condiciones.length > 1 && (
+                          <Tooltip title="Eliminar condición">
+                            <IconButton
+                              size="small"
+                              color="error"
+                              onClick={() => eliminarCondicion(reglaIdx, condIdx)}
+                              sx={{ mt: 0.5 }}
+                            >
+                              <DeleteIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        )}
+                      </Stack>
+                    ))}
+                  </Stack>
+                  <Button
+                    startIcon={<AddIcon />}
+                    size="small"
+                    onClick={() => agregarCondicion(reglaIdx)}
+                    sx={{ mt: 1 }}
+                  >
+                    Agregar condición
+                  </Button>
+                </Box>
+
+                {/* Preview */}
+                <PreviewReglaSheet regla={regla} />
+              </Stack>
+            </CardContent>
+          </Card>
+        ))}
+      </Stack>
+
+      <Button
+        startIcon={<AddIcon />}
+        onClick={agregarRegla}
+        variant="outlined"
+        sx={{ mt: 2 }}
+      >
+        Agregar regla de hoja
+      </Button>
+    </>
+  );
+}
 
 // ────────────────────────────────────────────────────────────────
 //  Niveles disponibles para armar reglas
@@ -180,6 +409,7 @@ export const OrganizacionDrive = ({ empresa, updateEmpresaData }) => {
     empresa.carpeta_central_comprobantes || empresa.carpetaEmpresaRef || ""
   );
   const [reglas, setReglas] = useState(getReglasIniciales(empresa));
+  const [reglasSheets, setReglasSheets] = useState(empresa.reglas_sheets || []);
   const [proyectosEmpresa, setProyectosEmpresa] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [snackbarOpen, setSnackbarOpen] = useState(false);
@@ -243,6 +473,7 @@ export const OrganizacionDrive = ({ empresa, updateEmpresaData }) => {
         carpeta_central_comprobantes: carpetaId,
         carpetaEmpresaRef: carpetaId,
         reglas_drive: reglas,
+        reglas_sheets: reglasSheets,
       });
       setSnackbarInfo({ message: "Configuración de Drive guardada con éxito.", severity: "success" });
     } catch (error) {
@@ -472,6 +703,10 @@ export const OrganizacionDrive = ({ empresa, updateEmpresaData }) => {
           </Button>
         </>
       )}
+
+      <Divider sx={{ mt: 4 }} />
+
+      <ReglasSheets reglasSheets={reglasSheets} setReglasSheets={setReglasSheets} />
 
       <Box sx={{ mt: 3 }}>
         <Button onClick={handleSave} variant="contained" color="primary" disabled={isLoading}>
