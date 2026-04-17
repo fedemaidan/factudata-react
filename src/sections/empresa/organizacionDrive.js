@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   Alert,
   Box,
@@ -8,6 +8,7 @@ import {
   Checkbox,
   Chip,
   CircularProgress,
+  Collapse,
   Dialog,
   DialogActions,
   DialogContent,
@@ -31,8 +32,12 @@ import {
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import AddIcon from "@mui/icons-material/Add";
+import CloseIcon from "@mui/icons-material/Close";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
+import ExpandLessIcon from "@mui/icons-material/ExpandLess";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import LockIcon from "@mui/icons-material/Lock";
 import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
 import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
 import FolderIcon from "@mui/icons-material/Folder";
@@ -40,7 +45,13 @@ import GridOnIcon from "@mui/icons-material/GridOn";
 import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
 import TableChartIcon from "@mui/icons-material/TableChart";
 import { getProyectosByEmpresa } from "src/services/proyectosService";
-import { ALL_KEYS_ORDERED, LABEL_UI_POR_KEY } from "src/constants/columnasSheet";
+import {
+  KEY_ID,
+  ORDEN_DEFAULT,
+  ALL_KEYS_ORDERED,
+  LABEL_DEFAULT_POR_KEY,
+  LABEL_UI_POR_KEY,
+} from "src/constants/columnasSheet";
 import {
   getSheetConfigsByEmpresa,
   createSheetConfig,
@@ -74,6 +85,210 @@ function getHintCampo(value) {
 }
 
 // ────────────────────────────────────────────────────────────────
+//  Column ordering helpers (reused from deleted ColumnasSheetConfig)
+// ────────────────────────────────────────────────────────────────
+
+const DEFAULT_ENABLED = new Set(ORDEN_DEFAULT);
+
+function buildDefaultRows() {
+  return ALL_KEYS_ORDERED.map((key) => ({
+    key,
+    enabled: DEFAULT_ENABLED.has(key),
+    labelDraft: LABEL_DEFAULT_POR_KEY[key] || key,
+  }));
+}
+
+function buildRowsFromConfig(cfg) {
+  if (!cfg || !Array.isArray(cfg.columnas) || cfg.columnas.length === 0) return buildDefaultRows();
+  const enabledOrder = [...cfg.columnas];
+  const labels = cfg.labels && typeof cfg.labels === "object" ? cfg.labels : {};
+  const disabledKeys = ALL_KEYS_ORDERED.filter((k) => !enabledOrder.includes(k));
+  return [...enabledOrder, ...disabledKeys].map((key) => ({
+    key,
+    enabled: key === KEY_ID ? true : enabledOrder.includes(key),
+    labelDraft:
+      labels[key] != null && String(labels[key]).trim() !== ""
+        ? String(labels[key]).trim()
+        : LABEL_DEFAULT_POR_KEY[key] || key,
+  }));
+}
+
+function ActiveColumnRow({ row, displayIndex, totalActive, onToggle, onLabelChange, onMove }) {
+  const theme = useTheme();
+  const isId = row.key === KEY_ID;
+  return (
+    <Stack
+      direction="row"
+      alignItems="center"
+      spacing={1}
+      sx={{
+        px: 1.25,
+        py: 0.55,
+        borderRadius: 1.5,
+        bgcolor: isId ? alpha(theme.palette.primary.main, 0.03) : "background.paper",
+        border: `1px solid ${isId ? alpha(theme.palette.primary.main, 0.15) : theme.palette.divider}`,
+        borderLeft: `3px solid ${isId ? theme.palette.primary.main : alpha(theme.palette.primary.main, 0.25)}`,
+        transition: "border-left-color 0.15s ease, box-shadow 0.15s ease",
+        "&:hover": {
+          borderLeftColor: theme.palette.primary.main,
+          boxShadow: `0 1px 6px ${alpha(theme.palette.common.black, 0.07)}`,
+        },
+      }}
+    >
+      <Box
+        sx={{
+          width: 20,
+          height: 20,
+          borderRadius: "50%",
+          flexShrink: 0,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: "0.58rem",
+          fontWeight: 700,
+          fontFamily: "'Roboto Mono', monospace",
+          bgcolor: isId ? "primary.main" : alpha(theme.palette.primary.main, 0.1),
+          color: isId ? "primary.contrastText" : "primary.main",
+        }}
+      >
+        {displayIndex + 1}
+      </Box>
+      <Stack sx={{ gap: 0, flexShrink: 0 }}>
+        <IconButton
+          size="small"
+          disabled={displayIndex <= 1}
+          onClick={() => onMove(displayIndex, -1)}
+          sx={{
+            p: "2px",
+            borderRadius: 0.5,
+            color: "text.disabled",
+            "&:hover:not(:disabled)": { color: "primary.main", bgcolor: alpha(theme.palette.primary.main, 0.07) },
+          }}
+        >
+          <ArrowUpwardIcon sx={{ fontSize: 11 }} />
+        </IconButton>
+        <IconButton
+          size="small"
+          disabled={isId || displayIndex === totalActive - 1}
+          onClick={() => onMove(displayIndex, 1)}
+          sx={{
+            p: "2px",
+            borderRadius: 0.5,
+            color: "text.disabled",
+            "&:hover:not(:disabled)": { color: "primary.main", bgcolor: alpha(theme.palette.primary.main, 0.07) },
+          }}
+        >
+          <ArrowDownwardIcon sx={{ fontSize: 11 }} />
+        </IconButton>
+      </Stack>
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+        <TextField
+          size="small"
+          value={row.labelDraft}
+          onChange={(e) => onLabelChange(row.origIndex, e.target.value)}
+          disabled={isId}
+          placeholder={LABEL_DEFAULT_POR_KEY[row.key] || row.key}
+          variant="standard"
+          fullWidth
+          sx={{
+            "& .MuiInput-root": {
+              fontSize: "0.8rem",
+              fontWeight: 500,
+              "&::before": { borderBottomColor: "transparent" },
+              "&:hover:not(.Mui-disabled)::before": { borderBottomColor: alpha(theme.palette.primary.main, 0.35) },
+              "&.Mui-focused::after": { borderBottomColor: theme.palette.primary.main },
+            },
+            "& .MuiInput-input.Mui-disabled": { WebkitTextFillColor: theme.palette.text.primary, cursor: "default" },
+          }}
+        />
+        <Typography sx={{ fontSize: "0.57rem", fontFamily: "'Roboto Mono', monospace", color: "text.disabled", lineHeight: 1.3, mt: "-1px" }}>
+          {row.key}
+        </Typography>
+      </Box>
+      {isId ? (
+        <Tooltip title="Columna fija — no se puede eliminar" arrow>
+          <LockIcon sx={{ fontSize: 13, color: "primary.main", flexShrink: 0, opacity: 0.6 }} />
+        </Tooltip>
+      ) : (
+        <Tooltip title="Desactivar columna" arrow>
+          <IconButton
+            size="small"
+            onClick={() => onToggle(row.origIndex)}
+            sx={{
+              flexShrink: 0,
+              p: "3px",
+              borderRadius: 0.75,
+              color: "text.disabled",
+              "&:hover": { color: "error.main", bgcolor: alpha(theme.palette.error.main, 0.08) },
+            }}
+          >
+            <CloseIcon sx={{ fontSize: 13 }} />
+          </IconButton>
+        </Tooltip>
+      )}
+    </Stack>
+  );
+}
+
+function AvailableColumnsPanel({ rows, onToggle }) {
+  const theme = useTheme();
+  const [open, setOpen] = useState(false);
+  const inactive = useMemo(
+    () => rows.map((r, i) => ({ ...r, origIndex: i })).filter((r) => !r.enabled),
+    [rows],
+  );
+  if (inactive.length === 0) return null;
+  return (
+    <Box sx={{ borderRadius: 2, border: `1px dashed ${alpha(theme.palette.neutral?.[900] || "#111927", 0.18)}`, overflow: "hidden" }}>
+      <Stack
+        direction="row"
+        alignItems="center"
+        justifyContent="space-between"
+        onClick={() => setOpen((v) => !v)}
+        sx={{ px: 2, py: 1, cursor: "pointer", userSelect: "none", "&:hover": { bgcolor: alpha(theme.palette.neutral?.[900] || "#111927", 0.025) } }}
+      >
+        <Stack direction="row" spacing={1.25} alignItems="center">
+          <AddIcon sx={{ fontSize: 14, color: "text.disabled" }} />
+          <Typography variant="overline" sx={{ fontSize: "0.63rem", color: "text.secondary", lineHeight: 1 }}>
+            Agregar columnas disponibles
+          </Typography>
+          <Box sx={{ px: 0.75, py: 0.1, borderRadius: 1, bgcolor: alpha(theme.palette.neutral?.[900] || "#111927", 0.06), fontSize: "0.63rem", fontWeight: 600, fontFamily: "'Roboto Mono', monospace", color: "text.secondary", lineHeight: 1.6 }}>
+            {inactive.length}
+          </Box>
+        </Stack>
+        {open ? <ExpandLessIcon sx={{ fontSize: 15, color: "text.disabled" }} /> : <ExpandMoreIcon sx={{ fontSize: 15, color: "text.disabled" }} />}
+      </Stack>
+      <Collapse in={open}>
+        <Box sx={{ px: 1.5, pt: 0.75, pb: 1.5, display: "flex", flexWrap: "wrap", gap: 0.75, borderTop: `1px solid ${theme.palette.divider}` }}>
+          {inactive.map((row) => (
+            <Tooltip key={row.key} title={`${row.key} · click para agregar`} arrow placement="top">
+              <Chip
+                label={LABEL_UI_POR_KEY[row.key] || row.key}
+                size="small"
+                icon={<AddIcon />}
+                onClick={() => onToggle(row.origIndex)}
+                sx={{
+                  height: 24,
+                  fontSize: "0.7rem",
+                  bgcolor: "transparent",
+                  border: `1px dashed ${theme.palette.divider}`,
+                  color: "text.secondary",
+                  cursor: "pointer",
+                  transition: "all 0.12s ease",
+                  "& .MuiChip-icon": { fontSize: "11px !important", color: "text.disabled" },
+                  "& .MuiChip-label": { px: 0.75 },
+                  "&:hover": { bgcolor: alpha(theme.palette.primary.main, 0.06), borderColor: alpha(theme.palette.primary.main, 0.4), borderStyle: "solid", color: "primary.dark", "& .MuiChip-icon": { color: "primary.main" } },
+                }}
+              />
+            </Tooltip>
+          ))}
+        </Box>
+      </Collapse>
+    </Box>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────
 //  SheetConfigsSection — planillas adicionales por empresa
 // ────────────────────────────────────────────────────────────────
 
@@ -96,6 +311,7 @@ function SheetConfigsSection({ empresa }) {
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState({ ...SHEET_EMPTY_FORM });
   const [usarColumnasCustom, setUsarColumnasCustom] = useState(false);
+  const [columnRows, setColumnRows] = useState(() => buildDefaultRows());
   const [saving, setSaving] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, msg: "", severity: "success" });
   const [proyectosEmpresa, setProyectosEmpresa] = useState([]);
@@ -128,9 +344,42 @@ function SheetConfigsSection({ empresa }) {
     return Array.from(map.values());
   }, [configs]);
 
+  const handleToggleEnabled = useCallback((origIndex) => {
+    setColumnRows((prev) => {
+      const next = [...prev];
+      const row = { ...next[origIndex] };
+      if (row.key === KEY_ID) return prev;
+      row.enabled = !row.enabled;
+      next[origIndex] = row;
+      return next;
+    });
+  }, []);
+
+  const handleLabelChange = useCallback((origIndex, value) => {
+    setColumnRows((prev) => {
+      const next = [...prev];
+      next[origIndex] = { ...next[origIndex], labelDraft: value };
+      return next;
+    });
+  }, []);
+
+  const handleMoveActive = useCallback((displayIndex, direction) => {
+    setColumnRows((prev) => {
+      const activeWithIdx = prev.map((r, i) => ({ ...r, origIndex: i })).filter((r) => r.enabled);
+      const targetIdx = displayIndex + direction;
+      if (displayIndex <= 0 || targetIdx < 1 || targetIdx >= activeWithIdx.length) return prev;
+      const next = [...prev];
+      const origA = activeWithIdx[displayIndex].origIndex;
+      const origB = activeWithIdx[targetIdx].origIndex;
+      [next[origA], next[origB]] = [next[origB], next[origA]];
+      return next;
+    });
+  }, []);
+
   const openCreate = (prefillSheetId = "", prefillSheetNombre = "") => {
     setForm({ ...SHEET_EMPTY_FORM, sheet_id: prefillSheetId, sheet_nombre: prefillSheetNombre });
     setUsarColumnasCustom(false);
+    setColumnRows(buildDefaultRows());
     setEditingId(null);
     setDialogOpen(true);
   };
@@ -146,7 +395,9 @@ function SheetConfigsSection({ empresa }) {
       columnas: config.columnas || null,
       activo: config.activo !== false,
     });
-    setUsarColumnasCustom(!!(config.columnas?.columnas?.length));
+    const hasCustom = !!(config.columnas?.columnas?.length);
+    setUsarColumnasCustom(hasCustom);
+    setColumnRows(buildRowsFromConfig(config.columnas));
     setEditingId(config._id);
     setDialogOpen(true);
   };
@@ -154,11 +405,23 @@ function SheetConfigsSection({ empresa }) {
   const handleSave = async () => {
     if (!form.sheet_id.trim() || !form.tab_name.trim()) return;
     setSaving(true);
+    let columnasPayload = null;
+    if (usarColumnasCustom) {
+      const enabledRows = columnRows.filter((r) => r.enabled);
+      const columnas = enabledRows.map((r) => r.key);
+      const labels = {};
+      enabledRows.forEach((r) => {
+        const def = LABEL_DEFAULT_POR_KEY[r.key] || r.key;
+        const draft = (r.labelDraft || "").trim();
+        if (draft && draft !== def) labels[r.key] = draft;
+      });
+      columnasPayload = { columnas, labels };
+    }
     const payload = {
       ...form,
       empresa_id: empresa.id,
       proyecto_id: form.proyecto_id || null,
-      columnas: usarColumnasCustom && form.columnas?.columnas?.length ? form.columnas : null,
+      columnas: columnasPayload,
     };
     const result = editingId
       ? await updateSheetConfig(editingId, payload)
@@ -202,11 +465,6 @@ function SheetConfigsSection({ empresa }) {
       "condiciones",
       form.condiciones.map((c, i) => (i === idx ? { ...c, [key]: val } : c)),
     );
-  const toggleColumna = (key) => {
-    const current = form.columnas?.columnas || [];
-    const next = current.includes(key) ? current.filter((k) => k !== key) : [...current, key];
-    setField("columnas", { columnas: next, labels: form.columnas?.labels || {} });
-  };
 
   const isValid = form.sheet_id.trim() && form.tab_name.trim();
 
@@ -754,13 +1012,7 @@ function SheetConfigsSection({ empresa }) {
             <Box>
               <Typography
                 variant="overline"
-                sx={{
-                  color: "text.disabled",
-                  fontSize: "0.65rem",
-                  letterSpacing: "0.8px",
-                  display: "block",
-                  mb: 0.75,
-                }}
+                sx={{ color: "text.disabled", fontSize: "0.65rem", letterSpacing: "0.8px", display: "block", mb: 0.75 }}
               >
                 Columnas
               </Typography>
@@ -769,7 +1021,12 @@ function SheetConfigsSection({ empresa }) {
                   <Switch
                     size="small"
                     checked={usarColumnasCustom}
-                    onChange={(e) => setUsarColumnasCustom(e.target.checked)}
+                    onChange={(e) => {
+                      setUsarColumnasCustom(e.target.checked);
+                      if (e.target.checked && columnRows.every((r) => DEFAULT_ENABLED.has(r.key) === r.enabled)) {
+                        setColumnRows(buildDefaultRows());
+                      }
+                    }}
                     color="primary"
                   />
                 }
@@ -779,51 +1036,57 @@ function SheetConfigsSection({ empresa }) {
                   </Typography>
                 }
               />
-              {usarColumnasCustom && (
-                <Box sx={{ mt: 1.5 }}>
-                  <Typography
-                    variant="caption"
-                    color="text.secondary"
-                    sx={{ mb: 1, display: "block" }}
-                  >
-                    Seleccioná las columnas a incluir ({form.columnas?.columnas?.length || 0}{" "}
-                    seleccionadas)
-                  </Typography>
-                  <Box
-                    sx={{
-                      display: "flex",
-                      flexWrap: "wrap",
-                      gap: 0.5,
-                      maxHeight: 160,
-                      overflowY: "auto",
-                      p: 1.5,
-                      borderRadius: 1.5,
-                      border: `1px solid ${theme.palette.divider}`,
-                      bgcolor: alpha(theme.palette.neutral?.[900] || "#111927", 0.015),
-                    }}
-                  >
-                    {ALL_KEYS_ORDERED.map((key) => {
-                      const selected = form.columnas?.columnas?.includes(key);
-                      return (
-                        <Chip
-                          key={key}
-                          label={LABEL_UI_POR_KEY[key] || key}
-                          size="small"
-                          onClick={() => toggleColumna(key)}
-                          color={selected ? "primary" : "default"}
-                          variant={selected ? "filled" : "outlined"}
-                          sx={{
-                            height: 22,
-                            fontSize: "0.68rem",
-                            cursor: "pointer",
-                            transition: "all 0.15s",
-                          }}
-                        />
-                      );
-                    })}
+              {usarColumnasCustom && (() => {
+                const activeRows = columnRows.map((r, i) => ({ ...r, origIndex: i })).filter((r) => r.enabled);
+                return (
+                  <Box sx={{ mt: 1.5 }}>
+                    <Box
+                      sx={{
+                        borderRadius: 2,
+                        border: `1px solid ${theme.palette.divider}`,
+                        overflow: "hidden",
+                        mb: 1,
+                      }}
+                    >
+                      <Stack
+                        direction="row"
+                        alignItems="center"
+                        spacing={1}
+                        sx={{
+                          px: 2,
+                          py: 0.75,
+                          bgcolor: alpha(theme.palette.primary.main, 0.03),
+                          borderBottom: `1px solid ${theme.palette.divider}`,
+                        }}
+                      >
+                        <Typography variant="overline" sx={{ fontSize: "0.63rem", color: "primary.dark", lineHeight: 1 }}>
+                          Columnas activas
+                        </Typography>
+                        <Box sx={{ px: 0.75, py: 0.1, borderRadius: 1, bgcolor: alpha(theme.palette.primary.main, 0.1), fontSize: "0.63rem", fontWeight: 700, fontFamily: "'Roboto Mono', monospace", color: "primary.dark", lineHeight: 1.6 }}>
+                          {activeRows.length}
+                        </Box>
+                        <Typography variant="caption" color="text.disabled" sx={{ fontSize: "0.6rem", ml: "auto !important" }}>
+                          Hacé clic en el nombre para editar el encabezado
+                        </Typography>
+                      </Stack>
+                      <Stack spacing={0.5} sx={{ p: 1 }}>
+                        {activeRows.map((row, displayIndex) => (
+                          <ActiveColumnRow
+                            key={row.key}
+                            row={row}
+                            displayIndex={displayIndex}
+                            totalActive={activeRows.length}
+                            onToggle={handleToggleEnabled}
+                            onLabelChange={handleLabelChange}
+                            onMove={handleMoveActive}
+                          />
+                        ))}
+                      </Stack>
+                    </Box>
+                    <AvailableColumnsPanel rows={columnRows} onToggle={handleToggleEnabled} />
                   </Box>
-                </Box>
-              )}
+                );
+              })()}
             </Box>
 
             {/* Estado */}
