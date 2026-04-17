@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
+  Alert,
   Box,
   Button,
   Card,
@@ -7,16 +8,22 @@ import {
   Checkbox,
   Chip,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Divider,
   FormControl,
+  FormControlLabel,
   IconButton,
   InputLabel,
+  LinearProgress,
   ListItemText,
   MenuItem,
   Select,
   Snackbar,
-  Alert,
   Stack,
+  Switch,
   TextField,
   Tooltip,
   Typography,
@@ -25,12 +32,21 @@ import {
 import { alpha } from "@mui/material/styles";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
+import EditIcon from "@mui/icons-material/Edit";
 import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
 import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
 import FolderIcon from "@mui/icons-material/Folder";
+import GridOnIcon from "@mui/icons-material/GridOn";
 import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
 import TableChartIcon from "@mui/icons-material/TableChart";
 import { getProyectosByEmpresa } from "src/services/proyectosService";
+import { ALL_KEYS_ORDERED, LABEL_UI_POR_KEY } from "src/constants/columnasSheet";
+import {
+  getSheetConfigsByEmpresa,
+  createSheetConfig,
+  updateSheetConfig,
+  deleteSheetConfig,
+} from "src/services/sheetConfigService";
 import ColumnasSheetConfig from "src/sections/empresa/columnasSheetConfig";
 
 // ────────────────────────────────────────────────────────────────
@@ -168,6 +184,825 @@ function PreviewReglaSheet({ regla }) {
         {regla.nombre}
       </Box>
     </Box>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────
+//  SheetConfigsSection — planillas adicionales por empresa
+// ────────────────────────────────────────────────────────────────
+
+const SHEET_EMPTY_FORM = {
+  nombre: "",
+  sheet_id: "",
+  sheet_nombre: "",
+  tab_name: "",
+  proyecto_id: null,
+  condiciones: [],
+  columnas: null,
+  activo: true,
+};
+
+function SheetConfigsSection({ empresa }) {
+  const theme = useTheme();
+  const [configs, setConfigs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [form, setForm] = useState({ ...SHEET_EMPTY_FORM });
+  const [usarColumnasCustom, setUsarColumnasCustom] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [snackbar, setSnackbar] = useState({ open: false, msg: "", severity: "success" });
+  const [proyectosEmpresa, setProyectosEmpresa] = useState([]);
+
+  useEffect(() => {
+    if (!empresa?.id) return;
+    loadConfigs();
+    getProyectosByEmpresa(empresa).then(setProyectosEmpresa).catch(() => {});
+  }, [empresa?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const loadConfigs = async () => {
+    setLoading(true);
+    const data = await getSheetConfigsByEmpresa(empresa.id);
+    setConfigs(data);
+    setLoading(false);
+  };
+
+  const grouped = useMemo(() => {
+    const map = new Map();
+    for (const c of configs) {
+      if (!map.has(c.sheet_id)) {
+        map.set(c.sheet_id, {
+          sheet_id: c.sheet_id,
+          sheet_nombre: c.sheet_nombre || c.sheet_id,
+          tabs: [],
+        });
+      }
+      map.get(c.sheet_id).tabs.push(c);
+    }
+    return Array.from(map.values());
+  }, [configs]);
+
+  const openCreate = (prefillSheetId = "", prefillSheetNombre = "") => {
+    setForm({ ...SHEET_EMPTY_FORM, sheet_id: prefillSheetId, sheet_nombre: prefillSheetNombre });
+    setUsarColumnasCustom(false);
+    setEditingId(null);
+    setDialogOpen(true);
+  };
+
+  const openEdit = (config) => {
+    setForm({
+      nombre: config.nombre || "",
+      sheet_id: config.sheet_id || "",
+      sheet_nombre: config.sheet_nombre || "",
+      tab_name: config.tab_name || "",
+      proyecto_id: config.proyecto_id || null,
+      condiciones: config.condiciones || [],
+      columnas: config.columnas || null,
+      activo: config.activo !== false,
+    });
+    setUsarColumnasCustom(!!(config.columnas?.columnas?.length));
+    setEditingId(config._id);
+    setDialogOpen(true);
+  };
+
+  const handleSave = async () => {
+    if (!form.sheet_id.trim() || !form.tab_name.trim()) return;
+    setSaving(true);
+    const payload = {
+      ...form,
+      empresa_id: empresa.id,
+      proyecto_id: form.proyecto_id || null,
+      columnas: usarColumnasCustom && form.columnas?.columnas?.length ? form.columnas : null,
+    };
+    const result = editingId
+      ? await updateSheetConfig(editingId, payload)
+      : await createSheetConfig(payload);
+    setSaving(false);
+    if (result.error) {
+      setSnackbar({ open: true, msg: "Error al guardar la configuración.", severity: "error" });
+    } else {
+      setSnackbar({
+        open: true,
+        msg: editingId ? "Configuración actualizada." : "Configuración creada.",
+        severity: "success",
+      });
+      setDialogOpen(false);
+      loadConfigs();
+    }
+  };
+
+  const handleDelete = async (id) => {
+    const { error } = await deleteSheetConfig(id);
+    if (error) {
+      setSnackbar({ open: true, msg: "Error al eliminar.", severity: "error" });
+    } else {
+      setSnackbar({ open: true, msg: "Configuración eliminada.", severity: "success" });
+      loadConfigs();
+    }
+  };
+
+  const handleToggleActivo = async (config) => {
+    await updateSheetConfig(config._id, { activo: !config.activo });
+    loadConfigs();
+  };
+
+  const setField = (key, val) => setForm((f) => ({ ...f, [key]: val }));
+  const agregarCondicion = () =>
+    setField("condiciones", [...(form.condiciones || []), { campo: "categoria", valor: "" }]);
+  const eliminarCondicion = (idx) =>
+    setField("condiciones", form.condiciones.filter((_, i) => i !== idx));
+  const actualizarCondicion = (idx, key, val) =>
+    setField(
+      "condiciones",
+      form.condiciones.map((c, i) => (i === idx ? { ...c, [key]: val } : c)),
+    );
+  const toggleColumna = (key) => {
+    const current = form.columnas?.columnas || [];
+    const next = current.includes(key) ? current.filter((k) => k !== key) : [...current, key];
+    setField("columnas", { columnas: next, labels: form.columnas?.labels || {} });
+  };
+
+  const isValid = form.sheet_id.trim() && form.tab_name.trim();
+
+  return (
+    <>
+      {/* Header */}
+      <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 0.5 }}>
+        <Box
+          sx={{
+            width: 32,
+            height: 32,
+            borderRadius: 1.5,
+            bgcolor: alpha(theme.palette.success.main, 0.1),
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <GridOnIcon sx={{ fontSize: 17, color: "success.main" }} />
+        </Box>
+        <Typography variant="h6">Planillas adicionales</Typography>
+      </Stack>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5, pl: "44px" }}>
+        Configurá planillas y solapas extras donde escribir movimientos. Cada configuración define{" "}
+        <em>a qué hoja</em>, <em>qué filtros aplicar</em> y <em>qué columnas incluir</em>.
+      </Typography>
+
+      {loading ? (
+        <LinearProgress sx={{ borderRadius: 1, mb: 2 }} />
+      ) : grouped.length === 0 ? (
+        <Box
+          sx={{
+            border: `1.5px dashed ${alpha(theme.palette.success.main, 0.3)}`,
+            borderRadius: 2,
+            p: 5,
+            textAlign: "center",
+            position: "relative",
+            overflow: "hidden",
+            "&::before": {
+              content: '""',
+              position: "absolute",
+              inset: 0,
+              backgroundImage: `
+                linear-gradient(${alpha(theme.palette.success.main, 0.035)} 1px, transparent 1px),
+                linear-gradient(90deg, ${alpha(theme.palette.success.main, 0.035)} 1px, transparent 1px)
+              `,
+              backgroundSize: "32px 24px",
+              pointerEvents: "none",
+            },
+          }}
+        >
+          <GridOnIcon
+            sx={{ fontSize: 40, color: alpha(theme.palette.success.main, 0.35), mb: 1.5 }}
+          />
+          <Typography variant="body2" color="text.secondary" gutterBottom>
+            Sin configuraciones de planillas.
+          </Typography>
+          <Typography variant="caption" color="text.disabled">
+            Agregá tu primera planilla para enrutar movimientos a hojas adicionales.
+          </Typography>
+        </Box>
+      ) : (
+        <Stack spacing={2}>
+          {grouped.map((group) => (
+            <Box
+              key={group.sheet_id}
+              sx={{
+                borderRadius: 2,
+                border: `1px solid ${theme.palette.divider}`,
+                borderLeft: `3px solid ${theme.palette.success.main}`,
+                bgcolor: alpha(theme.palette.success.main, 0.012),
+                overflow: "hidden",
+              }}
+            >
+              {/* Group header */}
+              <Stack
+                direction="row"
+                alignItems="center"
+                justifyContent="space-between"
+                sx={{
+                  px: 2,
+                  py: 1.25,
+                  borderBottom: `1px solid ${theme.palette.divider}`,
+                  bgcolor: alpha(theme.palette.success.main, 0.04),
+                }}
+              >
+                <Stack direction="row" spacing={1.5} alignItems="center" sx={{ minWidth: 0 }}>
+                  <GridOnIcon sx={{ fontSize: 16, color: "success.main", flexShrink: 0 }} />
+                  <Typography variant="subtitle2" fontWeight={600} noWrap>
+                    {group.sheet_nombre || group.sheet_id}
+                  </Typography>
+                  <Chip
+                    label={group.sheet_id}
+                    size="small"
+                    sx={{
+                      height: 18,
+                      fontSize: "0.65rem",
+                      fontFamily: '"Roboto Mono", monospace',
+                      maxWidth: 200,
+                      bgcolor: alpha(theme.palette.success.main, 0.08),
+                      color: "success.dark",
+                      "& .MuiChip-label": { px: 1 },
+                    }}
+                  />
+                </Stack>
+                <Tooltip title="Agregar solapa en esta planilla">
+                  <IconButton
+                    size="small"
+                    onClick={() => openCreate(group.sheet_id, group.sheet_nombre)}
+                    sx={{
+                      flexShrink: 0,
+                      color: "success.main",
+                      "&:hover": { bgcolor: alpha(theme.palette.success.main, 0.1) },
+                    }}
+                  >
+                    <AddIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              </Stack>
+
+              {/* Tab rows */}
+              <Stack divider={<Divider />}>
+                {group.tabs.map((config) => (
+                  <Stack
+                    key={config._id}
+                    direction="row"
+                    alignItems="center"
+                    spacing={1.5}
+                    sx={{
+                      px: 2,
+                      py: 1.25,
+                      opacity: config.activo !== false ? 1 : 0.5,
+                      transition: "opacity 0.2s",
+                    }}
+                  >
+                    <TableChartIcon sx={{ fontSize: 14, color: "text.disabled", flexShrink: 0 }} />
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        fontFamily: '"Roboto Mono", monospace',
+                        fontWeight: 600,
+                        fontSize: "0.8rem",
+                        minWidth: 100,
+                        flexShrink: 0,
+                      }}
+                    >
+                      {config.tab_name}
+                    </Typography>
+
+                    <Box sx={{ flex: 1, display: "flex", flexWrap: "wrap", gap: 0.5 }}>
+                      {!config.condiciones?.length ? (
+                        <Chip
+                          label="todos los movimientos"
+                          size="small"
+                          sx={{
+                            height: 18,
+                            fontSize: "0.68rem",
+                            bgcolor: alpha(theme.palette.info.main, 0.08),
+                            color: "info.dark",
+                            "& .MuiChip-label": { px: 1 },
+                          }}
+                        />
+                      ) : (
+                        config.condiciones.map((cond, i) => (
+                          <Chip
+                            key={i}
+                            label={`${getLabelCampo(cond.campo)} = ${cond.valor}`}
+                            size="small"
+                            sx={{
+                              height: 18,
+                              fontSize: "0.68rem",
+                              fontFamily: '"Roboto Mono", monospace',
+                              bgcolor: alpha(theme.palette.warning.main, 0.08),
+                              color: "warning.dark",
+                              "& .MuiChip-label": { px: 1 },
+                            }}
+                          />
+                        ))
+                      )}
+                    </Box>
+
+                    <Chip
+                      label={
+                        config.columnas?.columnas?.length
+                          ? `${config.columnas.columnas.length} cols`
+                          : "default"
+                      }
+                      size="small"
+                      sx={{
+                        height: 18,
+                        fontSize: "0.65rem",
+                        flexShrink: 0,
+                        bgcolor: alpha(theme.palette.neutral?.[900] || "#111927", 0.05),
+                        "& .MuiChip-label": { px: 1 },
+                      }}
+                    />
+
+                    {config.proyecto_id && (
+                      <Chip
+                        label={
+                          proyectosEmpresa.find((p) => p.id === config.proyecto_id)?.nombre ||
+                          config.proyecto_id
+                        }
+                        size="small"
+                        sx={{
+                          height: 18,
+                          fontSize: "0.65rem",
+                          flexShrink: 0,
+                          bgcolor: alpha(theme.palette.primary.main, 0.07),
+                          color: "primary.dark",
+                          "& .MuiChip-label": { px: 1 },
+                        }}
+                      />
+                    )}
+
+                    <Stack direction="row" spacing={0.25} alignItems="center" sx={{ flexShrink: 0 }}>
+                      <Tooltip title={config.activo !== false ? "Desactivar" : "Activar"}>
+                        <Switch
+                          size="small"
+                          checked={config.activo !== false}
+                          onChange={() => handleToggleActivo(config)}
+                          color="success"
+                        />
+                      </Tooltip>
+                      <Tooltip title="Editar">
+                        <IconButton
+                          size="small"
+                          onClick={() => openEdit(config)}
+                          sx={{
+                            color: "text.disabled",
+                            "&:hover": {
+                              color: "primary.main",
+                              bgcolor: alpha(theme.palette.primary.main, 0.08),
+                            },
+                          }}
+                        >
+                          <EditIcon sx={{ fontSize: 16 }} />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Eliminar">
+                        <IconButton
+                          size="small"
+                          onClick={() => handleDelete(config._id)}
+                          sx={{
+                            color: "text.disabled",
+                            "&:hover": {
+                              color: "error.main",
+                              bgcolor: alpha(theme.palette.error.main, 0.08),
+                            },
+                          }}
+                        >
+                          <DeleteIcon sx={{ fontSize: 16 }} />
+                        </IconButton>
+                      </Tooltip>
+                    </Stack>
+                  </Stack>
+                ))}
+              </Stack>
+            </Box>
+          ))}
+        </Stack>
+      )}
+
+      <Button
+        startIcon={<AddIcon />}
+        onClick={() => openCreate()}
+        variant="outlined"
+        size="small"
+        sx={{
+          mt: 2,
+          borderStyle: "dashed",
+          color: "success.main",
+          borderColor: alpha(theme.palette.success.main, 0.4),
+          "&:hover": {
+            borderStyle: "solid",
+            bgcolor: alpha(theme.palette.success.main, 0.04),
+          },
+        }}
+      >
+        Nueva configuración de planilla
+      </Button>
+
+      {/* Dialog */}
+      <Dialog
+        open={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: { borderRadius: 2, border: `1px solid ${theme.palette.divider}` },
+        }}
+      >
+        <DialogTitle
+          sx={{
+            pb: 1.5,
+            borderBottom: `1px solid ${theme.palette.divider}`,
+            display: "flex",
+            alignItems: "center",
+            gap: 1,
+          }}
+        >
+          <Box
+            sx={{
+              width: 28,
+              height: 28,
+              borderRadius: 1,
+              bgcolor: alpha(theme.palette.success.main, 0.1),
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <GridOnIcon sx={{ fontSize: 15, color: "success.main" }} />
+          </Box>
+          <Typography variant="subtitle1" fontWeight={600}>
+            {editingId ? "Editar configuración" : "Nueva configuración de planilla"}
+          </Typography>
+        </DialogTitle>
+
+        <DialogContent sx={{ pt: 3, pb: 1 }}>
+          <Stack spacing={3}>
+            {/* Identificación */}
+            <Box>
+              <Typography
+                variant="overline"
+                sx={{ color: "text.disabled", fontSize: "0.65rem", letterSpacing: "0.8px" }}
+              >
+                Identificación
+              </Typography>
+              <TextField
+                value={form.nombre}
+                onChange={(e) => setField("nombre", e.target.value)}
+                label="Etiqueta (opcional)"
+                size="small"
+                fullWidth
+                placeholder="ej: Materiales Obra Norte"
+                sx={{ mt: 0.75 }}
+              />
+            </Box>
+
+            {/* Destino */}
+            <Box>
+              <Typography
+                variant="overline"
+                sx={{ color: "text.disabled", fontSize: "0.65rem", letterSpacing: "0.8px" }}
+              >
+                Planilla de destino
+              </Typography>
+              <Stack spacing={1.5} sx={{ mt: 0.75 }}>
+                <Stack direction="row" spacing={1.5}>
+                  <TextField
+                    value={form.sheet_id}
+                    onChange={(e) => setField("sheet_id", e.target.value)}
+                    label="ID de planilla *"
+                    size="small"
+                    required
+                    fullWidth
+                    placeholder="1BxiMVs0..."
+                    helperText="ID del Google Spreadsheet"
+                    sx={{ "& input": { fontFamily: '"Roboto Mono", monospace', fontSize: "0.8rem" } }}
+                  />
+                  <TextField
+                    value={form.sheet_nombre}
+                    onChange={(e) => setField("sheet_nombre", e.target.value)}
+                    label="Nombre de la planilla"
+                    size="small"
+                    fullWidth
+                    placeholder="ej: Hoja Obra Norte"
+                    helperText="Para identificarla en la UI"
+                  />
+                </Stack>
+                <TextField
+                  value={form.tab_name}
+                  onChange={(e) => setField("tab_name", e.target.value)}
+                  label="Nombre de la solapa *"
+                  size="small"
+                  required
+                  fullWidth
+                  placeholder="ej: Materiales"
+                  helperText="Nombre exacto del tab. Se crea automáticamente si no existe."
+                  sx={{ "& input": { fontFamily: '"Roboto Mono", monospace', fontSize: "0.8rem" } }}
+                />
+              </Stack>
+            </Box>
+
+            {/* Alcance */}
+            <Box>
+              <Typography
+                variant="overline"
+                sx={{ color: "text.disabled", fontSize: "0.65rem", letterSpacing: "0.8px" }}
+              >
+                Alcance
+              </Typography>
+              <FormControl fullWidth size="small" sx={{ mt: 0.75 }}>
+                <InputLabel sx={{ fontSize: "0.85rem" }}>Proyecto</InputLabel>
+                <Select
+                  value={form.proyecto_id || ""}
+                  label="Proyecto"
+                  onChange={(e) => setField("proyecto_id", e.target.value || null)}
+                  sx={{ fontSize: "0.85rem" }}
+                >
+                  <MenuItem value="">Todos los proyectos</MenuItem>
+                  {proyectosEmpresa.map((p) => (
+                    <MenuItem key={p.id} value={p.id}>
+                      {p.nombre}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Box>
+
+            {/* Filtros */}
+            <Box>
+              <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 0.75 }}>
+                <Typography
+                  variant="overline"
+                  sx={{ color: "text.disabled", fontSize: "0.65rem", letterSpacing: "0.8px" }}
+                >
+                  Filtros (AND)
+                </Typography>
+                {!form.condiciones?.length && (
+                  <Chip
+                    label="sin filtro = todos"
+                    size="small"
+                    sx={{
+                      height: 16,
+                      fontSize: "0.6rem",
+                      bgcolor: alpha(theme.palette.info.main, 0.08),
+                      color: "info.dark",
+                      "& .MuiChip-label": { px: 0.75 },
+                    }}
+                  />
+                )}
+              </Stack>
+              <Stack spacing={0.75}>
+                {form.condiciones?.map((cond, condIdx) => (
+                  <Stack key={condIdx} direction="row" spacing={1} alignItems="flex-start">
+                    <Box sx={{ minWidth: 32, pt: "10px", textAlign: "right" }}>
+                      {condIdx > 0 && (
+                        <Typography
+                          variant="caption"
+                          sx={{
+                            color: "warning.dark",
+                            fontWeight: 700,
+                            fontSize: "0.65rem",
+                            letterSpacing: "0.4px",
+                          }}
+                        >
+                          AND
+                        </Typography>
+                      )}
+                    </Box>
+                    <FormControl size="small" sx={{ minWidth: 160, flexShrink: 0 }}>
+                      <InputLabel sx={{ fontSize: "0.8rem" }}>Campo</InputLabel>
+                      <Select
+                        value={cond.campo}
+                        label="Campo"
+                        onChange={(e) => actualizarCondicion(condIdx, "campo", e.target.value)}
+                        sx={{ fontSize: "0.8rem", "& .MuiSelect-select": { py: "7px" } }}
+                      >
+                        {CAMPOS_CONDICION.map((c) => (
+                          <MenuItem key={c.value} value={c.value}>
+                            <Stack spacing={0}>
+                              <span style={{ fontSize: "0.8rem" }}>{c.label}</span>
+                              {c.hint && (
+                                <Typography
+                                  variant="caption"
+                                  color="text.disabled"
+                                  sx={{ fontSize: "0.68rem" }}
+                                >
+                                  {c.hint}
+                                </Typography>
+                              )}
+                            </Stack>
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                    <Box
+                      sx={{
+                        flexShrink: 0,
+                        mt: "7px",
+                        px: 0.75,
+                        py: 0.25,
+                        bgcolor: alpha(theme.palette.neutral?.[900] || "#111927", 0.06),
+                        borderRadius: 0.75,
+                        fontSize: "0.75rem",
+                        fontWeight: 600,
+                        fontFamily: "monospace",
+                        color: "text.secondary",
+                        lineHeight: 1.5,
+                      }}
+                    >
+                      =
+                    </Box>
+                    <TextField
+                      size="small"
+                      label="Valor"
+                      value={cond.valor}
+                      onChange={(e) => actualizarCondicion(condIdx, "valor", e.target.value)}
+                      helperText={getHintCampo(cond.campo) || undefined}
+                      placeholder={getHintCampo(cond.campo) || "Materiales"}
+                      sx={{
+                        flex: 1,
+                        "& input": { fontFamily: "monospace", fontSize: "0.8rem" },
+                        "& .MuiInputLabel-root": { fontSize: "0.8rem" },
+                      }}
+                    />
+                    <Tooltip title="Eliminar condición">
+                      <IconButton
+                        size="small"
+                        onClick={() => eliminarCondicion(condIdx)}
+                        sx={{
+                          mt: "3px",
+                          flexShrink: 0,
+                          color: "text.disabled",
+                          "&:hover": {
+                            color: "error.main",
+                            bgcolor: alpha(theme.palette.error.main, 0.08),
+                          },
+                        }}
+                      >
+                        <DeleteIcon sx={{ fontSize: 16 }} />
+                      </IconButton>
+                    </Tooltip>
+                  </Stack>
+                ))}
+              </Stack>
+              <Button
+                startIcon={<AddIcon sx={{ fontSize: "14px !important" }} />}
+                size="small"
+                onClick={agregarCondicion}
+                sx={{
+                  mt: 0.75,
+                  fontSize: "0.75rem",
+                  color: "text.secondary",
+                  "&:hover": { color: "primary.main" },
+                }}
+              >
+                Agregar condición
+              </Button>
+            </Box>
+
+            {/* Columnas */}
+            <Box>
+              <Typography
+                variant="overline"
+                sx={{
+                  color: "text.disabled",
+                  fontSize: "0.65rem",
+                  letterSpacing: "0.8px",
+                  display: "block",
+                  mb: 0.75,
+                }}
+              >
+                Columnas
+              </Typography>
+              <FormControlLabel
+                control={
+                  <Switch
+                    size="small"
+                    checked={usarColumnasCustom}
+                    onChange={(e) => setUsarColumnasCustom(e.target.checked)}
+                    color="primary"
+                  />
+                }
+                label={
+                  <Typography variant="body2" sx={{ fontSize: "0.85rem" }}>
+                    {usarColumnasCustom ? "Columnas personalizadas" : "Usar default de la empresa"}
+                  </Typography>
+                }
+              />
+              {usarColumnasCustom && (
+                <Box sx={{ mt: 1.5 }}>
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ mb: 1, display: "block" }}
+                  >
+                    Seleccioná las columnas a incluir ({form.columnas?.columnas?.length || 0}{" "}
+                    seleccionadas)
+                  </Typography>
+                  <Box
+                    sx={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: 0.5,
+                      maxHeight: 160,
+                      overflowY: "auto",
+                      p: 1.5,
+                      borderRadius: 1.5,
+                      border: `1px solid ${theme.palette.divider}`,
+                      bgcolor: alpha(theme.palette.neutral?.[900] || "#111927", 0.015),
+                    }}
+                  >
+                    {ALL_KEYS_ORDERED.map((key) => {
+                      const selected = form.columnas?.columnas?.includes(key);
+                      return (
+                        <Chip
+                          key={key}
+                          label={LABEL_UI_POR_KEY[key] || key}
+                          size="small"
+                          onClick={() => toggleColumna(key)}
+                          color={selected ? "primary" : "default"}
+                          variant={selected ? "filled" : "outlined"}
+                          sx={{
+                            height: 22,
+                            fontSize: "0.68rem",
+                            cursor: "pointer",
+                            transition: "all 0.15s",
+                          }}
+                        />
+                      );
+                    })}
+                  </Box>
+                </Box>
+              )}
+            </Box>
+
+            {/* Estado */}
+            <FormControlLabel
+              control={
+                <Switch
+                  size="small"
+                  checked={form.activo !== false}
+                  onChange={(e) => setField("activo", e.target.checked)}
+                  color="success"
+                />
+              }
+              label={
+                <Typography variant="body2" sx={{ fontSize: "0.85rem" }}>
+                  {form.activo !== false ? "Activa" : "Inactiva"}
+                </Typography>
+              }
+            />
+          </Stack>
+        </DialogContent>
+
+        <DialogActions
+          sx={{
+            px: 3,
+            py: 2,
+            borderTop: `1px solid ${theme.palette.divider}`,
+            gap: 1,
+          }}
+        >
+          <Button
+            onClick={() => setDialogOpen(false)}
+            size="small"
+            variant="outlined"
+            color="inherit"
+            disabled={saving}
+          >
+            Cancelar
+          </Button>
+          <Button
+            onClick={handleSave}
+            size="small"
+            variant="contained"
+            color="success"
+            disabled={saving || !isValid}
+            startIcon={saving ? <CircularProgress size={14} color="inherit" /> : null}
+          >
+            {editingId ? "Guardar cambios" : "Crear configuración"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={() => setSnackbar((s) => ({ ...s, open: false }))}
+      >
+        <Alert
+          severity={snackbar.severity}
+          onClose={() => setSnackbar((s) => ({ ...s, open: false }))}
+          sx={{ width: "100%" }}
+        >
+          {snackbar.msg}
+        </Alert>
+      </Snackbar>
+    </>
   );
 }
 
@@ -730,7 +1565,6 @@ function PreviewEstructura({ niveles, nombre_archivo }) {
 //  Componente principal
 // ────────────────────────────────────────────────────────────────
 export const OrganizacionDrive = ({ empresa, updateEmpresaData }) => {
-  const theme = useTheme();
   const [carpetaId, setCarpetaId] = useState(
     empresa.carpeta_central_comprobantes || empresa.carpetaEmpresaRef || "",
   );
@@ -826,6 +1660,10 @@ export const OrganizacionDrive = ({ empresa, updateEmpresaData }) => {
   // ── Render ──────────────────────────────────────────────────
   return (
     <>
+      <SheetConfigsSection empresa={empresa} />
+
+      <Divider sx={{ mt: 4, mb: 4 }} />
+
       <Typography variant="h6" sx={{ mb: 2 }}>
         Carpeta de Drive
       </Typography>
