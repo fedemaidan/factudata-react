@@ -25,18 +25,20 @@ import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
 import {
   KEY_ID,
   ORDEN_DEFAULT,
+  ALL_KEYS_ORDERED,
   LABEL_DEFAULT_POR_KEY,
   LABEL_UI_POR_KEY,
 } from "src/constants/columnasSheet";
 
+const DEFAULT_ENABLED = new Set(ORDEN_DEFAULT);
+
 /**
- * Estado inicial: todas las columnas activas, en el mismo orden histórico que la planilla
- * antes de la personalización (espejo de ORDEN_DEFAULT / backend).
+ * Estado inicial: columnas históricas activas (ORDEN_DEFAULT); el resto visibles pero desactivadas.
  */
 function buildDefaultRows() {
-  return ORDEN_DEFAULT.map((key) => ({
+  return ALL_KEYS_ORDERED.map((key) => ({
     key,
-    enabled: true,
+    enabled: DEFAULT_ENABLED.has(key),
     labelDraft: LABEL_DEFAULT_POR_KEY[key] || key,
   }));
 }
@@ -80,7 +82,7 @@ function buildRowsFromEmpresa(empresa) {
   }
   const enabledOrder = [...cfg.columnas];
   const labels = cfg.labels && typeof cfg.labels === "object" ? cfg.labels : {};
-  const disabledKeys = ORDEN_DEFAULT.filter((k) => !enabledOrder.includes(k));
+  const disabledKeys = ALL_KEYS_ORDERED.filter((k) => !enabledOrder.includes(k));
   const fullOrder = [...enabledOrder, ...disabledKeys];
   return fullOrder.map((key) => ({
     key,

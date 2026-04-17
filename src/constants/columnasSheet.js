@@ -1,10 +1,11 @@
 /**
- * Espejo de sorby_bot_wa/utils/utils-google/sheets/columnasMovimientos.js (ORDEN_DEFAULT y labels).
+ * Espejo de sorby_bot_wa/utils/utils-google/sheets/columnasMovimientos.js
+ * (ORDEN_DEFAULT, ORDEN_EXTRAS, labels).
  * Si cambian las columnas en backend, actualizar aquí.
  */
 export const KEY_ID = "id";
 
-/** Orden por defecto de columnas en la planilla de movimientos (Google Sheet). */
+/** Orden por defecto de columnas en la planilla (mismo export histórico que antes del refactor). */
 export const ORDEN_DEFAULT = [
   KEY_ID,
   "fecha_factura",
@@ -38,6 +39,48 @@ export const ORDEN_DEFAULT = [
   "impuestos",
 ];
 
+export const ORDEN_EXTRAS = [
+  "caja_chica",
+  "caja_id",
+  "cliente",
+  "codigo_sync",
+  "cuenta_pendiente_id",
+  "cuota_id",
+  "detalle",
+  "dolar_referencia",
+  "dolar_referencia_manual",
+  "empresa_facturacion",
+  "empresa_id",
+  "es_conversion_moneda",
+  "es_movimiento_prorrateo",
+  "estado_carga",
+  "factura_cliente",
+  "fecha_creacion",
+  "fecha_pago",
+  "googleDriveId",
+  "id_proveedor",
+  "id_user",
+  "materiales",
+  "monto_pagado",
+  "movimiento_origen",
+  "nombre_cliente",
+  "nombre_producto",
+  "nombre_user",
+  "numero_factura",
+  "obra",
+  "origen",
+  "prorrateo_grupo_id",
+  "proyecto_nombre",
+  "subproyecto_id",
+  "subproyecto_nombre",
+  "subtotal_dolar",
+  "total_dolar",
+  "url_imagen",
+];
+
+/** Todas las claves en orden de lista (histórico primero, luego extras). */
+export const ALL_KEYS_ORDERED = [...ORDEN_DEFAULT, ...ORDEN_EXTRAS];
+
 /** Label por defecto por key (encabezado técnico / histórico). */
 export const LABEL_DEFAULT_POR_KEY = {
   id: "id",
@@ -70,9 +113,45 @@ export const LABEL_DEFAULT_POR_KEY = {
   total_cac: "total_cac",
   subtotal: "subtotal",
   impuestos: "impuestos",
+  caja_chica: "caja_chica",
+  caja_id: "caja_id",
+  cliente: "cliente",
+  codigo_sync: "codigo_sync",
+  cuenta_pendiente_id: "cuenta_pendiente_id",
+  cuota_id: "cuota_id",
+  detalle: "detalle",
+  dolar_referencia: "dolar_referencia",
+  dolar_referencia_manual: "dolar_referencia_manual",
+  empresa_facturacion: "empresa_facturacion",
+  empresa_id: "empresa_id",
+  es_conversion_moneda: "es_conversion_moneda",
+  es_movimiento_prorrateo: "es_movimiento_prorrateo",
+  estado_carga: "estado_carga",
+  factura_cliente: "factura_cliente",
+  fecha_creacion: "fecha_creacion",
+  fecha_pago: "fecha_pago",
+  googleDriveId: "googleDriveId",
+  id_proveedor: "id_proveedor",
+  id_user: "id_user",
+  materiales: "materiales",
+  monto_pagado: "monto_pagado",
+  movimiento_origen: "movimiento_origen",
+  nombre_cliente: "nombre_cliente",
+  nombre_producto: "nombre_producto",
+  nombre_user: "nombre_user",
+  numero_factura: "numero_factura",
+  obra: "obra",
+  origen: "origen",
+  prorrateo_grupo_id: "prorrateo_grupo_id",
+  proyecto_nombre: "proyecto_nombre",
+  subproyecto_id: "subproyecto_id",
+  subproyecto_nombre: "subproyecto_nombre",
+  subtotal_dolar: "subtotal_dolar",
+  total_dolar: "total_dolar",
+  url_imagen: "url_imagen",
 };
 
-/** Título legible para la UI (opcional). */
+/** Título legible para la UI. */
 export const LABEL_UI_POR_KEY = {
   id: "ID",
   fecha_factura: "Fecha factura",
@@ -104,4 +183,40 @@ export const LABEL_UI_POR_KEY = {
   total_cac: "Total CAC",
   subtotal: "Subtotal",
   impuestos: "Impuestos",
+  caja_chica: "Caja chica",
+  caja_id: "ID caja",
+  cliente: "Cliente",
+  codigo_sync: "Código sync",
+  cuenta_pendiente_id: "Cuenta pendiente (id)",
+  cuota_id: "Cuota (id)",
+  detalle: "Detalle",
+  dolar_referencia: "Dólar referencia",
+  dolar_referencia_manual: "Dólar ref. manual",
+  empresa_facturacion: "Empresa facturación",
+  empresa_id: "ID empresa",
+  es_conversion_moneda: "Conversión moneda",
+  es_movimiento_prorrateo: "Prorrateo",
+  estado_carga: "Estado carga",
+  factura_cliente: "Factura cliente",
+  fecha_creacion: "Fecha creación",
+  fecha_pago: "Fecha pago",
+  googleDriveId: "Google Drive (id)",
+  id_proveedor: "ID proveedor",
+  id_user: "ID usuario",
+  materiales: "Materiales (JSON)",
+  monto_pagado: "Monto pagado",
+  movimiento_origen: "Movimiento origen",
+  nombre_cliente: "Nombre cliente",
+  nombre_producto: "Nombre producto",
+  nombre_user: "Nombre usuario",
+  numero_factura: "Número factura",
+  obra: "Obra",
+  origen: "Origen",
+  prorrateo_grupo_id: "Grupo prorrateo",
+  proyecto_nombre: "Nombre proyecto",
+  subproyecto_id: "ID subproyecto",
+  subproyecto_nombre: "Subproyecto",
+  subtotal_dolar: "Subtotal USD (campo)",
+  total_dolar: "Total USD (campo)",
+  url_imagen: "URL imagen",
 };
