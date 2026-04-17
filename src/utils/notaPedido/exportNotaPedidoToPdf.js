@@ -2,6 +2,7 @@ import React from 'react';
 import { pdf } from '@react-pdf/renderer';
 import { NotaPedidoPdfDocument } from './PdfNotaPedidoDocument';
 import { loadImageAsDataUrl } from '../presupuestos/loadLogoForPdf';
+import notaPedidoService from 'src/services/notaPedidoService';
 
 const downloadBlob = (blob, filename) => {
   const url = window.URL.createObjectURL(blob);
@@ -14,10 +15,9 @@ const downloadBlob = (blob, filename) => {
   window.URL.revokeObjectURL(url);
 };
 
-async function loadCustomComponent(componentUrl) {
-  const res = await fetch(componentUrl);
-  if (!res.ok) throw new Error('No se pudo cargar el componente de plantilla');
-  const jsCode = await res.text();
+async function loadCustomComponentById(templateId) {
+  const jsCode = await notaPedidoService.getComponentCode(templateId);
+  if (!jsCode) throw new Error('No se pudo obtener el código del componente');
 
   const { Document, Page, Text, View, Image, StyleSheet } = await import('@react-pdf/renderer');
 
@@ -32,14 +32,14 @@ async function loadCustomComponent(componentUrl) {
   return Component;
 }
 
-export async function downloadNotaPedidoPdf({ nota, layout, logoUrl, empresaNombre, componentUrl }) {
+export async function downloadNotaPedidoPdf({ nota, layout, logoUrl, empresaNombre, templateId }) {
   const logoDataUrl = logoUrl ? await loadImageAsDataUrl(logoUrl) : null;
   const code = nota?.codigo != null ? String(nota.codigo) : 'nota';
 
   let blob;
-  if (componentUrl) {
+  if (templateId) {
     try {
-      const PlantillaPDF = await loadCustomComponent(componentUrl);
+      const PlantillaPDF = await loadCustomComponentById(templateId);
       blob = await pdf(
         <PlantillaPDF nota={nota} logoDataUrl={logoDataUrl} empresaNombre={empresaNombre || ''} />
       ).toBlob();

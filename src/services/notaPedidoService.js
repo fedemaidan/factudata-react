@@ -162,6 +162,16 @@ const notaPedidoService = {
     }
   },
 
+  getComponentCode: async (templateId) => {
+    try {
+      const res = await api.get(`nota-pedido/pdf-templates/${templateId}/component-code`);
+      return res.status === 200 ? res.data?.code : null;
+    } catch (e) {
+      console.error('getComponentCode', e);
+      return null;
+    }
+  },
+
   aiChatPlantilla: async ({ messages, empresaId, currentCode }) => {
     try {
       const res = await api.post('nota-pedido/pdf-templates/ai-chat', { messages, empresaId, currentCode: currentCode || null });

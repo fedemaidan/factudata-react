@@ -134,6 +134,7 @@ const NotaPedidoPage = () => {
   const [pdfDownloading, setPdfDownloading] = useState(false);
   const [basePdfTemplate, setBasePdfTemplate] = useState(null);
   const [pdfUiLoading, setPdfUiLoading] = useState(false);
+  const [selectedPlantillaId, setSelectedPlantillaId] = useState(null);
   const [formData, setFormData] = useState({
     descripcion: '', proyecto_id: '', estado: '', owner: '', creador: '', proveedor: ''
   });
@@ -284,6 +285,7 @@ const NotaPedidoPage = () => {
       const result = await notaPedidoService.postPdfRenderConfig({
         notaId: comentariosDialogNota.id,
         empresaId: eid,
+        plantillaId: selectedPlantillaId || undefined,
       });
       if (!result.success) {
         if (result.needsLogo) { setOpenLogoRequeridoModal(true); return; }
@@ -297,7 +299,7 @@ const NotaPedidoPage = () => {
         layout: cfg.layout,
         logoUrl: cfg.logoUrl,
         empresaNombre: cfg.empresaNombre,
-        componentUrl: cfg.componentUrl || null,
+        templateId: cfg.templateId || null,
       });
       setAlert({ open: true, message: 'PDF descargado', severity: 'success' });
     } catch (err) {
@@ -849,7 +851,9 @@ const NotaPedidoPage = () => {
                   {pdfUiLoading
                     ? 'Actualizando...'
                     : basePdfTemplate?.logo_url
-                      ? 'Logo configurado · Plantilla base activa'
+                      ? selectedPlantillaId
+                        ? 'Logo configurado · Plantilla personalizada activa'
+                        : 'Logo configurado · Plantilla base activa'
                       : 'Sin logo — requerido para generar PDFs'}
                 </Typography>
               </Box>
@@ -1365,6 +1369,8 @@ const NotaPedidoPage = () => {
             onSaveLogo={handleSaveLogoFromDialog}
             empresaId={getEmpresaId()}
             sampleNota={comentariosDialogNota}
+            selectedPlantillaId={selectedPlantillaId}
+            onTemplateSelected={(id) => setSelectedPlantillaId(id)}
             onPlantillaGuardada={() => {
               loadPdfBaseForDrawer();
               setAlert({ open: true, message: 'Plantilla guardada correctamente', severity: 'success' });
