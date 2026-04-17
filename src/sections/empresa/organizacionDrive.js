@@ -28,6 +28,7 @@ import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
 import FolderIcon from "@mui/icons-material/Folder";
 import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
 import { getProyectosByEmpresa } from "src/services/proyectosService";
+import ColumnasSheetConfig from "src/sections/empresa/columnasSheetConfig";
 
 // ────────────────────────────────────────────────────────────────
 //  Niveles disponibles para armar reglas
@@ -477,6 +478,8 @@ export const OrganizacionDrive = ({ empresa, updateEmpresaData }) => {
           {isLoading ? <CircularProgress size={24} /> : "Guardar configuración de Drive"}
         </Button>
       </Box>
+
+      <ColumnasSheetConfig empresa={empresa} updateEmpresaData={updateEmpresaData} />
 
       <Snackbar open={snackbarOpen} autoHideDuration={6000} onClose={() => setSnackbarOpen(false)}>
         <Alert
