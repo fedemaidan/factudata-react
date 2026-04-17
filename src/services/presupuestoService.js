@@ -251,6 +251,19 @@ const PresupuestoService = {
       throw error;
     }
   },
+
+  actualizarAdjuntos: async (presupuestoId, payload) => {
+    try {
+      const response = await api.put(`/presupuesto/${presupuestoId}/adjuntos`, payload);
+      if (response.status === 200 && response.data?.success) {
+        return response.data;
+      }
+      throw new Error(response.data?.error || 'Error al actualizar adjuntos');
+    } catch (error) {
+      console.error('❌ Error al actualizar adjuntos:', error);
+      throw error;
+    }
+  },
 };
 
 export default PresupuestoService;
