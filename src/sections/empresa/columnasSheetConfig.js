@@ -77,66 +77,6 @@ function buildRowsFromEmpresa(empresa) {
   }));
 }
 
-// ── Live preview strip ────────────────────────────────────────────────────────
-
-function ColumnPreviewStrip({ rows }) {
-  const theme = useTheme();
-  const active = rows.filter((r) => r.enabled);
-
-  return (
-    <Box
-      sx={{
-        display: "flex",
-        alignItems: "center",
-        gap: 0,
-        overflowX: "auto",
-        "&::-webkit-scrollbar": { height: 2 },
-        "&::-webkit-scrollbar-thumb": {
-          bgcolor: alpha(theme.palette.primary.main, 0.2),
-          borderRadius: 4,
-        },
-      }}
-    >
-      {active.map((r, i) => (
-        <React.Fragment key={r.key}>
-          {i > 0 && (
-            <Box
-              sx={{
-                width: 1,
-                height: 14,
-                bgcolor: theme.palette.divider,
-                flexShrink: 0,
-                mx: 0,
-              }}
-            />
-          )}
-          <Box
-            sx={{
-              px: 1,
-              py: 0.4,
-              flexShrink: 0,
-              bgcolor: i === 0 ? alpha(theme.palette.primary.main, 0.08) : "transparent",
-              borderRadius: i === 0 ? 0.75 : 0,
-            }}
-          >
-            <Typography
-              sx={{
-                fontSize: "0.64rem",
-                fontFamily: "'Roboto Mono', monospace",
-                fontWeight: i === 0 ? 600 : 400,
-                color: i === 0 ? "primary.dark" : "text.secondary",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {r.labelDraft || r.key}
-            </Typography>
-          </Box>
-        </React.Fragment>
-      ))}
-    </Box>
-  );
-}
-
 // ── Single active column row ──────────────────────────────────────────────────
 
 function ActiveColumnRow({
@@ -374,12 +314,7 @@ function AvailableColumnsPanel({ rows, isLoading, onToggle }) {
           }}
         >
           {inactive.map((row) => (
-            <Tooltip
-              key={row.key}
-              title={`${row.key} · click para agregar`}
-              arrow
-              placement="top"
-            >
+            <Tooltip key={row.key} title={`${row.key} · click para agregar`} arrow placement="top">
               <Chip
                 label={LABEL_UI_POR_KEY[row.key] || row.key}
                 size="small"
@@ -453,9 +388,7 @@ function ColumnasSheetConfig({ empresa, updateEmpresaData }) {
   // Moves by display index — swaps within the active subset via origIndex
   const handleMoveActive = useCallback((displayIndex, direction) => {
     setRows((prev) => {
-      const activeWithIdx = prev
-        .map((r, i) => ({ ...r, origIndex: i }))
-        .filter((r) => r.enabled);
+      const activeWithIdx = prev.map((r, i) => ({ ...r, origIndex: i })).filter((r) => r.enabled);
       const targetIdx = displayIndex + direction;
       if (displayIndex <= 0 || targetIdx < 1 || targetIdx >= activeWithIdx.length) return prev;
       const next = [...prev];
@@ -536,45 +469,6 @@ function ColumnasSheetConfig({ empresa, updateEmpresaData }) {
         Definí qué columnas aparecen en el Google Sheet y sus encabezados. El orden de la lista
         determina el orden de las columnas.
       </Typography>
-
-      {/* Live preview strip */}
-      <Box
-        sx={{
-          mb: 2,
-          px: 1.5,
-          pt: 1,
-          pb: 1.25,
-          borderRadius: 1.5,
-          bgcolor: alpha(theme.palette.neutral?.[900] || "#111927", 0.02),
-          border: `1px solid ${theme.palette.divider}`,
-          overflow: "hidden",
-        }}
-      >
-        <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.75 }}>
-          <Typography
-            variant="overline"
-            sx={{ fontSize: "0.6rem", color: "text.disabled", lineHeight: 1 }}
-          >
-            Vista previa de cabeceras
-          </Typography>
-          <Box
-            sx={{
-              px: 0.65,
-              py: 0.1,
-              borderRadius: 0.75,
-              bgcolor: alpha(theme.palette.primary.main, 0.08),
-              fontSize: "0.6rem",
-              fontWeight: 600,
-              fontFamily: "'Roboto Mono', monospace",
-              color: "primary.dark",
-              lineHeight: 1.6,
-            }}
-          >
-            {activeRows.length}
-          </Box>
-        </Stack>
-        <ColumnPreviewStrip rows={rows} />
-      </Box>
 
       {/* Active columns list */}
       <Box
