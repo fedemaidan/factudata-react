@@ -47,6 +47,8 @@ const defaultFilters = {
   palabras: '',
   observacion: '',
   codigoSync: '',
+  aprobacion: '',
+  usuarios: [],
   categorias: [],
   subcategorias: [],
   proveedores: [],
@@ -65,10 +67,20 @@ const defaultFilters = {
   empresaFacturacion: [],
   fechaPagoDesde: null,
   fechaPagoHasta: null,
+  fechaCreacionDesde: null,
+  fechaCreacionHasta: null,
+  fechaModificacionDesde: null,
+  fechaModificacionHasta: null,
   facturaCliente: '',
+  cajaChica: '',
 };
 
-const DATE_KEYS = ['fechaDesde', 'fechaHasta', 'fechaPagoDesde', 'fechaPagoHasta'];
+const DATE_KEYS = [
+  'fechaDesde', 'fechaHasta',
+  'fechaPagoDesde', 'fechaPagoHasta',
+  'fechaCreacionDesde', 'fechaCreacionHasta',
+  'fechaModificacionDesde', 'fechaModificacionHasta',
+];
 const serializeFilters = (f) => {
   const out = { ...f };
   DATE_KEYS.forEach((k) => { if (out[k] instanceof Date) out[k] = out[k].toISOString(); });
@@ -97,8 +109,12 @@ export const FilterBarCajaProyecto = ({
   storageKey,          // proyectoId
   empresaId,           // empresa.id — para persistir en Mongo
   userId,              // uid del usuario logueado
+  showCodigoSync = false,
+  searchRequiresSubmit = false,
+  searchMinLength = 0,
 }) => {
   const [focusField, setFocusField] = useState(null);
+  const [searchDraft, setSearchDraft] = useState(filters.palabras || '');
 
   /* ── DateInput helper ── */
   const DateInput = forwardRef(function DateInput(props, ref) {
@@ -145,19 +161,23 @@ export const FilterBarCajaProyecto = ({
   const DEFINICION_FILTROS = [
     { name: 'observacion', label: 'Observación', type: 'text', visibleIf: () => true },
     { name: 'palabras', label: 'Buscar', type: 'text', visibleIf: () => true },
-    { name: 'codigoSync', label: 'Código de importación', type: 'text', visibleIf: () => false },
+    { name: 'codigoSync', label: 'Código de importación', type: 'text', visibleIf: () => showCodigoSync },
+    { name: 'aprobacion', label: 'Aprobación', type: 'select', options: ['si', 'no'], visibleIf: () => true },
+    { name: 'usuarios', label: 'Usuario', type: 'selectMultiple', optionsKey: 'usuarios', visibleIf: () => options?.usuarios?.length > 0 },
     { name: 'tipo', label: 'Tipo', type: 'selectMultiple', options: ['ingreso', 'egreso'], visibleIf: () => true },
     { name: 'moneda', label: 'Moneda', type: 'selectMultiple', optionsKey: 'monedas', visibleIf: () => true },
     { name: 'proveedores', label: 'Proveedor', type: 'selectMultiple', optionsKey: 'proveedores', visibleIf: (emp) => emp?.proveedores?.length > 0 },
     { name: 'categorias', label: 'Categoría', type: 'selectMultiple', optionsKey: 'categorias', visibleIf: (emp) => (emp?.categorias?.length > 0) || (options?.categorias?.length > 0) },
-    { name: 'subcategorias', label: 'Subcategoría', type: 'selectMultiple', optionsKey: 'subcategorias', visibleIf: (emp) => emp?.comprobante_info?.subcategoria && (options?.subcategorias?.length > 0) },
-    { name: 'medioPago', label: 'Medio de pago', type: 'selectMultiple', optionsKey: 'mediosPago', visibleIf: (emp) => emp?.comprobante_info?.medio_pago },
-    { name: 'etapa', label: 'Etapa', type: 'selectMultiple', optionsKey: 'etapas', visibleIf: (emp) => emp?.comprobante_info?.etapa },
-    { name: 'estados', label: 'Estado', type: 'selectMultiple', options: ['Pendiente', 'Pagado'], visibleIf: (emp) => emp?.con_estados },
+    { name: 'subcategorias', label: 'Subcategoría', type: 'selectMultiple', optionsKey: 'subcategorias', visibleIf: (emp) => (emp?.comprobante_info?.subcategoria || options?.subcategorias?.length > 0) && (options?.subcategorias?.length > 0) },
+    { name: 'medioPago', label: 'Medio de pago', type: 'selectMultiple', optionsKey: 'mediosPago', visibleIf: (emp) => emp?.comprobante_info?.medio_pago || options?.mediosPago?.length > 0 },
+    { name: 'etapa', label: 'Etapa', type: 'selectMultiple', optionsKey: 'etapas', visibleIf: (emp) => emp?.comprobante_info?.etapa || options?.etapas?.length > 0 },
+    { name: 'estados', label: 'Estado', type: 'selectMultiple', options: ['Pendiente', 'Pagado'], visibleIf: (emp) => emp?.con_estados || options?.estados?.length > 0 },
+    { name: 'cuentaInterna', label: 'Cuenta interna', type: 'selectMultiple', optionsKey: 'cuentasInternas', visibleIf: (emp) => emp?.comprobante_info?.cuenta_interna || options?.cuentasInternas?.length > 0 },
     { name: 'montoMin', label: 'Monto mínimo', type: 'number', visibleIf: () => true },
     { name: 'montoMax', label: 'Monto máximo', type: 'number', visibleIf: () => true },
-    { name: 'empresaFacturacion', label: 'Empresa facturación', type: 'selectMultiple', optionsKey: 'empresasFacturacion', visibleIf: () => empresa?.comprobante_info?.empresa_facturacion },
+    { name: 'empresaFacturacion', label: 'Empresa facturación', type: 'selectMultiple', optionsKey: 'empresasFacturacion', visibleIf: () => empresa?.comprobante_info?.empresa_facturacion || options?.empresasFacturacion?.length > 0 },
     { name: 'facturaCliente', label: 'Factura cliente', type: 'select', options: ['cliente', 'propia'], visibleIf: () => empresa?.comprobante_info?.factura_cliente },
+    { name: 'cajaChica', label: 'Caja chica', type: 'select', options: ['si', 'no'], visibleIf: () => true },
     { name: 'tagsExtra', label: 'Tags extra', type: 'selectMultiple', optionsKey: 'tags', visibleIf: () => options?.tags?.length > 0 },
   ];
 
@@ -167,8 +187,18 @@ export const FilterBarCajaProyecto = ({
   );
 
   const set = (k, v) => setFilters((f) => ({ ...f, [k]: v }));
+  const commitSearchDraft = useCallback(() => {
+    const nextValue = (searchDraft || '').trim();
+    if (nextValue && nextValue.length < searchMinLength) return false;
+    set('palabras', nextValue);
+    return true;
+  }, [searchDraft, searchMinLength]);
   const formatDate = (d) => (d ? d.toLocaleDateString('es-AR') : '');
   const clearAll = () => setFilters((prev) => ({ ...prev, ...defaultFilters }));
+
+  useEffect(() => {
+    setSearchDraft(filters.palabras || '');
+  }, [filters.palabras]);
 
   /* ── Chips activos ── */
   const activeChips = useMemo(() => {
@@ -187,10 +217,24 @@ export const FilterBarCajaProyecto = ({
         : (filters.fechaPagoDesde ? `Pago desde: ${formatDate(filters.fechaPagoDesde)}` : `Pago hasta: ${formatDate(filters.fechaPagoHasta)}`);
       add(l, () => setFilters((f) => ({ ...f, fechaPagoDesde: null, fechaPagoHasta: null })), 'fechaPagoDesde');
     }
+    if (filters.fechaCreacionDesde || filters.fechaCreacionHasta) {
+      const l = filters.fechaCreacionDesde && filters.fechaCreacionHasta
+        ? `Creación: ${formatDate(filters.fechaCreacionDesde)} – ${formatDate(filters.fechaCreacionHasta)}`
+        : (filters.fechaCreacionDesde ? `Creado desde: ${formatDate(filters.fechaCreacionDesde)}` : `Creado hasta: ${formatDate(filters.fechaCreacionHasta)}`);
+      add(l, () => setFilters((f) => ({ ...f, fechaCreacionDesde: null, fechaCreacionHasta: null })), 'fechaCreacionDesde');
+    }
+    if (filters.fechaModificacionDesde || filters.fechaModificacionHasta) {
+      const l = filters.fechaModificacionDesde && filters.fechaModificacionHasta
+        ? `Modificación: ${formatDate(filters.fechaModificacionDesde)} – ${formatDate(filters.fechaModificacionHasta)}`
+        : (filters.fechaModificacionDesde ? `Modificado desde: ${formatDate(filters.fechaModificacionDesde)}` : `Modificado hasta: ${formatDate(filters.fechaModificacionHasta)}`);
+      add(l, () => setFilters((f) => ({ ...f, fechaModificacionDesde: null, fechaModificacionHasta: null })), 'fechaModificacionDesde');
+    }
     if (filters.palabras) add(`"${filters.palabras}"`, () => set('palabras', ''), 'palabras');
     if (filters.observacion) add(`Obs: ${filters.observacion}`, () => set('observacion', ''), 'observacion');
     if (filters.codigoSync) add(`Código: ${filters.codigoSync}`, () => set('codigoSync', ''), 'codigoSync');
+    if (filters.aprobacion) add(filters.aprobacion === 'si' ? 'Con aprobación' : 'Sin aprobación', () => set('aprobacion', ''), 'aprobacion');
 
+    (filters.usuarios || []).forEach((v) => add(`Usuario: ${v}`, () => set('usuarios', (filters.usuarios || []).filter((x) => x !== v)), 'usuarios'));
     (filters.tipo || []).forEach((v) => add(`Tipo: ${v}`, () => set('tipo', (filters.tipo || []).filter((x) => x !== v)), 'tipo'));
     (filters.moneda || []).forEach((v) => add(`${v}`, () => set('moneda', (filters.moneda || []).filter((x) => x !== v)), 'moneda'));
     (filters.proveedores || []).forEach((v) => add(`Prov: ${v}`, () => set('proveedores', (filters.proveedores || []).filter((x) => x !== v)), 'proveedores'));
@@ -203,6 +247,7 @@ export const FilterBarCajaProyecto = ({
     (filters.tagsExtra || []).forEach((v) => add(`Tag: ${v}`, () => set('tagsExtra', (filters.tagsExtra || []).filter((x) => x !== v)), 'tagsExtra'));
     (filters.empresaFacturacion || []).forEach((v) => add(`Emp: ${v}`, () => set('empresaFacturacion', (filters.empresaFacturacion || []).filter((x) => x !== v)), 'empresaFacturacion'));
     if (filters.facturaCliente) add(filters.facturaCliente === 'cliente' ? 'Fact: Cliente' : 'Fact: Propia', () => set('facturaCliente', ''), 'facturaCliente');
+    if (filters.cajaChica) add(filters.cajaChica === 'si' ? 'Caja chica: Sí' : 'Caja chica: No', () => set('cajaChica', ''), 'cajaChica');
     if (filters.montoMin) add(`≥ $${filters.montoMin}`, () => set('montoMin', ''), 'montoMin');
     if (filters.montoMax) add(`≤ $${filters.montoMax}`, () => set('montoMax', ''), 'montoMax');
 
@@ -228,6 +273,26 @@ export const FilterBarCajaProyecto = ({
     const value = filters[filtro.name];
 
     if (filtro.type === 'text') {
+      if (filtro.name === 'palabras' && searchRequiresSubmit) {
+        return (
+          <TextField
+            key={filtro.name}
+            label={filtro.label}
+            value={searchDraft}
+            onChange={(e) => setSearchDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                commitSearchDraft();
+              }
+            }}
+            size="small"
+            variant="outlined"
+            sx={overrideSx || { minWidth: 0, width: '100%' }}
+            autoFocus={focusField === filtro.name}
+          />
+        );
+      }
       return (
         <TextField
           key={filtro.name}
@@ -243,7 +308,7 @@ export const FilterBarCajaProyecto = ({
     }
 
     if (filtro.type === 'selectMultiple') {
-      if (filtro.name === 'proveedores') {
+      if (filtro.name === 'proveedores' || filtro.name === 'usuarios') {
         const selectOptions = filtro.options || options[filtro.optionsKey] || [];
         return (
           <Autocomplete
@@ -534,14 +599,36 @@ export const FilterBarCajaProyecto = ({
           <Divider orientation="vertical" flexItem />
           {/* Buscar */}
           <TextField
-            value={filters.palabras}
-            onChange={(e) => set('palabras', e.target.value)}
+            value={searchRequiresSubmit ? searchDraft : filters.palabras}
+            onChange={(e) => {
+              if (searchRequiresSubmit) {
+                setSearchDraft(e.target.value);
+                return;
+              }
+              set('palabras', e.target.value);
+            }}
+            onKeyDown={(e) => {
+              if (searchRequiresSubmit && e.key === 'Enter') {
+                e.preventDefault();
+                commitSearchDraft();
+              }
+            }}
             size="small"
             variant="outlined"
             sx={{ flex: 1, minWidth: 140 }}
             autoFocus={focusField === 'palabras'}
             placeholder="Buscar…"
           />
+          {searchRequiresSubmit && (
+            <Button
+              size="small"
+              variant="contained"
+              onClick={commitSearchDraft}
+              disabled={Boolean(searchDraft?.trim()) && searchDraft.trim().length < searchMinLength}
+            >
+              Buscar
+            </Button>
+          )}
           <Divider orientation="vertical" flexItem />
           {/* Proveedor y Categoría inline */}
           {filtrosAlwaysVisible.map((f) => (
@@ -611,10 +698,69 @@ export const FilterBarCajaProyecto = ({
             </>
           )}
 
+          <Divider sx={{ my: 1.5 }} />
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1, fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase' }}>
+            Auditoría
+          </Typography>
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: 'wrap', rowGap: 1 }}>
+            <DatePicker
+              selected={filters.fechaCreacionDesde}
+              onChange={(date) => set('fechaCreacionDesde', date)}
+              selectsStart
+              startDate={filters.fechaCreacionDesde}
+              endDate={filters.fechaCreacionHasta}
+              placeholderText="Creado desde"
+              dateFormat="dd/MM/yyyy"
+              autoFocus={focusField === 'fechaCreacionDesde'}
+              customInput={<DateInput />}
+            />
+            <DatePicker
+              selected={filters.fechaCreacionHasta}
+              onChange={(date) => set('fechaCreacionHasta', date)}
+              selectsEnd
+              startDate={filters.fechaCreacionDesde}
+              endDate={filters.fechaCreacionHasta}
+              minDate={filters.fechaCreacionDesde}
+              placeholderText="Creado hasta"
+              dateFormat="dd/MM/yyyy"
+              autoFocus={focusField === 'fechaCreacionHasta'}
+              customInput={<DateInput />}
+            />
+            <DatePicker
+              selected={filters.fechaModificacionDesde}
+              onChange={(date) => set('fechaModificacionDesde', date)}
+              selectsStart
+              startDate={filters.fechaModificacionDesde}
+              endDate={filters.fechaModificacionHasta}
+              placeholderText="Modificado desde"
+              dateFormat="dd/MM/yyyy"
+              autoFocus={focusField === 'fechaModificacionDesde'}
+              customInput={<DateInput />}
+            />
+            <DatePicker
+              selected={filters.fechaModificacionHasta}
+              onChange={(date) => set('fechaModificacionHasta', date)}
+              selectsEnd
+              startDate={filters.fechaModificacionDesde}
+              endDate={filters.fechaModificacionHasta}
+              minDate={filters.fechaModificacionDesde}
+              placeholderText="Modificado hasta"
+              dateFormat="dd/MM/yyyy"
+              autoFocus={focusField === 'fechaModificacionHasta'}
+              customInput={<DateInput />}
+            />
+          </Stack>
+
           {/* Footer */}
           <Stack direction="row" justifyContent="flex-end" alignItems="center" spacing={1} sx={{ mt: 2 }}>
             <Button size="small" variant="text" onClick={clearAll}>Restaurar defaults</Button>
-            {onRefresh && <Button size="small" variant="outlined" onClick={onRefresh}>Actualizar</Button>}
+            {onRefresh && <Button size="small" variant="outlined" onClick={() => {
+              if (searchRequiresSubmit) {
+                const ok = commitSearchDraft();
+                if (!ok) return;
+              }
+              onRefresh();
+            }}>Actualizar</Button>}
           </Stack>
         </Box>
       </Collapse>

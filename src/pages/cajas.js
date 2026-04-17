@@ -69,6 +69,7 @@ const COLS = {
   cliente: 200,
   total: 160,
   montoPagado: 170,
+  montoAprobado: 170,
   categoria: 160,
   subcategoria: 160,
   medioPago: 150,
@@ -305,6 +306,7 @@ const SORTABLE_COLUMN_MAP = {
   tipo: 'type',
   total: 'total',
   montoPagado: 'monto_pagado',
+  montoAprobado: 'monto_aprobado',
   categoria: 'categoria',
   subcategoria: 'subcategoria',
   medioPago: 'medio_pago',
@@ -396,6 +398,7 @@ const buildCajaDashboardParams = ({ filters, caja, page, limit, includeOptions =
   if (filters?.palabras?.trim()) params.palabras = filters.palabras.trim();
   if (filters?.observacion?.trim()) params.observacion = filters.observacion.trim();
   if (filters?.codigoSync?.trim()) params.codigoSync = filters.codigoSync.trim();
+  if (filters?.aprobacion) params.aprobacion = filters.aprobacion;
   assignArray('categorias', filters?.categorias);
   assignArray('subcategorias', filters?.subcategorias);
   assignArray('proveedores', filters?.proveedores);
@@ -1016,6 +1019,7 @@ const handleSaveCols = async () => {
     tipo: !compactValue,
     total: true,
     montoPagado: false,
+    montoAprobado: false,
     categoria: true,
     subcategoria: !compactValue && !!empresa?.comprobante_info?.subcategoria,
     medioPago: !!empresa?.comprobante_info?.medio_pago,
@@ -1056,6 +1060,7 @@ const applyPreset = (preset) => {
       codigo: true,
       fechas: true,
       total: true,
+      montoAprobado: true,
       categoria: true,
       subcategoria: !!empresa?.comprobante_info?.subcategoria,
       medioPago: !!empresa?.comprobante_info?.medio_pago,
@@ -1091,6 +1096,7 @@ const applyPreset = (preset) => {
       fechaCreacion: true,
       tipo: true,
       total: true,
+      montoAprobado: true,
       categoria: true,
       subcategoria: !!empresa?.comprobante_info?.subcategoria,
       medioPago: !!empresa?.comprobante_info?.medio_pago,
@@ -2651,6 +2657,7 @@ useEffect(() => {
             {!compactCols && <FormControlLabel control={<Checkbox size="small" checked={visibleCols.tipo} onChange={() => toggleCol('tipo')} />} label="Tipo" />}
             <FormControlLabel control={<Checkbox size="small" checked={visibleCols.total} onChange={() => toggleCol('total')} />} label="Total" />
             <FormControlLabel control={<Checkbox size="small" checked={visibleCols.montoPagado} onChange={() => toggleCol('montoPagado')} />} label="Monto pagado" />
+            <FormControlLabel control={<Checkbox size="small" checked={visibleCols.montoAprobado} onChange={() => toggleCol('montoAprobado')} />} label="Monto aprobado" />
             <FormControlLabel control={<Checkbox size="small" checked={visibleCols.categoria} onChange={() => toggleCol('categoria')} />} label={compactCols ? 'Categoría / Subcat.' : 'Categoría'} />
             {!compactCols && empresa?.comprobante_info?.subcategoria && <FormControlLabel control={<Checkbox size="small" checked={visibleCols.subcategoria} onChange={() => toggleCol('subcategoria')} />} label="Subcategoría" />}
             {empresa?.comprobante_info?.medio_pago && <FormControlLabel control={<Checkbox size="small" checked={visibleCols.medioPago} onChange={() => toggleCol('medioPago')} />} label="Medio de pago" />}

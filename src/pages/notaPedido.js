@@ -64,6 +64,10 @@ import AttachFileIcon from '@mui/icons-material/AttachFile';
 import SendIcon from '@mui/icons-material/Send';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import SearchIcon from '@mui/icons-material/Search';
+import ViewColumnIcon from '@mui/icons-material/ViewColumn';
+import Checkbox from '@mui/material/Checkbox';
+import FormControlLabel from '@mui/material/FormControlLabel';
+import Popover from '@mui/material/Popover';
 import Paper from '@mui/material/Paper';
 import Menu from '@mui/material/Menu';
 import ExcelJS from 'exceljs';
@@ -111,9 +115,30 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
   const [mobileMenuAnchor, setMobileMenuAnchor] = useState(null);
   const [mobileMenuNota, setMobileMenuNota] = useState(null);
+  const [columnMenuAnchor, setColumnMenuAnchor] = useState(null);
+  const [visibleColumns, setVisibleColumns] = useState({
+    codigo: true,
+    proyecto_nombre: true,
+    proveedor: true,
+    owner_name: true,
+    descripcion: true,
+    estado: true,
+    fechaCreacion: true,
+    fechaEstimadaFin: false,
+  });
+  const COLUMN_LABELS = {
+    codigo: 'Código',
+    proyecto_nombre: 'Proyecto',
+    proveedor: 'Proveedor',
+    owner_name: 'Asignado',
+    descripcion: 'Descripción',
+    estado: 'Estado',
+    fechaCreacion: 'Fecha Creación',
+    fechaEstimadaFin: 'Finalización estimada',
+  };
 
   const [formData, setFormData] = useState({
-    descripcion: '', proyecto_id: '', estado: '', owner: '', creador: '', proveedor: ''
+    descripcion: '', proyecto_id: '', estado: '', owner: '', creador: '', proveedor: '', fechaEstimadaFin: ''
   });
   const [filters, setFilters] = useState({ text: '', estado: '', proyecto_id: '', proveedor: '', misNotas: false });
   const [page, setPage] = useState(0);
@@ -444,7 +469,7 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
 
   const handleEdit = (nota) => {
     setCurrentNota(nota);
-    setFormData({ descripcion: nota.descripcion, estado: nota.estado, owner: nota.owner, creador: nota.creador, proyecto_id: nota.proyecto_id, proveedor: nota.proveedor });
+    setFormData({ descripcion: nota.descripcion, estado: nota.estado, owner: nota.owner, creador: nota.creador, proyecto_id: nota.proyecto_id, proveedor: nota.proveedor, fechaEstimadaFin: nota.fechaEstimadaFin ? new Date(nota.fechaEstimadaFin instanceof Object && nota.fechaEstimadaFin.seconds ? nota.fechaEstimadaFin.seconds * 1000 : nota.fechaEstimadaFin).toISOString().split('T')[0] : '' });
     setIsEditing(true);
   };
 
@@ -779,6 +804,11 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
               <DownloadIcon />
             </IconButton>
           </Tooltip>
+          <Tooltip title="Columnas visibles">
+            <IconButton onClick={(e) => setColumnMenuAnchor(e.currentTarget)} size="small">
+              <ViewColumnIcon />
+            </IconButton>
+          </Tooltip>
           <Button
             variant="contained"
             size="small"
@@ -792,6 +822,33 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
     </Box>
   )}
 </Stack>
+
+{/* Popover selector de columnas */}
+<Popover
+  open={Boolean(columnMenuAnchor)}
+  anchorEl={columnMenuAnchor}
+  onClose={() => setColumnMenuAnchor(null)}
+  anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+  transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+>
+  <Box sx={{ p: 2, minWidth: 220 }}>
+    <Typography variant="subtitle2" sx={{ mb: 1 }}>Columnas visibles</Typography>
+    {Object.entries(COLUMN_LABELS).map(([key, label]) => (
+      <Box key={key} sx={{ display: 'block' }}>
+        <FormControlLabel
+          control={
+            <Checkbox
+              checked={visibleColumns[key]}
+              onChange={(e) => setVisibleColumns(prev => ({ ...prev, [key]: e.target.checked }))}
+              size="small"
+            />
+          }
+          label={<Typography variant="body2">{label}</Typography>}
+        />
+      </Box>
+    ))}
+  </Box>
+</Popover>
 
         {/* Estado de carga */}
         {loading && (
@@ -1021,27 +1078,46 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
           <Table>
             <TableHead>
               <TableRow>
+                {visibleColumns.codigo && (
                 <TableCell onClick={() => handleSort('codigo')} sx={{ cursor: 'pointer', userSelect: 'none' }}>
                   Código {sortConfig.key === 'codigo' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
                 </TableCell>
+                )}
+                {visibleColumns.proyecto_nombre && (
                 <TableCell onClick={() => handleSort('proyecto_nombre')} sx={{ cursor: 'pointer', userSelect: 'none' }}>
                   Proyecto {sortConfig.key === 'proyecto_nombre' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
                 </TableCell>
+                )}
+                {visibleColumns.proveedor && (
                 <TableCell onClick={() => handleSort('proveedor')} sx={{ cursor: 'pointer', userSelect: 'none' }}>
                   Proveedor {sortConfig.key === 'proveedor' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
                 </TableCell>
+                )}
+                {visibleColumns.owner_name && (
                 <TableCell onClick={() => handleSort('owner_name')} sx={{ cursor: 'pointer', userSelect: 'none' }}>
                   Asignado {sortConfig.key === 'owner_name' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
                 </TableCell>
+                )}
+                {visibleColumns.descripcion && (
                 <TableCell onClick={() => handleSort('descripcion')} sx={{ cursor: 'pointer', userSelect: 'none' }}>
                   Descripción {sortConfig.key === 'descripcion' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
                 </TableCell>
+                )}
+                {visibleColumns.estado && (
                 <TableCell onClick={() => handleSort('estado')} sx={{ cursor: 'pointer', userSelect: 'none' }}>
                   Estado {sortConfig.key === 'estado' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
                 </TableCell>
+                )}
+                {visibleColumns.fechaCreacion && (
                 <TableCell onClick={() => handleSort('fechaCreacion')} sx={{ cursor: 'pointer', userSelect: 'none' }}>
                   Fecha Creación {sortConfig.key === 'fechaCreacion' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
                 </TableCell>
+                )}
+                {visibleColumns.fechaEstimadaFin && (
+                <TableCell onClick={() => handleSort('fechaEstimadaFin')} sx={{ cursor: 'pointer', userSelect: 'none' }}>
+                  Finalización estimada {sortConfig.key === 'fechaEstimadaFin' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
+                </TableCell>
+                )}
                 <TableCell sx={{ textAlign: 'right' }}>Acciones</TableCell>
               </TableRow>
             </TableHead>
@@ -1059,9 +1135,10 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
                     cursor: 'pointer',
                   }}
                 >
-                  <TableCell>{nota.codigo}</TableCell>
-                  <TableCell>{nota.proyecto_nombre}</TableCell>
-                  <TableCell>{nota.proveedor}</TableCell>
+                  {visibleColumns.codigo && <TableCell>{nota.codigo}</TableCell>}
+                  {visibleColumns.proyecto_nombre && <TableCell>{nota.proyecto_nombre}</TableCell>}
+                  {visibleColumns.proveedor && <TableCell>{nota.proveedor}</TableCell>}
+                  {visibleColumns.owner_name && (
                   <TableCell>
                     <Typography variant="body2">{nota.owner_name}</Typography>
                     {nota.creador_name && nota.creador_name !== nota.owner_name && (
@@ -1070,6 +1147,8 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
                       </Typography>
                     )}
                   </TableCell>
+                  )}
+                  {visibleColumns.descripcion && (
                   <TableCell sx={{ maxWidth: 300 }}>
                     <Tooltip 
                       title={nota.descripcion || ''} 
@@ -1103,7 +1182,8 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
                       </Button>
                     )}
                   </TableCell>
-
+                  )}
+                  {visibleColumns.estado && (
                   <TableCell>
                     <Chip
                       label={nota.estado}
@@ -1112,7 +1192,9 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
                       }
                     />
                   </TableCell>
-                  <TableCell>{formatTimestamp(nota.fechaCreacion)}</TableCell>
+                  )}
+                  {visibleColumns.fechaCreacion && <TableCell>{formatTimestamp(nota.fechaCreacion)}</TableCell>}
+                  {visibleColumns.fechaEstimadaFin && <TableCell>{nota.fechaEstimadaFin ? formatTimestamp(nota.fechaEstimadaFin) : '—'}</TableCell>}
                   <TableCell sx={{ minWidth: 140 }} onClick={(e) => e.stopPropagation()}>
                     <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end">
                       {/* Acción principal visible */}
@@ -1268,7 +1350,14 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
       </MenuItem>
   </Select>
 </FormControl>
-
+<TextField
+  label="Fecha estimada de finalización"
+  type="date"
+  value={formData.fechaEstimadaFin || ''}
+  onChange={(e) => setFormData({ ...formData, fechaEstimadaFin: e.target.value || null })}
+  fullWidth
+  InputLabelProps={{ shrink: true }}
+/>
     </Stack>
   </DialogContent>
   <DialogActions>
@@ -1555,6 +1644,18 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
                 <Box>
                   <Typography variant="caption" color="text.secondary">Fecha</Typography>
                   <Typography variant="body2" fontWeight={500}>{formatTimestamp(comentariosDialogNota.fechaCreacion)}</Typography>
+                </Box>
+              </Stack>
+
+              <Stack direction="row" spacing={1.5} alignItems="center">
+                <Box sx={{ p: 1, bgcolor: 'action.hover', borderRadius: 1 }}>
+                  <CalendarTodayIcon fontSize="small" color="action" />
+                </Box>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Finalización estimada</Typography>
+                  <Typography variant="body2" fontWeight={500}>
+                    {comentariosDialogNota.fechaEstimadaFin ? formatTimestamp(comentariosDialogNota.fechaEstimadaFin) : '—'}
+                  </Typography>
                 </Box>
               </Stack>
             </Box>

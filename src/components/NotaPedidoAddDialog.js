@@ -14,11 +14,11 @@ import {
 } from '@mui/material';
 
 export const NotaPedidoAddDialog = ({ open, onClose, onSave, profiles, proyectos }) => {
-  const [newNoteData, setNewNoteData] = useState({ descripcion: '', proyecto_id: '', proveedor: '', owner: '' });
+  const [newNoteData, setNewNoteData] = useState({ descripcion: '', proyecto_id: '', proveedor: '', owner: '', fechaEstimadaFin: '' });
 
   useEffect(() => {
     if (open) {
-      setNewNoteData({ descripcion: '', proyecto_id: '', proveedor: '', owner: '' });
+      setNewNoteData({ descripcion: '', proyecto_id: '', proveedor: '', owner: '', fechaEstimadaFin: '' });
     }
   }, [open]);
 
@@ -71,6 +71,14 @@ export const NotaPedidoAddDialog = ({ open, onClose, onSave, profiles, proyectos
               ))}
             </Select>
           </FormControl>
+          <TextField
+            label="Fecha estimada de finalización"
+            type="date"
+            value={newNoteData.fechaEstimadaFin || ''}
+            onChange={(e) => setNewNoteData({ ...newNoteData, fechaEstimadaFin: e.target.value || null })}
+            fullWidth
+            InputLabelProps={{ shrink: true }}
+          />
         </Stack>
       </DialogContent>
       <DialogActions>
