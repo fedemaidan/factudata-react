@@ -115,7 +115,15 @@ function PreviewReglaSheet({ regla }) {
           >
             {getLabelCampo(c.campo)}
           </Box>
-          <Box component="span" sx={{ color: "text.disabled", fontSize: "0.8rem", fontFamily: "monospace", fontWeight: 500 }}>
+          <Box
+            component="span"
+            sx={{
+              color: "text.disabled",
+              fontSize: "0.8rem",
+              fontFamily: "monospace",
+              fontWeight: 500,
+            }}
+          >
             =
           </Box>
           <Box
@@ -197,7 +205,7 @@ function ReglasSheets({ reglasSheets, setReglasSheets }) {
     actualizarRegla(
       reglaIdx,
       "condiciones",
-      regla.condiciones.filter((_, i) => i !== condIdx)
+      regla.condiciones.filter((_, i) => i !== condIdx),
     );
   };
 
@@ -206,7 +214,7 @@ function ReglasSheets({ reglasSheets, setReglasSheets }) {
     actualizarRegla(
       reglaIdx,
       "condiciones",
-      regla.condiciones.map((c, i) => (i === condIdx ? { ...c, [campo]: valor } : c))
+      regla.condiciones.map((c, i) => (i === condIdx ? { ...c, [campo]: valor } : c)),
     );
   };
 
@@ -230,8 +238,8 @@ function ReglasSheets({ reglasSheets, setReglasSheets }) {
         <Typography variant="h6">Hojas adicionales condicionales</Typography>
       </Stack>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2.5, pl: "44px" }}>
-        Si un movimiento cumple todas las condiciones de una regla, se escribe también en esa
-        solapa del spreadsheet.{" "}
+        Si un movimiento cumple todas las condiciones de una regla, se escribe también en esa solapa
+        del spreadsheet.{" "}
         <Box
           component="span"
           sx={{
@@ -315,7 +323,10 @@ function ReglasSheets({ reglasSheets, setReglasSheets }) {
                 </Box>
                 <Typography
                   variant="subtitle2"
-                  sx={{ color: regla.nombre ? "text.primary" : "text.disabled", fontFamily: regla.nombre ? "monospace" : "inherit" }}
+                  sx={{
+                    color: regla.nombre ? "text.primary" : "text.disabled",
+                    fontFamily: regla.nombre ? "monospace" : "inherit",
+                  }}
                 >
                   {regla.nombre || "sin nombre"}
                 </Typography>
@@ -326,7 +337,10 @@ function ReglasSheets({ reglasSheets, setReglasSheets }) {
                   onClick={() => eliminarRegla(reglaIdx)}
                   sx={{
                     color: "text.disabled",
-                    "&:hover": { color: "error.main", bgcolor: alpha(theme.palette.error.main, 0.08) },
+                    "&:hover": {
+                      color: "error.main",
+                      bgcolor: alpha(theme.palette.error.main, 0.08),
+                    },
                   }}
                 >
                   <DeleteIcon fontSize="small" />
@@ -399,7 +413,12 @@ function ReglasSheets({ reglasSheets, setReglasSheets }) {
                   {regla.condiciones.map((cond, condIdx) => (
                     <React.Fragment key={condIdx}>
                       {condIdx > 0 && (
-                        <Stack direction="row" alignItems="center" spacing={1} sx={{ py: 0.5, pl: 1.5 }}>
+                        <Stack
+                          direction="row"
+                          alignItems="center"
+                          spacing={1}
+                          sx={{ py: 0.5, pl: 1.5 }}
+                        >
                           <Box
                             sx={{
                               width: 1,
@@ -417,7 +436,7 @@ function ReglasSheets({ reglasSheets, setReglasSheets }) {
                               letterSpacing: "0.5px",
                             }}
                           >
-                            Y además
+                            AND
                           </Typography>
                         </Stack>
                       )}
@@ -450,7 +469,11 @@ function ReglasSheets({ reglasSheets, setReglasSheets }) {
                                 <Stack spacing={0}>
                                   <span style={{ fontSize: "0.8rem" }}>{c.label}</span>
                                   {c.hint && (
-                                    <Typography variant="caption" color="text.disabled" sx={{ fontSize: "0.68rem" }}>
+                                    <Typography
+                                      variant="caption"
+                                      color="text.disabled"
+                                      sx={{ fontSize: "0.68rem" }}
+                                    >
                                       {c.hint}
                                     </Typography>
                                   )}
@@ -661,8 +684,8 @@ function getEjemploToken(value) {
 function PreviewEstructura({ niveles, nombre_archivo }) {
   if (!niveles || niveles.length === 0) return null;
 
-  const tokens = nombre_archivo && nombre_archivo.length > 0 ? nombre_archivo : ['categoria'];
-  const nombreEjemplo = tokens.map(t => getEjemploToken(t)).join('_') + '_1.pdf';
+  const tokens = nombre_archivo && nombre_archivo.length > 0 ? nombre_archivo : ["categoria"];
+  const nombreEjemplo = tokens.map((t) => getEjemploToken(t)).join("_") + "_1.pdf";
 
   return (
     <Box sx={{ mt: 1, pl: 1, borderLeft: "2px solid", borderColor: "divider", py: 0.5 }}>
@@ -709,7 +732,7 @@ function PreviewEstructura({ niveles, nombre_archivo }) {
 export const OrganizacionDrive = ({ empresa, updateEmpresaData }) => {
   const theme = useTheme();
   const [carpetaId, setCarpetaId] = useState(
-    empresa.carpeta_central_comprobantes || empresa.carpetaEmpresaRef || ""
+    empresa.carpeta_central_comprobantes || empresa.carpetaEmpresaRef || "",
   );
   const [reglas, setReglas] = useState(getReglasIniciales(empresa));
   const [reglasSheets, setReglasSheets] = useState(empresa.reglas_sheets || []);
@@ -732,7 +755,13 @@ export const OrganizacionDrive = ({ empresa, updateEmpresaData }) => {
   const agregarRegla = () => {
     setReglas([
       ...reglas,
-      { nombre: "", niveles: ["proyecto_nombre", "categoria"], nombre_archivo: ["categoria"], filtro: "todos", proyectos: [] },
+      {
+        nombre: "",
+        niveles: ["proyecto_nombre", "categoria"],
+        nombre_archivo: ["categoria"],
+        filtro: "todos",
+        proyectos: [],
+      },
     ]);
   };
 
@@ -753,7 +782,11 @@ export const OrganizacionDrive = ({ empresa, updateEmpresaData }) => {
 
   const eliminarNivel = (reglaIdx, nivelIdx) => {
     const regla = reglas[reglaIdx];
-    actualizarRegla(reglaIdx, "niveles", regla.niveles.filter((_, i) => i !== nivelIdx));
+    actualizarRegla(
+      reglaIdx,
+      "niveles",
+      regla.niveles.filter((_, i) => i !== nivelIdx),
+    );
   };
 
   const moverNivel = (reglaIdx, nivelIdx, direccion) => {
@@ -778,7 +811,10 @@ export const OrganizacionDrive = ({ empresa, updateEmpresaData }) => {
         reglas_drive: reglas,
         reglas_sheets: reglasSheets,
       });
-      setSnackbarInfo({ message: "Configuración de Drive guardada con éxito.", severity: "success" });
+      setSnackbarInfo({
+        message: "Configuración de Drive guardada con éxito.",
+        severity: "success",
+      });
     } catch (error) {
       console.error("Error al guardar:", error);
       setSnackbarInfo({ message: "Error al guardar la configuración.", severity: "error" });
@@ -886,11 +922,7 @@ export const OrganizacionDrive = ({ empresa, updateEmpresaData }) => {
                             .map((n) => (
                               <MenuItem key={n.value} value={n.value}>
                                 {n.label}
-                                <Typography
-                                  variant="caption"
-                                  color="text.secondary"
-                                  sx={{ ml: 1 }}
-                                >
+                                <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
                                   (ej: {n.ejemplo})
                                 </Typography>
                               </MenuItem>
@@ -905,12 +937,14 @@ export const OrganizacionDrive = ({ empresa, updateEmpresaData }) => {
                         Nombre del archivo
                       </Typography>
                       <Stack spacing={0.5}>
-                        {(regla.nombre_archivo || ['categoria']).map((token, tokenIdx) => (
+                        {(regla.nombre_archivo || ["categoria"]).map((token, tokenIdx) => (
                           <Stack key={token} direction="row" spacing={0.5} alignItems="center">
                             <Chip
                               label={getLabelToken(token)}
                               onDelete={() => {
-                                const nuevos = (regla.nombre_archivo || ['categoria']).filter((_, i) => i !== tokenIdx);
+                                const nuevos = (regla.nombre_archivo || ["categoria"]).filter(
+                                  (_, i) => i !== tokenIdx,
+                                );
                                 actualizarRegla(reglaIdx, "nombre_archivo", nuevos);
                               }}
                               size="small"
@@ -926,16 +960,21 @@ export const OrganizacionDrive = ({ empresa, updateEmpresaData }) => {
                           label="Agregar campo al nombre"
                           value=""
                           onChange={(e) => {
-                            const actual = regla.nombre_archivo || ['categoria'];
+                            const actual = regla.nombre_archivo || ["categoria"];
                             if (!actual.includes(e.target.value)) {
-                              actualizarRegla(reglaIdx, "nombre_archivo", [...actual, e.target.value]);
+                              actualizarRegla(reglaIdx, "nombre_archivo", [
+                                ...actual,
+                                e.target.value,
+                              ]);
                             }
                           }}
                           size="small"
                           sx={{ mt: 1, minWidth: 250 }}
                         >
                           {tokensNombreArchivo
-                            .filter((t) => !(regla.nombre_archivo || ['categoria']).includes(t.value))
+                            .filter(
+                              (t) => !(regla.nombre_archivo || ["categoria"]).includes(t.value),
+                            )
                             .map((t) => (
                               <MenuItem key={t.value} value={t.value}>
                                 {t.label}
@@ -971,9 +1010,7 @@ export const OrganizacionDrive = ({ empresa, updateEmpresaData }) => {
                         <Select
                           multiple
                           value={regla.proyectos}
-                          onChange={(e) =>
-                            actualizarRegla(reglaIdx, "proyectos", e.target.value)
-                          }
+                          onChange={(e) => actualizarRegla(reglaIdx, "proyectos", e.target.value)}
                           renderValue={(selected) =>
                             selected
                               .map((id) => {
@@ -994,7 +1031,10 @@ export const OrganizacionDrive = ({ empresa, updateEmpresaData }) => {
                     )}
 
                     {/* Preview */}
-                    <PreviewEstructura niveles={regla.niveles} nombre_archivo={regla.nombre_archivo} />
+                    <PreviewEstructura
+                      niveles={regla.niveles}
+                      nombre_archivo={regla.nombre_archivo}
+                    />
                   </Stack>
                 </CardContent>
               </Card>
