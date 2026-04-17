@@ -45,6 +45,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
     factura_cliente: false,
     dolar_referencia: false,
     detalle: false,
+    monto_aprobado: false,
   };
   const ingreso_info_default = {
     observacion: true,
@@ -216,6 +217,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
     "VER_VALIDACION_BORRADORES",
     "VER_PRESUPUESTOS_PROFESIONALES",
     "VER_PLANES_COBRO",
+    "VER_PAGOS_APROBACIONES",
   ];
 
   const celulandiaAcciones = [

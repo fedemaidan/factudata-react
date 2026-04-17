@@ -1,8 +1,8 @@
-import Head from 'next/head';
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Box,
   Button,
+  ButtonGroup,
   Container,
   Stack,
   Typography,
@@ -17,6 +17,7 @@ import {
   TextField,
   Select,
   MenuItem,
+  Fab,
   Chip,
   Table,
   TableBody,
@@ -37,7 +38,6 @@ import {
   Tab,
   LinearProgress,
   alpha,
-  Skeleton,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import CommentIcon from '@mui/icons-material/Comment';
@@ -64,13 +64,20 @@ import AttachFileIcon from '@mui/icons-material/AttachFile';
 import SendIcon from '@mui/icons-material/Send';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import SearchIcon from '@mui/icons-material/Search';
+import ViewColumnIcon from '@mui/icons-material/ViewColumn';
+import Checkbox from '@mui/material/Checkbox';
+import FormControlLabel from '@mui/material/FormControlLabel';
+import Popover from '@mui/material/Popover';
 import Paper from '@mui/material/Paper';
 import Menu from '@mui/material/Menu';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
+import { useCallback } from 'react';
 import { getProyectosFromUser } from 'src/services/proyectosService';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import { formatTimestamp } from 'src/utils/formatters';
+import { Timestamp } from 'firebase/firestore';
+import { Router } from 'react-router-dom';
 import { useRouter } from 'next/router';
 import { NotaPedidoAddDialog } from 'src/components/NotaPedidoAddDialog';
 import NotaPedidoPdfTemplateDialog, { NotaPedidoLogoRequeridoDialog } from 'src/components/NotaPedidoPdfDialogs';
@@ -108,7 +115,7 @@ const NotaPedidoPage = () => {
   const [alert, setAlert] = useState({ open: false, message: '', severity: 'info' });
   const [openFilters, setOpenFilters] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-  const [openAddDialog, setOpenAddDialog] = useState(false);
+  const [openAddDialog, setOpenAddDialog] = useState(false); // Estado para añadir nota
   const [currentNota, setCurrentNota] = useState(null);
   const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
   const [notaToDelete, setNotaToDelete] = useState(null);
@@ -120,11 +127,13 @@ const NotaPedidoPage = () => {
   const [nuevoComentario, setNuevoComentario] = useState('');
   const nuevoComentarioRef = useRef();
   const [userById, setUserById] = useState(null);
-  const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
+
+const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
+
   const [comentariosCargando, setComentariosCargando] = useState(false);
   const [comentarioEditandoIdx, setComentarioEditandoIdx] = useState(null);
   const [comentarioEditadoTexto, setComentarioEditadoTexto] = useState('');
-  const [drawerTab, setDrawerTab] = useState(0);
+  const [drawerTab, setDrawerTab] = useState(0); // 0: Detalles, 1: Comentarios, 2: Historial
   const [hoveredComentario, setHoveredComentario] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
   const [mobileMenuAnchor, setMobileMenuAnchor] = useState(null);
@@ -135,19 +144,44 @@ const NotaPedidoPage = () => {
   const [basePdfTemplate, setBasePdfTemplate] = useState(null);
   const [pdfUiLoading, setPdfUiLoading] = useState(false);
   const [selectedPlantillaId, setSelectedPlantillaId] = useState(null);
+  const [columnMenuAnchor, setColumnMenuAnchor] = useState(null);
+  const [visibleColumns, setVisibleColumns] = useState({
+    codigo: true,
+    proyecto_nombre: true,
+    proveedor: true,
+    owner_name: true,
+    descripcion: true,
+    estado: true,
+    fechaCreacion: true,
+    fechaEstimadaFin: false,
+  });
+  const COLUMN_LABELS = {
+    codigo: 'Código',
+    proyecto_nombre: 'Proyecto',
+    proveedor: 'Proveedor',
+    owner_name: 'Asignado',
+    descripcion: 'Descripción',
+    estado: 'Estado',
+    fechaCreacion: 'Fecha Creación',
+    fechaEstimadaFin: 'Finalización estimada',
+  };
+
   const [formData, setFormData] = useState({
-    descripcion: '', proyecto_id: '', estado: '', owner: '', creador: '', proveedor: ''
+    descripcion: '', proyecto_id: '', estado: '', owner: '', creador: '', proveedor: '', fechaEstimadaFin: ''
   });
   const [filters, setFilters] = useState({ text: '', estado: '', proyecto_id: '', proveedor: '', misNotas: false });
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const isMobile = useMediaQuery((theme) => theme.breakpoints.down('sm'), { noSsr: true });
-
+  
   const sortedNotas = useMemo(() => {
     return [...filteredNotas].sort((a, b) => {
-      if (!a[sortConfig.key] || !b[sortConfig.key]) return 0;
+      if (!a[sortConfig.key] || !b[sortConfig.key]) return 0; // Evitar errores con valores nulos
+    
       let aValue = a[sortConfig.key];
       let bValue = b[sortConfig.key];
+    
+      // Si es una fecha, convertir a timestamp
       if (sortConfig.key === 'fechaCreacion') {
         aValue = aValue._seconds || 0;
         bValue = bValue._seconds || 0;
@@ -155,6 +189,7 @@ const NotaPedidoPage = () => {
         aValue = aValue.toLowerCase();
         bValue = bValue.toLowerCase();
       }
+    
       if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
       if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
       return 0;
@@ -165,13 +200,18 @@ const NotaPedidoPage = () => {
     return sortedNotas.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
   }, [sortedNotas, page, rowsPerPage]);
 
-  const handlePageChange = (event, newPage) => setPage(newPage);
+  const handlePageChange = (event, newPage) => {
+    setPage(newPage);
+  };
+
   const handleRowsPerPageChange = (event) => {
     setRowsPerPage(parseInt(event.target.value, 10));
     setPage(0);
   };
 
-  useEffect(() => { setPage(0); }, [filters]);
+  useEffect(() => {
+    setPage(0);
+  }, [filters]);
 
   const handleSort = (key) => {
     setSortConfig((prev) => ({
@@ -180,15 +220,20 @@ const NotaPedidoPage = () => {
     }));
   };
 
+  
   const handleGuardarComentarioEditado = async (idx) => {
     if (!comentarioEditadoTexto.trim() || !comentariosDialogNota) return;
+  
     const comentariosActualizados = [...comentariosDialogNota.comentarios];
     comentariosActualizados[idx].texto = comentarioEditadoTexto.trim();
+  
     const notaActualizada = { ...comentariosDialogNota, comentarios: comentariosActualizados };
     try {
       const notaServidor = await notaPedidoService.updateNota(comentariosDialogNota.id, notaActualizada);
       if (!notaServidor) throw new Error('No se pudo actualizar la nota');
-      setNotas((prev) => prev.map((n) => (n.id === comentariosDialogNota.id ? notaServidor : n)));
+      setNotas((prev) =>
+        prev.map((n) => (n.id === comentariosDialogNota.id ? notaServidor : n))
+      );
       setComentariosDialogNota(notaServidor);
       setComentarioEditandoIdx(null);
       setComentarioEditadoTexto('');
@@ -201,13 +246,17 @@ const NotaPedidoPage = () => {
 
   const handleEliminarComentario = async (idx) => {
     if (!comentariosDialogNota) return;
+  
     const comentariosActualizados = [...comentariosDialogNota.comentarios];
     comentariosActualizados.splice(idx, 1);
+  
     const notaActualizada = { ...comentariosDialogNota, comentarios: comentariosActualizados };
     try {
       const notaServidor = await notaPedidoService.updateNota(comentariosDialogNota.id, notaActualizada);
       if (!notaServidor) throw new Error('No se pudo actualizar la nota');
-      setNotas((prev) => prev.map((n) => (n.id === comentariosDialogNota.id ? notaServidor : n)));
+      setNotas((prev) =>
+        prev.map((n) => (n.id === comentariosDialogNota.id ? notaServidor : n))
+      );
       setComentariosDialogNota(notaServidor);
       setAlert({ open: true, message: 'Comentario eliminado', severity: 'success' });
     } catch (error) {
@@ -220,6 +269,8 @@ const NotaPedidoPage = () => {
     try {
       const workbook = new ExcelJS.Workbook();
       const worksheet = workbook.addWorksheet('Notas de Pedido');
+
+      // Definir columnas
       worksheet.columns = [
         { header: 'Código', key: 'codigo', width: 15 },
         { header: 'Proyecto', key: 'proyecto_nombre', width: 25 },
@@ -230,9 +281,17 @@ const NotaPedidoPage = () => {
         { header: 'Estado', key: 'estado', width: 15 },
         { header: 'Fecha Creación', key: 'fechaCreacion', width: 20 },
       ];
+
+      // Estilo del encabezado
       worksheet.getRow(1).font = { bold: true };
-      worksheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4F81BD' } };
+      worksheet.getRow(1).fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF4F81BD' },
+      };
       worksheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+
+      // Agregar datos
       sortedNotas.forEach((nota) => {
         worksheet.addRow({
           codigo: nota.codigo || '',
@@ -245,10 +304,13 @@ const NotaPedidoPage = () => {
           fechaCreacion: formatTimestamp(nota.fechaCreacion) || '',
         });
       });
+
+      // Generar y descargar archivo
       const buffer = await workbook.xlsx.writeBuffer();
       const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
       const fecha = new Date().toISOString().split('T')[0];
       saveAs(blob, `notas_pedido_${fecha}.xlsx`);
+
       setAlert({ open: true, message: 'Excel exportado con éxito', severity: 'success' });
     } catch (error) {
       console.error('Error al exportar a Excel:', error);
@@ -350,6 +412,7 @@ const NotaPedidoPage = () => {
     await handleDownloadPdfNota();
   };
 
+  
   const fetchProfiles = async () => {
     try {
       const empresaId = user?.empresa?.id || user?.empresaData?.id || user?.empresa_id;
@@ -362,62 +425,99 @@ const NotaPedidoPage = () => {
 
   const fetchProyectos = useCallback(async () => {
     try {
+      // Obtener solo los proyectos asignados al usuario
       const proyectosData = await getProyectosFromUser(user);
+      console.log('Proyectos asignados al usuario:', proyectosData);
       setProyectos(proyectosData);
     } catch (error) {
       console.error('Error al obtener proyectos:', error);
     }
   }, [user]);
-
+  
+  
   useEffect(() => {
     const fetchEmpresa = async () => {
       try {
         const empresa = await getEmpresaDetailsFromUser(user);
-        const estados = empresa.notas_estados || ['Pendiente', 'En proceso', 'Completa'];
-        setNotasEstados(estados);
+        const notasEstados = empresa.notas_estados || ["Pendiente", "En proceso", "Completa"]
+        setNotasEstados(notasEstados);
       } catch (error) {
         console.error('Error al obtener los estados de nota de pedido:', error);
       }
     };
-    if (user) fetchEmpresa();
+  
+    if (user) {
+      fetchEmpresa();
+    }
   }, [user]);
 
   const getEstadoSiguiente = (estado) => {
     const index = notasEstados.indexOf(estado);
-    if (index === -1 || index === notasEstados.length - 1) return null;
-    return notasEstados[index + 1];
-  };
-
+    if (index === -1) return null;
+    if (index === notasEstados.length - 1) return null;
+    return notasEstados[index + 1]; 
+  }
+  
   const getEstadoColor = (index) => {
-    if (index < 0) return 'primary';
+    // Si el índice es negativo o inválido, devolver color por defecto
+    // Usamos "primary" como fallback ya que es válido tanto para Button como Chip
+    if (index < 0) return "primary";
+    
     let colors;
     switch (notasEstados.length) {
-      case 0: case 1: return 'primary';
-      case 2: colors = ['primary', 'success']; break;
-      case 3: colors = ['warning', 'primary', 'success']; break;
-      case 4: colors = ['warning', 'info', 'primary', 'success']; break;
-      default: colors = ['secondary', 'warning', 'info', 'primary', 'success']; break;
+      case 0:
+      case 1:
+        return "primary";
+      case 2:
+        colors = ["primary", "success"];
+        break
+      case 3:
+        colors = ["warning", "primary", "success"];
+        break;
+      case 4:
+        colors = ["warning", "info", "primary", "success"];
+        break;
+      case 5:
+      default:
+        // Para 5 o más estados
+        colors = ["secondary", "warning", "info", "primary", "success"];
+        break;
     }
-    return colors[index % colors.length] || 'primary';
+    
+    return colors[index % colors.length] || "primary"; 
   };
-
+  
+  
   useEffect(() => {
-    if (user) { fetchProfiles(); fetchProyectos(); }
+    if (user) {
+      fetchProfiles();
+      fetchProyectos();
+    }
   }, [user]);
-
+  
   const handleAgregarComentario = async () => {
     const texto = nuevoComentarioRef.current.value.trim();
     if (!comentariosDialogNota || !texto) return;
-    const nuevo = { texto, autor: `${user.firstName} ${user.lastName}`, fecha: new Date().toISOString() };
+  
+    const nuevo = {
+      texto,
+      autor: `${user.firstName} ${user.lastName}`,
+      fecha: new Date().toISOString(),
+    };
+  
     const comentariosActualizados = [...(comentariosDialogNota.comentarios || []), nuevo];
     const notaActualizada = { ...comentariosDialogNota, comentarios: comentariosActualizados };
+  
     try {
       setComentariosCargando(true);
       const notaServidor = await notaPedidoService.updateNota(comentariosDialogNota.id, notaActualizada);
       if (!notaServidor) throw new Error('No se pudo actualizar la nota');
-      setNotas((prev) => prev.map((n) => (n.id === comentariosDialogNota.id ? notaServidor : n)));
+
+      setNotas((prev) =>
+        prev.map((n) => (n.id === comentariosDialogNota.id ? notaServidor : n))
+      );
       setComentariosDialogNota(notaServidor);
-      nuevoComentarioRef.current.value = '';
+      nuevoComentarioRef.current.value = ''; // limpiás el input
       setAlert({ open: true, message: 'Comentario agregado con éxito', severity: 'success' });
     } catch (error) {
       console.error('Error al guardar comentario:', error);
@@ -426,11 +526,14 @@ const NotaPedidoPage = () => {
       setComentariosCargando(false);
     }
   };
+  
 
   const fetchNotas = useCallback(async () => {
     try {
       setLoading(true);
       const empresa = await getEmpresaDetailsFromUser(user);
+
+      // Si está en modo espía, enviar el user_id (Firebase Auth UID) directamente
       let targetUserId = null;
       if (isSpying()) {
         setUserById(user);
@@ -438,6 +541,7 @@ const NotaPedidoPage = () => {
       } else {
         setUserById(null);
       }
+
       const notasData = await notaPedidoService.getNotasByEmpresa(empresa.id, targetUserId);
       setNotas(notasData);
       setFilteredNotas(notasData);
@@ -447,31 +551,48 @@ const NotaPedidoPage = () => {
       setLoading(false);
     }
   }, [user, isSpying]);
+  
 
   const applyFilters = () => {
     let filtered = notas;
     if (filters.text) {
       filtered = filtered.filter(
-        (nota) =>
-          nota.descripcion.toLowerCase().includes(filters.text.toLowerCase()) ||
-          (nota.proveedor && nota.proveedor.toLowerCase().includes(filters.text.toLowerCase()))
+          (nota) =>
+              nota.descripcion.toLowerCase().includes(filters.text.toLowerCase()) ||
+              (nota.proveedor && nota.proveedor.toLowerCase().includes(filters.text.toLowerCase()))
+      );
+  }
+  
+
+    if (filters.estado) {
+      filtered = filtered.filter((nota) => nota.estado === filters.estado);
+    }
+
+    if (filters.proyecto_id) {
+      filtered = filtered.filter((nota) => nota.proyecto_id === filters.proyecto_id);
+    }
+
+    // Filtro "Mis notas" - filtra por owner o creador igual al usuario actual
+    if (filters.misNotas && user) {
+      filtered = filtered.filter((nota) => 
+        nota.owner === user.id || nota.creador === user.id
       );
     }
-    if (filters.estado) filtered = filtered.filter((nota) => nota.estado === filters.estado);
-    if (filters.proyecto_id) filtered = filtered.filter((nota) => nota.proyecto_id === filters.proyecto_id);
-    if (filters.misNotas && user) {
-      filtered = filtered.filter((nota) => nota.owner === user.id || nota.creador === user.id);
-    }
+  
     setFilteredNotas(filtered);
   };
 
   const setEstado = (estado) => {
-    setFilters({ ...filters, estado: filters.estado === estado ? '' : estado });
+    if (estado === filters.estado) {
+      setFilters({ ...filters, estado: '' });
+    } else {
+      setFilters({ ...filters, estado });
+    }
   };
 
   const handleEdit = (nota) => {
     setCurrentNota(nota);
-    setFormData({ descripcion: nota.descripcion, estado: nota.estado, owner: nota.owner, creador: nota.creador, proyecto_id: nota.proyecto_id, proveedor: nota.proveedor });
+    setFormData({ descripcion: nota.descripcion, estado: nota.estado, owner: nota.owner, creador: nota.creador, proyecto_id: nota.proyecto_id, proveedor: nota.proveedor, fechaEstimadaFin: nota.fechaEstimadaFin ? new Date(nota.fechaEstimadaFin instanceof Object && nota.fechaEstimadaFin.seconds ? nota.fechaEstimadaFin.seconds * 1000 : nota.fechaEstimadaFin).toISOString().split('T')[0] : '' });
     setIsEditing(true);
   };
 
@@ -479,18 +600,20 @@ const NotaPedidoPage = () => {
     try {
       const ownerObj = profiles.find((p) => p.id === data.owner);
       const proyectoObj = proyectos.find((p) => p.id === data.proyecto_id);
+      
       const newNote = {
         ...data,
         owner: data.owner || user.id,
-        owner_name: ownerObj ? `${ownerObj.firstName} ${ownerObj.lastName}` : `${user.firstName} ${user.lastName}`,
+        owner_name: ownerObj ? (ownerObj.firstName + " " + ownerObj.lastName) : (user.firstName + " " + user.lastName),
         estado: notasEstados[0],
         empresaId: user?.empresa?.id || user?.empresaData?.id || user?.empresa_id,
         creador: user.id,
-        creador_name: `${user.firstName} ${user.lastName}`,
+        creador_name: user.firstName + " " + user.lastName,
         proyecto_id: data.proyecto_id,
         proyecto_nombre: proyectoObj ? proyectoObj.nombre : null,
         proveedor: data.proveedor || '',
       };
+      
       const savedNote = await notaPedidoService.createNota(newNote);
       setNotas([savedNote, ...notas]);
       setAlert({ open: true, message: 'Nota añadida con éxito', severity: 'success' });
@@ -500,27 +623,43 @@ const NotaPedidoPage = () => {
       setAlert({ open: true, message: 'Error al añadir la nota', severity: 'error' });
     }
   };
-
-  const openDeleteConfirmation = (nota) => { setNotaToDelete(nota); setOpenDeleteDialog(true); };
-  const closeDeleteConfirmation = () => { setNotaToDelete(null); setOpenDeleteDialog(false); };
+  
+  const openDeleteConfirmation = (nota) => {
+    setNotaToDelete(nota);
+    setOpenDeleteDialog(true);
+  };
+  
+  const closeDeleteConfirmation = () => {
+    setNotaToDelete(null);
+    setOpenDeleteDialog(false);
+  };
+  
 
   const handleSaveEdit = async () => {
     try {
+      console.log("currentNota", currentNota)
+      console.log("formData", formData)
       if (formData?.owner) {
-        const ownerObj = profiles.filter((p) => p.id === formData.owner)[0];
-        formData.owner_name = `${ownerObj.firstName} ${ownerObj.lastName}`;
+        const ownerObj = profiles.filter( (p) => p.id === formData.owner)[0]
+        formData.owner_name = ownerObj.firstName + " " + ownerObj.lastName
       }
+
       if (formData?.proyecto_id) {
-        const proyectoObj = proyectos.filter((p) => p.id === formData.proyecto_id)[0];
-        formData.proyecto_nombre = proyectoObj.nombre;
+        const proyectoObj = proyectos.filter( (p) => p.id === formData.proyecto_id)[0]
+        formData.proyecto_nombre = proyectoObj.nombre
       }
+
       if (formData?.proyecto_id === '') {
         formData.proyecto_nombre = null;
         formData.proyecto_id = null;
       }
+
       const updatedNota = { ...currentNota, ...formData };
+      console.log("updatedNota", updatedNota)
+      
       const notaServidor = await notaPedidoService.updateNota(currentNota.id, {
-        ...updatedNota, _userName: `${user.firstName} ${user.lastName}`
+        ...updatedNota,
+        _userName: `${user.firstName} ${user.lastName}`
       });
       if (notaServidor) {
         setNotas(notas.map((n) => (n.id === currentNota.id ? notaServidor : n)));
@@ -538,15 +677,27 @@ const NotaPedidoPage = () => {
 
   const handleChangeEstado = async (nota) => {
     const index = notasEstados.indexOf(nota.estado);
-    if (index === -1 || index === notasEstados.length - 1) return;
+    if (index === -1) return;
+    if (index === notasEstados.length - 1) return;
+
     const nuevoEstado = notasEstados[index + 1];
-    if (!nuevoEstado) return;
+  
+    if (!nuevoEstado) return; // Si ya está en "Completa", no cambiar más.
+  
     try {
-      const updatedNota = { ...nota, estado: nuevoEstado, _userName: `${user.firstName} ${user.lastName}` };
+      const updatedNota = { 
+        ...nota, 
+        estado: nuevoEstado,
+        _userName: `${user.firstName} ${user.lastName}` // Para el historial
+      };
       const notaServidor = await notaPedidoService.updateNota(nota.id, updatedNota);
+  
       if (notaServidor) {
         setNotas(notas.map((n) => (n.id === nota.id ? notaServidor : n)));
-        if (comentariosDialogNota?.id === nota.id) setComentariosDialogNota(notaServidor);
+        // Actualizar drawer si está abierto
+        if (comentariosDialogNota?.id === nota.id) {
+          setComentariosDialogNota(notaServidor);
+        }
         setAlert({ open: true, message: `Estado cambiado a "${nuevoEstado}"`, severity: 'success' });
       } else {
         setAlert({ open: true, message: 'Error al cambiar el estado', severity: 'error' });
@@ -556,1323 +707,1621 @@ const NotaPedidoPage = () => {
       setAlert({ open: true, message: 'Error al cambiar el estado', severity: 'error' });
     }
   };
-
+  
+  // Setear breadcrumbs
   useEffect(() => {
     const label = userById
       ? `Notas de Pedido de ${userById.firstName || ''} ${userById.lastName || ''}`.trim()
       : 'Notas de Pedido';
     setBreadcrumbs([
       { label: 'Inicio', href: '/', icon: <HomeIcon fontSize="small" /> },
-      { label, icon: <AssignmentIcon fontSize="small" /> },
+      { label, icon: <AssignmentIcon fontSize="small" /> }
     ]);
     return () => setBreadcrumbs([]);
   }, [setBreadcrumbs, userById]);
 
-  useEffect(() => { if (user) fetchNotas(); }, [user, fetchNotas]);
-  useEffect(() => { applyFilters(); }, [filters, notas]);
+  useEffect(() => {
+    if (user) fetchNotas();
+  }, [user, fetchNotas]);
+  
 
-  // ─── Helpers ─────────────────────────────────────────────────────────────────
-  const SortLabel = ({ col }) => (
-    <Box component="span" sx={{ ml: 0.5, opacity: 0.5, fontSize: '0.7rem' }}>
-      {sortConfig.key === col ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
-    </Box>
-  );
+  useEffect(() => {
+    applyFilters();
+  }, [filters, notas]);
 
-  const estadoCountMap = useMemo(() => {
-    const map = {};
-    notasEstados.forEach((e) => { map[e] = notas.filter((n) => n.estado === e).length; });
-    return map;
-  }, [notas, notasEstados]);
-
-  // ─── JSX ─────────────────────────────────────────────────────────────────────
   return (
-    <>
-      <Head>
-        <link
-          href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
-          rel="stylesheet"
-        />
-      </Head>
-
-      <Box
-        component="main"
-        sx={{
-          flexGrow: 1,
-          py: isMobile ? 2 : 4,
-          px: isMobile ? 1.5 : 3,
-          bgcolor: C.slate50,
-          fontFamily: font,
-          minHeight: '100vh',
+    <Box component="main" sx={{ flexGrow: 1, py: isMobile ? 2 : 4, px: isMobile ? 1.5 : 3 }}>
+      <Container maxWidth={false}>
+        <Stack
+  direction={isMobile ? 'column' : 'row'}
+  spacing={2}
+  alignItems={isMobile ? 'center' : 'flex-start'}
+  mb={3}
+>
+  
+  {isMobile ? (
+    <Box sx={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+      {/* Búsqueda rápida siempre visible */}
+      <TextField
+        placeholder="Buscar código, descripción, proveedor..."
+        value={filters.text}
+        onChange={(e) => setFilters({ ...filters, text: e.target.value })}
+        size="small"
+        fullWidth
+        InputProps={{
+          startAdornment: <SearchIcon sx={{ color: 'text.disabled', mr: 1 }} />,
         }}
-      >
-        <Container maxWidth={false}>
+        sx={{ bgcolor: 'background.paper', borderRadius: 1 }}
+      />
+      {/* Chips de estado scrolleables */}
+      <Box sx={{ 
+        display: 'flex', 
+        gap: 0.75, 
+        overflowX: 'auto', 
+        pb: 0.5,
+        '&::-webkit-scrollbar': { display: 'none' },
+        scrollbarWidth: 'none',
+      }}>
+        <Chip
+          label={`Todos (${notas.length})`}
+          size="small"
+          color={filters.estado === '' ? 'primary' : 'default'}
+          variant={filters.estado === '' ? 'filled' : 'outlined'}
+          onClick={() => setEstado('')}
+          sx={{ flexShrink: 0, fontWeight: filters.estado === '' ? 600 : 400 }}
+        />
+        {notasEstados.map((estado, index) => {
+          const count = notas.filter((n) => n.estado === estado).length;
+          return (
+            <Chip
+              key={estado}
+              label={`${estado} (${count})`}
+              size="small"
+              color={filters.estado === estado ? getEstadoColor(index) : 'default'}
+              variant={filters.estado === estado ? 'filled' : 'outlined'}
+              onClick={() => setEstado(estado)}
+              sx={{ flexShrink: 0, fontWeight: filters.estado === estado ? 600 : 400 }}
+            />
+          );
+        })}
+      </Box>
+    </Box>
+  ) : (
+    <Box
+      sx={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 2,
+        width: '100%',
+        p: 2,
+        backgroundColor: 'background.paper',
+        borderRadius: 1,
+        boxShadow: 1,
+      }}
+    >
+      {/* Fila única: Filtros + Estados + Acciones */}
+      <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={2} flexWrap="wrap">
+        {/* Filtros de texto */}
+        <Stack direction="row" spacing={2} alignItems="center">
+          <FormControl size="small" sx={{ minWidth: 160 }}>
+            <InputLabel>Proyecto</InputLabel>
+            <Select
+              value={filters.proyecto_id}
+              onChange={(e) => setFilters({ ...filters, proyecto_id: e.target.value })}
+              label="Proyecto"
+            >
+              <MenuItem value="">Todos</MenuItem>
+              {proyectos.map((proyecto) => (
+                <MenuItem key={proyecto.id} value={proyecto.id}>
+                  {proyecto.nombre}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <TextField
+            label="Buscar"
+            placeholder="Código, descripción, proveedor..."
+            value={filters.text}
+            onChange={(e) => setFilters({ ...filters, text: e.target.value })}
+            size="small"
+            sx={{ minWidth: 200 }}
+          />
+          <Chip
+            label="Mis notas"
+            color={filters.misNotas ? 'primary' : 'default'}
+            variant={filters.misNotas ? 'filled' : 'outlined'}
+            onClick={() => setFilters({ ...filters, misNotas: !filters.misNotas })}
+            sx={{ cursor: 'pointer' }}
+          />
+        </Stack>
 
-          {/* ── PAGE HEADER ──────────────────────────────────────────────────── */}
-          {!isMobile && (
-            <Box sx={{ mb: 3.5, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <Box>
-                <Typography
-                  variant="h4"
-                  sx={{ fontFamily: font, fontWeight: 800, color: C.slate900, lineHeight: 1.15, mt: 0.25 }}
-                >
-                  Notas de Pedido
-                </Typography>
-                <Stack direction="row" spacing={1} mt={1} flexWrap="wrap">
-                  <Chip
-                    label={`${notas.length} total`}
-                    size="small"
-                    sx={{ bgcolor: C.slate200, color: C.slate700, fontFamily: font, fontWeight: 600, borderRadius: 1.5 }}
-                  />
-                  {notasEstados.map((estado, idx) => {
-                    const count = estadoCountMap[estado] || 0;
-                    return count > 0 ? (
-                      <Chip
-                        key={estado}
-                        label={`${count} ${estado}`}
-                        size="small"
-                        color="primary"
-                        variant="outlined"
-                        sx={{ fontFamily: font, fontWeight: 500, borderRadius: 1.5 }}
-                      />
-                    ) : null;
-                  })}
-                </Stack>
-              </Box>
-              <Stack direction="row" spacing={1} alignItems="center">
-                <Tooltip title="Actualizar">
-                  <IconButton onClick={fetchNotas} sx={{ border: `1px solid ${C.slate200}`, bgcolor: 'white' }}>
-                    <RefreshIcon fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title="Exportar Excel">
-                  <IconButton onClick={handleExportToExcel} sx={{ border: `1px solid ${C.slate200}`, bgcolor: 'white' }}>
-                    <DownloadIcon fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-                <Button
-                  variant="contained"
-                  color="primary"
-                  startIcon={<AddIcon />}
-                  onClick={() => setOpenAddDialog(true)}
+        {/* Filtros de estado - diseño mejorado */}
+        <Stack direction="row" spacing={0.5} alignItems="center">
+          {notasEstados.map((estado, index) => {
+            const count = notas.filter((n) => n.estado === estado).length;
+            const isSelected = filters.estado === estado;
+            return (
+              <Button
+                key={estado}
+                size="small"
+                variant={isSelected ? 'contained' : 'text'}
+                color={isSelected ? getEstadoColor(index) : 'inherit'}
+                onClick={() => setEstado(estado)}
+                sx={{
+                  minWidth: 'auto',
+                  px: 1.5,
+                  py: 0.5,
+                  borderRadius: 2,
+                  textTransform: 'none',
+                  fontWeight: isSelected ? 600 : 400,
+                  backgroundColor: isSelected ? undefined : 'transparent',
+                  '&:hover': {
+                    backgroundColor: isSelected ? undefined : 'action.hover',
+                  },
+                }}
+              >
+                <Badge
+                  badgeContent={count}
+                  color={isSelected ? 'default' : getEstadoColor(index)}
                   sx={{
-                    fontFamily: font,
-                    fontWeight: 700,
-                    borderRadius: 2,
-                    px: 2.5,
-                    py: 1,
+                    '& .MuiBadge-badge': {
+                      position: 'relative',
+                      transform: 'none',
+                      mr: 0.75,
+                      minWidth: 20,
+                      height: 20,
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                      backgroundColor: isSelected ? 'rgba(255,255,255,0.3)' : undefined,
+                    },
+                  }}
+                />
+                {estado}
+              </Button>
+            );
+          })}
+          <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
+          <Button
+            size="small"
+            variant={filters.estado === '' ? 'contained' : 'text'}
+            color={filters.estado === '' ? 'primary' : 'inherit'}
+            onClick={() => setEstado('')}
+            sx={{
+              minWidth: 'auto',
+              px: 1.5,
+              py: 0.5,
+              borderRadius: 2,
+              textTransform: 'none',
+              fontWeight: filters.estado === '' ? 600 : 400,
+            }}
+          >
+            <Badge
+              badgeContent={notas.length}
+              color="primary"
+              sx={{
+                '& .MuiBadge-badge': {
+                  position: 'relative',
+                  transform: 'none',
+                  mr: 0.75,
+                  minWidth: 20,
+                  height: 20,
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  backgroundColor: filters.estado === '' ? 'rgba(255,255,255,0.3)' : undefined,
+                },
+              }}
+            />
+            Todos
+          </Button>
+        </Stack>
+
+        {/* Acciones */}
+        <Stack direction="row" spacing={0.5} alignItems="center">
+          <Tooltip title="Actualizar">
+            <IconButton onClick={fetchNotas} size="small">
+              <RefreshIcon />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Exportar Excel">
+            <IconButton onClick={handleExportToExcel} size="small">
+              <DownloadIcon />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Columnas visibles">
+            <IconButton onClick={(e) => setColumnMenuAnchor(e.currentTarget)} size="small">
+              <ViewColumnIcon />
+            </IconButton>
+          </Tooltip>
+          <Button
+            variant="contained"
+            size="small"
+            startIcon={<AddIcon />}
+            onClick={() => setOpenAddDialog(true)}
+          >
+            Agregar nota
+          </Button>
+        </Stack>
+      </Stack>
+    </Box>
+  )}
+</Stack>
+
+{/* Popover selector de columnas */}
+<Popover
+  open={Boolean(columnMenuAnchor)}
+  anchorEl={columnMenuAnchor}
+  onClose={() => setColumnMenuAnchor(null)}
+  anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+  transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+>
+  <Box sx={{ p: 2, minWidth: 220 }}>
+    <Typography variant="subtitle2" sx={{ mb: 1 }}>Columnas visibles</Typography>
+    {Object.entries(COLUMN_LABELS).map(([key, label]) => (
+      <Box key={key} sx={{ display: 'block' }}>
+        <FormControlLabel
+          control={
+            <Checkbox
+              checked={visibleColumns[key]}
+              onChange={(e) => setVisibleColumns(prev => ({ ...prev, [key]: e.target.checked }))}
+              size="small"
+            />
+          }
+          label={<Typography variant="body2">{label}</Typography>}
+        />
+      </Box>
+    ))}
+  </Box>
+</Popover>
+
+        {/* ── PDF CONFIG STRIP ─────────────────────────────────────────────── */}
+        <Paper
+          elevation={0}
+          sx={{
+            mb: 2.5,
+            px: { xs: 2, md: 2.5 },
+            py: 1.5,
+            border: `1.5px dashed ${alpha(C.indigo500, 0.35)}`,
+            borderRadius: 3,
+            background: `linear-gradient(135deg, ${alpha(C.indigo50, 0.9)} 0%, ${alpha(C.indigo100, 0.5)} 100%)`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 1.5,
+          }}
+        >
+          <Stack direction="row" spacing={2} alignItems="center">
+            <Box sx={{
+              width: 44, height: 44, borderRadius: 2,
+              bgcolor: 'white',
+              border: `1px solid ${alpha(C.indigo500, 0.2)}`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              overflow: 'hidden',
+              boxShadow: `0 2px 8px ${alpha(C.indigo500, 0.1)}`,
+              flexShrink: 0,
+            }}>
+              {basePdfTemplate?.logo_url ? (
+                <img
+                  src={basePdfTemplate.logo_url}
+                  alt="logo empresa"
+                  style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 6 }}
+                />
+              ) : (
+                <PictureAsPdfIcon sx={{ color: alpha(C.indigo500, 0.5), fontSize: 22 }} />
+              )}
+            </Box>
+            <Box>
+              <Typography
+                variant="caption"
+                sx={{ color: C.indigo600, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', fontFamily: font, lineHeight: 1, display: 'block' }}
+              >
+                Configuración de PDF
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.3, lineHeight: 1.3, fontFamily: font }}>
+                {pdfUiLoading
+                  ? 'Actualizando...'
+                  : basePdfTemplate?.logo_url
+                    ? selectedPlantillaId
+                      ? 'Logo configurado · Plantilla personalizada activa'
+                      : 'Logo configurado · Plantilla base activa'
+                    : 'Sin logo — requerido para generar PDFs'}
+              </Typography>
+            </Box>
+          </Stack>
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<SettingsIcon sx={{ fontSize: 16 }} />}
+            onClick={() => { setOpenPdfPlantillasDialog(true); loadPdfBaseForDrawer(); }}
+            sx={{
+              borderColor: alpha(C.indigo500, 0.5),
+              color: C.indigo600,
+              fontFamily: font,
+              fontWeight: 600,
+              borderRadius: 2,
+              textTransform: 'none',
+              '&:hover': { borderColor: C.indigo500, bgcolor: alpha(C.indigo500, 0.06) },
+            }}
+          >
+            Gestionar plantillas
+          </Button>
+        </Paper>
+
+        {/* Estado de carga */}
+        {loading && (
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+            <CircularProgress />
+          </Box>
+        )}
+
+        {/* Empty state */}
+        {!loading && filteredNotas.length === 0 && (
+          <Box
+            sx={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              py: 8,
+              px: 3,
+              textAlign: 'center',
+            }}
+          >
+            <InboxIcon sx={{ fontSize: 64, color: 'text.disabled', mb: 2 }} />
+            <Typography variant="h6" color="text.secondary" gutterBottom>
+              {notas.length === 0 
+                ? 'No hay notas de pedido' 
+                : 'No se encontraron notas con los filtros aplicados'}
+            </Typography>
+            <Typography variant="body2" color="text.disabled" sx={{ mb: 3, maxWidth: 400 }}>
+              {notas.length === 0
+                ? 'Comienza creando tu primera nota de pedido para gestionar tus solicitudes.'
+                : 'Intenta ajustar los filtros de búsqueda para encontrar lo que buscas.'}
+            </Typography>
+            {notas.length === 0 ? (
+              <Button
+                variant="contained"
+                startIcon={<AddIcon />}
+                onClick={() => setOpenAddDialog(true)}
+              >
+                Crear primera nota
+              </Button>
+            ) : (
+              <Button
+                variant="outlined"
+                onClick={() => setFilters({ text: '', estado: '', proyecto_id: '', proveedor: '', misNotas: false })}
+              >
+                Limpiar filtros
+              </Button>
+            )}
+          </Box>
+        )}
+
+        {!loading && filteredNotas.length > 0 && (isMobile ? (
+          <Box sx={{ pb: 16 }}>{/* padding inferior para no tapar con la toolbar fija */}
+            <Stack spacing={1.5}>
+              {paginatedNotas.map((nota) => (
+                <Card 
+                  key={nota.id}
+                  onClick={() => setComentariosDialogNota(nota)}
+                  sx={{ 
+                    cursor: 'pointer',
+                    '&:active': { transform: 'scale(0.98)' },
+                    transition: 'transform 0.1s',
                   }}
                 >
-                  Nueva nota
-                </Button>
-              </Stack>
-            </Box>
-          )}
-
-          {/* ── FILTER BAR ───────────────────────────────────────────────────── */}
-          <Paper
-            elevation={0}
-            sx={{
-              mb: 2,
-              border: `1px solid ${C.slate200}`,
-              borderRadius: 3,
-              bgcolor: 'white',
-              overflow: 'hidden',
-            }}
-          >
-            {isMobile ? (
-              <Box sx={{ p: 1.5 }}>
-                <TextField
-                  placeholder="Buscar código, descripción, proveedor..."
-                  value={filters.text}
-                  onChange={(e) => setFilters({ ...filters, text: e.target.value })}
-                  size="small"
-                  fullWidth
-                  InputProps={{ startAdornment: <SearchIcon sx={{ color: C.slate400, mr: 1, fontSize: 18 }} /> }}
-                  sx={{ mb: 1.5, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-                />
-                <Box sx={{
-                  display: 'flex', gap: 0.75, overflowX: 'auto', pb: 0.5,
-                  '&::-webkit-scrollbar': { display: 'none' }, scrollbarWidth: 'none',
-                }}>
-                  <Chip
-                    label={`Todos (${notas.length})`} size="small"
-                    color={filters.estado === '' ? 'primary' : 'default'}
-                    variant={filters.estado === '' ? 'filled' : 'outlined'}
-                    onClick={() => setEstado('')}
-                    sx={{ flexShrink: 0, fontFamily: font, fontWeight: 600, borderRadius: 10 }}
-                  />
-                  {notasEstados.map((estado, index) => (
-                    <Chip
-                      key={estado}
-                      label={`${estado} (${estadoCountMap[estado] || 0})`}
-                      size="small"
-                      color={filters.estado === estado ? 'primary' : 'default'}
-                      variant={filters.estado === estado ? 'filled' : 'outlined'}
-                      onClick={() => setEstado(estado)}
-                      sx={{ flexShrink: 0, fontFamily: font, fontWeight: filters.estado === estado ? 600 : 400, borderRadius: 10 }}
-                    />
-                  ))}
-                </Box>
-              </Box>
-            ) : (
-              <Box sx={{ p: 2 }}>
-                <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between" flexWrap="wrap">
-                  {/* Left: text + project + mis notas */}
-                  <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap">
-                    <TextField
-                      placeholder="Buscar..."
-                      value={filters.text}
-                      onChange={(e) => setFilters({ ...filters, text: e.target.value })}
-                      size="small"
-                      sx={{ minWidth: 200, '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-                      InputProps={{
-                        startAdornment: <SearchIcon sx={{ color: C.slate400, mr: 0.75, fontSize: 18 }} />,
-                      }}
-                    />
-                    <FormControl size="small" sx={{ minWidth: 140 }}>
-                      <InputLabel sx={{ fontFamily: font }}>Proyecto</InputLabel>
-                      <Select
-                        value={filters.proyecto_id}
-                        onChange={(e) => setFilters({ ...filters, proyecto_id: e.target.value })}
-                        label="Proyecto"
-                        sx={{ borderRadius: 2, fontFamily: font }}
-                      >
-                        <MenuItem value="">Todos</MenuItem>
-                        {proyectos.map((p) => (
-                          <MenuItem key={p.id} value={p.id} sx={{ fontFamily: font }}>{p.nombre}</MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                    <Chip
-                      label="Mis notas"
-                      size="small"
-                      color={filters.misNotas ? 'primary' : 'default'}
-                      variant={filters.misNotas ? 'filled' : 'outlined'}
-                      onClick={() => setFilters({ ...filters, misNotas: !filters.misNotas })}
-                      sx={{ cursor: 'pointer', fontFamily: font, borderRadius: 10 }}
-                    />
-                  </Stack>
-
-                  {/* Center: status pills */}
-                  <Stack direction="row" spacing={0.5} alignItems="center" sx={{ flexWrap: 'wrap' }}>
-                    <Button
-                      size="small"
-                      color="primary"
-                      variant={filters.estado === '' ? 'contained' : 'text'}
-                      onClick={() => setEstado('')}
-                      sx={{
-                        borderRadius: 10, textTransform: 'none', fontFamily: font,
-                        fontWeight: filters.estado === '' ? 700 : 500,
-                        px: 1.5, minWidth: 'auto',
-                        color: filters.estado === '' ? undefined : C.slate600,
-                        '&:hover': { bgcolor: filters.estado === '' ? undefined : C.slate100 },
-                      }}
-                    >
-                      Todos · {notas.length}
-                    </Button>
-                    {notasEstados.map((estado, index) => (
-                      <Button
-                        key={estado}
-                        size="small"
-                        variant={filters.estado === estado ? 'contained' : 'text'}
-                        color="primary"
-                        onClick={() => setEstado(estado)}
-                        sx={{
-                          borderRadius: 10, textTransform: 'none', fontFamily: font,
-                          fontWeight: filters.estado === estado ? 700 : 500,
-                          px: 1.5, minWidth: 'auto',
-                          color: filters.estado === estado ? undefined : C.slate600,
-                          '&:hover': { bgcolor: alpha('#000', 0.05) },
+                  <CardContent sx={{ py: 1.5, px: 2, '&:last-child': { pb: 1.5 } }}>
+                    {/* Header: código + estado + menú */}
+                    <Stack direction="row" alignItems="center" justifyContent="space-between">
+                      <Stack direction="row" spacing={1} alignItems="center" sx={{ flex: 1, minWidth: 0 }}>
+                        <Typography variant="subtitle2" fontWeight={700} noWrap>
+                          #{nota.codigo}
+                        </Typography>
+                        <Chip
+                          label={nota.estado}
+                          color={getEstadoColor(notasEstados.indexOf(nota.estado))}
+                          size="small"
+                          sx={{ fontSize: '0.65rem', height: 22 }}
+                        />
+                      </Stack>
+                      <IconButton 
+                        size="small" 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setMobileMenuAnchor(e.currentTarget);
+                          setMobileMenuNota(nota);
                         }}
                       >
-                        {estado} · {estadoCountMap[estado] || 0}
+                        <MoreVertIcon fontSize="small" />
+                      </IconButton>
+                    </Stack>
+
+                    {/* Proyecto */}
+                    {nota.proyecto_nombre && (
+                      <Typography variant="caption" color="text.secondary" fontWeight={500}>
+                        {nota.proyecto_nombre}
+                      </Typography>
+                    )}
+
+                    {/* Descripción truncada a 3 líneas */}
+                    <Typography
+                      variant="body2"
+                      color="text.secondary"
+                      sx={{
+                        mt: 0.5,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        display: '-webkit-box',
+                        WebkitLineClamp: 3,
+                        WebkitBoxOrient: 'vertical',
+                        whiteSpace: 'pre-line',
+                      }}
+                    >
+                      {nota.descripcion}
+                    </Typography>
+
+                    {/* Info compacta en una fila */}
+                    <Stack direction="row" spacing={2} mt={1} flexWrap="wrap">
+                      {nota.proveedor && (
+                        <Typography variant="caption" color="text.secondary">
+                          <BusinessIcon sx={{ fontSize: 12, mr: 0.3, verticalAlign: 'middle' }} />
+                          {nota.proveedor}
+                        </Typography>
+                      )}
+                      <Typography variant="caption" color="text.secondary">
+                        <PersonIcon sx={{ fontSize: 12, mr: 0.3, verticalAlign: 'middle' }} />
+                        {nota.owner_name}
+                      </Typography>
+                      <Typography variant="caption" color="text.disabled">
+                        {formatTimestamp(nota.fechaCreacion)}
+                      </Typography>
+                      {nota.comentarios?.length > 0 && (
+                        <Typography variant="caption" color="text.secondary">
+                          <CommentIcon sx={{ fontSize: 12, mr: 0.3, verticalAlign: 'middle' }} />
+                          {nota.comentarios.length}
+                        </Typography>
+                      )}
+                    </Stack>
+
+                    {/* Botón de acción principal */}
+                    {getEstadoSiguiente(nota.estado) && (
+                      <Button
+                        fullWidth
+                        variant="outlined"
+                        size="small"
+                        color={getEstadoColor(notasEstados.indexOf(nota.estado)+1)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleChangeEstado(nota);
+                        }}
+                        sx={{ mt: 1, textTransform: 'none', fontWeight: 500 }}
+                      >
+                        → {getEstadoSiguiente(nota.estado)}
                       </Button>
-                    ))}
-                  </Stack>
-                </Stack>
-              </Box>
-            )}
-          </Paper>
-
-          {/* ── PDF CONFIG STRIP ─────────────────────────────────────────────── */}
-          <Paper
-            elevation={0}
-            sx={{
-              mb: 2.5,
-              px: { xs: 2, md: 2.5 },
-              py: 1.5,
-              border: `1.5px dashed ${alpha(C.indigo500, 0.35)}`,
-              borderRadius: 3,
-              background: `linear-gradient(135deg, ${alpha(C.indigo50, 0.9)} 0%, ${alpha(C.indigo100, 0.5)} 100%)`,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              flexWrap: 'wrap',
-              gap: 1.5,
-            }}
-          >
-            <Stack direction="row" spacing={2} alignItems="center">
-              <Box sx={{
-                width: 44, height: 44, borderRadius: 2,
-                bgcolor: 'white',
-                border: `1px solid ${alpha(C.indigo500, 0.2)}`,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                overflow: 'hidden',
-                boxShadow: `0 2px 8px ${alpha(C.indigo500, 0.1)}`,
-                flexShrink: 0,
-              }}>
-                {basePdfTemplate?.logo_url ? (
-                  <img
-                    src={basePdfTemplate.logo_url}
-                    alt="logo empresa"
-                    style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 6 }}
-                  />
-                ) : (
-                  <PictureAsPdfIcon sx={{ color: alpha(C.indigo500, 0.5), fontSize: 22 }} />
-                )}
-              </Box>
-              <Box>
-                <Typography
-                  variant="caption"
-                  sx={{ color: C.indigo600, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', fontFamily: font, lineHeight: 1, display: 'block' }}
-                >
-                  Configuración de PDF
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.3, lineHeight: 1.3, fontFamily: font }}>
-                  {pdfUiLoading
-                    ? 'Actualizando...'
-                    : basePdfTemplate?.logo_url
-                      ? selectedPlantillaId
-                        ? 'Logo configurado · Plantilla personalizada activa'
-                        : 'Logo configurado · Plantilla base activa'
-                      : 'Sin logo — requerido para generar PDFs'}
-                </Typography>
-              </Box>
-            </Stack>
-            <Button
-              variant="outlined"
-              size="small"
-              startIcon={<SettingsIcon sx={{ fontSize: 16 }} />}
-              onClick={() => { setOpenPdfPlantillasDialog(true); loadPdfBaseForDrawer(); }}
-              sx={{
-                borderColor: alpha(C.indigo500, 0.5),
-                color: C.indigo600,
-                fontFamily: font,
-                fontWeight: 600,
-                borderRadius: 2,
-                textTransform: 'none',
-                '&:hover': { borderColor: C.indigo500, bgcolor: alpha(C.indigo500, 0.06) },
-              }}
-            >
-              Gestionar plantillas
-            </Button>
-          </Paper>
-
-          {/* ── LOADING STATE ────────────────────────────────────────────────── */}
-          {loading && (
-            <Stack spacing={1.5}>
-              {[...Array(5)].map((_, i) => (
-                <Skeleton key={i} variant="rectangular" height={56} sx={{ borderRadius: 2 }} />
+                    )}
+                  </CardContent>
+                </Card>
               ))}
             </Stack>
-          )}
 
-          {/* ── EMPTY STATE ──────────────────────────────────────────────────── */}
-          {!loading && filteredNotas.length === 0 && (
-            <Box sx={{
-              display: 'flex', flexDirection: 'column', alignItems: 'center',
-              justifyContent: 'center', py: 10, px: 3, textAlign: 'center',
-            }}>
-              <Box sx={{
-                width: 80, height: 80, borderRadius: '50%',
-                bgcolor: C.slate100,
-                display: 'flex', alignItems: 'center', justifyContent: 'center', mb: 2.5,
+            {/* Menú contextual de 3 puntos */}
+            <Menu
+              anchorEl={mobileMenuAnchor}
+              open={Boolean(mobileMenuAnchor)}
+              onClose={() => { setMobileMenuAnchor(null); setMobileMenuNota(null); }}
+              transformOrigin={{ horizontal: 'right', vertical: 'top' }}
+              anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
+            >
+              <MenuItem onClick={() => {
+                setComentariosDialogNota(mobileMenuNota);
+                setMobileMenuAnchor(null);
+                setMobileMenuNota(null);
               }}>
-                <InboxIcon sx={{ fontSize: 40, color: C.slate400 }} />
+                <CommentIcon fontSize="small" sx={{ mr: 1 }} /> Ver detalles
+              </MenuItem>
+              <MenuItem onClick={() => {
+                handleEdit(mobileMenuNota);
+                setMobileMenuAnchor(null);
+                setMobileMenuNota(null);
+              }}>
+                <EditIcon fontSize="small" sx={{ mr: 1 }} /> Editar
+              </MenuItem>
+              {mobileMenuNota?.urlNota && (
+                <MenuItem onClick={() => {
+                  window.open(mobileMenuNota.urlNota, '_blank');
+                  setMobileMenuAnchor(null);
+                  setMobileMenuNota(null);
+                }}>
+                  <AttachFileIcon fontSize="small" sx={{ mr: 1 }} /> Ver adjunto
+                </MenuItem>
+              )}
+              <MenuItem onClick={() => {
+                openDeleteConfirmation(mobileMenuNota);
+                setMobileMenuAnchor(null);
+                setMobileMenuNota(null);
+              }} sx={{ color: 'error.main' }}>
+                <DeleteIcon fontSize="small" sx={{ mr: 1 }} /> Eliminar
+              </MenuItem>
+            </Menu>
+
+            {/* Paginación */}
+            <Card sx={{ mt: 2, boxShadow: 1 }}>
+              <TablePagination
+                component="div"
+                count={filteredNotas.length}
+                page={page}
+                onPageChange={handlePageChange}
+                rowsPerPage={rowsPerPage}
+                onRowsPerPageChange={handleRowsPerPageChange}
+                rowsPerPageOptions={[10, 25, 50, 100]}
+                labelRowsPerPage=""
+                labelDisplayedRows={({ from, to, count }) => `${from}-${to} de ${count}`}
+                sx={{
+                  '& .MuiTablePagination-toolbar': {
+                    flexWrap: 'wrap',
+                    justifyContent: 'center',
+                    minHeight: 48,
+                    py: 0.5,
+                  },
+                  '& .MuiTablePagination-actions': {
+                    '& .MuiIconButton-root': { p: 1.5 },
+                  },
+                }}
+              />
+            </Card>
+          </Box>
+        ) : (
+          <>
+          <Table>
+            <TableHead>
+              <TableRow>
+                {visibleColumns.codigo && (
+                <TableCell onClick={() => handleSort('codigo')} sx={{ cursor: 'pointer', userSelect: 'none' }}>
+                  Código {sortConfig.key === 'codigo' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
+                </TableCell>
+                )}
+                {visibleColumns.proyecto_nombre && (
+                <TableCell onClick={() => handleSort('proyecto_nombre')} sx={{ cursor: 'pointer', userSelect: 'none' }}>
+                  Proyecto {sortConfig.key === 'proyecto_nombre' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
+                </TableCell>
+                )}
+                {visibleColumns.proveedor && (
+                <TableCell onClick={() => handleSort('proveedor')} sx={{ cursor: 'pointer', userSelect: 'none' }}>
+                  Proveedor {sortConfig.key === 'proveedor' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
+                </TableCell>
+                )}
+                {visibleColumns.owner_name && (
+                <TableCell onClick={() => handleSort('owner_name')} sx={{ cursor: 'pointer', userSelect: 'none' }}>
+                  Asignado {sortConfig.key === 'owner_name' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
+                </TableCell>
+                )}
+                {visibleColumns.descripcion && (
+                <TableCell onClick={() => handleSort('descripcion')} sx={{ cursor: 'pointer', userSelect: 'none' }}>
+                  Descripción {sortConfig.key === 'descripcion' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
+                </TableCell>
+                )}
+                {visibleColumns.estado && (
+                <TableCell onClick={() => handleSort('estado')} sx={{ cursor: 'pointer', userSelect: 'none' }}>
+                  Estado {sortConfig.key === 'estado' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
+                </TableCell>
+                )}
+                {visibleColumns.fechaCreacion && (
+                <TableCell onClick={() => handleSort('fechaCreacion')} sx={{ cursor: 'pointer', userSelect: 'none' }}>
+                  Fecha Creación {sortConfig.key === 'fechaCreacion' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
+                </TableCell>
+                )}
+                {visibleColumns.fechaEstimadaFin && (
+                <TableCell onClick={() => handleSort('fechaEstimadaFin')} sx={{ cursor: 'pointer', userSelect: 'none' }}>
+                  Finalización estimada {sortConfig.key === 'fechaEstimadaFin' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
+                </TableCell>
+                )}
+                <TableCell sx={{ textAlign: 'right' }}>Acciones</TableCell>
+              </TableRow>
+            </TableHead>
+
+            <TableBody>
+              {paginatedNotas.map((nota) => (
+                <TableRow 
+                  key={nota.id}
+                  onClick={() => setComentariosDialogNota(nota)}
+                  sx={{
+                    '&:hover': {
+                      backgroundColor: 'action.hover',
+                    },
+                    transition: 'background-color 0.2s',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {visibleColumns.codigo && <TableCell>{nota.codigo}</TableCell>}
+                  {visibleColumns.proyecto_nombre && <TableCell>{nota.proyecto_nombre}</TableCell>}
+                  {visibleColumns.proveedor && <TableCell>{nota.proveedor}</TableCell>}
+                  {visibleColumns.owner_name && (
+                  <TableCell>
+                    <Typography variant="body2">{nota.owner_name}</Typography>
+                    {nota.creador_name && nota.creador_name !== nota.owner_name && (
+                      <Typography variant="caption" color="text.secondary">
+                        Creado por: {nota.creador_name}
+                      </Typography>
+                    )}
+                  </TableCell>
+                  )}
+                  {visibleColumns.descripcion && (
+                  <TableCell sx={{ maxWidth: 300 }}>
+                    <Tooltip 
+                      title={nota.descripcion || ''} 
+                      arrow 
+                      placement="top"
+                      enterDelay={500}
+                    >
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          display: '-webkit-box',
+                          WebkitLineClamp: 3,
+                          WebkitBoxOrient: 'vertical',
+                          whiteSpace: 'pre-line',
+                          cursor: 'default',
+                        }}
+                      >
+                        {nota.descripcion}
+                      </Typography>
+                    </Tooltip>
+                    {nota.urlNota && nota.urlNota.trim() !== '' && (
+                      <Button
+                        variant="outlined"
+                        size="small"
+                        onClick={() => window.open(nota.urlNota, '_blank')}
+                        sx={{ mt: 1 }}
+                      >
+                        Ver adjunto
+                      </Button>
+                    )}
+                  </TableCell>
+                  )}
+                  {visibleColumns.estado && (
+                  <TableCell>
+                    <Chip
+                      label={nota.estado}
+                      color={
+                        getEstadoColor(notasEstados.indexOf(nota.estado))
+                      }
+                    />
+                  </TableCell>
+                  )}
+                  {visibleColumns.fechaCreacion && <TableCell>{formatTimestamp(nota.fechaCreacion)}</TableCell>}
+                  {visibleColumns.fechaEstimadaFin && <TableCell>{nota.fechaEstimadaFin ? formatTimestamp(nota.fechaEstimadaFin) : '—'}</TableCell>}
+                  <TableCell sx={{ minWidth: 140 }} onClick={(e) => e.stopPropagation()}>
+                    <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end">
+                      {/* Acción principal visible */}
+                      {notasEstados.indexOf(nota.estado) !== (notasEstados.length - 1) && (
+                        <Button
+                          variant="contained"
+                          size="small"
+                          color={getEstadoColor(notasEstados.indexOf(nota.estado)+1)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleChangeEstado(nota);
+                          }}
+                        >
+                          → {getEstadoSiguiente(nota.estado)}
+                        </Button>
+                      )}
+                      
+                      {/* Comentarios - mostrar como chip si hay */}
+                      {nota.comentarios?.length > 0 && (
+                        <Chip
+                          icon={<CommentIcon fontSize="small" />}
+                          label={nota.comentarios.length}
+                          size="small"
+                          variant="outlined"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setComentariosDialogNota(nota);
+                          }}
+                          sx={{ cursor: 'pointer' }}
+                        />
+                      )}
+                    </Stack>
+
+                    </TableCell>
+
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+          <TablePagination
+            component="div"
+            count={filteredNotas.length}
+            page={page}
+            onPageChange={handlePageChange}
+            rowsPerPage={rowsPerPage}
+            onRowsPerPageChange={handleRowsPerPageChange}
+            rowsPerPageOptions={[5, 10, 25, 50, 100]}
+            labelRowsPerPage="Filas por página:"
+          />
+          </>
+        ))}
+  {isMobile && (
+    <Paper
+      elevation={8}
+      sx={{
+        position: 'fixed',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        zIndex: 1100,
+        borderTop: '1px solid',
+        borderColor: 'divider',
+        bgcolor: 'background.paper',
+        px: 1,
+        py: 1,
+        display: 'flex',
+        justifyContent: 'space-around',
+        alignItems: 'center',
+        gap: 0.5,
+      }}
+    >
+      <Button
+        size="small"
+        variant="contained"
+        startIcon={<AddIcon />}
+        onClick={() => setOpenAddDialog(true)}
+        sx={{ flex: 1, textTransform: 'none', fontWeight: 600 }}
+      >
+        Agregar
+      </Button>
+      <IconButton onClick={() => setOpenFilters(true)} color="primary">
+        <Badge variant="dot" invisible={!filters.estado && !filters.proyecto_id && !filters.misNotas} color="error">
+          <FilterListIcon />
+        </Badge>
+      </IconButton>
+      <IconButton onClick={fetchNotas} color="primary">
+        <RefreshIcon />
+      </IconButton>
+      <IconButton onClick={handleExportToExcel} color="primary">
+        <DownloadIcon />
+      </IconButton>
+    </Paper>
+  )}
+
+        {/* Dialog para editar nota */}
+        <Dialog open={isEditing} onClose={() => setIsEditing(false)} maxWidth="sm" fullWidth>
+  <DialogTitle>Editar Nota</DialogTitle>
+  <DialogContent>
+    <Stack spacing={2}>
+      <TextField
+        label="Descripción"
+        value={formData.descripcion}
+        onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })}
+        multiline
+        rows={3}
+        fullWidth
+      />
+      <TextField
+        label="Proveedor"
+        value={formData.proveedor}
+        onChange={(e) => setFormData({ ...formData, proveedor: e.target.value })}
+        fullWidth
+      />
+      <FormControl fullWidth>
+        <InputLabel>Estado</InputLabel>
+        <Select
+          value={formData.estado}
+          onChange={(e) => setFormData({ ...formData, estado: e.target.value })}
+        >
+          {notasEstados.map((estado) => (
+            <MenuItem key={estado} value={estado}>
+              {estado}
+            </MenuItem>
+          ))}
+        </Select>
+      </FormControl>
+      <FormControl fullWidth>
+  <InputLabel>Asignar a</InputLabel>
+  <Select
+    value={formData.owner || ''}
+    onChange={(e) => setFormData({ ...formData, owner: e.target.value })}
+  >
+    {profiles.map((profile) => (
+      <MenuItem key={profile.id} value={profile.id}>
+        {profile.firstName + " "+ profile.lastName}
+      </MenuItem>
+    ))}
+  </Select>
+</FormControl>
+<FormControl fullWidth>
+  <InputLabel>Proyecto</InputLabel>
+  <Select
+    value={formData.proyecto_id || ''}
+    onChange={(e) => setFormData({ ...formData, proyecto_id: e.target.value })}
+  >
+    {proyectos.map((proyecto) => (
+      <MenuItem key={proyecto.id} value={proyecto.id}>
+        {proyecto.nombre}
+      </MenuItem>
+    ))}
+    <MenuItem key='no-definido' value=''>
+        No definido
+      </MenuItem>
+  </Select>
+</FormControl>
+<TextField
+  label="Fecha estimada de finalización"
+  type="date"
+  value={formData.fechaEstimadaFin || ''}
+  onChange={(e) => setFormData({ ...formData, fechaEstimadaFin: e.target.value || null })}
+  fullWidth
+  InputLabelProps={{ shrink: true }}
+/>
+    </Stack>
+  </DialogContent>
+  <DialogActions>
+    <Button onClick={() => setIsEditing(false)}>Cancelar</Button>
+    <Button onClick={handleSaveEdit} variant="contained">
+      Guardar Cambios
+    </Button>
+  </DialogActions>
+</Dialog>
+
+        <NotaPedidoAddDialog
+          open={openAddDialog}
+          onClose={() => setOpenAddDialog(false)}
+          onSave={handleSaveNewNote}
+          profiles={profiles}
+          proyectos={proyectos}
+        />
+
+<Dialog open={openDeleteDialog} onClose={closeDeleteConfirmation}>
+  <DialogTitle>Confirmar eliminación</DialogTitle>
+  <DialogContent>
+    <Typography>
+      ¿Estás seguro de que deseas eliminar la nota con código <strong>&quot;{notaToDelete?.codigo}&quot;</strong>? Esta acción no se puede deshacer.
+    </Typography>
+  </DialogContent>
+  <DialogActions>
+    <Button onClick={closeDeleteConfirmation}>Cancelar</Button>
+    <Button
+      color="error"
+      variant="contained"
+      onClick={async () => {
+        try {
+          const success = await notaPedidoService.deleteNota(notaToDelete.id);
+          if (success) {
+            setNotas(notas.filter((n) => n.id !== notaToDelete.id));
+            setAlert({ open: true, message: 'Nota eliminada con éxito', severity: 'success' });
+          } else {
+            setAlert({ open: true, message: 'Error al eliminar la nota', severity: 'error' });
+          }
+        } catch (error) {
+          console.error('Error al eliminar nota:', error);
+          setAlert({ open: true, message: 'Error al eliminar la nota', severity: 'error' });
+        }
+        closeDeleteConfirmation();
+      }}
+    >
+      Eliminar
+    </Button>
+  </DialogActions>
+</Dialog>
+
+<NotaPedidoLogoRequeridoDialog
+  open={openLogoRequeridoModal}
+  onClose={() => setOpenLogoRequeridoModal(false)}
+  loading={pdfUiLoading}
+  onSaveAndDownload={handleLogoRequiredSaveAndDownload}
+/>
+
+<NotaPedidoPdfTemplateDialog
+  open={openPdfPlantillasDialog}
+  onClose={() => setOpenPdfPlantillasDialog(false)}
+  baseTemplate={basePdfTemplate}
+  loading={pdfUiLoading}
+  onSaveLogo={handleSaveLogoFromDialog}
+  empresaId={getEmpresaId()}
+  sampleNota={comentariosDialogNota}
+  selectedPlantillaId={selectedPlantillaId}
+  onTemplateSelected={(id) => setSelectedPlantillaId(id)}
+  onPlantillaGuardada={() => {
+    loadPdfBaseForDrawer();
+    setAlert({ open: true, message: 'Plantilla guardada correctamente', severity: 'success' });
+  }}
+/>
+
+{/* Drawer lateral estilo Notion para ver detalles de la nota */}
+<Drawer
+  anchor="right"
+  open={!!comentariosDialogNota}
+  onClose={() => {
+    setComentariosDialogNota(null);
+    setDrawerTab(0);
+  }}
+  PaperProps={{
+    sx: { width: { xs: '100%', sm: 500 }, p: 0 }
+  }}
+>
+  {comentariosDialogNota && (
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      {/* Header mejorado */}
+      <Box sx={{ 
+        p: 2.5, 
+        background: (theme) => `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.05)} 0%, ${alpha(theme.palette.primary.main, 0.02)} 100%)`,
+        borderBottom: '1px solid',
+        borderColor: 'divider',
+      }}>
+        <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
+          <Box sx={{ flex: 1 }}>
+            {/* Código + Proyecto */}
+            <Stack direction="row" spacing={1.5} alignItems="center" mb={0.5}>
+              <Typography variant="h5" fontWeight={700} color="primary.main">
+                #{comentariosDialogNota.codigo}
+              </Typography>
+              <Typography variant="body1" color="text.secondary" fontWeight={500}>
+                {comentariosDialogNota.proyecto_nombre}
+              </Typography>
+            </Stack>
+            
+            {/* Estado como badge pequeño */}
+            <Chip
+              label={comentariosDialogNota.estado}
+              color={getEstadoColor(notasEstados.indexOf(comentariosDialogNota.estado))}
+              size="small"
+              sx={{ fontWeight: 600, fontSize: '0.7rem' }}
+            />
+          </Box>
+          <IconButton 
+            onClick={() => {
+              setComentariosDialogNota(null);
+              setDrawerTab(0);
+            }} 
+            size="small"
+            sx={{ bgcolor: 'action.hover' }}
+          >
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </Stack>
+
+        {/* Stepper de progreso */}
+        <Box sx={{ mt: 2 }}>
+          <Stack direction="row" justifyContent="space-between" mb={0.5}>
+            <Typography variant="caption" color="text.secondary">
+              Paso {notasEstados.indexOf(comentariosDialogNota.estado) + 1} de {notasEstados.length}
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              {Math.round(((notasEstados.indexOf(comentariosDialogNota.estado) + 1) / notasEstados.length) * 100)}%
+            </Typography>
+          </Stack>
+          <LinearProgress 
+            variant="determinate" 
+            value={((notasEstados.indexOf(comentariosDialogNota.estado) + 1) / notasEstados.length) * 100}
+            color={getEstadoColor(notasEstados.indexOf(comentariosDialogNota.estado))}
+            sx={{ 
+              height: 6, 
+              borderRadius: 3,
+              bgcolor: 'grey.200',
+              '& .MuiLinearProgress-bar': { borderRadius: 3 }
+            }}
+          />
+          <Stack direction="row" justifyContent="space-between" mt={0.5}>
+            {notasEstados.map((estado, idx) => (
+              <Typography 
+                key={estado}
+                variant="caption" 
+                color={idx <= notasEstados.indexOf(comentariosDialogNota.estado) ? `${getEstadoColor(notasEstados.indexOf(comentariosDialogNota.estado))}.main` : 'text.disabled'}
+                fontWeight={idx === notasEstados.indexOf(comentariosDialogNota.estado) ? 600 : 400}
+                sx={{ fontSize: '0.65rem' }}
+              >
+                {estado}
+              </Typography>
+            ))}
+          </Stack>
+        </Box>
+
+        {/* Acción principal prominente */}
+        {notasEstados.indexOf(comentariosDialogNota.estado) !== (notasEstados.length - 1) && (
+          <Button
+            fullWidth
+            variant="contained"
+            size="large"
+            color={getEstadoColor(notasEstados.indexOf(comentariosDialogNota.estado)+1)}
+            onClick={() => handleChangeEstado(comentariosDialogNota)}
+            sx={{ 
+              mt: 2, 
+              py: 1.5, 
+              fontWeight: 600,
+              boxShadow: 2,
+            }}
+          >
+            → Pasar a {getEstadoSiguiente(comentariosDialogNota.estado)}
+          </Button>
+        )}
+
+        {/* Acciones secundarias como links */}
+        <Stack direction="row" spacing={2} mt={1.5} justifyContent="center">
+          <Button
+            size="small"
+            color="inherit"
+            startIcon={<EditIcon fontSize="small" />}
+            onClick={() => {
+              handleEdit(comentariosDialogNota);
+              setComentariosDialogNota(null);
+            }}
+            sx={{ textTransform: 'none', color: 'text.secondary', fontSize: '0.8rem' }}
+          >
+            Editar
+          </Button>
+          <Button
+            size="small"
+            color="error"
+            startIcon={<DeleteIcon fontSize="small" />}
+            onClick={() => {
+              openDeleteConfirmation(comentariosDialogNota);
+              setComentariosDialogNota(null);
+            }}
+            sx={{ textTransform: 'none', fontSize: '0.8rem' }}
+          >
+            Eliminar
+          </Button>
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={pdfDownloading ? <CircularProgress size={12} color="inherit" /> : <PictureAsPdfIcon />}
+            disabled={pdfDownloading}
+            onClick={handleDownloadPdfNota}
+            sx={{ textTransform: 'none', fontWeight: 600, borderRadius: 2, fontSize: '0.8rem' }}
+          >
+            Descargar PDF
+          </Button>
+        </Stack>
+      </Box>
+
+      {/* Tabs de navegación */}
+      <Tabs 
+        value={drawerTab} 
+        onChange={(e, v) => setDrawerTab(v)}
+        sx={{ 
+          borderBottom: 1, 
+          borderColor: 'divider',
+          minHeight: 48,
+          '& .MuiTab-root': { minHeight: 48, textTransform: 'none', fontWeight: 500, px: 2 }
+        }}
+      >
+        <Tab 
+          label="Detalles" 
+          icon={<DescriptionIcon sx={{ fontSize: 18 }} />} 
+          iconPosition="start"
+        />
+        <Tab 
+          label={
+            <Stack direction="row" spacing={1} alignItems="center">
+              <span>Comentarios</span>
+              {(comentariosDialogNota.comentarios?.length || 0) > 0 && (
+                <Chip label={comentariosDialogNota.comentarios.length} size="small" color="primary" sx={{ height: 20, fontSize: '0.7rem' }} />
+              )}
+            </Stack>
+          }
+          icon={<CommentIcon sx={{ fontSize: 18 }} />} 
+          iconPosition="start"
+        />
+        <Tab 
+          label={
+            <Stack direction="row" spacing={1} alignItems="center">
+              <span>Historial</span>
+              {(comentariosDialogNota.historial?.length || 0) > 0 && (
+                <Chip label={comentariosDialogNota.historial.length} size="small" variant="outlined" sx={{ height: 20, fontSize: '0.7rem' }} />
+              )}
+            </Stack>
+          }
+          icon={<HistoryIcon sx={{ fontSize: 18 }} />} 
+          iconPosition="start"
+        />
+      </Tabs>
+
+      {/* Contenido por Tab */}
+      <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
+        
+        {/* TAB 0: Detalles */}
+        {drawerTab === 0 && (
+          <Stack spacing={2.5}>
+            {/* Descripción */}
+            <Box sx={{ p: 2, bgcolor: 'grey.50', borderRadius: 2 }}>
+              <Typography variant="body2" sx={{ whiteSpace: 'pre-line' }}>
+                {comentariosDialogNota.descripcion || 'Sin descripción'}
+              </Typography>
+            </Box>
+
+            {/* Info compacta con iconos */}
+            <Box sx={{ 
+              display: 'grid', 
+              gridTemplateColumns: '1fr 1fr', 
+              gap: 2,
+            }}>
+              <Stack direction="row" spacing={1.5} alignItems="center">
+                <Box sx={{ p: 1, bgcolor: 'action.hover', borderRadius: 1 }}>
+                  <BusinessIcon fontSize="small" color="action" />
+                </Box>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Proveedor</Typography>
+                  <Typography variant="body2" fontWeight={500}>{comentariosDialogNota.proveedor || '-'}</Typography>
+                </Box>
+              </Stack>
+              
+              <Stack direction="row" spacing={1.5} alignItems="center">
+                <Box sx={{ p: 1, bgcolor: 'action.hover', borderRadius: 1 }}>
+                  <PersonIcon fontSize="small" color="action" />
+                </Box>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Responsable</Typography>
+                  <Typography variant="body2" fontWeight={500}>{comentariosDialogNota.owner_name}</Typography>
+                </Box>
+              </Stack>
+              
+              <Stack direction="row" spacing={1.5} alignItems="center">
+                <Box sx={{ p: 1, bgcolor: 'action.hover', borderRadius: 1 }}>
+                  <PersonIcon fontSize="small" color="action" />
+                </Box>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Creado por</Typography>
+                  <Typography variant="body2" fontWeight={500}>{comentariosDialogNota.creador_name}</Typography>
+                </Box>
+              </Stack>
+              
+              <Stack direction="row" spacing={1.5} alignItems="center">
+                <Box sx={{ p: 1, bgcolor: 'action.hover', borderRadius: 1 }}>
+                  <CalendarTodayIcon fontSize="small" color="action" />
+                </Box>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Fecha</Typography>
+                  <Typography variant="body2" fontWeight={500}>{formatTimestamp(comentariosDialogNota.fechaCreacion)}</Typography>
+                </Box>
+              </Stack>
+
+              <Stack direction="row" spacing={1.5} alignItems="center">
+                <Box sx={{ p: 1, bgcolor: 'action.hover', borderRadius: 1 }}>
+                  <CalendarTodayIcon fontSize="small" color="action" />
+                </Box>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Finalización estimada</Typography>
+                  <Typography variant="body2" fontWeight={500}>
+                    {comentariosDialogNota.fechaEstimadaFin ? formatTimestamp(comentariosDialogNota.fechaEstimadaFin) : '—'}
+                  </Typography>
+                </Box>
+              </Stack>
+            </Box>
+
+            {/* Adjunto de la nota */}
+            {comentariosDialogNota.urlNota && (
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<AttachFileIcon />}
+                onClick={() => window.open(comentariosDialogNota.urlNota, '_blank')}
+              >
+                Ver adjunto de la nota
+              </Button>
+            )}
+          </Stack>
+        )}
+
+        {/* TAB 1: Comentarios */}
+        {drawerTab === 1 && (
+          <Stack spacing={2}>
+            {/* Input de comentario o archivo */}
+            <Box sx={{ 
+              p: 2,
+              bgcolor: 'grey.50',
+              borderRadius: 2,
+              border: '1px solid',
+              borderColor: 'grey.200',
+            }}>
+              {/* Textarea + botón enviar */}
+              <Box sx={{ display: 'flex', gap: 1, mb: 1.5 }}>
+                <TextField
+                  placeholder="Escribe un comentario..."
+                  multiline
+                  maxRows={3}
+                  fullWidth
+                  size="small"
+                  inputRef={nuevoComentarioRef}
+                  variant="standard"
+                  InputProps={{ disableUnderline: true }}
+                  sx={{ '& .MuiInputBase-root': { p: 0 } }}
+                />
+                <IconButton 
+                  color="primary" 
+                  onClick={handleAgregarComentario}
+                  disabled={comentariosCargando}
+                  sx={{ alignSelf: 'flex-end' }}
+                >
+                  {comentariosCargando ? <CircularProgress size={20} /> : <SendIcon />}
+                </IconButton>
               </Box>
-              <Typography variant="h6" sx={{ fontFamily: font, fontWeight: 700, color: C.slate900, mb: 0.75 }}>
-                {notas.length === 0 ? 'No hay notas de pedido' : 'Sin resultados'}
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 3, maxWidth: 360, fontFamily: font }}>
-                {notas.length === 0
-                  ? 'Comenzá creando tu primera nota de pedido para gestionar tus solicitudes de compra.'
-                  : 'No se encontraron notas con los filtros aplicados. Intentá con otros criterios.'}
-              </Typography>
-              {notas.length === 0 ? (
+
+              {/* Separador con "o" */}
+              <Divider sx={{ my: 1 }}>
+                <Typography variant="caption" color="text.secondary">o adjunta un archivo</Typography>
+              </Divider>
+
+              {/* Zona de subir archivo compacta */}
+              <Box
+                onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                onDragLeave={() => setIsDragging(false)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setIsDragging(false);
+                  if (e.dataTransfer.files[0]) {
+                    setArchivoSeleccionado(e.dataTransfer.files[0]);
+                  }
+                }}
+                sx={{
+                  border: '1px dashed',
+                  borderColor: isDragging ? 'primary.main' : 'grey.300',
+                  borderRadius: 1.5,
+                  p: 1.5,
+                  textAlign: 'center',
+                  bgcolor: isDragging ? alpha('#1976d2', 0.05) : 'transparent',
+                  transition: 'all 0.2s',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 1,
+                }}
+                component="label"
+              >
+                <input
+                  type="file"
+                  hidden
+                  onChange={(e) => setArchivoSeleccionado(e.target.files[0])}
+                />
+                <CloudUploadIcon sx={{ fontSize: 20, color: isDragging ? 'primary.main' : 'grey.400' }} />
+                {archivoSeleccionado ? (
+                  <Typography variant="body2" fontWeight={500} color="primary.main">
+                    {archivoSeleccionado.name}
+                  </Typography>
+                ) : (
+                  <Typography variant="caption" color="text.secondary">
+                    Arrastra o selecciona un archivo
+                  </Typography>
+                )}
+              </Box>
+              {archivoSeleccionado && (
                 <Button
+                  fullWidth
                   variant="contained"
-                  startIcon={<AddIcon />}
-                  onClick={() => setOpenAddDialog(true)}
-                  sx={{ bgcolor: C.slate900, '&:hover': { bgcolor: C.slate800 }, fontFamily: font, fontWeight: 700, borderRadius: 2 }}
+                  size="small"
+                  startIcon={<CloudUploadIcon />}
+                  onClick={async () => {
+                    if (!comentariosDialogNota || !archivoSeleccionado) return;
+                    try {
+                      const nota = await notaPedidoService.subirArchivo(comentariosDialogNota.id, archivoSeleccionado);
+                      if (nota) {
+                        setNotas(notas.map((n) => (n.id === nota.id ? nota : n)));
+                        setComentariosDialogNota(nota);
+                        setAlert({ open: true, message: 'Archivo subido con éxito', severity: 'success' });
+                      } else {
+                        setAlert({ open: true, message: 'Error al subir archivo', severity: 'error' });
+                      }
+                      setArchivoSeleccionado(null);
+                    } catch (error) {
+                      console.error('Error subiendo archivo:', error);
+                      setAlert({ open: true, message: 'Error al subir archivo', severity: 'error' });
+                    }
+                  }}
+                  sx={{ mt: 1 }}
                 >
-                  Crear primera nota
-                </Button>
-              ) : (
-                <Button
-                  variant="outlined"
-                  onClick={() => setFilters({ text: '', estado: '', proyecto_id: '', proveedor: '', misNotas: false })}
-                  sx={{ fontFamily: font, borderRadius: 2, textTransform: 'none' }}
-                >
-                  Limpiar filtros
+                  Subir archivo
                 </Button>
               )}
             </Box>
-          )}
 
-          {/* ── TABLE / MOBILE CARDS ─────────────────────────────────────────── */}
-          {!loading && filteredNotas.length > 0 && (
-            isMobile ? (
-              <Box sx={{ pb: 16 }}>
-                <Stack spacing={1.25}>
-                  {paginatedNotas.map((nota) => (
-                    <Card
-                      key={nota.id}
-                      onClick={() => setComentariosDialogNota(nota)}
-                      elevation={0}
-                      sx={{
-                        cursor: 'pointer',
-                        border: `1px solid ${C.slate200}`,
-                        borderRadius: 2.5,
-                        transition: 'all 0.15s ease',
-                        '&:active': { transform: 'scale(0.985)', boxShadow: `0 0 0 2px ${alpha(C.indigo500, 0.2)}` },
-                      }}
-                    >
-                      <CardContent sx={{ py: 1.75, px: 2, '&:last-child': { pb: 1.75 } }}>
-                        <Stack direction="row" alignItems="flex-start" justifyContent="space-between">
-                          <Box sx={{ flex: 1, minWidth: 0 }}>
-                            <Stack direction="row" spacing={1} alignItems="center" mb={0.5}>
-                              <Typography variant="subtitle2" sx={{ fontFamily: font, fontWeight: 700, color: C.slate900 }}>
-                                #{nota.codigo}
-                              </Typography>
-                              <Chip
-                                label={nota.estado}
-                                color={getEstadoColor(notasEstados.indexOf(nota.estado))}
-                                size="small"
-                                sx={{ height: 20, fontSize: '0.65rem', fontFamily: font, borderRadius: 10 }}
-                              />
+            {/* Lista de comentarios */}
+            {comentariosDialogNota?.comentarios?.length > 0 ? (
+              <Stack spacing={1.5}>
+                {comentariosDialogNota.comentarios.map((comentario, idx) => (
+                  <Box 
+                    key={idx} 
+                    sx={{ 
+                      p: 2, 
+                      bgcolor: 'background.paper', 
+                      borderRadius: 2,
+                      border: '1px solid',
+                      borderColor: 'grey.100',
+                      position: 'relative',
+                      '&:hover .comment-actions': { opacity: 1 },
+                    }}
+                    onMouseEnter={() => setHoveredComentario(idx)}
+                    onMouseLeave={() => setHoveredComentario(null)}
+                  >
+                    <Stack direction="row" spacing={1.5} alignItems="flex-start">
+                      <Box sx={{ 
+                        width: 36, 
+                        height: 36, 
+                        borderRadius: '50%', 
+                        bgcolor: 'primary.main',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                      }}>
+                        <Typography variant="caption" color="white" fontWeight={600}>
+                          {comentario.autor?.charAt(0)?.toUpperCase() || 'U'}
+                        </Typography>
+                      </Box>
+                      <Box sx={{ flex: 1, minWidth: 0 }}>
+                        <Stack direction="row" justifyContent="space-between" alignItems="center">
+                          <Typography variant="body2" fontWeight={600}>
+                            {comentario.autor}
+                          </Typography>
+                          <Typography variant="caption" color="text.disabled">
+                            {formatTimestamp(comentario.fecha)}
+                          </Typography>
+                        </Stack>
+                        
+                        {comentarioEditandoIdx === idx ? (
+                          <Box mt={1}>
+                            <TextField
+                              fullWidth
+                              multiline
+                              value={comentarioEditadoTexto}
+                              onChange={(e) => setComentarioEditadoTexto(e.target.value)}
+                              rows={2}
+                              size="small"
+                            />
+                            <Stack direction="row" spacing={1} mt={1}>
+                              <Button size="small" variant="contained" onClick={() => handleGuardarComentarioEditado(idx)}>
+                                Guardar
+                              </Button>
+                              <Button size="small" onClick={() => { setComentarioEditandoIdx(null); setComentarioEditadoTexto(''); }}>
+                                Cancelar
+                              </Button>
                             </Stack>
-                            {nota.proyecto_nombre && (
-                              <Typography variant="caption" sx={{ color: C.indigo600, fontFamily: font, fontWeight: 600 }}>
-                                {nota.proyecto_nombre}
+                          </Box>
+                        ) : (
+                          <>
+                            {comentario.texto && (
+                              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, whiteSpace: 'pre-line' }}>
+                                {comentario.texto}
                               </Typography>
                             )}
-                            <Typography
-                              variant="body2"
-                              color="text.secondary"
-                              sx={{
-                                mt: 0.5, fontFamily: font,
-                                overflow: 'hidden', textOverflow: 'ellipsis',
-                                display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
-                              }}
-                            >
-                              {nota.descripcion}
-                            </Typography>
-                          </Box>
-                          <IconButton
-                            size="small"
-                            sx={{ ml: 1, flexShrink: 0 }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setMobileMenuAnchor(e.currentTarget);
-                              setMobileMenuNota(nota);
-                            }}
-                          >
-                            <MoreVertIcon fontSize="small" />
-                          </IconButton>
-                        </Stack>
-
-                        <Stack direction="row" spacing={1.5} mt={1.25} flexWrap="wrap" alignItems="center">
-                          {nota.proveedor && (
-                            <Typography variant="caption" color="text.secondary" sx={{ fontFamily: font, display: 'flex', alignItems: 'center', gap: 0.3 }}>
-                              <BusinessIcon sx={{ fontSize: 11 }} />{nota.proveedor}
-                            </Typography>
-                          )}
-                          <Typography variant="caption" color="text.secondary" sx={{ fontFamily: font, display: 'flex', alignItems: 'center', gap: 0.3 }}>
-                            <PersonIcon sx={{ fontSize: 11 }} />{nota.owner_name}
-                          </Typography>
-                          <Typography variant="caption" color="text.disabled" sx={{ fontFamily: font }}>
-                            {formatTimestamp(nota.fechaCreacion)}
-                          </Typography>
-                          {nota.comentarios?.length > 0 && (
-                            <Typography variant="caption" color="text.secondary" sx={{ fontFamily: font, display: 'flex', alignItems: 'center', gap: 0.3 }}>
-                              <CommentIcon sx={{ fontSize: 11 }} />{nota.comentarios.length}
-                            </Typography>
-                          )}
-                        </Stack>
-
-                        {getEstadoSiguiente(nota.estado) && (
-                          <Button
-                            fullWidth variant="outlined" size="small"
-                            color={getEstadoColor(notasEstados.indexOf(nota.estado) + 1)}
-                            onClick={(e) => { e.stopPropagation(); handleChangeEstado(nota); }}
-                            sx={{ mt: 1.25, textTransform: 'none', fontFamily: font, fontWeight: 600, borderRadius: 2 }}
-                          >
-                            → {getEstadoSiguiente(nota.estado)}
-                          </Button>
+                            {comentario.url && (
+                              <Button size="small" variant="text" startIcon={<AttachFileIcon />} onClick={() => window.open(comentario.url, '_blank')} sx={{ mt: 1, p: 0 }}>
+                                Ver archivo
+                              </Button>
+                            )}
+                          </>
                         )}
-                      </CardContent>
-                    </Card>
-                  ))}
-                </Stack>
+                      </Box>
+                    </Stack>
 
-                <Menu
-                  anchorEl={mobileMenuAnchor}
-                  open={Boolean(mobileMenuAnchor)}
-                  onClose={() => { setMobileMenuAnchor(null); setMobileMenuNota(null); }}
-                  transformOrigin={{ horizontal: 'right', vertical: 'top' }}
-                  anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
-                  PaperProps={{ sx: { borderRadius: 2.5, boxShadow: '0 8px 32px rgba(0,0,0,0.12)' } }}
-                >
-                  <MenuItem onClick={() => { setComentariosDialogNota(mobileMenuNota); setMobileMenuAnchor(null); setMobileMenuNota(null); }}
-                    sx={{ fontFamily: font, fontSize: '0.875rem' }}>
-                    <CommentIcon fontSize="small" sx={{ mr: 1.25, color: C.slate400 }} /> Ver detalles
-                  </MenuItem>
-                  <MenuItem onClick={() => { handleEdit(mobileMenuNota); setMobileMenuAnchor(null); setMobileMenuNota(null); }}
-                    sx={{ fontFamily: font, fontSize: '0.875rem' }}>
-                    <EditIcon fontSize="small" sx={{ mr: 1.25, color: C.slate400 }} /> Editar
-                  </MenuItem>
-                  {mobileMenuNota?.urlNota && (
-                    <MenuItem onClick={() => { window.open(mobileMenuNota.urlNota, '_blank'); setMobileMenuAnchor(null); setMobileMenuNota(null); }}
-                      sx={{ fontFamily: font, fontSize: '0.875rem' }}>
-                      <AttachFileIcon fontSize="small" sx={{ mr: 1.25, color: C.slate400 }} /> Ver adjunto
-                    </MenuItem>
-                  )}
-                  <MenuItem onClick={() => { openDeleteConfirmation(mobileMenuNota); setMobileMenuAnchor(null); setMobileMenuNota(null); }}
-                    sx={{ fontFamily: font, fontSize: '0.875rem', color: 'error.main' }}>
-                    <DeleteIcon fontSize="small" sx={{ mr: 1.25 }} /> Eliminar
-                  </MenuItem>
-                </Menu>
-
-                <Card elevation={0} sx={{ mt: 2, border: `1px solid ${C.slate200}`, borderRadius: 2 }}>
-                  <TablePagination
-                    component="div"
-                    count={filteredNotas.length}
-                    page={page}
-                    onPageChange={handlePageChange}
-                    rowsPerPage={rowsPerPage}
-                    onRowsPerPageChange={handleRowsPerPageChange}
-                    rowsPerPageOptions={[10, 25, 50, 100]}
-                    labelRowsPerPage=""
-                    labelDisplayedRows={({ from, to, count }) => `${from}–${to} de ${count}`}
-                    sx={{ '& .MuiTablePagination-toolbar': { flexWrap: 'wrap', justifyContent: 'center', minHeight: 48 } }}
-                  />
-                </Card>
-              </Box>
+                    {/* Acciones ocultas hasta hover */}
+                    {hoveredComentario === idx && comentarioEditandoIdx !== idx && (
+                      <Stack 
+                        className="comment-actions"
+                        direction="row" 
+                        spacing={0.5}
+                        sx={{ 
+                          position: 'absolute',
+                          top: 8,
+                          right: 8,
+                          opacity: 0,
+                          transition: 'opacity 0.2s',
+                        }}
+                      >
+                        {comentario.texto && (
+                          <IconButton size="small" onClick={() => { setComentarioEditandoIdx(idx); setComentarioEditadoTexto(comentario.texto); }}>
+                            <EditIcon fontSize="small" />
+                          </IconButton>
+                        )}
+                        <IconButton size="small" color="error" onClick={() => handleEliminarComentario(idx)}>
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </Stack>
+                    )}
+                  </Box>
+                ))}
+              </Stack>
             ) : (
-              <>
-                <Paper elevation={0} sx={{ border: `1px solid ${C.slate200}`, borderRadius: 3, overflow: 'hidden' }}>
-                  <Table>
-                    <TableHead>
-                      <TableRow sx={{ bgcolor: C.slate50 }}>
-                        {[
-                          { label: 'Código', key: 'codigo' },
-                          { label: 'Proyecto', key: 'proyecto_nombre' },
-                          { label: 'Proveedor', key: 'proveedor' },
-                          { label: 'Asignado', key: 'owner_name' },
-                          { label: 'Descripción', key: 'descripcion' },
-                          { label: 'Estado', key: 'estado' },
-                          { label: 'Fecha', key: 'fechaCreacion' },
-                          { label: 'Acciones', key: null },
-                        ].map(({ label, key }) => (
-                          <TableCell
-                            key={label}
-                            onClick={key ? () => handleSort(key) : undefined}
-                            sx={{
-                              cursor: key ? 'pointer' : 'default',
-                              userSelect: 'none',
-                              fontFamily: font,
-                              fontWeight: 700,
-                              fontSize: '0.7rem',
-                              letterSpacing: '0.08em',
-                              textTransform: 'uppercase',
-                              color: C.slate600,
-                              borderBottom: `2px solid ${C.slate200}`,
-                              py: 1.5,
-                              textAlign: key === null ? 'right' : 'left',
+              <Box sx={{ textAlign: 'center', py: 4 }}>
+                <CommentIcon sx={{ fontSize: 48, color: 'grey.300', mb: 1 }} />
+                <Typography variant="body2" color="text.secondary">
+                  No hay comentarios aún
+                </Typography>
+              </Box>
+            )}
+          </Stack>
+        )}
+
+        {/* TAB 2: Historial */}
+        {drawerTab === 2 && (
+          <>
+            {comentariosDialogNota?.historial?.length > 0 ? (
+              <Box sx={{ position: 'relative', pl: 3 }}>
+                {/* Línea vertical del timeline */}
+                <Box sx={{ 
+                  position: 'absolute', 
+                  left: 8, 
+                  top: 8, 
+                  bottom: 8, 
+                  width: 2, 
+                  bgcolor: 'grey.200',
+                  borderRadius: 1,
+                }} />
+                
+                <Stack spacing={2}>
+                  {[...comentariosDialogNota.historial].reverse().map((evento, idx) => (
+                    <Box 
+                      key={idx} 
+                      sx={{ 
+                        position: 'relative',
+                        pl: 2,
+                      }}
+                    >
+                      {/* Punto del timeline */}
+                      <Box sx={{ 
+                        position: 'absolute', 
+                        left: -19, 
+                        top: 4,
+                        width: 12, 
+                        height: 12, 
+                        borderRadius: '50%',
+                        bgcolor: evento.campo === 'Estado' ? 'primary.main' : 'grey.400',
+                        border: '2px solid',
+                        borderColor: 'background.paper',
+                        boxShadow: 1,
+                      }} />
+                      
+                      <Box sx={{ 
+                        p: 2, 
+                        bgcolor: 'grey.50', 
+                        borderRadius: 2,
+                        border: '1px solid',
+                        borderColor: 'grey.100',
+                      }}>
+                        <Stack direction="row" spacing={1} alignItems="center" mb={1}>
+                          {evento.campo === 'Estado' && <AssignmentIcon sx={{ fontSize: 16, color: 'primary.main' }} />}
+                          {evento.campo === 'Descripción' && <DescriptionIcon sx={{ fontSize: 16, color: 'grey.500' }} />}
+                          {evento.campo === 'Proveedor' && <BusinessIcon sx={{ fontSize: 16, color: 'grey.500' }} />}
+                          {evento.campo === 'Responsable' && <PersonIcon sx={{ fontSize: 16, color: 'grey.500' }} />}
+                          {evento.campo === 'Proyecto' && <HomeIcon sx={{ fontSize: 16, color: 'grey.500' }} />}
+                          <Typography variant="body2" fontWeight={600}>
+                            {evento.campo}
+                          </Typography>
+                        </Stack>
+                        
+                        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                          <Typography 
+                            variant="body2" 
+                            sx={{ 
+                              textDecoration: 'line-through', 
+                              color: 'text.disabled',
+                              maxWidth: 180,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
                               whiteSpace: 'nowrap',
                             }}
                           >
-                            {label}{key && <SortLabel col={key} />}
-                          </TableCell>
-                        ))}
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {paginatedNotas.map((nota, i) => (
-                        <TableRow
-                          key={nota.id}
-                          onClick={() => setComentariosDialogNota(nota)}
-                          sx={{
-                            cursor: 'pointer',
-                            bgcolor: i % 2 === 0 ? 'white' : alpha(C.slate50, 0.6),
-                            transition: 'background 0.12s ease',
-                            '&:hover': { bgcolor: alpha(C.indigo500, 0.04) },
-                            '& td': { borderBottom: `1px solid ${C.slate100}`, py: 1.5 },
-                          }}
-                        >
-                          <TableCell>
-                            <Typography variant="body2" sx={{ fontFamily: font, fontWeight: 700, color: C.slate900 }}>
-                              #{nota.codigo}
-                            </Typography>
-                          </TableCell>
-                          <TableCell>
-                            <Typography variant="body2" sx={{ fontFamily: font, color: C.slate700 }}>
-                              {nota.proyecto_nombre || '—'}
-                            </Typography>
-                          </TableCell>
-                          <TableCell>
-                            <Typography variant="body2" sx={{ fontFamily: font, color: C.slate700 }}>
-                              {nota.proveedor || '—'}
-                            </Typography>
-                          </TableCell>
-                          <TableCell>
-                            <Typography variant="body2" sx={{ fontFamily: font, fontWeight: 500, color: C.slate900 }}>
-                              {nota.owner_name}
-                            </Typography>
-                            {nota.creador_name && nota.creador_name !== nota.owner_name && (
-                              <Typography variant="caption" sx={{ color: C.slate400, fontFamily: font }}>
-                                por {nota.creador_name}
-                              </Typography>
-                            )}
-                          </TableCell>
-                          <TableCell sx={{ maxWidth: 280 }}>
-                            <Tooltip title={nota.descripcion || ''} arrow placement="top" enterDelay={600}>
-                              <Typography
-                                variant="body2"
-                                color="text.secondary"
-                                sx={{
-                                  fontFamily: font,
-                                  overflow: 'hidden', textOverflow: 'ellipsis',
-                                  display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
-                                }}
-                              >
-                                {nota.descripcion}
-                              </Typography>
-                            </Tooltip>
-                            {nota.urlNota && nota.urlNota.trim() !== '' && (
-                              <Button
-                                variant="text" size="small"
-                                onClick={(e) => { e.stopPropagation(); window.open(nota.urlNota, '_blank'); }}
-                                sx={{ mt: 0.5, p: 0, fontFamily: font, textTransform: 'none', color: C.indigo600, fontSize: '0.75rem' }}
-                                startIcon={<AttachFileIcon sx={{ fontSize: '14px !important' }} />}
-                              >
-                                adjunto
-                              </Button>
-                            )}
-                          </TableCell>
-                          <TableCell>
+                            {evento.valor_anterior}
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">→</Typography>
+                          {evento.campo === 'Estado' ? (
                             <Chip
-                              label={nota.estado}
-                              color={getEstadoColor(notasEstados.indexOf(nota.estado))}
+                              label={evento.valor_nuevo}
                               size="small"
-                              sx={{ fontFamily: font, fontWeight: 600, borderRadius: 10 }}
+                              color={getEstadoColor(notasEstados.indexOf(evento.valor_nuevo))}
+                              sx={{ fontSize: '0.75rem' }}
                             />
-                          </TableCell>
-                          <TableCell>
-                            <Typography variant="body2" sx={{ fontFamily: font, color: C.slate600, whiteSpace: 'nowrap' }}>
-                              {formatTimestamp(nota.fechaCreacion)}
+                          ) : (
+                            <Typography 
+                              variant="body2" 
+                              fontWeight={500}
+                              sx={{ 
+                                maxWidth: 180,
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {evento.valor_nuevo}
                             </Typography>
-                          </TableCell>
-                          <TableCell sx={{ minWidth: 160 }} onClick={(e) => e.stopPropagation()}>
-                            <Stack direction="row" spacing={0.75} alignItems="center" justifyContent="flex-end">
-                              {notasEstados.indexOf(nota.estado) !== notasEstados.length - 1 && (
-                                <Button
-                                  variant="contained"
-                                  size="small"
-                                  color={getEstadoColor(notasEstados.indexOf(nota.estado) + 1)}
-                                  onClick={(e) => { e.stopPropagation(); handleChangeEstado(nota); }}
-                                  sx={{ borderRadius: 10, textTransform: 'none', fontFamily: font, fontWeight: 600, fontSize: '0.75rem', px: 1.5 }}
-                                >
-                                  → {getEstadoSiguiente(nota.estado)}
-                                </Button>
-                              )}
-                              {nota.comentarios?.length > 0 && (
-                                <Chip
-                                  icon={<CommentIcon sx={{ fontSize: '14px !important' }} />}
-                                  label={nota.comentarios.length}
-                                  size="small"
-                                  variant="outlined"
-                                  onClick={(e) => { e.stopPropagation(); setComentariosDialogNota(nota); }}
-                                  sx={{ cursor: 'pointer', fontFamily: font, borderRadius: 10 }}
-                                />
-                              )}
-                            </Stack>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </Paper>
-                <TablePagination
-                  component="div"
-                  count={filteredNotas.length}
-                  page={page}
-                  onPageChange={handlePageChange}
-                  rowsPerPage={rowsPerPage}
-                  onRowsPerPageChange={handleRowsPerPageChange}
-                  rowsPerPageOptions={[5, 10, 25, 50, 100]}
-                  labelRowsPerPage="Filas por página:"
-                  sx={{ fontFamily: font }}
-                />
-              </>
-            )
-          )}
+                          )}
+                        </Stack>
+                        
+                        <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                          {formatTimestamp(evento.fecha)} • {evento.usuario_nombre || 'Sistema'}
+                        </Typography>
+                      </Box>
+                    </Box>
+                  ))}
+                </Stack>
+              </Box>
+            ) : (
+              <Box sx={{ textAlign: 'center', py: 4 }}>
+                <HistoryIcon sx={{ fontSize: 48, color: 'grey.300', mb: 1 }} />
+                <Typography variant="body2" color="text.secondary">
+                  Sin cambios registrados
+                </Typography>
+              </Box>
+            )}
+          </>
+        )}
+      </Box>
+    </Box>
+  )}
+</Drawer>
 
-          {/* ── MOBILE BOTTOM BAR ────────────────────────────────────────────── */}
-          {isMobile && (
-            <Paper
-              elevation={8}
-              sx={{
-                position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 1100,
-                borderTop: `1px solid ${C.slate200}`,
-                bgcolor: 'white',
-                px: 1.5, py: 1,
-                display: 'flex', justifyContent: 'space-around', alignItems: 'center', gap: 0.5,
-              }}
-            >
-              <Button
-                size="small" variant="contained" color="primary"
-                startIcon={<AddIcon />}
-                onClick={() => setOpenAddDialog(true)}
-                sx={{ flex: 1, textTransform: 'none', fontWeight: 700, fontFamily: font, borderRadius: 2 }}
-              >
-                Agregar
-              </Button>
-              <IconButton onClick={() => setOpenFilters(true)} color="primary">
-                <Badge variant="dot" invisible={!filters.estado && !filters.proyecto_id && !filters.misNotas} color="error">
-                  <FilterListIcon />
-                </Badge>
-              </IconButton>
-              <IconButton onClick={fetchNotas} color="primary"><RefreshIcon /></IconButton>
-              <IconButton onClick={handleExportToExcel} color="primary"><DownloadIcon /></IconButton>
-            </Paper>
-          )}
-
-          {/* ── EDIT DIALOG ──────────────────────────────────────────────────── */}
-          <Dialog open={isEditing} onClose={() => setIsEditing(false)} maxWidth="sm" fullWidth
-            PaperProps={{ sx: { borderRadius: 3 } }}>
-            <DialogTitle sx={{ fontFamily: font, fontWeight: 700 }}>Editar Nota</DialogTitle>
-            <DialogContent>
-              <Stack spacing={2} sx={{ mt: 0.5 }}>
-                <TextField label="Descripción" value={formData.descripcion}
-                  onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })}
-                  multiline rows={3} fullWidth sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
-                <TextField label="Proveedor" value={formData.proveedor}
-                  onChange={(e) => setFormData({ ...formData, proveedor: e.target.value })}
-                  fullWidth sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
-                <FormControl fullWidth>
-                  <InputLabel>Estado</InputLabel>
-                  <Select value={formData.estado} onChange={(e) => setFormData({ ...formData, estado: e.target.value })} label="Estado" sx={{ borderRadius: 2 }}>
-                    {notasEstados.map((estado) => (
-                      <MenuItem key={estado} value={estado} sx={{ fontFamily: font }}>{estado}</MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-                <FormControl fullWidth>
-                  <InputLabel>Asignar a</InputLabel>
-                  <Select value={formData.owner || ''} onChange={(e) => setFormData({ ...formData, owner: e.target.value })} label="Asignar a" sx={{ borderRadius: 2 }}>
-                    {profiles.map((profile) => (
-                      <MenuItem key={profile.id} value={profile.id} sx={{ fontFamily: font }}>
-                        {`${profile.firstName} ${profile.lastName}`}
+        <Dialog open={openFilters} onClose={() => setOpenFilters(false)} maxWidth="sm" fullWidth>
+          <DialogTitle>Filtros</DialogTitle>
+          <DialogContent>
+            <Stack spacing={2}>
+              <TextField
+                label="Buscar por texto"
+                value={filters.text}
+                onChange={(e) => setFilters({ ...filters, text: e.target.value })}
+                fullWidth
+              />
+              <FormControl fullWidth>
+                <InputLabel>Estado</InputLabel>
+                <Select
+                  value={filters.estado}
+                  onChange={(e) => setFilters({ ...filters, estado: e.target.value })}
+                >
+                  <MenuItem value="">Todos</MenuItem>
+                  {notasEstados.map((estado) => (
+                    <MenuItem key={estado} value={estado}>
+                      {estado}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <FormControl fullWidth>
+                <InputLabel>Proyecto</InputLabel>
+                <Select
+                  value={filters.proyecto_id}
+                  onChange={(e) => setFilters({ ...filters, proyecto_id: e.target.value })}
+                >
+                  <MenuItem value="">Todos</MenuItem>
+                    {proyectos.map((proyecto) => (
+                      <MenuItem key={proyecto.id} value={proyecto.id}>
+                        {proyecto.nombre}
                       </MenuItem>
                     ))}
                   </Select>
                 </FormControl>
-                <FormControl fullWidth>
-                  <InputLabel>Proyecto</InputLabel>
-                  <Select value={formData.proyecto_id || ''} onChange={(e) => setFormData({ ...formData, proyecto_id: e.target.value })} label="Proyecto" sx={{ borderRadius: 2 }}>
-                    {proyectos.map((proyecto) => (
-                      <MenuItem key={proyecto.id} value={proyecto.id} sx={{ fontFamily: font }}>{proyecto.nombre}</MenuItem>
-                    ))}
-                    <MenuItem value="" sx={{ fontFamily: font }}>No definido</MenuItem>
-                  </Select>
-                </FormControl>
-              </Stack>
-            </DialogContent>
-            <DialogActions sx={{ px: 3, pb: 2.5 }}>
-              <Button onClick={() => setIsEditing(false)} sx={{ fontFamily: font, borderRadius: 2, textTransform: 'none' }}>
-                Cancelar
-              </Button>
-              <Button onClick={handleSaveEdit} variant="contained"
-                sx={{ bgcolor: C.slate900, '&:hover': { bgcolor: C.slate800 }, fontFamily: font, fontWeight: 700, borderRadius: 2, textTransform: 'none' }}>
-                Guardar cambios
-              </Button>
-            </DialogActions>
-          </Dialog>
-
-          <NotaPedidoAddDialog
-            open={openAddDialog}
-            onClose={() => setOpenAddDialog(false)}
-            onSave={handleSaveNewNote}
-            profiles={profiles}
-            proyectos={proyectos}
-          />
-
-          {/* ── DELETE DIALOG ────────────────────────────────────────────────── */}
-          <Dialog open={openDeleteDialog} onClose={closeDeleteConfirmation}
-            PaperProps={{ sx: { borderRadius: 3 } }}>
-            <DialogTitle sx={{ fontFamily: font, fontWeight: 700 }}>Eliminar nota</DialogTitle>
-            <DialogContent>
-              <Typography sx={{ fontFamily: font }}>
-                ¿Estás seguro de que querés eliminar la nota <strong>&quot;{notaToDelete?.codigo}&quot;</strong>? Esta acción no se puede deshacer.
-              </Typography>
-            </DialogContent>
-            <DialogActions sx={{ px: 3, pb: 2.5 }}>
-              <Button onClick={closeDeleteConfirmation} sx={{ fontFamily: font, borderRadius: 2, textTransform: 'none' }}>
-                Cancelar
-              </Button>
-              <Button
-                color="error" variant="contained"
-                sx={{ fontFamily: font, fontWeight: 700, borderRadius: 2, textTransform: 'none' }}
-                onClick={async () => {
-                  try {
-                    const success = await notaPedidoService.deleteNota(notaToDelete.id);
-                    if (success) {
-                      setNotas(notas.filter((n) => n.id !== notaToDelete.id));
-                      setAlert({ open: true, message: 'Nota eliminada con éxito', severity: 'success' });
-                    } else {
-                      setAlert({ open: true, message: 'Error al eliminar la nota', severity: 'error' });
-                    }
-                  } catch (error) {
-                    console.error('Error al eliminar nota:', error);
-                    setAlert({ open: true, message: 'Error al eliminar la nota', severity: 'error' });
-                  }
-                  closeDeleteConfirmation();
-                }}
-              >
-                Eliminar
-              </Button>
-            </DialogActions>
-          </Dialog>
-
-          <NotaPedidoLogoRequeridoDialog
-            open={openLogoRequeridoModal}
-            onClose={() => setOpenLogoRequeridoModal(false)}
-            loading={pdfUiLoading}
-            onSaveAndDownload={handleLogoRequiredSaveAndDownload}
-          />
-
-          <NotaPedidoPdfTemplateDialog
-            open={openPdfPlantillasDialog}
-            onClose={() => setOpenPdfPlantillasDialog(false)}
-            baseTemplate={basePdfTemplate}
-            loading={pdfUiLoading}
-            onSaveLogo={handleSaveLogoFromDialog}
-            empresaId={getEmpresaId()}
-            sampleNota={comentariosDialogNota}
-            selectedPlantillaId={selectedPlantillaId}
-            onTemplateSelected={(id) => setSelectedPlantillaId(id)}
-            onPlantillaGuardada={() => {
-              loadPdfBaseForDrawer();
-              setAlert({ open: true, message: 'Plantilla guardada correctamente', severity: 'success' });
-            }}
-          />
-
-          {/* ── MOBILE FILTERS DIALOG ────────────────────────────────────────── */}
-          <Dialog open={openFilters} onClose={() => setOpenFilters(false)} maxWidth="sm" fullWidth
-            PaperProps={{ sx: { borderRadius: 3 } }}>
-            <DialogTitle sx={{ fontFamily: font, fontWeight: 700 }}>Filtros</DialogTitle>
-            <DialogContent>
-              <Stack spacing={2} sx={{ mt: 0.5 }}>
-                <TextField label="Buscar por texto" value={filters.text}
-                  onChange={(e) => setFilters({ ...filters, text: e.target.value })}
-                  fullWidth sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }} />
-                <FormControl fullWidth>
-                  <InputLabel>Estado</InputLabel>
-                  <Select value={filters.estado} onChange={(e) => setFilters({ ...filters, estado: e.target.value })} label="Estado" sx={{ borderRadius: 2 }}>
-                    <MenuItem value="">Todos</MenuItem>
-                    {notasEstados.map((estado) => <MenuItem key={estado} value={estado} sx={{ fontFamily: font }}>{estado}</MenuItem>)}
-                  </Select>
-                </FormControl>
-                <FormControl fullWidth>
-                  <InputLabel>Proyecto</InputLabel>
-                  <Select value={filters.proyecto_id} onChange={(e) => setFilters({ ...filters, proyecto_id: e.target.value })} label="Proyecto" sx={{ borderRadius: 2 }}>
-                    <MenuItem value="">Todos</MenuItem>
-                    {proyectos.map((proyecto) => <MenuItem key={proyecto.id} value={proyecto.id} sx={{ fontFamily: font }}>{proyecto.nombre}</MenuItem>)}
-                  </Select>
-                </FormControl>
-                <Chip
-                  label="Mis notas"
-                  color={filters.misNotas ? 'primary' : 'default'}
-                  variant={filters.misNotas ? 'filled' : 'outlined'}
-                  onClick={() => setFilters({ ...filters, misNotas: !filters.misNotas })}
-                  sx={{ cursor: 'pointer', alignSelf: 'flex-start', fontFamily: font, borderRadius: 10 }}
-                />
-              </Stack>
-            </DialogContent>
-            <DialogActions sx={{ px: 3, pb: 2.5 }}>
-              <Button onClick={() => setOpenFilters(false)} sx={{ fontFamily: font, borderRadius: 2, textTransform: 'none' }}>Cerrar</Button>
-              <Button
-                variant="contained"
-                onClick={() => { applyFilters(); setOpenFilters(false); }}
-                sx={{ bgcolor: C.slate900, '&:hover': { bgcolor: C.slate800 }, fontFamily: font, fontWeight: 700, borderRadius: 2, textTransform: 'none' }}
-              >
-                Aplicar
-              </Button>
-            </DialogActions>
-          </Dialog>
-
-          {/* ── DETAIL DRAWER ────────────────────────────────────────────────── */}
-          <Drawer
-            anchor="right"
-            open={!!comentariosDialogNota}
-            onClose={() => { setComentariosDialogNota(null); setDrawerTab(0); }}
-            PaperProps={{
-              sx: {
-                width: { xs: '100%', sm: 520 },
-                p: 0,
-                bgcolor: C.slate50,
-              }
-            }}
-          >
-            {comentariosDialogNota && (
-              <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-
-                {/* Drawer Header */}
-                <Box sx={{
-                  p: 2.5,
-                  bgcolor: 'white',
-                  borderBottom: `1px solid ${C.slate200}`,
-                }}>
-                  <Stack direction="row" justifyContent="space-between" alignItems="flex-start" mb={1.5}>
-                    <Box>
-                      <Stack direction="row" spacing={1.5} alignItems="center" mb={0.5}>
-                        <Typography variant="h5" sx={{ fontFamily: font, fontWeight: 800, color: C.slate900 }}>
-                          #{comentariosDialogNota.codigo}
-                        </Typography>
-                        {comentariosDialogNota.proyecto_nombre && (
-                          <Typography variant="body2" sx={{ color: C.indigo600, fontFamily: font, fontWeight: 600 }}>
-                            {comentariosDialogNota.proyecto_nombre}
-                          </Typography>
-                        )}
-                      </Stack>
-                      <Chip
-                        label={comentariosDialogNota.estado}
-                        color={getEstadoColor(notasEstados.indexOf(comentariosDialogNota.estado))}
-                        size="small"
-                        sx={{ fontFamily: font, fontWeight: 700, borderRadius: 10 }}
-                      />
-                    </Box>
-                    <IconButton
-                      onClick={() => { setComentariosDialogNota(null); setDrawerTab(0); }}
-                      size="small"
-                      sx={{ bgcolor: C.slate100, '&:hover': { bgcolor: C.slate200 } }}
-                    >
-                      <CloseIcon fontSize="small" />
-                    </IconButton>
-                  </Stack>
-
-                  {/* Progress bar */}
-                  <Box sx={{ mb: 2 }}>
-                    <Stack direction="row" justifyContent="space-between" mb={0.5}>
-                      <Typography variant="caption" sx={{ fontFamily: font, color: C.slate400 }}>
-                        Paso {notasEstados.indexOf(comentariosDialogNota.estado) + 1} de {notasEstados.length}
-                      </Typography>
-                      <Typography variant="caption" sx={{ fontFamily: font, color: C.slate400 }}>
-                        {Math.round(((notasEstados.indexOf(comentariosDialogNota.estado) + 1) / notasEstados.length) * 100)}%
-                      </Typography>
-                    </Stack>
-                    <LinearProgress
-                      variant="determinate"
-                      value={((notasEstados.indexOf(comentariosDialogNota.estado) + 1) / notasEstados.length) * 100}
-                      color={getEstadoColor(notasEstados.indexOf(comentariosDialogNota.estado))}
-                      sx={{ height: 5, borderRadius: 3, bgcolor: C.slate200, '& .MuiLinearProgress-bar': { borderRadius: 3 } }}
-                    />
-                    <Stack direction="row" justifyContent="space-between" mt={0.75}>
-                      {notasEstados.map((estado, idx) => (
-                        <Typography
-                          key={estado} variant="caption"
-                          sx={{
-                            fontFamily: font,
-                            fontSize: '0.62rem',
-                            fontWeight: idx === notasEstados.indexOf(comentariosDialogNota.estado) ? 700 : 400,
-                            color: idx <= notasEstados.indexOf(comentariosDialogNota.estado) ? C.slate700 : C.slate400,
-                          }}
-                        >
-                          {estado}
-                        </Typography>
-                      ))}
-                    </Stack>
-                  </Box>
-
-                  {/* Primary action */}
-                  {notasEstados.indexOf(comentariosDialogNota.estado) !== notasEstados.length - 1 && (
-                    <Button
-                      fullWidth variant="contained" size="large"
-                      color={getEstadoColor(notasEstados.indexOf(comentariosDialogNota.estado) + 1)}
-                      onClick={() => handleChangeEstado(comentariosDialogNota)}
-                      sx={{ borderRadius: 2, fontFamily: font, fontWeight: 700, textTransform: 'none', py: 1.25, mb: 1.5 }}
-                    >
-                      → Pasar a {getEstadoSiguiente(comentariosDialogNota.estado)}
-                    </Button>
-                  )}
-
-                  {/* Secondary actions */}
-                  <Stack direction="row" spacing={1} flexWrap="wrap" justifyContent="space-between" alignItems="center">
-                    <Stack direction="row" spacing={0.5}>
-                      <Button size="small" startIcon={<EditIcon fontSize="small" />}
-                        onClick={() => { handleEdit(comentariosDialogNota); setComentariosDialogNota(null); }}
-                        sx={{ textTransform: 'none', fontFamily: font, color: C.slate600, fontSize: '0.8rem', borderRadius: 1.5 }}>
-                        Editar
-                      </Button>
-                      <Button size="small" color="error" startIcon={<DeleteIcon fontSize="small" />}
-                        onClick={() => { openDeleteConfirmation(comentariosDialogNota); setComentariosDialogNota(null); }}
-                        sx={{ textTransform: 'none', fontFamily: font, fontSize: '0.8rem', borderRadius: 1.5 }}>
-                        Eliminar
-                      </Button>
-                    </Stack>
-                    <Button
-                      size="small" variant="outlined"
-                      startIcon={pdfDownloading ? <CircularProgress size={12} color="inherit" /> : <PictureAsPdfIcon />}
-                      disabled={pdfDownloading}
-                      onClick={handleDownloadPdfNota}
-                      sx={{ textTransform: 'none', fontFamily: font, fontWeight: 600, borderRadius: 2, borderColor: C.slate300, color: C.slate700 }}
-                    >
-                      Descargar PDF
-                    </Button>
-                  </Stack>
-                </Box>
-
-                {/* Tabs */}
-                <Tabs
-                  value={drawerTab}
-                  onChange={(e, v) => setDrawerTab(v)}
-                  sx={{
-                    bgcolor: 'white',
-                    px: 1,
-                    borderBottom: `1px solid ${C.slate200}`,
-                    '& .MuiTab-root': { textTransform: 'none', fontFamily: font, fontWeight: 600, fontSize: '0.85rem', minHeight: 44 },
-                    '& .MuiTabs-indicator': { height: 3, borderRadius: 3 },
-                  }}
-                >
-                  <Tab label="Detalles" icon={<DescriptionIcon sx={{ fontSize: 16 }} />} iconPosition="start" />
-                  <Tab
-                    label={
-                      <Stack direction="row" spacing={0.75} alignItems="center">
-                        <span>Comentarios</span>
-                        {(comentariosDialogNota.comentarios?.length || 0) > 0 && (
-                          <Chip label={comentariosDialogNota.comentarios.length} size="small" color="primary"
-                            sx={{ height: 18, fontSize: '0.65rem', fontFamily: font }} />
-                        )}
-                      </Stack>
-                    }
-                    icon={<CommentIcon sx={{ fontSize: 16 }} />}
-                    iconPosition="start"
-                  />
-                  <Tab
-                    label={
-                      <Stack direction="row" spacing={0.75} alignItems="center">
-                        <span>Historial</span>
-                        {(comentariosDialogNota.historial?.length || 0) > 0 && (
-                          <Chip label={comentariosDialogNota.historial.length} size="small" variant="outlined"
-                            sx={{ height: 18, fontSize: '0.65rem', fontFamily: font }} />
-                        )}
-                      </Stack>
-                    }
-                    icon={<HistoryIcon sx={{ fontSize: 16 }} />}
-                    iconPosition="start"
-                  />
-                </Tabs>
-
-                {/* Tab Content */}
-                <Box sx={{ flex: 1, overflow: 'auto', p: 2.5 }}>
-
-                  {/* TAB 0: Detalles */}
-                  {drawerTab === 0 && (
-                    <Stack spacing={2}>
-                      <Paper elevation={0} sx={{ p: 2, bgcolor: 'white', borderRadius: 2.5, border: `1px solid ${C.slate100}` }}>
-                        <Typography variant="body2" sx={{ whiteSpace: 'pre-line', fontFamily: font, lineHeight: 1.7, color: C.slate700 }}>
-                          {comentariosDialogNota.descripcion || 'Sin descripción'}
-                        </Typography>
-                      </Paper>
-
-                      <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5 }}>
-                        {[
-                          { icon: <BusinessIcon />, label: 'Proveedor', value: comentariosDialogNota.proveedor },
-                          { icon: <PersonIcon />, label: 'Responsable', value: comentariosDialogNota.owner_name },
-                          { icon: <PersonIcon />, label: 'Creado por', value: comentariosDialogNota.creador_name },
-                          { icon: <CalendarTodayIcon />, label: 'Fecha', value: formatTimestamp(comentariosDialogNota.fechaCreacion) },
-                        ].map(({ icon, label, value }) => (
-                          <Paper key={label} elevation={0} sx={{ p: 1.5, bgcolor: 'white', borderRadius: 2, border: `1px solid ${C.slate100}` }}>
-                            <Stack direction="row" spacing={1.25} alignItems="flex-start">
-                              <Box sx={{ color: C.slate400, mt: 0.1, '& svg': { fontSize: 16 } }}>{icon}</Box>
-                              <Box>
-                                <Typography variant="caption" sx={{ fontFamily: font, color: C.slate400, display: 'block', lineHeight: 1 }}>
-                                  {label}
-                                </Typography>
-                                <Typography variant="body2" sx={{ fontFamily: font, fontWeight: 600, color: C.slate900, mt: 0.3 }}>
-                                  {value || '—'}
-                                </Typography>
-                              </Box>
-                            </Stack>
-                          </Paper>
-                        ))}
-                      </Box>
-
-                      {comentariosDialogNota.urlNota && (
-                        <Button
-                          variant="outlined" size="small" startIcon={<AttachFileIcon />}
-                          onClick={() => window.open(comentariosDialogNota.urlNota, '_blank')}
-                          sx={{ textTransform: 'none', fontFamily: font, borderRadius: 2, alignSelf: 'flex-start' }}
-                        >
-                          Ver adjunto de la nota
-                        </Button>
-                      )}
-                    </Stack>
-                  )}
-
-                  {/* TAB 1: Comentarios */}
-                  {drawerTab === 1 && (
-                    <Stack spacing={2}>
-                      <Paper elevation={0} sx={{ p: 2, bgcolor: 'white', borderRadius: 2.5, border: `1px solid ${C.slate100}` }}>
-                        <Box sx={{ display: 'flex', gap: 1, mb: 1.5 }}>
-                          <TextField
-                            placeholder="Escribe un comentario..."
-                            multiline maxRows={3} fullWidth size="small"
-                            inputRef={nuevoComentarioRef}
-                            variant="standard"
-                            InputProps={{ disableUnderline: true }}
-                            sx={{ '& .MuiInputBase-root': { p: 0, fontFamily: font, fontSize: '0.875rem' } }}
-                          />
-                          <IconButton color="primary" onClick={handleAgregarComentario}
-                            disabled={comentariosCargando} sx={{ alignSelf: 'flex-end' }}>
-                            {comentariosCargando ? <CircularProgress size={20} /> : <SendIcon />}
-                          </IconButton>
-                        </Box>
-                        <Divider sx={{ my: 1 }}>
-                          <Typography variant="caption" sx={{ color: C.slate400, fontFamily: font }}>o adjuntá un archivo</Typography>
-                        </Divider>
-                        <Box
-                          onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-                          onDragLeave={() => setIsDragging(false)}
-                          onDrop={(e) => { e.preventDefault(); setIsDragging(false); if (e.dataTransfer.files[0]) setArchivoSeleccionado(e.dataTransfer.files[0]); }}
-                          component="label"
-                          sx={{
-                            border: `1px dashed ${isDragging ? C.indigo500 : C.slate200}`,
-                            borderRadius: 2, p: 1.5, textAlign: 'center',
-                            bgcolor: isDragging ? alpha(C.indigo500, 0.04) : C.slate50,
-                            transition: 'all 0.2s', cursor: 'pointer',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1,
-                          }}
-                        >
-                          <input type="file" hidden onChange={(e) => setArchivoSeleccionado(e.target.files[0])} />
-                          <CloudUploadIcon sx={{ fontSize: 18, color: isDragging ? C.indigo500 : C.slate400 }} />
-                          {archivoSeleccionado ? (
-                            <Typography variant="body2" sx={{ fontFamily: font, fontWeight: 600, color: C.indigo600 }}>
-                              {archivoSeleccionado.name}
-                            </Typography>
-                          ) : (
-                            <Typography variant="caption" sx={{ fontFamily: font, color: C.slate400 }}>
-                              Arrastrá o seleccioná un archivo
-                            </Typography>
-                          )}
-                        </Box>
-                        {archivoSeleccionado && (
-                          <Button fullWidth variant="contained" size="small" startIcon={<CloudUploadIcon />}
-                            onClick={async () => {
-                              if (!comentariosDialogNota || !archivoSeleccionado) return;
-                              try {
-                                const nota = await notaPedidoService.subirArchivo(comentariosDialogNota.id, archivoSeleccionado);
-                                if (nota) {
-                                  setNotas(notas.map((n) => (n.id === nota.id ? nota : n)));
-                                  setComentariosDialogNota(nota);
-                                  setAlert({ open: true, message: 'Archivo subido con éxito', severity: 'success' });
-                                } else {
-                                  setAlert({ open: true, message: 'Error al subir archivo', severity: 'error' });
-                                }
-                                setArchivoSeleccionado(null);
-                              } catch (error) {
-                                console.error('Error subiendo archivo:', error);
-                                setAlert({ open: true, message: 'Error al subir archivo', severity: 'error' });
-                              }
-                            }}
-                            sx={{ mt: 1, fontFamily: font, fontWeight: 700, borderRadius: 2, textTransform: 'none' }}
-                          >
-                            Subir archivo
-                          </Button>
-                        )}
-                      </Paper>
-
-                      {comentariosDialogNota?.comentarios?.length > 0 ? (
-                        <Stack spacing={1.25}>
-                          {comentariosDialogNota.comentarios.map((comentario, idx) => (
-                            <Paper key={idx} elevation={0} sx={{
-                              p: 2, bgcolor: 'white', borderRadius: 2.5,
-                              border: `1px solid ${C.slate100}`, position: 'relative',
-                            }}
-                              onMouseEnter={() => setHoveredComentario(idx)}
-                              onMouseLeave={() => setHoveredComentario(null)}
-                            >
-                              <Stack direction="row" spacing={1.5} alignItems="flex-start">
-                                <Box sx={{
-                                  width: 34, height: 34, borderRadius: '50%',
-                                  bgcolor: C.slate900, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                                }}>
-                                  <Typography variant="caption" sx={{ color: 'white', fontWeight: 700, fontFamily: font }}>
-                                    {comentario.autor?.charAt(0)?.toUpperCase() || 'U'}
-                                  </Typography>
-                                </Box>
-                                <Box sx={{ flex: 1, minWidth: 0 }}>
-                                  <Stack direction="row" justifyContent="space-between" alignItems="center">
-                                    <Typography variant="body2" sx={{ fontFamily: font, fontWeight: 700, color: C.slate900 }}>
-                                      {comentario.autor}
-                                    </Typography>
-                                    <Typography variant="caption" sx={{ fontFamily: font, color: C.slate400 }}>
-                                      {formatTimestamp(comentario.fecha)}
-                                    </Typography>
-                                  </Stack>
-                                  {comentarioEditandoIdx === idx ? (
-                                    <Box mt={1}>
-                                      <TextField fullWidth multiline value={comentarioEditadoTexto}
-                                        onChange={(e) => setComentarioEditadoTexto(e.target.value)}
-                                        rows={2} size="small"
-                                        sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2, fontFamily: font } }} />
-                                      <Stack direction="row" spacing={1} mt={1}>
-                                        <Button size="small" variant="contained"
-                                          onClick={() => handleGuardarComentarioEditado(idx)}
-                                          sx={{ fontFamily: font, borderRadius: 2, textTransform: 'none', fontWeight: 600 }}>
-                                          Guardar
-                                        </Button>
-                                        <Button size="small"
-                                          onClick={() => { setComentarioEditandoIdx(null); setComentarioEditadoTexto(''); }}
-                                          sx={{ fontFamily: font, borderRadius: 2, textTransform: 'none' }}>
-                                          Cancelar
-                                        </Button>
-                                      </Stack>
-                                    </Box>
-                                  ) : (
-                                    <>
-                                      {comentario.texto && (
-                                        <Typography variant="body2" sx={{ fontFamily: font, color: C.slate600, mt: 0.5, lineHeight: 1.6, whiteSpace: 'pre-line' }}>
-                                          {comentario.texto}
-                                        </Typography>
-                                      )}
-                                      {comentario.url && (
-                                        <Button size="small" variant="text" startIcon={<AttachFileIcon />}
-                                          onClick={() => window.open(comentario.url, '_blank')}
-                                          sx={{ mt: 0.75, p: 0, fontFamily: font, textTransform: 'none', color: C.indigo600, fontSize: '0.75rem' }}>
-                                          Ver archivo
-                                        </Button>
-                                      )}
-                                    </>
-                                  )}
-                                </Box>
-                              </Stack>
-                              {hoveredComentario === idx && comentarioEditandoIdx !== idx && (
-                                <Stack direction="row" spacing={0.25} sx={{ position: 'absolute', top: 8, right: 8 }}>
-                                  {comentario.texto && (
-                                    <IconButton size="small"
-                                      onClick={() => { setComentarioEditandoIdx(idx); setComentarioEditadoTexto(comentario.texto); }}
-                                      sx={{ bgcolor: C.slate100, '&:hover': { bgcolor: C.slate200 } }}>
-                                      <EditIcon sx={{ fontSize: 14 }} />
-                                    </IconButton>
-                                  )}
-                                  <IconButton size="small" color="error"
-                                    onClick={() => handleEliminarComentario(idx)}
-                                    sx={{ bgcolor: alpha('#ef4444', 0.08), '&:hover': { bgcolor: alpha('#ef4444', 0.15) } }}>
-                                    <DeleteIcon sx={{ fontSize: 14 }} />
-                                  </IconButton>
-                                </Stack>
-                              )}
-                            </Paper>
-                          ))}
-                        </Stack>
-                      ) : (
-                        <Box sx={{ textAlign: 'center', py: 5 }}>
-                          <CommentIcon sx={{ fontSize: 44, color: C.slate200, mb: 1 }} />
-                          <Typography variant="body2" sx={{ fontFamily: font, color: C.slate400 }}>
-                            No hay comentarios aún
-                          </Typography>
-                        </Box>
-                      )}
-                    </Stack>
-                  )}
-
-                  {/* TAB 2: Historial */}
-                  {drawerTab === 2 && (
-                    <>
-                      {comentariosDialogNota?.historial?.length > 0 ? (
-                        <Box sx={{ position: 'relative', pl: 3 }}>
-                          <Box sx={{
-                            position: 'absolute', left: 8, top: 8, bottom: 8,
-                            width: 2, bgcolor: C.slate200, borderRadius: 1,
-                          }} />
-                          <Stack spacing={2}>
-                            {[...comentariosDialogNota.historial].reverse().map((evento, idx) => (
-                              <Box key={idx} sx={{ position: 'relative', pl: 2 }}>
-                                <Box sx={{
-                                  position: 'absolute', left: -19, top: 6,
-                                  width: 10, height: 10, borderRadius: '50%',
-                                  bgcolor: evento.campo === 'Estado' ? C.indigo500 : C.slate300,
-                                  border: '2px solid white', boxShadow: 1,
-                                }} />
-                                <Paper elevation={0} sx={{ p: 2, bgcolor: 'white', borderRadius: 2, border: `1px solid ${C.slate100}` }}>
-                                  <Stack direction="row" spacing={1} alignItems="center" mb={1}>
-                                    {evento.campo === 'Estado' && <AssignmentIcon sx={{ fontSize: 15, color: C.indigo500 }} />}
-                                    {evento.campo === 'Descripción' && <DescriptionIcon sx={{ fontSize: 15, color: C.slate400 }} />}
-                                    {evento.campo === 'Proveedor' && <BusinessIcon sx={{ fontSize: 15, color: C.slate400 }} />}
-                                    {evento.campo === 'Responsable' && <PersonIcon sx={{ fontSize: 15, color: C.slate400 }} />}
-                                    {evento.campo === 'Proyecto' && <HomeIcon sx={{ fontSize: 15, color: C.slate400 }} />}
-                                    <Typography variant="body2" sx={{ fontFamily: font, fontWeight: 700, color: C.slate900 }}>
-                                      {evento.campo}
-                                    </Typography>
-                                  </Stack>
-                                  <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
-                                    <Typography variant="body2" sx={{
-                                      textDecoration: 'line-through', fontFamily: font, color: C.slate400,
-                                      maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                                    }}>
-                                      {evento.valor_anterior}
-                                    </Typography>
-                                    <Typography variant="body2" sx={{ color: C.slate300 }}>→</Typography>
-                                    {evento.campo === 'Estado' ? (
-                                      <Chip label={evento.valor_nuevo} size="small"
-                                        color={getEstadoColor(notasEstados.indexOf(evento.valor_nuevo))}
-                                        sx={{ fontFamily: font, fontWeight: 600, borderRadius: 10, fontSize: '0.72rem' }} />
-                                    ) : (
-                                      <Typography variant="body2" sx={{
-                                        fontFamily: font, fontWeight: 600, color: C.slate900,
-                                        maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                                      }}>
-                                        {evento.valor_nuevo}
-                                      </Typography>
-                                    )}
-                                  </Stack>
-                                  <Typography variant="caption" sx={{ fontFamily: font, color: C.slate400, mt: 0.75, display: 'block' }}>
-                                    {formatTimestamp(evento.fecha)} · {evento.usuario_nombre || 'Sistema'}
-                                  </Typography>
-                                </Paper>
-                              </Box>
-                            ))}
-                          </Stack>
-                        </Box>
-                      ) : (
-                        <Box sx={{ textAlign: 'center', py: 5 }}>
-                          <HistoryIcon sx={{ fontSize: 44, color: C.slate200, mb: 1 }} />
-                          <Typography variant="body2" sx={{ fontFamily: font, color: C.slate400 }}>
-                            Sin cambios registrados
-                          </Typography>
-                        </Box>
-                      )}
-                    </>
-                  )}
-                </Box>
-              </Box>
-            )}
-          </Drawer>
-
-          <Snackbar
-            open={alert.open}
-            autoHideDuration={5000}
-            onClose={() => setAlert({ ...alert, open: false })}
-          >
-            <Alert onClose={() => setAlert({ ...alert, open: false })} severity={alert.severity} sx={{ fontFamily: font }}>
-              {alert.message}
-            </Alert>
-          </Snackbar>
-        </Container>
-      </Box>
-    </>
+              <Chip
+                label="Mis notas"
+                color={filters.misNotas ? 'primary' : 'default'}
+                variant={filters.misNotas ? 'filled' : 'outlined'}
+                onClick={() => setFilters({ ...filters, misNotas: !filters.misNotas })}
+                sx={{ cursor: 'pointer', alignSelf: 'flex-start' }}
+              />
+            </Stack>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setOpenFilters(false)}>Cerrar</Button>
+            <Button
+              onClick={() => {
+                applyFilters();
+                setOpenFilters(false);
+              }}
+              variant="contained"
+            >
+              Aplicar
+            </Button>
+          </DialogActions>
+        </Dialog>
+        <Snackbar
+          open={alert.open}
+          autoHideDuration={6000}
+          onClose={() => setAlert({ ...alert, open: false })}
+        >
+          <Alert onClose={() => setAlert({ ...alert, open: false })} severity={alert.severity}>
+            {alert.message}
+          </Alert>
+        </Snackbar>
+      </Container>
+    </Box>
   );
 };
 

@@ -101,6 +101,13 @@ const CajaTablaCell = ({ colKey, mov, amountColor, ctx, isProrrateo = false }) =
           ? formatCurrencyWithCode(Number(mov.monto_pagado) || 0, mov.moneda || 'ARS')
           : '—'
       );
+    case 'montoAprobado':
+      return cell(
+        { ...cellBase, minWidth: COLS.montoAprobado, textAlign: 'right' },
+        mov.monto_aprobado != null && mov.monto_aprobado !== ''
+          ? formatCurrencyWithCode(Number(mov.monto_aprobado) || 0, mov.moneda || 'ARS')
+          : '—'
+      );
     case 'categoria':
       return cell(
         { ...cellBase, minWidth: COLS.categoria },

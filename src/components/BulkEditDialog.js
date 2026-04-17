@@ -36,6 +36,7 @@ const BULK_FIELDS = [
   { name: 'moneda',           label: 'Moneda',                 type: 'select',       options: ['ARS', 'USD'] },
   { name: 'medio_pago',       label: 'Medio de Pago',          type: 'select',       optionsKey: 'mediosPago' },
   { name: 'estado',           label: 'Estado',                 type: 'select',       options: ['Pendiente', 'Pagado'], visibleIf: (empresa) => empresa?.con_estados },
+  { name: 'monto_aprobado',   label: 'Monto aprobado',         type: 'operation_number' },
   { name: 'cuenta_interna',   label: 'Cuenta Interna',         type: 'select',       optionsKey: 'cuentasInternas' },
   { name: 'obra',             label: 'Obra',                   type: 'autocomplete', optionsKey: 'obras' },
   { name: 'cliente',          label: 'Cliente',                type: 'autocomplete', optionsKey: 'clientes' },

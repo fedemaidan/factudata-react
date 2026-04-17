@@ -82,6 +82,7 @@ const FIELD_LABELS = DEFINICION_CAMPOS.reduce(
     detalle: 'Detalle',
     nombre_proveedor: 'Proveedor',
     fecha_factura: 'Fecha de la Factura',
+    monto_aprobado: 'Monto aprobado',
     factura_cliente: 'Factura de cliente',
   }
 );
@@ -325,6 +326,7 @@ const MovementFormPage = () => {
         const updatedMovimiento = await movimientosService.getMovimientoById(movimientoId);
         if (updatedMovimiento) {
           setMovimiento(updatedMovimiento);
+          formik.setFieldValue('monto_aprobado', updatedMovimiento.monto_aprobado ?? '', false);
         }
       }
 
@@ -493,6 +495,7 @@ const MovementFormPage = () => {
           ...data,
           fecha_factura: data.fecha_factura,
           fecha_pago: data.fecha_pago || '',
+
           tags_extra: data.tags_extra || [],
           caja_chica: data.caja_chica ?? false,
           impuestos: data.impuestos || [],
@@ -500,6 +503,8 @@ const MovementFormPage = () => {
           etapa: data.etapa || '',
           obra: data.obra || '',
           cliente: data.cliente || '',
+          monto_aprobado: data.monto_aprobado ?? '',
+
           factura_cliente: typeof data.factura_cliente === 'boolean' ? data.factura_cliente : false,
           dolar_referencia_manual: data.dolar_referencia_manual ?? false,
           total: data.total,
@@ -743,6 +748,7 @@ const createdAtStr = (() => {
       impuestos: [],
       empresa_facturacion: '',
       fecha_pago: '',
+      fecha_aprobacion: '',
       dolar_referencia: '',
       dolar_referencia_manual: false,
       subtotal_dolar: 0,
@@ -751,6 +757,7 @@ const createdAtStr = (() => {
       etapa: '',
       obra: '',
       cliente: '',
+      monto_aprobado: '',
       factura_cliente: false
     },
     validationSchema: Yup.object({}),
@@ -762,6 +769,7 @@ const createdAtStr = (() => {
         ...values,
         fecha_factura: dateToTimestamp(fechaFactura),
         fecha_pago: values.fecha_pago ? dateToTimestamp(values.fecha_pago) : null,
+        fecha_aprobacion: values.fecha_aprobacion ? dateToTimestamp(values.fecha_aprobacion) : null,
         proyecto: effectiveProyectoName,
         proyecto_id: effectiveProyectoId,
         proyecto_nombre: effectiveProyectoName,
@@ -1079,7 +1087,8 @@ const createdAtStr = (() => {
                         impuestos: false, numero_factura: false, subtotal: false,
                         cuenta_interna: false, etapa: false, empresa_facturacion: false,
                         fecha_pago: false, obra: false, cliente: false, factura_cliente: false,
-                        dolar_referencia: false, detalle: false,
+                        dolar_referencia: false, detalle: false, monto_aprobado: false,
+                        fecha_aprobacion: false, usuario_aprobacion: false, obs_aprobacion: false,
                       };
                       const ingresoDefaults = {
                         observacion: true, medio_pago: false, categoria: false,
@@ -1105,6 +1114,10 @@ const createdAtStr = (() => {
                         { key: 'empresa_facturacion', label: 'Empresa de facturación', configKey: 'empresa_facturacion' },
                         { key: 'factura_cliente', label: 'Factura de cliente', configKey: 'factura_cliente', format: yesNo },
       { key: 'fecha_pago', label: 'Fecha de pago', configKey: 'fecha_pago' },
+      { key: 'monto_aprobado', label: 'Monto aprobado', configKey: null, format: (v) => formatCurrency(v, 2) },
+      { key: 'fecha_aprobacion', label: 'Fecha de aprobación', configKey: null },
+      { key: 'usuario_aprobacion', label: 'Aprobado por', configKey: null },
+      { key: 'obs_aprobacion', label: 'Observación aprobación', configKey: null },
       { key: 'moneda', label: 'Moneda', configKey: null },
       { key: 'subtotal', label: 'Subtotal', configKey: 'subtotal', format: (v) => formatCurrency(v, 2) },
       { key: 'total_original', label: 'Total Original', configKey: 'total_original', format: (v) => formatCurrency(v, 2) },
