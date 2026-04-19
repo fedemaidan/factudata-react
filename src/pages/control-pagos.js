@@ -43,11 +43,16 @@ import { buildCompletarPagoUpdateFields, puedeCompletarPagoEgreso } from 'src/ut
 const PAGE_SIZE_OPTIONS = [25, 50, 100];
 const MIN_FREE_TEXT_LENGTH = 3;
 
-const TAB_OPTIONS = [
+const ALL_TAB_OPTIONS = [
   {
     value: 'porPagar',
     label: 'Por pagar',
-    tooltip: 'Egresos con monto aprobado que todavía no se pagaron.',
+    tooltip: 'Egresos pendientes de pago.',
+  },
+  {
+    value: 'pagados',
+    label: 'Pagados',
+    tooltip: 'Egresos pagados.',
   },
   {
     value: 'porAprobar',
@@ -61,7 +66,7 @@ const TAB_OPTIONS = [
   },
 ];
 
-const COLUMNS_STORAGE_KEY = 'pagos-aprobaciones:hidden-columns';
+const COLUMNS_STORAGE_KEY = 'control-pagos:hidden-columns';
 
 const TABLE_COLUMNS = [
   { key: 'nombre_proveedor', label: 'Proveedor', minWidth: 130, sortField: 'proveedor' },
@@ -114,9 +119,13 @@ const buildDashboardParams = ({ filterState, tabPreset, page, limit, empresaId, 
   return params;
 };
 
-const buildTabPreset = (tab) => {
+const buildTabPreset = (tab, tieneMontoAprobado = true) => {
   if (tab === 'porPagar') {
-    return { estados: ['Pendiente', 'Parcialmente Pagado'], aprobacion: 'si' };
+    // Si monto_aprobado está desactivado, mostrar todos los pendientes sin filtro de aprobación
+    return { estados: ['Pendiente', 'Parcialmente Pagado'], aprobacion: tieneMontoAprobado ? 'si' : '' };
+  }
+  if (tab === 'pagados') {
+    return { estados: ['Pagado'], aprobacion: '' };
   }
   if (tab === 'porAprobar') {
     return { estados: ['Pendiente', 'Parcialmente Pagado'], aprobacion: 'incompleto' };
@@ -214,10 +223,16 @@ const PagosAprobacionesPage = () => {
   const router = useRouter();
   const { user } = useAuthContext();
 
-  const tienePermiso = user?.admin || (user?.empresa?.acciones || user?.empresaData?.acciones || []).includes('VER_PAGOS_APROBACIONES');
+  const tienePermiso = user?.admin || (user?.empresa?.acciones || user?.empresaData?.acciones || []).includes('VER_CONTROL_PAGOS');
 
   const [activeTab, setActiveTab] = useState('porPagar');
   const [empresa, setEmpresa] = useState(null);
+
+  const tieneMontoAprobado = empresa?.comprobante_info?.monto_aprobado === true;
+
+  const tabOptions = tieneMontoAprobado
+    ? ALL_TAB_OPTIONS
+    : ALL_TAB_OPTIONS.filter((t) => t.value === 'porPagar' || t.value === 'pagados');
   const [proyectos, setProyectos] = useState([]);
   const [selectedProjects, setSelectedProjects] = useState([]);
   const [options, setOptions] = useState({});
@@ -438,7 +453,7 @@ const PagosAprobacionesPage = () => {
         return;
       }
 
-      const tabPreset = buildTabPreset(activeTab);
+      const tabPreset = buildTabPreset(activeTab, tieneMontoAprobado);
       const response = await movimientosService.getCajasDashboard(
         buildDashboardParams({
           filterState,
@@ -654,6 +669,13 @@ const PagosAprobacionesPage = () => {
     fetchScopeData();
   }, [fetchScopeData]);
 
+  // Si la empresa cargó sin monto_aprobado habilitado, resetear tabs que no son visibles
+  useEffect(() => {
+    if (empresa && !tieneMontoAprobado && (activeTab === 'porAprobar' || activeTab === 'todos')) {
+      setActiveTab('porPagar');
+    }
+  }, [tieneMontoAprobado, empresa]);
+
   useEffect(() => {
     fetchGlobalMetrics();
   }, [fetchGlobalMetrics]);
@@ -673,7 +695,7 @@ const PagosAprobacionesPage = () => {
 
   if (!user) {
     return (
-      <DashboardLayout title="Pagos y aprobaciones">
+      <DashboardLayout title="Control de pagos">
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
           <CircularProgress />
         </Box>
@@ -683,25 +705,25 @@ const PagosAprobacionesPage = () => {
 
   if (!tienePermiso) {
     return (
-      <DashboardLayout title="Pagos y aprobaciones">
+      <DashboardLayout title="Control de pagos">
         <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', py: 8 }}>
-          <Alert severity="warning">No tenés permiso para acceder a esta sección. Pedile a un administrador que habilite la acción <strong>VER_PAGOS_APROBACIONES</strong> en la configuración de la empresa.</Alert>
+          <Alert severity="warning">No tenés permiso para acceder a esta sección. Pedile a un administrador que habilite la acción <strong>VER_CONTROL_PAGOS</strong> en la configuración de la empresa.</Alert>
         </Box>
       </DashboardLayout>
     );
   }
 
   return (
-    <DashboardLayout title="Pagos y aprobaciones">
+    <DashboardLayout title="Control de pagos">
       <Head>
-        <title>Pagos y aprobaciones</title>
+        <title>Control de pagos</title>
       </Head>
 
       <Box component="main" sx={{ flexGrow: 1, py: 3 }}>
         <Container maxWidth={false} sx={{ px: { xs: 2, md: 3 } }}>
           <Stack spacing={2.5}>
             <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} justifyContent="space-between" alignItems={{ xs: 'flex-start', md: 'center' }}>
-              <Typography variant="h4" fontWeight={800}>Pagos y aprobaciones</Typography>
+              <Typography variant="h4" fontWeight={800}>Control de pagos</Typography>
               <Stack direction="row" spacing={1} flexWrap="wrap">
                 <Chip label={empresa?.nombre || 'Mi empresa'} variant="outlined" color="primary" />
                 <Chip label={`${pagination.total || 0} resultado(s)`} variant="outlined" />
@@ -718,9 +740,9 @@ const PagosAprobacionesPage = () => {
                   onChange={handleTabChange}
                   variant="scrollable"
                   scrollButtons="auto"
-                  aria-label="Tabs de pagos y aprobaciones"
+                  aria-label="Tabs de control de pagos"
                 >
-                  {TAB_OPTIONS.map((tab) => (
+                  {tabOptions.map((tab) => (
                     <Tab key={tab.value} value={tab.value} label={tab.label} />
                   ))}
                 </Tabs>

@@ -102,8 +102,6 @@ const StockConfigDetails = ({ empresa, updateEmpresaData }) => {
       label: 'Distribución por línea',
       description: 'Cada línea de material puede ir a un destino diferente (obra, depósito, acopio).',
       icon: <WarehouseIcon fontSize="small" />,
-      disabled: true,
-      disabledLabel: 'Próximamente',
     },
     {
       key: 'validacion_movimientos',

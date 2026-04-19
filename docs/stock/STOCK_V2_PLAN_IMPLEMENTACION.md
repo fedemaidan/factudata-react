@@ -757,92 +757,89 @@ En el modal de crear solicitud, agregar por cada línea:
 
 ## 7. Fase T — Configuración por empresa + Validación
 
-> **Estimación**: 1 semana  
+> **Estado real (verificado 19/04/2026)**: Mayormente completo — 2 gaps pendientes  
+> **Estimación original**: 1 semana  
 > **Impacto**: Medio — permite adaptar stock a cada cliente  
 > **Riesgo**: Bajo — son flags que condicionan UI y lógica, no cambian modelos core  
 > **Transversal**: se puede implementar en cualquier momento después de Fase 0
 
+### Estado por tarea
+
+| Tarea | Estado | Notas |
+|---|---|---|
+| T.1 Modelo config | ✅ Completo | Campo en `EmpresaModel.js` + panel UI `StockConfigDetails.js` |
+| T.2 Condicionar UI | ✅ Completo | `MaterialesFacturaActions.js` ya lee `acopio_habilitado` y `distribucion_por_linea` |
+| T.3 PENDIENTE_CONFIRMACION | ✅ Completo | Enums, service, endpoint POST confirmar, UI en stockSolicitudes |
+| T.4 Tests | ❌ Pendiente | Archivos de test no existen |
+| Guard aplicado a rutas | ❌ Pendiente | `stockConfigGuard.js` existe pero no está importado en ninguna ruta |
+
+> **Corrección al análisis previo**: `distribucion_por_linea` NO está deshabilitado en la UI. En
+> `StockConfigDetails.js` todos los ejes del array `ejes[]` están activos (ninguno tiene `disabled: true`).
+> El flag puede activarse y guardarse normalmente.
+
+> **Nota sobre los flags implementados**: La implementación real expandió el schema original. Los flags activos hoy son 6:
+> `acopio_habilitado`, `caja_a_stock`, `destino_desacopio`, `distribucion_por_linea`, `validacion_movimientos`, `extraccion_automatica`.
+
 ---
 
-### Tarea T.1 — Modelo de configuración de stock por empresa
+### Tarea T.1 — Modelo de configuración de stock por empresa ✅ COMPLETO
 
 **Objetivo**: Almacenar la configuración de stock de cada empresa.
 
-**Opción A**: Agregar campo `stock_config` al modelo de empresa existente.  
-**Opción B**: Colección separada `stockconfigs` con `empresa_id` único.
+~~Opción A: Agregar campo `stock_config` al modelo de empresa existente.~~  
+~~Opción B: Colección separada `stockconfigs` con `empresa_id` único.~~
 
-**Schema**:
+**Implementado**: Opción A. Campo `stock_config: Schema.Types.Mixed` en `EmpresaModel.js` (línea 62).
+
+**Schema real implementado** (superset del planeado):
 ```javascript
 stock_config: {
-  acopio_habilitado: { type: Boolean, default: false },
-  distribucion_por_linea: { type: Boolean, default: false },
-  validacion_movimientos: { type: Boolean, default: false }
+  acopio_habilitado:       Boolean  // habilita crear acopios y desacopio con destino
+  caja_a_stock:            Boolean  // muestra acciones destino al cargar factura de materiales
+  destino_desacopio:       Boolean  // al desacopiar pregunta a dónde van los materiales
+  distribucion_por_linea:  Boolean  // destino diferente por cada línea de material
+  validacion_movimientos:  Boolean  // movimientos quedan pendientes hasta confirmar
+  extraccion_automatica:   Boolean  // IA extrae materiales al subir imagen de factura
 }
 ```
 
-**Criterio de aceptación**: La config se lee correctamente, tiene defaults seguros (todo false), se puede modificar vía endpoint admin.
+**UI**: `app-web/src/sections/empresa/StockConfigDetails.js` — Panel completo en la ficha de empresa con switch maestro + 6 toggles individuales. Accesible desde la tab "Stock / Materiales" en la ficha de empresa.
 
-**Archivos**:
-| Archivo | Acción |
-|---|---|
-| Modelo de empresa o `backend/src/models/stockConfig.js` | **Crear/Modificar** |
-| `backend/src/routes/` | **Crear** endpoint GET/PUT config (admin only) |
+**Criterio de aceptación**: ✅ La config se lee correctamente, defaults seguros (todo false), se modifica desde la UI de empresa.
 
 ---
 
-### Tarea T.2 — Condicionar UI según configuración
+### Tarea T.2 — Condicionar UI según configuración ✅ COMPLETO
 
 **Objetivo**: Los componentes de stock leen la config de la empresa y muestran/ocultan opciones.
 
-**Cambios**:
-- `MaterialesFacturaActions` (Fase 0): ocultar "Crear acopio" si `!acopio_habilitado`, ocultar "Distribuir" si `!distribucion_por_linea`
-- `SolicitudFormDialog` (Fase 3): ocultar selector de destino por línea si `!distribucion_por_linea`, ocultar destino acopio si `!acopio_habilitado`
-- `DestinoDesacopioDialog` (Fase 2): siempre visible si hay acopio (ya está implícito)
+**Implementado**:
+- `MaterialesFacturaActions.js` — lee `stockConfig.acopio_habilitado` (muestra opción acopio) y `stockConfig.distribucion_por_linea` (muestra opción distribuir por línea)
+- `movementForm.js` — lee `empresa.stock_config.caja_a_stock` para mostrar sección de destino de materiales
+- `flowConfirmarRemito.js` (bot WhatsApp) — lee `stock_config.destino_desacopio` para preguntar destino al desacopiar
 
-**Criterio de aceptación**: Empresa sin config ve: depósito, obra, pendiente, no hacer nada. Con `acopio_habilitado` ve además acopio. Con `distribucion_por_linea` ve además distribuir.
-
-**Archivos**:
-| Archivo | Acción |
-|---|---|
-| `app-web/src/components/stock/MaterialesFacturaActions.js` | **Modificar** — leer config |
-| `app-web/src/components/stock/solicitudes/SolicitudFormDialog.js` | **Modificar** — leer config |
-| `app-web/src/services/stockConfigService.js` | **Crear** — client API para config |
+**Criterio de aceptación**: ✅ Empresa sin config ve opciones base. Con `acopio_habilitado` ve acopio. Con `distribucion_por_linea` ve distribuir.
 
 ---
 
-### Tarea T.3 — Estado PENDIENTE_CONFIRMACION
+### Tarea T.3 — Estado PENDIENTE_CONFIRMACION ✅ COMPLETO
 
 **Objetivo**: Cuando `validacion_movimientos = true`, los movimientos se crean con estado `PENDIENTE_CONFIRMACION` en vez de `ENTREGADO`.
 
-**Cambios**:
-- Agregar `PENDIENTE_CONFIRMACION` al enum de estado en `movimientoMaterial.js` y `solicitud.js`
-- En `solicitudService.js`: si la empresa tiene `validacion_movimientos = true`, crear solicitud con `estado = PENDIENTE_CONFIRMACION`
-- Endpoint para confirmar: `PUT /api/solicitud-material/:id/confirmar` — cambia estado a `ENTREGADO`
-- El material **ya cuenta** en stock aunque esté en `PENDIENTE_CONFIRMACION` (no es un bloqueo)
-- En la UI: indicador visual "⏳ Pendiente de confirmar" + botón "Confirmar recepción"
+**Implementado**:
+- `movimientoMaterialModel.js` — `PENDIENTE_CONFIRMACION` en enum de estados
+- `solicitudModel.js` — `PENDIENTE_CONFIRMACION` en enum de estados
+- `solicitudService.js` — lee `validacion_movimientos` al crear, setea estado correcto
+- `solicitudMovimientoMaterialesRoutes.js` — `PUT /:solicitudId/confirmar` existe
+- `stockSolicitudes.js` — UI para confirmar ingreso (wizard `ConfirmarIngresoDialog`)
 
-**Criterio de aceptación**:
-- Empresa con `validacion_movimientos = false`: solicitudes se crean como ENTREGADO (comportamiento actual)
-- Empresa con `validacion_movimientos = true`: solicitudes se crean como PENDIENTE_CONFIRMACION
-- Cualquier usuario puede confirmar
-- El stock calculado incluye materiales en PENDIENTE_CONFIRMACION (no se bloquean)
-- En la vista de stock/obra, los materiales pendientes de confirmar se muestran con indicador
-
-**Archivos**:
-| Archivo | Acción |
-|---|---|
-| `backend/src/models/movimientoMaterial.js` | **Modificar** — agregar estado |
-| `backend/src/models/solicitud.js` | **Modificar** — agregar estado |
-| `backend/src/services/stock/solicitudService.js` | **Modificar** — leer config al crear |
-| `backend/src/controllers/stock/solicitudController.js` | **Modificar** — endpoint confirmar |
-| `backend/src/routes/solicitudMovimientoMaterialesRoutes.js` | **Modificar** — ruta PUT confirmar |
-| `app-web/src/pages/stockSolicitudes.js` | **Modificar** — botón confirmar |
+**Criterio de aceptación**: ✅ Todo funcional.
 
 ---
 
-### Tarea T.4 — Tests Fase T
+### Tarea T.4 — Tests Fase T ❌ PENDIENTE
 
-**Tests**:
+**Tests requeridos**:
 - Empresa sin config → defaults correctos (todo false)
 - Empresa con `acopio_habilitado = false` + request destino acopio → error
 - Empresa con `validacion_movimientos = true` → solicitud en PENDIENTE_CONFIRMACION
@@ -850,10 +847,25 @@ stock_config: {
 - Stock calculado incluye PENDIENTE_CONFIRMACION
 
 **Archivos**:
-| Archivo | Acción |
+| Archivo | Estado |
 |---|---|
-| `backend/test/stock/stockConfig.test.js` | **Crear** |
-| `backend/test/stock/validacionMovimientos.test.js` | **Crear** |
+| `backend/test/stock/stockConfig.test.js` | ❌ No existe |
+| `backend/test/stock/validacionMovimientos.test.js` | ❌ No existe |
+
+---
+
+### GAP: stockConfigGuard sin aplicar a rutas ❌ PENDIENTE
+
+`backend/src/middleware/stockConfigGuard.js` está completo y funcional, pero **no está importado ni usado en ningún route file**. Actualmente cualquier empresa puede llamar los endpoints de stock sin tener `stock_config` configurado; el guard es letra muerta.
+
+**Rutas candidatas para aplicar el guard**:
+```
+POST /api/solicitud-material/from-caja        → stockConfigGuard
+PUT  /api/solicitud-material/:id/confirmar    → stockConfigGuard
+POST /api/acopio/from-caja                    → stockConfigGuard
+```
+
+> Las rutas de solo lectura (GET) no requieren el guard obligatoriamente.
 
 ---
 

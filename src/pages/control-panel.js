@@ -118,7 +118,6 @@ const ControlPanelPage = () => {
         { title: 'Analytics Onboarding', description: 'Adopción en primeros días', icon: RocketLaunchIcon, color: 'success', path: '/analyticsOnboarding' },
         { title: 'Empresas', description: 'Gestión y configuraciones', icon: BusinessIcon, color: 'primary', path: '/empresas' },
         { title: 'Perfiles Globales', description: 'Todos los perfiles con filtros cruzados', icon: PersonSearchIcon, color: 'warning', path: '/profiles-overview' },
-        { title: 'Pagos y Aprobaciones', description: 'Operación diaria con tabs por estado', icon: PaymentsOutlinedIcon, color: 'success', path: '/pagos-aprobaciones' },
         { title: 'Movimientos Globales', description: 'Buscar movimientos en todas las empresas', icon: ManageSearchIcon, color: 'secondary', path: '/movimientos-globales' },
         { title: 'Usuarios del Bot', description: 'Estados activos en WhatsApp', icon: SmartToyIcon, color: 'info', path: '/bot-users', badge: !loading && stats.botUsers !== null ? `${stats.botUsers} activos` : null },
         { title: 'Conversaciones', description: 'Historial de mensajes', icon: ChatIcon, color: 'secondary', path: '/conversaciones' },
