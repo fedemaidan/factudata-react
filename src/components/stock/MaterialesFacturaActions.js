@@ -871,6 +871,7 @@ const MaterialesFacturaActions = ({
 
   // --- Dialog principal ---
   return (
+    <>
     <Dialog
       open={open}
       onClose={step === STEP_EXTRACCION ? undefined : onClose}
@@ -969,6 +970,7 @@ const MaterialesFacturaActions = ({
       proveedores={proveedores}
       acopioHabilitado={Boolean(stockConfig.acopio_habilitado)}
     />
+    </>
   );
 };
 
