@@ -103,16 +103,20 @@ function TotalesBar({ items }) {
 
 // ─── Nivel 1 — Lista de proveedores ──────────────────────────────────────────
 
-const COL_PROVEEDORES = [
+const COL_PROVEEDORES_BASE = [
   { key: 'proveedor', label: 'Proveedor' },
   { key: 'cantidad_remitos', label: 'Operaciones', align: 'right' },
   { key: 'total_pedido', label: 'Total pedido', align: 'right' },
-  { key: 'total_aprobado', label: 'Aprobado', align: 'right' },
+  { key: 'total_aprobado', label: 'Aprobado', align: 'right', soloAprobado: true },
   { key: 'total_pagado', label: 'Pagado', align: 'right' },
   { key: 'deuda_restante', label: 'Deuda restante', align: 'right' },
 ];
 
-function ListaProveedores({ resumen, loading, onSelect, filtroProveedor, onFiltroProveedorChange }) {
+function ListaProveedores({ resumen, loading, onSelect, filtroProveedor, onFiltroProveedorChange, tieneMontoAprobado }) {
+  const COL_PROVEEDORES = tieneMontoAprobado
+    ? COL_PROVEEDORES_BASE
+    : COL_PROVEEDORES_BASE.filter((c) => !c.soloAprobado);
+
   const filtrado = useMemo(() => {
     if (!filtroProveedor.trim()) return resumen;
     const q = filtroProveedor.trim().toLowerCase();
@@ -124,8 +128,11 @@ function ListaProveedores({ resumen, loading, onSelect, filtroProveedor, onFiltr
     total_pedido: filtrado.reduce((a, r) => a + (r.total_pedido || 0), 0),
     total_aprobado: filtrado.reduce((a, r) => a + (r.total_aprobado || 0), 0),
     total_pagado: filtrado.reduce((a, r) => a + (r.total_pagado || 0), 0),
-    deuda_restante: filtrado.reduce((a, r) => a + (r.deuda_restante || 0), 0),
   }), [filtrado]);
+
+  const deudaRestanteTotales = tieneMontoAprobado
+    ? totales.total_aprobado - totales.total_pagado
+    : totales.total_pedido - totales.total_pagado;
 
   return (
     <Box>
@@ -133,9 +140,9 @@ function ListaProveedores({ resumen, loading, onSelect, filtroProveedor, onFiltr
         { label: 'Proveedores', value: filtrado.length },
         { label: 'Operaciones', value: totales.cantidad_remitos },
         { label: 'Total pedido', value: formatCurrencyWithCode(totales.total_pedido) },
-        { label: 'Aprobado', value: formatCurrencyWithCode(totales.total_aprobado) },
+        ...(tieneMontoAprobado ? [{ label: 'Aprobado', value: formatCurrencyWithCode(totales.total_aprobado) }] : []),
         { label: 'Pagado', value: formatCurrencyWithCode(totales.total_pagado) },
-        { label: 'Deuda restante', value: formatCurrencyWithCode(totales.deuda_restante), color: 'error.main' },
+        { label: 'Deuda restante', value: formatCurrencyWithCode(deudaRestanteTotales), color: 'error.main' },
       ]} />
 
       <TextField
@@ -175,23 +182,28 @@ function ListaProveedores({ resumen, loading, onSelect, filtroProveedor, onFiltr
                 </TableCell>
               </TableRow>
             )}
-            {!loading && filtrado.map((row) => (
-              <TableRow
-                key={row.proveedor}
-                hover
-                onClick={() => onSelect(row.proveedor)}
-                sx={{ cursor: 'pointer' }}
-              >
-                <TableCell>{row.proveedor}</TableCell>
-                <TableCell align="right">{row.cantidad_remitos}</TableCell>
-                <TableCell align="right">{formatCurrencyWithCode(row.total_pedido)}</TableCell>
-                <TableCell align="right">{formatCurrencyWithCode(row.total_aprobado)}</TableCell>
-                <TableCell align="right">{formatCurrencyWithCode(row.total_pagado)}</TableCell>
-                <TableCell align="right" sx={{ fontWeight: 600, color: 'error.main' }}>
-                  {formatCurrencyWithCode(row.deuda_restante)}
-                </TableCell>
-              </TableRow>
-            ))}
+            {!loading && filtrado.map((row) => {
+              const deudaRow = tieneMontoAprobado
+                ? (row.total_aprobado || 0) - (row.total_pagado || 0)
+                : (row.total_pedido || 0) - (row.total_pagado || 0);
+              return (
+                <TableRow
+                  key={row.proveedor}
+                  hover
+                  onClick={() => onSelect(row.proveedor)}
+                  sx={{ cursor: 'pointer' }}
+                >
+                  <TableCell>{row.proveedor}</TableCell>
+                  <TableCell align="right">{row.cantidad_remitos}</TableCell>
+                  <TableCell align="right">{formatCurrencyWithCode(row.total_pedido)}</TableCell>
+                  {tieneMontoAprobado && <TableCell align="right">{formatCurrencyWithCode(row.total_aprobado)}</TableCell>}
+                  <TableCell align="right">{formatCurrencyWithCode(row.total_pagado)}</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 600, color: 'error.main' }}>
+                    {formatCurrencyWithCode(deudaRow)}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       </TableContainer>
@@ -201,25 +213,31 @@ function ListaProveedores({ resumen, loading, onSelect, filtroProveedor, onFiltr
 
 // ─── Nivel 2 — Operaciones del proveedor ────────────────────────────────────
 
-const COL_REMITOS = [
+const COL_REMITOS_BASE = [
   { key: 'fecha_factura', label: 'Fecha' },
   { key: 'proyecto', label: 'Obra' },
   { key: 'categoria', label: 'Categoría' },
   { key: 'estado', label: 'Estado' },
   { key: 'total', label: 'Saldo prov.', align: 'right' },
-  { key: 'monto_aprobado', label: 'Aprobado', align: 'right' },
-  { key: 'diferencia', label: 'Diferencia', align: 'right' },
+  { key: 'monto_aprobado', label: 'Aprobado', align: 'right', soloAprobado: true },
+  { key: 'diferencia', label: 'Diferencia', align: 'right', soloAprobado: true },
   { key: 'monto_pagado', label: 'Pagado', align: 'right' },
 ];
 
-function DetalleProveedor({ proveedor, remitos, loading, savingById, draftsById, onChangeDraft, onSaveDraft }) {
+function DetalleProveedor({ proveedor, remitos, loading, savingById, draftsById, onChangeDraft, onSaveDraft, tieneMontoAprobado }) {
+  const COL_REMITOS = tieneMontoAprobado
+    ? COL_REMITOS_BASE
+    : COL_REMITOS_BASE.filter((c) => !c.soloAprobado);
+
   const totales = useMemo(() => ({
     total: remitos.reduce((a, r) => a + (normalizeAmount(r.total) || 0), 0),
     monto_aprobado: remitos.reduce((a, r) => a + (normalizeAmount(r.monto_aprobado) || 0), 0),
     monto_pagado: remitos.reduce((a, r) => a + (normalizeAmount(r.monto_pagado) || 0), 0),
   }), [remitos]);
 
-  const deudaRestante = totales.monto_aprobado - totales.monto_pagado;
+  const deudaRestante = tieneMontoAprobado
+    ? totales.monto_aprobado - totales.monto_pagado
+    : totales.total - totales.monto_pagado;
   const diferenciaTotalAprobado = totales.total - totales.monto_aprobado;
 
   return (
@@ -227,8 +245,10 @@ function DetalleProveedor({ proveedor, remitos, loading, savingById, draftsById,
       <TotalesBar items={[
         { label: 'Operaciones', value: remitos.length },
         { label: 'Saldo proveedor', value: formatCurrencyWithCode(totales.total) },
-        { label: 'Aprobado', value: formatCurrencyWithCode(totales.monto_aprobado) },
-        { label: 'Dif. pedido vs aprobado', value: formatCurrencyWithCode(diferenciaTotalAprobado), color: diferenciaTotalAprobado > 0.005 ? 'warning.main' : 'text.primary' },
+        ...(tieneMontoAprobado ? [
+          { label: 'Aprobado', value: formatCurrencyWithCode(totales.monto_aprobado) },
+          { label: 'Dif. pedido vs aprobado', value: formatCurrencyWithCode(diferenciaTotalAprobado), color: diferenciaTotalAprobado > 0.005 ? 'warning.main' : 'text.primary' },
+        ] : []),
         { label: 'Pagado', value: formatCurrencyWithCode(totales.monto_pagado) },
         { label: 'Deuda restante', value: formatCurrencyWithCode(deudaRestante), color: 'error.main' },
       ]} />
@@ -278,21 +298,25 @@ function DetalleProveedor({ proveedor, remitos, loading, savingById, draftsById,
                 <TableCell>{rem.categoria || '—'}</TableCell>
                 <TableCell>{renderEstadoChip(rem.estado)}</TableCell>
                 <TableCell align="right">{formatCurrencyWithCode(rem.total)}</TableCell>
-                <TableCell align="right">
-                  <TextField
-                    size="small"
-                    type="number"
-                    value={aprobadoDisplay}
-                    onChange={(e) => onChangeDraft(id, e.target.value)}
-                    InputProps={{
-                      startAdornment: <InputAdornment position="start">$</InputAdornment>,
-                    }}
-                    sx={{ width: 130 }}
-                  />
-                </TableCell>
-                <TableCell align="right" sx={{ color: diferencia > 0.005 ? 'warning.main' : 'text.secondary' }}>
-                  {formatCurrencyWithCode(diferencia)}
-                </TableCell>
+                {tieneMontoAprobado && (
+                  <TableCell align="right">
+                    <TextField
+                      size="small"
+                      type="number"
+                      value={aprobadoDisplay}
+                      onChange={(e) => onChangeDraft(id, e.target.value)}
+                      InputProps={{
+                        startAdornment: <InputAdornment position="start">$</InputAdornment>,
+                      }}
+                      sx={{ width: 130 }}
+                    />
+                  </TableCell>
+                )}
+                {tieneMontoAprobado && (
+                  <TableCell align="right" sx={{ color: diferencia > 0.005 ? 'warning.main' : 'text.secondary' }}>
+                    {formatCurrencyWithCode(diferencia)}
+                  </TableCell>
+                )}
                 <TableCell align="right">{formatCurrencyWithCode(rem.monto_pagado)}</TableCell>
                 <TableCell align="right">
                   {isDirty && (
@@ -322,10 +346,14 @@ function DetalleProveedor({ proveedor, remitos, loading, savingById, draftsById,
 export default function CuentaCorrienteProveedoresPage() {
   const { user } = useAuthContext();
 
+  const acciones = user?.empresa?.acciones || user?.empresaData?.acciones || [];
   const tienePermiso = user?.admin ||
-    (user?.empresa?.acciones || user?.empresaData?.acciones || []).includes('VER_CONTROL_PAGOS');
+    acciones.includes('VER_CONTROL_PAGOS') ||
+    acciones.includes('VER_CUENTA_CORRIENTE_PROVEEDORES');
 
   const [empresa, setEmpresa] = useState(null);
+
+  const tieneMontoAprobado = empresa?.comprobante_info?.monto_aprobado === true;
   const [proyectos, setProyectos] = useState([]);
   const [loadingScope, setLoadingScope] = useState(false);
   const [scopeError, setScopeError] = useState(null);
@@ -583,6 +611,7 @@ export default function CuentaCorrienteProveedoresPage() {
               onSelect={setSelectedProveedor}
               filtroProveedor={filtroProveedor}
               onFiltroProveedorChange={setFiltroProveedor}
+              tieneMontoAprobado={tieneMontoAprobado}
             />
           ) : (
             <DetalleProveedor
@@ -593,6 +622,7 @@ export default function CuentaCorrienteProveedoresPage() {
               draftsById={draftsById}
               onChangeDraft={handleChangeDraft}
               onSaveDraft={handleSaveDraft}
+              tieneMontoAprobado={tieneMontoAprobado}
             />
           )}
         </Container>

@@ -376,12 +376,15 @@ export const SideNav = (props) => {
             </SvgIcon>
           ),
         });
+      }
+
+      if (permisosUsuario.includes("VER_CUENTA_CORRIENTE_PROVEEDORES")) {
         baseItems.push({
-          title: "Cuenta corriente",
+          title: "Cuenta corriente proveedores",
           path: "/cuenta-corriente-proveedores",
           icon: (
             <SvgIcon fontSize="small">
-              <AccountBalanceWallet />
+              <LocalAtm />
             </SvgIcon>
           ),
         });

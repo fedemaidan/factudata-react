@@ -218,6 +218,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
     "VER_PRESUPUESTOS_PROFESIONALES",
     "VER_PLANES_COBRO",
     "VER_CONTROL_PAGOS",
+    "VER_CUENTA_CORRIENTE_PROVEEDORES",
   ];
 
   const celulandiaAcciones = [
