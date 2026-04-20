@@ -176,6 +176,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
     "VER_CAJAS",
     "AJUSTAR_CAJAS",
     "TRANSFERIR_ENTRE_CAJAS",
+    "TRANSFERIR_ENTRE_CAJAS_CHICAS",
     "CREAR_NUEVO_PROYECTO",
     "VENDER_DOLARES",
     "COMPRAR_DOLARES",
