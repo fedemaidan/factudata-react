@@ -250,7 +250,8 @@ const ModalResultadoReunion = ({ open, onClose, reunion, onSubmit, loading }) =>
                             onChange={(e) => setForm({ ...form, comentario: e.target.value })}
                             fullWidth
                             multiline
-                            rows={4}
+                            minRows={4}
+                            maxRows={12}
                             placeholder="Resumen de lo conversado, puntos clave, acuerdos..."
                             required
                             helperText={form.comentario.length === 0 ? 'Obligatorio para reuniones realizadas' : ''}

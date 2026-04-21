@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import NextLink from 'next/link';
@@ -6,7 +6,7 @@ import {
     Box, Container, Stack, Typography, Button, Chip, Grid,
     CircularProgress, Paper, IconButton, Card, CardContent, CardActions,
     Snackbar, Alert, Divider, Tabs, Tab, Badge, Switch, FormControlLabel,
-    Tooltip, useTheme, useMediaQuery, Skeleton,
+    Tooltip, useTheme, useMediaQuery, Skeleton, Collapse,
     Dialog, DialogTitle, DialogContent, DialogActions, TextField
 } from '@mui/material';
 import {
@@ -90,6 +90,7 @@ const TABS = [
     { key: 'realizadas', label: 'Realizadas', icon: <CheckCircleIcon fontSize="small" /> },
     { key: 'no_show', label: 'No show', icon: <PersonOffIcon fontSize="small" /> },
     { key: 'propuestas', label: 'Propuestas', icon: <DescriptionIcon fontSize="small" /> },
+    { key: 'canceladas', label: 'Canceladas', icon: <EventBusyIcon fontSize="small" /> },
     { key: 'calendar_sync', label: 'Calendario', icon: <SyncIcon fontSize="small" /> }
 ];
 
@@ -110,6 +111,8 @@ const ReunionesSDRPage = () => {
     const [actionLoading, setActionLoading] = useState(false);
     const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
     const [verTodas, setVerTodas] = useState(false);
+    const [filtros, setFiltros] = useState({ desde: '', hasta: '' });
+    const [showFiltros, setShowFiltros] = useState(false);
 
     // Determinar si el usuario puede ver todas las reuniones
     const puedeVerTodas = user?.admin || user?.sdr_admin;
@@ -150,6 +153,20 @@ const ReunionesSDRPage = () => {
         if (sdrId) cargarReuniones();
     }, [sdrId, cargarReuniones]);
 
+    // Reuniones filtradas por rango de fecha (se aplica antes de clasificar por tabs)
+    const reunionesFiltradas = useMemo(() => {
+        let result = reuniones;
+        if (filtros.desde) {
+            const desde = new Date(filtros.desde + 'T00:00:00');
+            result = result.filter(r => new Date(r.fecha || r.fechaHora) >= desde);
+        }
+        if (filtros.hasta) {
+            const hasta = new Date(filtros.hasta + 'T23:59:59');
+            result = result.filter(r => new Date(r.fecha || r.fechaHora) <= hasta);
+        }
+        return result;
+    }, [reuniones, filtros]);
+
     // ==================== CLASIFICACIÓN POR TAB ====================
 
     const clasificar = useCallback(() => {
@@ -159,8 +176,9 @@ const ReunionesSDRPage = () => {
         const realizadas = [];
         const noShow = [];
         const propuestas = [];
+        const canceladas = [];
 
-        reuniones.forEach(r => {
+        reunionesFiltradas.forEach(r => {
             const fecha = r.fecha || r.fechaHora;
             const contacto = r.contactoId || {};
 
@@ -177,7 +195,8 @@ const ReunionesSDRPage = () => {
                 return;
             }
             if (r.estado === 'cancelada') {
-                return; // No se muestran en ningún tab activo
+                canceladas.push(r);
+                return;
             }
 
             // Estado = agendada
@@ -196,11 +215,12 @@ const ReunionesSDRPage = () => {
         sinRegistrar.sort((a, b) => new Date(a.fecha || a.fechaHora) - new Date(b.fecha || b.fechaHora));
         realizadas.sort((a, b) => new Date(b.fecha || b.fechaHora) - new Date(a.fecha || a.fechaHora));
         noShow.sort((a, b) => new Date(b.fecha || b.fechaHora) - new Date(a.fecha || a.fechaHora));
+        canceladas.sort((a, b) => new Date(b.fecha || b.fechaHora) - new Date(a.fecha || a.fechaHora));
 
-        return { hoy, proximas, sinRegistrar, realizadas, noShow, propuestas };
-    }, [reuniones]);
+        return { hoy, proximas, sinRegistrar, realizadas, noShow, propuestas, canceladas };
+    }, [reunionesFiltradas]);
 
-    const { hoy, proximas, sinRegistrar, realizadas, noShow, propuestas } = clasificar();
+    const { hoy, proximas, sinRegistrar, realizadas, noShow, propuestas, canceladas } = clasificar();
 
     // ==================== ACCIONES ====================
 
@@ -389,6 +409,7 @@ const ReunionesSDRPage = () => {
                 sin_registrar: ['✨', '¡Genial! No hay reuniones pendientes de registrar.'],
                 realizada: ['📋', 'No hay reuniones realizadas aún.'],
                 no_show: ['👍', 'No hay reuniones con no show.'],
+                cancelada: ['❌', 'No hay reuniones canceladas en este período.'],
                 propuestas: ['📄', 'No hay contactos en fase de propuesta.']
             };
             const [emoji, msg] = mensajes[variant] || ['📋', 'Sin resultados'];
@@ -419,7 +440,7 @@ const ReunionesSDRPage = () => {
 
     // ==================== RENDER ====================
 
-    const tabCounts = [hoy.length, proximas.length, sinRegistrar.length, realizadas.length, noShow.length, propuestas.length, 0];
+    const tabCounts = [hoy.length, proximas.length, sinRegistrar.length, realizadas.length, noShow.length, propuestas.length, canceladas.length, 0];
 
     return (
         <>
@@ -460,8 +481,60 @@ const ReunionesSDRPage = () => {
                             >
                                 {isMobile ? '' : 'Actualizar'}
                             </Button>
+                            <Button
+                                size="small"
+                                variant={showFiltros ? 'contained' : 'outlined'}
+                                onClick={() => setShowFiltros(v => !v)}
+                                color={filtros.desde || filtros.hasta ? 'primary' : 'inherit'}
+                            >
+                                {filtros.desde || filtros.hasta ? '🔍 Filtros activos' : '🔍 Filtrar'}
+                            </Button>
                         </Stack>
                     </Stack>
+
+                    {/* Filtros de período */}
+                    <Collapse in={showFiltros}>
+                        <Paper variant="outlined" sx={{ mb: 2, p: 1.5 }}>
+                            <Stack direction={isMobile ? 'column' : 'row'} spacing={1.5} alignItems={isMobile ? 'stretch' : 'center'} flexWrap="wrap">
+                                <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                                    Filtrar por período:
+                                </Typography>
+                                <TextField
+                                    label="Desde"
+                                    type="date"
+                                    size="small"
+                                    value={filtros.desde}
+                                    onChange={(e) => setFiltros(f => ({ ...f, desde: e.target.value }))}
+                                    InputLabelProps={{ shrink: true }}
+                                    sx={{ minWidth: 150 }}
+                                />
+                                <TextField
+                                    label="Hasta"
+                                    type="date"
+                                    size="small"
+                                    value={filtros.hasta}
+                                    onChange={(e) => setFiltros(f => ({ ...f, hasta: e.target.value }))}
+                                    InputLabelProps={{ shrink: true }}
+                                    sx={{ minWidth: 150 }}
+                                />
+                                {(filtros.desde || filtros.hasta) && (
+                                    <>
+                                        <Button
+                                            size="small"
+                                            onClick={() => setFiltros({ desde: '', hasta: '' })}
+                                            variant="outlined"
+                                            color="inherit"
+                                        >
+                                            Limpiar
+                                        </Button>
+                                        <Typography variant="caption" color="text.secondary">
+                                            {reunionesFiltradas.length} de {reuniones.length} reuniones
+                                        </Typography>
+                                    </>
+                                )}
+                            </Stack>
+                        </Paper>
+                    </Collapse>
 
                     {/* Tabs */}
                     <Paper variant="outlined" sx={{ mb: 2, overflow: 'visible' }}>
@@ -517,7 +590,8 @@ const ReunionesSDRPage = () => {
                             {tab === 3 && renderReuniones(realizadas, 'realizada')}
                             {tab === 4 && renderReuniones(noShow, 'no_show')}
                             {tab === 5 && renderReuniones(propuestas, 'propuestas')}
-                            {tab === 6 && <CalendarSyncPendientes empresaId={empresaId} onVinculado={cargarReuniones} />}
+                            {tab === 6 && renderReuniones(canceladas, 'cancelada')}
+                            {tab === 7 && <CalendarSyncPendientes empresaId={empresaId} onVinculado={cargarReuniones} />}
                         </Box>
                     )}
                 </Container>

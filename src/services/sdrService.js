@@ -102,6 +102,22 @@ const SDRService = {
         return res.data;
     },
 
+    /**
+     * Preview de merge: devuelve conflictos entre dos contactos
+     */
+    mergePreview: async (baseId, mergeId) => {
+        const res = await api.get('/sdr/contactos/merge-preview', { params: { baseId, mergeId } });
+        return res.data;
+    },
+
+    /**
+     * Fusionar dos contactos. mergeId queda eliminado, sus relaciones van al base.
+     */
+    mergeContactos: async (baseId, mergeId, datosFinales) => {
+        const res = await api.post('/sdr/contactos/merge', { baseId, mergeId, datosFinales });
+        return res.data;
+    },
+
     // ==================== ACCIONES RÁPIDAS ======================================
 
     /**

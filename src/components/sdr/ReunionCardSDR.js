@@ -97,6 +97,7 @@ const ReunionCardSDR = ({
     const [editModulosPot, setEditModulosPot]           = useState('');
     const [guardandoNotas, setGuardandoNotas]           = useState(false);
     const [menuAnchor, setMenuAnchor]                   = useState(null);
+    const [expandComentario, setExpandComentario]       = useState(false);
 
     // Modo lista (reuniones.js) vs modo detalle ([id].js)
     const modoLista = Boolean(onVerContacto);
@@ -306,9 +307,22 @@ const ReunionCardSDR = ({
             {renderPreReunionNotes()}
 
             {reunion.comentario && (
-                <Typography variant="body2" sx={{ mt: 1, pl: 1, borderLeft: '2px solid #e0e0e0', color: 'text.secondary', fontStyle: 'italic' }}>
-                    💬 {reunion.comentario.substring(0, 300)}{reunion.comentario.length > 300 ? '...' : ''}
-                </Typography>
+                <Box sx={{ mt: 1, pl: 1, borderLeft: '2px solid #e0e0e0' }}>
+                    <Typography variant="body2" sx={{ color: 'text.secondary', fontStyle: 'italic', whiteSpace: 'pre-line' }}>
+                        💬 {!expandComentario && reunion.comentario.length > 600
+                            ? reunion.comentario.substring(0, 600) + '...'
+                            : reunion.comentario}
+                    </Typography>
+                    {reunion.comentario.length > 600 && (
+                        <Button
+                            size="small"
+                            onClick={() => setExpandComentario(v => !v)}
+                            sx={{ p: 0, minWidth: 0, fontSize: '0.72rem', mt: 0.25 }}
+                        >
+                            {expandComentario ? 'Ver menos' : 'Ver más'}
+                        </Button>
+                    )}
+                </Box>
             )}
 
             {reunion.estado === 'cancelada' && reunion.motivoRechazo && (
