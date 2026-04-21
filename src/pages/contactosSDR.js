@@ -110,6 +110,10 @@ const COLUMNAS_LABELS = {
     fechaAdded: 'Added',
     ultimaAccion: 'Últ. contacto',
     proximoContacto: 'Próx. contacto',
+    fechaReunion: 'F. Reunión',
+    horaReunion: 'Hora',
+    linkReunion: 'Link/Lugar',
+    resultadoReunion: 'Resultado',
 };
 
 const DEFAULT_COLUMNAS = {
@@ -124,6 +128,10 @@ const DEFAULT_COLUMNAS = {
     fechaAdded: false,
     ultimaAccion: true,
     proximoContacto: true,
+    fechaReunion: false,
+    horaReunion: false,
+    linkReunion: false,
+    resultadoReunion: false,
 };
 
 const DEFAULT_COLUMNAS_ORDEN = Object.keys(DEFAULT_COLUMNAS);
@@ -172,7 +180,13 @@ const ContactosSDRPage = () => {
         try { const s = localStorage.getItem('sdr_columnas_visibles'); return s ? JSON.parse(s) : DEFAULT_COLUMNAS; } catch { return DEFAULT_COLUMNAS; }
     });
     const [columnasOrden, setColumnasOrden] = useState(() => {
-        try { const s = localStorage.getItem('sdr_columnas_orden'); return s ? JSON.parse(s) : DEFAULT_COLUMNAS_ORDEN; } catch { return DEFAULT_COLUMNAS_ORDEN; }
+        try {
+            const s = localStorage.getItem('sdr_columnas_orden');
+            const saved = s ? JSON.parse(s) : DEFAULT_COLUMNAS_ORDEN;
+            // Agregar claves nuevas que no estén en el localStorage guardado
+            const faltantes = DEFAULT_COLUMNAS_ORDEN.filter(k => !saved.includes(k));
+            return faltantes.length > 0 ? [...saved, ...faltantes] : saved;
+        } catch { return DEFAULT_COLUMNAS_ORDEN; }
     });
     const [anchorColumnas, setAnchorColumnas] = useState(null);
 
@@ -430,6 +444,22 @@ const ContactosSDRPage = () => {
         setFiltroQuiereReunion('');
         setFiltroProximaTarea('');
         setPage(1);
+        // En bandejas de reuniones, activar columnas de reunión automáticamente
+        if (v === 'reunionesPendientes' || v === 'reunionesPasadas') {
+            const colsReunion = ['fechaReunion', 'horaReunion', 'linkReunion', 'resultadoReunion'];
+            setColumnasVisibles(prev => ({
+                ...prev,
+                fechaReunion: true,
+                horaReunion: true,
+                linkReunion: true,
+                resultadoReunion: v === 'reunionesPasadas',
+            }));
+            // Asegurar que estén en columnasOrden (por si el usuario tiene localStorage viejo)
+            setColumnasOrden(prev => {
+                const faltantes = colsReunion.filter(k => !prev.includes(k));
+                return faltantes.length > 0 ? [...prev, ...faltantes] : prev;
+            });
+        }
     };
 
     // Resetear página a 1 cuando cambian filtros (sin skip — la init ya setea page directamente)
@@ -1128,237 +1158,8 @@ const ContactosSDRPage = () => {
         window.open(`https://wa.me/${tel}`, '_blank');
     };
 
-    // ==================== RENDER REUNIONES (LISTA SIMPLE) ====================
-    const renderReunionesLista = () => {
-        if (loading) {
-            return (
-                <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-                    <CircularProgress />
-                </Box>
-            );
-        }
-        if (contactosOrdenados.length === 0) {
-            return (
-                <Paper sx={{ p: 4, textAlign: 'center' }}>
-                    <Typography color="text.secondary">
-                        {bandejaActiva === 'reunionesPasadas' ? 'No hay reuniones pasadas' : 'No hay reuniones pendientes'}
-                    </Typography>
-                </Paper>
-            );
-        }
-        return (
-            <Paper variant="outlined">
-                <Table size="small">
-                    <TableHead>
-                        <TableRow>
-                            <TableCell sx={{ fontWeight: 700 }}>📅 Fecha</TableCell>
-                            <TableCell sx={{ fontWeight: 700 }}>🕐 Hora</TableCell>
-                            <TableCell sx={{ fontWeight: 700 }}>Contacto</TableCell>
-                            <TableCell sx={{ fontWeight: 700 }}>Empresa</TableCell>
-                            <TableCell sx={{ fontWeight: 700 }}>Estado</TableCell>
-                            {bandejaActiva === 'reunionesPasadas' && (
-                                <TableCell sx={{ fontWeight: 700 }}>Resultado</TableCell>
-                            )}
-                            <TableCell sx={{ fontWeight: 700 }}>{bandejaActiva === 'reunionesPasadas' ? 'Lugar' : 'Link / Lugar'}</TableCell>
-                        </TableRow>
-                    </TableHead>
-                    <TableBody>
-                        {contactosOrdenados.map((contacto) => {
-                            const reunion = contacto.proximaReunion;
-                            const fechaReunion = reunion?.fecha ? new Date(reunion.fecha) : null;
-                            const esHoy = fechaReunion && new Date().toDateString() === fechaReunion.toDateString();
-                            const esPasada = fechaReunion && fechaReunion < new Date() && !esHoy;
-
-                            return (
-                                <TableRow 
-                                    key={contacto._id} 
-                                    hover
-                                    sx={{ 
-                                        bgcolor: esHoy ? 'warning.50' : esPasada ? 'error.50' : 'inherit',
-                                    }}
-                                >
-                                    <TableCell>
-                                        <Typography variant="body2" fontWeight={esHoy ? 700 : 400} color={esHoy ? 'warning.dark' : esPasada ? 'error.main' : 'text.primary'}>
-                                            {fechaReunion 
-                                                ? fechaReunion.toLocaleDateString('es-AR', { weekday: 'short', day: '2-digit', month: '2-digit' })
-                                                : '—'
-                                            }
-                                        </Typography>
-                                    </TableCell>
-                                    <TableCell>
-                                        <Typography variant="body2" fontWeight={esHoy ? 600 : 400}>
-                                            {reunion?.hora || '—'}
-                                        </Typography>
-                                    </TableCell>
-                                    <TableCell>
-                                        <NextLink href={`/sdr/contacto/${contacto._id}`} passHref legacyBehavior>
-                                            <Typography 
-                                                variant="body2" 
-                                                component="a"
-                                                fontWeight={600}
-                                                sx={{ 
-                                                    color: 'primary.main', 
-                                                    textDecoration: 'none',
-                                                    '&:hover': { textDecoration: 'underline' },
-                                                    cursor: 'pointer'
-                                                }}
-                                            >
-                                                {contacto.nombre}
-                                            </Typography>
-                                        </NextLink>
-                                    </TableCell>
-                                    <TableCell>
-                                        <Typography variant="body2" color="text.secondary">
-                                            {contacto.empresa || '—'}
-                                        </Typography>
-                                    </TableCell>
-                                    <TableCell>
-                                        <EstadoChip estado={contacto.estado} quiereReunion={contacto.quiereReunion} />
-                                    </TableCell>
-                                    {bandejaActiva === 'reunionesPasadas' && (
-                                        <TableCell>
-                                            <Chip 
-                                                size="small"
-                                                label={
-                                                    reunion?.estadoReunion === 'realizada' ? 'Realizada' :
-                                                    reunion?.estadoReunion === 'no_show' ? 'No show' :
-                                                    reunion?.estadoReunion === 'cancelada' ? 'Cancelada' :
-                                                    'Vencida'
-                                                }
-                                                color={
-                                                    reunion?.estadoReunion === 'realizada' ? 'success' :
-                                                    reunion?.estadoReunion === 'no_show' ? 'error' :
-                                                    'warning'
-                                                }
-                                                variant="outlined"
-                                                sx={{ fontSize: '0.7rem' }}
-                                            />
-                                        </TableCell>
-                                    )}
-                                    <TableCell>
-                                        {reunion?.link ? (
-                                            <Button
-                                                size="small"
-                                                variant="outlined"
-                                                startIcon={<LinkIcon />}
-                                                href={reunion.link}
-                                                target="_blank"
-                                                sx={{ textTransform: 'none', fontSize: '0.75rem' }}
-                                            >
-                                                Unirse
-                                            </Button>
-                                        ) : reunion?.lugar ? (
-                                            <Typography variant="body2" color="text.secondary">{reunion.lugar}</Typography>
-                                        ) : (
-                                            <Typography variant="caption" color="text.secondary">—</Typography>
-                                        )}
-                                    </TableCell>
-                                </TableRow>
-                            );
-                        })}
-                    </TableBody>
-                </Table>
-            </Paper>
-        );
-    };
-
-    // ==================== RENDER REUNIONES MOBILE (LISTA SIMPLE) ====================
-    const renderReunionesMobileLista = () => {
-        if (loading) {
-            return (
-                <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-                    <CircularProgress />
-                </Box>
-            );
-        }
-        if (contactosOrdenados.length === 0) {
-            return (
-                <Paper sx={{ p: 4, textAlign: 'center' }}>
-                    <Typography color="text.secondary">
-                        {bandejaActiva === 'reunionesPasadas' ? 'No hay reuniones pasadas' : 'No hay reuniones pendientes'}
-                    </Typography>
-                </Paper>
-            );
-        }
-        return (
-            <Stack spacing={1}>
-                {contactosOrdenados.map((contacto) => {
-                    const reunion = contacto.proximaReunion;
-                    const fechaReunion = reunion?.fecha ? new Date(reunion.fecha) : null;
-                    const esHoy = fechaReunion && new Date().toDateString() === fechaReunion.toDateString();
-                    const esPasada = fechaReunion && fechaReunion < new Date() && !esHoy;
-
-                    return (
-                        <Paper
-                            key={contacto._id}
-                            variant="outlined"
-                            sx={{ 
-                                p: 1.5, 
-                                borderLeft: 4,
-                                borderColor: esHoy ? 'warning.main' : esPasada ? 'error.main' : 'primary.main',
-                                bgcolor: esHoy ? 'warning.50' : esPasada ? 'error.50' : 'white',
-                            }}
-                        >
-                            <Stack direction="row" justifyContent="space-between" alignItems="center">
-                                <Box sx={{ flex: 1, minWidth: 0 }}>
-                                    <NextLink href={`/sdr/contacto/${contacto._id}`} passHref legacyBehavior>
-                                        <Typography 
-                                            variant="subtitle2" 
-                                            component="a"
-                                            fontWeight={600}
-                                            sx={{ 
-                                                color: 'primary.main', 
-                                                textDecoration: 'none',
-                                                '&:hover': { textDecoration: 'underline' }
-                                            }}
-                                        >
-                                            {contacto.nombre}
-                                        </Typography>
-                                    </NextLink>
-                                    {contacto.empresa && (
-                                        <Typography variant="caption" color="text.secondary" display="block">
-                                            {contacto.empresa}
-                                        </Typography>
-                                    )}
-                                </Box>
-                                <Stack alignItems="flex-end" spacing={0.3}>
-                                    <Typography variant="body2" fontWeight={esHoy ? 700 : 500} color={esHoy ? 'warning.dark' : esPasada ? 'error.main' : 'text.primary'}>
-                                        {fechaReunion 
-                                            ? fechaReunion.toLocaleDateString('es-AR', { weekday: 'short', day: '2-digit', month: '2-digit' })
-                                            : '—'
-                                        }
-                                    </Typography>
-                                    <Typography variant="caption" fontWeight={500}>
-                                        {reunion?.hora || ''}
-                                    </Typography>
-                                </Stack>
-                            </Stack>
-                            {(reunion?.link || reunion?.lugar) && (
-                                <Box sx={{ mt: 0.5 }}>
-                                    {reunion.link ? (
-                                        <Button
-                                            size="small"
-                                            variant="outlined"
-                                            startIcon={<LinkIcon />}
-                                            href={reunion.link}
-                                            target="_blank"
-                                            sx={{ textTransform: 'none', fontSize: '0.7rem', py: 0 }}
-                                        >
-                                            Unirse a la reunión
-                                        </Button>
-                                    ) : (
-                                        <Typography variant="caption" color="text.secondary">📍 {reunion.lugar}</Typography>
-                                    )}
-                                </Box>
-                            )}
-                        </Paper>
-                    );
-                })}
-            </Stack>
-        );
-    };
-
     // ==================== RENDER MOBILE ====================
+
     const renderMobile = () => (
         <Box sx={{ pb: 10 }}>
             {/* Header compacto */}
@@ -1804,12 +1605,7 @@ const ContactosSDRPage = () => {
                 />
             </Box>
 
-            {/* Lista de contactos — vista reuniones o cards */}
-            {(bandejaActiva === 'reunionesPendientes' || bandejaActiva === 'reunionesPasadas') ? (
-                <Box sx={{ px: 2 }}>
-                    {renderReunionesMobileLista()}
-                </Box>
-            ) : (
+            {/* Lista de contactos */}
             <Stack spacing={1.5} sx={{ px: 2 }}>
                 {loading ? (
                     <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
@@ -1818,13 +1614,18 @@ const ContactosSDRPage = () => {
                 ) : contactosOrdenados.length === 0 ? (
                     <Paper sx={{ p: 4, textAlign: 'center' }}>
                         <Typography color="text.secondary">
-                            {filtroEstados.length > 0 ? `No hay contactos con estado "${filtroEstados.join(', ')}"` : 'No tienes contactos asignados'}
+                            {bandejaActiva === 'reunionesPasadas' ? 'No hay reuniones pasadas' :
+                             bandejaActiva === 'reunionesPendientes' ? 'No hay reuniones pendientes' :
+                             filtroEstados.length > 0 ? `No hay contactos con estado "${filtroEstados.join(', ')}"` : 'No tienes contactos asignados'}
                         </Typography>
                     </Paper>
                 ) : (
                     contactosOrdenados.map((contacto) => {
                         const proximo = formatearProximo(contacto.proximoContacto);
                         const vencido = estaVencido(contacto);
+                        const reunFecha = (bandejaActiva === 'reunionesPendientes' || bandejaActiva === 'reunionesPasadas') && contacto.proximaReunion?.fecha ? new Date(contacto.proximaReunion.fecha) : null;
+                        const reunEsHoy = reunFecha && new Date().toDateString() === reunFecha.toDateString();
+                        const reunEsPasada = reunFecha && reunFecha < new Date() && !reunEsHoy;
                         
                         return (
                             <Paper
@@ -1835,9 +1636,9 @@ const ContactosSDRPage = () => {
                                     p: 2,
                                     cursor: 'pointer',
                                     borderRadius: 3,
-                                    border: seleccionados.includes(contacto._id) ? 2 : (vencido ? 2 : 1),
-                                    borderColor: seleccionados.includes(contacto._id) ? 'primary.main' : (vencido ? 'error.main' : 'divider'),
-                                    bgcolor: seleccionados.includes(contacto._id) ? 'primary.50' : (vencido ? 'error.50' : 'white'),
+                                    border: seleccionados.includes(contacto._id) ? 2 : (reunEsHoy || reunEsPasada || vencido ? 2 : 1),
+                                    borderColor: seleccionados.includes(contacto._id) ? 'primary.main' : reunEsHoy ? 'warning.main' : reunEsPasada ? 'error.main' : (vencido ? 'error.main' : 'divider'),
+                                    bgcolor: seleccionados.includes(contacto._id) ? 'primary.50' : reunEsHoy ? 'warning.50' : reunEsPasada ? 'error.50' : (vencido ? 'error.50' : 'white'),
                                     '&:active': { bgcolor: 'grey.100' }
                                 }}
                             >
@@ -1967,6 +1768,29 @@ const ContactosSDRPage = () => {
                                                 )}
                                             </Stack>
                                         )}
+                                        {/* Info de reunión en bandejas de reuniones */}
+                                        {reunFecha && (
+                                            <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mt: 0.5 }}>
+                                                <Typography variant="caption" fontWeight={700} color={reunEsHoy ? 'warning.dark' : reunEsPasada ? 'error.main' : 'primary.main'}>
+                                                    📅 {reunFecha.toLocaleDateString('es-AR', { weekday: 'short', day: '2-digit', month: '2-digit' })}
+                                                    {contacto.proximaReunion?.hora ? ` · ${contacto.proximaReunion.hora}` : ''}
+                                                </Typography>
+                                                {contacto.proximaReunion?.link && (
+                                                    <Button size="small" variant="outlined" href={contacto.proximaReunion.link} target="_blank"
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        sx={{ textTransform: 'none', fontSize: '0.65rem', py: 0, minWidth: 'auto', px: 0.8 }}>
+                                                        Unirse
+                                                    </Button>
+                                                )}
+                                                {contacto.proximaReunion?.estadoReunion && (
+                                                    <Chip size="small"
+                                                        label={contacto.proximaReunion.estadoReunion === 'realizada' ? 'Realizada' : contacto.proximaReunion.estadoReunion === 'no_show' ? 'No show' : 'Cancelada'}
+                                                        color={contacto.proximaReunion.estadoReunion === 'realizada' ? 'success' : 'error'}
+                                                        variant="outlined" sx={{ height: 18, fontSize: '0.6rem' }}
+                                                    />
+                                                )}
+                                            </Stack>
+                                        )}
                                     </Box>
                                     
                                     {/* Acciones rápidas */}
@@ -2000,7 +1824,6 @@ const ContactosSDRPage = () => {
                     })
                 )}
             </Stack>
-            )}
 
             {/* Paginación mobile */}
             {totalContactos > ITEMS_PER_PAGE && (
@@ -2626,27 +2449,6 @@ const ContactosSDRPage = () => {
                     </Stack>
                 </Paper>
 
-                {/* Banner: Ir a Mis Reuniones */}
-                {(bandejaActiva === 'reunionesPendientes' || bandejaActiva === 'reunionesPasadas') && (
-                    <Paper variant="outlined" sx={{ p: 1.5, mb: 2, bgcolor: '#e3f2fd', borderColor: '#90caf9', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
-                        <Typography variant="body2" fontWeight={500}>
-                            📅 Gestioná tus reuniones de forma completa desde la vista dedicada
-                        </Typography>
-                        <Button
-                            variant="contained"
-                            size="small"
-                            onClick={() => router.push('/sdr/reuniones')}
-                            sx={{ textTransform: 'none' }}
-                        >
-                            Ir a Mis Reuniones ↗
-                        </Button>
-                    </Paper>
-                )}
-
-                {/* Tabla o Lista reuniones */}
-                {(bandejaActiva === 'reunionesPendientes' || bandejaActiva === 'reunionesPasadas') ? (
-                    renderReunionesLista()
-                ) : (
                 <Paper>
                     {loading ? (
                         <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
@@ -2699,6 +2501,9 @@ const ContactosSDRPage = () => {
                                     const seleccionado = seleccionados.includes(contacto._id);
                                     const esCalificado = contacto.precalificacionBot === 'calificado' || contacto.precalificacionBot === 'quiere_meet';
                                     const quiereReunion = contacto.precalificacionBot === 'quiere_meet';
+                                    const reunFechaD = (bandejaActiva === 'reunionesPendientes' || bandejaActiva === 'reunionesPasadas') && contacto.proximaReunion?.fecha ? new Date(contacto.proximaReunion.fecha) : null;
+                                    const reunEsHoyD = reunFechaD && new Date().toDateString() === reunFechaD.toDateString();
+                                    const reunEsPasadaD = reunFechaD && reunFechaD < new Date() && !reunEsHoyD;
                                     
                                     return (
                                         <TableRow 
@@ -2707,8 +2512,8 @@ const ContactosSDRPage = () => {
                                             selected={seleccionado}
                                             sx={{ 
                                                 cursor: 'pointer',
-                                                bgcolor: (contacto.proximaTarea?.estricto && vencido) ? '#fff3e0' : vencido ? 'error.50' : (seleccionado ? 'primary.50' : 'inherit'),
-                                                borderLeft: (contacto.proximaTarea?.estricto && vencido) ? '3px solid #ff9800' : 'none'
+                                                bgcolor: reunEsHoyD ? 'warning.50' : reunEsPasadaD ? 'error.50' : (contacto.proximaTarea?.estricto && vencido) ? '#fff3e0' : vencido ? 'error.50' : (seleccionado ? 'primary.50' : 'inherit'),
+                                                borderLeft: reunEsHoyD ? '3px solid #ff9800' : (contacto.proximaTarea?.estricto && vencido) ? '3px solid #ff9800' : 'none'
                                             }}
                                             onClick={() => handleOpenDrawer(contacto)}
                                         >
@@ -2837,20 +2642,51 @@ const ContactosSDRPage = () => {
                                                             </Typography>
                                                         </Tooltip>
                                                     </TableCell>;
+                                                    case 'fechaReunion': {
+                                                        const r = contacto.proximaReunion;
+                                                        const fd = r?.fecha ? new Date(r.fecha) : null;
+                                                        const esHoyFd = fd && new Date().toDateString() === fd.toDateString();
+                                                        const esPasadaFd = fd && fd < new Date() && !esHoyFd;
+                                                        return <TableCell key={key}>
+                                                            <Typography variant="body2" fontWeight={esHoyFd ? 700 : 400} color={esHoyFd ? 'warning.dark' : esPasadaFd ? 'error.main' : 'text.primary'}>
+                                                                {fd ? fd.toLocaleDateString('es-AR', { weekday: 'short', day: '2-digit', month: '2-digit' }) : '—'}
+                                                            </Typography>
+                                                        </TableCell>;
+                                                    }
+                                                    case 'horaReunion': return <TableCell key={key}>
+                                                        <Typography variant="body2">{contacto.proximaReunion?.hora || '—'}</Typography>
+                                                    </TableCell>;
+                                                    case 'linkReunion': return <TableCell key={key}>
+                                                        {contacto.proximaReunion?.link ? (
+                                                            <Button size="small" variant="outlined" startIcon={<LinkIcon />} href={contacto.proximaReunion.link} target="_blank"
+                                                                onClick={(e) => e.stopPropagation()}
+                                                                sx={{ textTransform: 'none', fontSize: '0.75rem' }}>Unirse</Button>
+                                                        ) : contacto.proximaReunion?.lugar ? (
+                                                            <Typography variant="body2" color="text.secondary">{contacto.proximaReunion.lugar}</Typography>
+                                                        ) : <Typography variant="caption" color="text.secondary">—</Typography>}
+                                                    </TableCell>;
+                                                    case 'resultadoReunion': return <TableCell key={key}>
+                                                        {contacto.proximaReunion?.estadoReunion ? (
+                                                            <Chip size="small"
+                                                                label={contacto.proximaReunion.estadoReunion === 'realizada' ? 'Realizada' : contacto.proximaReunion.estadoReunion === 'no_show' ? 'No show' : contacto.proximaReunion.estadoReunion === 'cancelada' ? 'Cancelada' : 'Vencida'}
+                                                                color={contacto.proximaReunion.estadoReunion === 'realizada' ? 'success' : contacto.proximaReunion.estadoReunion === 'no_show' ? 'error' : 'warning'}
+                                                                variant="outlined" sx={{ fontSize: '0.7rem' }}
+                                                            />
+                                                        ) : <Typography variant="caption" color="text.secondary">—</Typography>}
+                                                    </TableCell>;
                                                     default: return null;
                                                 }
                                             })}
                                         </TableRow>
                                     );
                                 })}
-                                {contactos.length === 0 && (
+                                {contactosOrdenados.length === 0 && (
                                     <TableRow>
                                         <TableCell colSpan={2 + Object.values(columnasVisibles).filter(Boolean).length} align="center" sx={{ py: 4 }}>
                                             <Typography color="text.secondary">
-                                                {filtroEstados.length > 0 
-                                                    ? `No hay contactos con estado "${filtroEstados.join(', ')}"`
-                                                    : 'No tienes contactos asignados'
-                                                }
+                                                {bandejaActiva === 'reunionesPasadas' ? 'No hay reuniones pasadas' :
+                                                 bandejaActiva === 'reunionesPendientes' ? 'No hay reuniones pendientes' :
+                                                 filtroEstados.length > 0 ? `No hay contactos con estado "${filtroEstados.join(', ')}"` : 'No tienes contactos asignados'}
                                             </Typography>
                                         </TableCell>
                                     </TableRow>
@@ -2859,7 +2695,6 @@ const ContactosSDRPage = () => {
                         </Table>
                     )}
                 </Paper>
-                )}
 
                 {/* Paginación desktop */}
                 {totalContactos > ITEMS_PER_PAGE && (
