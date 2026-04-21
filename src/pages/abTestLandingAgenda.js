@@ -136,17 +136,34 @@ const REUNION_ESTADO_CONFIG = {
     cancelada: { label: 'Cancelada', color: 'default',  icon: '❌' },
 };
 
-function ReunionEstadoChip({ estado }) {
+const REUNION_ORIGEN_CONFIG = {
+    auto_calendar: { label: 'Bot',    color: 'secondary', icon: '🤖' },
+    manual:        { label: 'SDR',    color: 'default',   icon: '👤' },
+};
+
+function ReunionEstadoChip({ estado, origen, showOrigen }) {
     if (!estado) return <Typography variant="body2" color="text.disabled">—</Typography>;
     const cfg = REUNION_ESTADO_CONFIG[estado] || { label: estado, color: 'default', icon: '' };
+    const origCfg = REUNION_ORIGEN_CONFIG[origen];
     return (
-        <Chip
-            size="small"
-            label={`${cfg.icon} ${cfg.label}`}
-            color={cfg.color}
-            variant={estado === 'cancelada' ? 'outlined' : 'filled'}
-            sx={{ minWidth: 88, opacity: estado === 'cancelada' ? 0.6 : 1 }}
-        />
+        <Stack direction="row" spacing={0.5} alignItems="center" justifyContent="center">
+            <Chip
+                size="small"
+                label={`${cfg.icon} ${cfg.label}`}
+                color={cfg.color}
+                variant={estado === 'cancelada' ? 'outlined' : 'filled'}
+                sx={{ minWidth: 88, opacity: estado === 'cancelada' ? 0.6 : 1 }}
+            />
+            {showOrigen && origCfg && (
+                <Chip
+                    size="small"
+                    label={`${origCfg.icon} ${origCfg.label}`}
+                    color={origCfg.color}
+                    variant="outlined"
+                    sx={{ minWidth: 52, opacity: 0.85 }}
+                />
+            )}
+        </Stack>
     );
 }
 
@@ -578,7 +595,11 @@ function TablaContactos({ contactos, filtroVariante, onVarianteChange, onToggleI
                                             <Chip size="small" label={c.estado} variant="outlined" />
                                         </TableCell>
                                         <TableCell align="center">
-                                            <ReunionEstadoChip estado={c._flags?.reunionEstado || null} />
+                                            <ReunionEstadoChip
+                                                estado={c._flags?.reunionEstado || null}
+                                                origen={c._flags?.reunionOrigen || null}
+                                                showOrigen={c.variante === 'A'}
+                                            />
                                         </TableCell>
                                         <TableCell align="center">
                                             {c._flags?.abrieronLink

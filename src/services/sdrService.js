@@ -955,6 +955,10 @@ const SDRService = {
         const res = await api.put(`/sdr/admin/calendarios/${id}/url`, { calendarUrl });
         return res.data;
     },
+    adminActualizarCalendarioFiltro: async (id, keywordsFiltro) => {
+        const res = await api.put(`/sdr/admin/calendarios/${id}/filtro`, { keywordsFiltro });
+        return res.data;
+    },
     adminEliminarCalendario: async (id) => {
         const res = await api.delete(`/sdr/admin/calendarios/${id}`);
         return res.data;
