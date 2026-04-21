@@ -205,6 +205,28 @@ export const computeSyncRootPrefixSegments = (flatRows) => {
 };
 
 /**
+ * Cuenta archivos y agrupa por status para todos los items bajo una carpeta (recursivo).
+ * @param {Array<object>} flatRows
+ * @param {string[]} absoluteFolderPathSegments
+ * @returns {{ total: number, byStatus: Record<string, number> }}
+ */
+export const getFolderStats = (flatRows, absoluteFolderPathSegments) => {
+  const pathKey = pathSegmentsToKey(absoluteFolderPathSegments);
+  const prefix = pathKey ? `${pathKey}/` : "";
+  const byStatus = {};
+  let total = 0;
+  for (const row of flatRows) {
+    const fp = normalizeFolderPath(row?.folder_path);
+    const isUnder = fp === pathKey || (prefix && fp.startsWith(prefix));
+    if (!isUnder) continue;
+    total++;
+    const status = String(row?.status || "pending").toLowerCase();
+    byStatus[status] = (byStatus[status] || 0) + 1;
+  }
+  return { total, byStatus };
+};
+
+/**
  * Ordena: carpetas, luego padres PDF, luego archivos sueltos.
  */
 export const sortDriveTableRows = (folderRows, pdfParents, singleFiles) => {
