@@ -1,4 +1,5 @@
-import React from "react";
+import React, { useMemo, useState } from "react";
+import dayjs from "dayjs";
 import {
   Box,
   Typography,
@@ -10,8 +11,20 @@ import {
   Divider,
   Button,
   Autocomplete,
+  Paper,
+  Collapse,
+  FormControlLabel,
+  Checkbox,
+  Chip,
 } from "@mui/material";
-import { Add as AddIcon, DeleteOutline as DeleteOutlineIcon } from "@mui/icons-material";
+import { alpha } from "@mui/material/styles";
+import {
+  Add as AddIcon,
+  DeleteOutline as DeleteOutlineIcon,
+  PlaylistAddCheck as PlaylistAddCheckIcon,
+  ExpandMore as ExpandMoreIcon,
+  ExpandLess as ExpandLessIcon,
+} from "@mui/icons-material";
 
 const PedidoDetalleEditarTab = ({
   asignacionesEdicion,
@@ -25,7 +38,55 @@ const PedidoDetalleEditarTab = ({
   onEliminarAsignacion,
   onEditarAsignacionNueva,
   onEliminarAsignacionNueva,
+  onAsignarTodasAContenedor,
 }) => {
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkTipo, setBulkTipo] = useState("existente");
+  const [bulkContenedorId, setBulkContenedorId] = useState("");
+  const [bulkContenedorCodigo, setBulkContenedorCodigo] = useState("");
+  const [bulkFechaEstimada, setBulkFechaEstimada] = useState("");
+  const [bulkSoloSin, setBulkSoloSin] = useState(true);
+
+  const totalItems = (asignacionesEdicion?.length || 0) + (asignacionesNuevas?.length || 0);
+  const totalSinContenedor = useMemo(() => {
+    const sinEdit = (asignacionesEdicion || []).filter((a) => a.tipoContenedor === "sin").length;
+    const sinNuevas = (asignacionesNuevas || []).filter((a) => a.tipoContenedor === "sin").length;
+    return sinEdit + sinNuevas;
+  }, [asignacionesEdicion, asignacionesNuevas]);
+
+  const objetivoCount = bulkSoloSin ? totalSinContenedor : totalItems;
+
+  const bulkIsValid = useMemo(() => {
+    if (bulkTipo === "existente") return Boolean(bulkContenedorId);
+    if (bulkTipo === "nuevo") return Boolean(bulkContenedorCodigo && bulkFechaEstimada);
+    if (bulkTipo === "sin") return Boolean(bulkFechaEstimada);
+    return false;
+  }, [bulkTipo, bulkContenedorId, bulkContenedorCodigo, bulkFechaEstimada]);
+
+  const handleAplicarBulk = () => {
+    if (!bulkIsValid || objetivoCount === 0) return;
+    let codigo = bulkContenedorCodigo;
+    let fecha = bulkFechaEstimada;
+    if (bulkTipo === "existente") {
+      const selected = contenedoresDisponibles.find((c) => c._id === bulkContenedorId);
+      if (selected) {
+        codigo = selected.codigo || "";
+        fecha = selected.fechaEstimadaLlegada
+          ? dayjs(selected.fechaEstimadaLlegada).format("YYYY-MM-DD")
+          : "";
+      }
+    }
+    onAsignarTodasAContenedor?.(
+      {
+        tipoContenedor: bulkTipo,
+        contenedorId: bulkContenedorId,
+        contenedorCodigo: codigo,
+        contenedorFechaEstimada: fecha,
+      },
+      { soloSinContenedor: bulkSoloSin }
+    );
+  };
+
   return (
     <Box>
       <Typography variant="subtitle2" sx={{ mb: 1 }}>
@@ -34,6 +95,179 @@ const PedidoDetalleEditarTab = ({
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
         Modificá qué contenedor recibe cada producto y ajustá la cantidad por destino.
       </Typography>
+
+      {totalItems > 0 && (
+        <Paper
+          variant="outlined"
+          sx={{
+            mb: 2,
+            borderColor: "primary.light",
+            bgcolor: (theme) => alpha(theme.palette.primary.main, 0.04),
+            overflow: "hidden",
+          }}
+        >
+          <Stack
+            direction="row"
+            alignItems="center"
+            justifyContent="space-between"
+            onClick={() => setBulkOpen((v) => !v)}
+            sx={{
+              px: 2,
+              py: 1.25,
+              cursor: "pointer",
+              userSelect: "none",
+              transition: "background-color 120ms ease",
+              "&:hover": {
+                bgcolor: (theme) => alpha(theme.palette.primary.main, 0.08),
+              },
+            }}
+          >
+            <Stack direction="row" alignItems="center" spacing={1.25}>
+              <PlaylistAddCheckIcon color="primary" fontSize="small" />
+              <Box>
+                <Typography variant="body2" fontWeight={600}>
+                  Asignar todos al mismo contenedor
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Aplicá un contenedor en común a todos los productos a la vez.
+                </Typography>
+              </Box>
+            </Stack>
+            <Stack direction="row" alignItems="center" spacing={1}>
+              {totalSinContenedor > 0 && (
+                <Chip
+                  size="small"
+                  color="warning"
+                  variant="outlined"
+                  label={`${totalSinContenedor} sin contenedor`}
+                />
+              )}
+              <IconButton size="small" aria-label={bulkOpen ? "Contraer" : "Expandir"}>
+                {bulkOpen ? (
+                  <ExpandLessIcon fontSize="small" />
+                ) : (
+                  <ExpandMoreIcon fontSize="small" />
+                )}
+              </IconButton>
+            </Stack>
+          </Stack>
+
+          <Collapse in={bulkOpen} unmountOnExit>
+            <Divider />
+            <Box sx={{ p: 2 }}>
+              <Grid container spacing={2} alignItems="center">
+                <Grid item xs={12} md={3}>
+                  <TextField
+                    select
+                    size="small"
+                    label="Tipo"
+                    value={bulkTipo}
+                    onChange={(e) => {
+                      setBulkTipo(e.target.value);
+                      setBulkContenedorId("");
+                      setBulkContenedorCodigo("");
+                    }}
+                    fullWidth
+                  >
+                    <MenuItem value="existente">Existente</MenuItem>
+                    <MenuItem value="nuevo">Nuevo</MenuItem>
+                    <MenuItem value="sin">Sin contenedor</MenuItem>
+                  </TextField>
+                </Grid>
+
+                {bulkTipo === "existente" && (
+                  <Grid item xs={12} md={9}>
+                    <Autocomplete
+                      options={contenedoresDisponibles}
+                      value={
+                        contenedoresDisponibles.find((c) => c._id === bulkContenedorId) || null
+                      }
+                      onChange={(_, newValue) => setBulkContenedorId(newValue?._id || "")}
+                      getOptionLabel={(option) => option?.codigo || ""}
+                      isOptionEqualToValue={(option, value) => option?._id === value?._id}
+                      renderInput={(params) => (
+                        <TextField {...params} label="Contenedor" size="small" />
+                      )}
+                    />
+                  </Grid>
+                )}
+
+                {bulkTipo === "nuevo" && (
+                  <>
+                    <Grid item xs={12} md={5}>
+                      <TextField
+                        size="small"
+                        label="Código contenedor"
+                        value={bulkContenedorCodigo}
+                        onChange={(e) => setBulkContenedorCodigo(e.target.value)}
+                        fullWidth
+                      />
+                    </Grid>
+                    <Grid item xs={12} md={4}>
+                      <TextField
+                        size="small"
+                        label="Fecha estimada"
+                        type="date"
+                        value={bulkFechaEstimada}
+                        onChange={(e) => setBulkFechaEstimada(e.target.value)}
+                        InputLabelProps={{ shrink: true }}
+                        fullWidth
+                      />
+                    </Grid>
+                  </>
+                )}
+
+                {bulkTipo === "sin" && (
+                  <Grid item xs={12} md={9}>
+                    <TextField
+                      size="small"
+                      label="Fecha estimada"
+                      type="date"
+                      value={bulkFechaEstimada}
+                      onChange={(e) => setBulkFechaEstimada(e.target.value)}
+                      InputLabelProps={{ shrink: true }}
+                      fullWidth
+                    />
+                  </Grid>
+                )}
+              </Grid>
+
+              <Stack
+                direction={{ xs: "column", md: "row" }}
+                alignItems={{ xs: "stretch", md: "center" }}
+                justifyContent="space-between"
+                spacing={1}
+                sx={{ mt: 1.5 }}
+              >
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      size="small"
+                      checked={bulkSoloSin}
+                      onChange={(e) => setBulkSoloSin(e.target.checked)}
+                    />
+                  }
+                  label={
+                    <Typography variant="body2" color="text.secondary">
+                      Aplicar solo a productos sin contenedor
+                    </Typography>
+                  }
+                />
+                <Button
+                  variant="contained"
+                  size="small"
+                  onClick={handleAplicarBulk}
+                  disabled={!bulkIsValid || objetivoCount === 0}
+                >
+                  {objetivoCount > 0
+                    ? `Aplicar a ${objetivoCount} ${objetivoCount === 1 ? "producto" : "productos"}`
+                    : "Aplicar a todos"}
+                </Button>
+              </Stack>
+            </Box>
+          </Collapse>
+        </Paper>
+      )}
 
       {asignacionesEdicion.length === 0 ? (
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>

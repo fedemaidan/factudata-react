@@ -16,8 +16,6 @@ import {
   Divider,
   MenuItem,
   Tooltip,
-  ToggleButton,
-  ToggleButtonGroup,
 } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import FilterListIcon from "@mui/icons-material/FilterList";
@@ -89,7 +87,7 @@ const SyncDetailPage = () => {
   const [trabajadorSeleccionado, setTrabajadorSeleccionado] = useState(null);
   const [urlStorageSeleccionado, setUrlStorageSeleccionado] = useState(null);
 
-  const [viewMode, setViewMode] = useState("classic");
+  const [viewMode, setViewMode] = useState("drive");
   const [drivePathSegments, setDrivePathSegments] = useState([]);
   const [driveAllItems, setDriveAllItems] = useState([]);
   const [driveFetchLoading, setDriveFetchLoading] = useState(false);
@@ -711,21 +709,6 @@ const SyncDetailPage = () => {
                 />
               </IconButton>
             </Tooltip>
-            <ToggleButtonGroup
-              value={viewMode}
-              exclusive
-              size="small"
-              onChange={handleViewModeChange}
-              aria-label="Modo de vista de sincronización"
-              sx={{ ml: { xs: 0, sm: 1 } }}
-            >
-              <ToggleButton value="classic" aria-label="Vista clásica">
-                Vista clásica
-              </ToggleButton>
-              <ToggleButton value="drive" aria-label="Vista tipo Drive">
-                Vista Drive
-              </ToggleButton>
-            </ToggleButtonGroup>
           </Stack>
 
           <Popover
@@ -840,9 +823,6 @@ const SyncDetailPage = () => {
                 <Box component="span" sx={{ textTransform: "uppercase" }}>
                   {tipo || ""}
                 </Box>
-                {viewMode === "drive" ? (
-                  <Chip size="small" label="Vista Drive" variant="outlined" sx={{ ml: 1 }} />
-                ) : null}
               </Box>
 
               {viewMode === "drive" ? (
