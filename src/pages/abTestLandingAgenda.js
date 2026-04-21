@@ -127,6 +127,29 @@ function filterContactosPeriodo(contactos, inflexion, periodo) {
         : contactos.filter(c => new Date(c.createdAt) >= fecha);
 }
 
+// ─── Helpers estado de reunión ──────────────────────────────
+
+const REUNION_ESTADO_CONFIG = {
+    agendada:  { label: 'Agendada',  color: 'primary',  icon: '📅' },
+    realizada: { label: 'Realizada', color: 'success',  icon: '✅' },
+    no_show:   { label: 'No show',   color: 'warning',  icon: '👻' },
+    cancelada: { label: 'Cancelada', color: 'default',  icon: '❌' },
+};
+
+function ReunionEstadoChip({ estado }) {
+    if (!estado) return <Typography variant="body2" color="text.disabled">—</Typography>;
+    const cfg = REUNION_ESTADO_CONFIG[estado] || { label: estado, color: 'default', icon: '' };
+    return (
+        <Chip
+            size="small"
+            label={`${cfg.icon} ${cfg.label}`}
+            color={cfg.color}
+            variant={estado === 'cancelada' ? 'outlined' : 'filled'}
+            sx={{ minWidth: 88, opacity: estado === 'cancelada' ? 0.6 : 1 }}
+        />
+    );
+}
+
 // ─── Componente: Puntos de inflexión ──────────────────────
 
 function PuntosInflexion({ test, onAdd, onRemove, selectedId, onSelect, periodo, onPeriodoChange }) {
@@ -323,6 +346,16 @@ function MetricasResumen({ test, contactos, inflexion, periodo }) {
         },
     ];
 
+    // Desglose por estado de reunión
+    const estadosReunion = ['agendada', 'realizada', 'no_show', 'cancelada'];
+    const contarEstado = (lista, estado) =>
+        lista.filter(c => c._flags?.reunionEstado === estado).length;
+    const desgloseRows = estadosReunion.map(estado => ({
+        estado,
+        valA: contarEstado(filteredA, estado),
+        valB: contarEstado(filteredB, estado),
+    })).filter(r => r.valA > 0 || r.valB > 0);
+
     return (
         <Card>
             <CardHeader
@@ -411,6 +444,37 @@ function MetricasResumen({ test, contactos, inflexion, periodo }) {
                         </TableBody>
                     </Table>
                 </TableContainer>
+
+                {/* Desglose por estado de reunión */}
+                {desgloseRows.length > 0 && (
+                    <Box sx={{ mt: 2 }}>
+                        <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                            Desglose por estado de reunión
+                        </Typography>
+                        <TableContainer>
+                            <Table size="small">
+                                <TableHead>
+                                    <TableRow>
+                                        <TableCell>Estado</TableCell>
+                                        <TableCell align="center">Variante A</TableCell>
+                                        <TableCell align="center">Variante B</TableCell>
+                                    </TableRow>
+                                </TableHead>
+                                <TableBody>
+                                    {desgloseRows.map(({ estado, valA, valB }) => (
+                                        <TableRow key={estado}>
+                                            <TableCell>
+                                                <ReunionEstadoChip estado={estado} />
+                                            </TableCell>
+                                            <TableCell align="center"><strong>{valA || '—'}</strong></TableCell>
+                                            <TableCell align="center"><strong>{valB || '—'}</strong></TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </TableContainer>
+                    </Box>
+                )}
             </CardContent>
         </Card>
     );
@@ -514,10 +578,7 @@ function TablaContactos({ contactos, filtroVariante, onVarianteChange, onToggleI
                                             <Chip size="small" label={c.estado} variant="outlined" />
                                         </TableCell>
                                         <TableCell align="center">
-                                            {c._flags?.agendaronReunion
-                                                ? <Chip size="small" label="✓" color="success" sx={{ minWidth: 32 }} />
-                                                : <Typography variant="body2" color="text.disabled">—</Typography>
-                                            }
+                                            <ReunionEstadoChip estado={c._flags?.reunionEstado || null} />
                                         </TableCell>
                                         <TableCell align="center">
                                             {c._flags?.abrieronLink

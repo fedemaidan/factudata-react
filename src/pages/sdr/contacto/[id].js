@@ -56,7 +56,8 @@ import {
     FileUpload as FileUploadIcon,
     Download as DownloadIcon,
     AttachFile as AttachFileIcon,
-    MoreVert as MoreVertIcon
+    MoreVert as MoreVertIcon,
+    MergeType as MergeTypeIcon
 } from '@mui/icons-material';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
@@ -88,6 +89,7 @@ import useGrabadorAudio from 'src/hooks/useGrabadorAudio';
 import SendTemplateDialog from 'src/components/conversaciones/SendTemplateDialog';
 import config from 'src/config/config';
 import ReunionCardSDR from 'src/components/sdr/ReunionCardSDR';
+import ModalMergeContacto from 'src/components/sdr/ModalMergeContacto';
 
 // Helper: convierte URL relativa de audio (/api/sdr/audios/...) a URL absoluta del backend
 const resolveAudioUrl = (url) => {
@@ -360,6 +362,9 @@ const ContactoSDRDetailPage = () => {
 
     // Modal editar contacto
     const [modalEditarContacto, setModalEditarContacto] = useState(false);
+
+    // Modal merge contacto duplicado
+    const [modalMergeContacto, setModalMergeContacto] = useState(false);
 
     // Modal selector de templates WhatsApp (Fase 2)
     const [modalTemplateWA, setModalTemplateWA] = useState(false);
@@ -1867,6 +1872,11 @@ const ContactoSDRDetailPage = () => {
                                         <IconButton size="small" onClick={() => setModalEditarContacto(true)} sx={{ p: 0.3, mt: 0.5 }}>
                                             <EditIcon sx={{ fontSize: 16, color: 'text.disabled' }} />
                                         </IconButton>
+                                        <Tooltip title="Fusionar con contacto duplicado">
+                                            <IconButton size="small" onClick={() => setModalMergeContacto(true)} sx={{ p: 0.3, mt: 0.5 }}>
+                                                <MergeTypeIcon sx={{ fontSize: 16, color: 'text.disabled' }} />
+                                            </IconButton>
+                                        </Tooltip>
                                     </Stack>
 
                                     {/* Estado · Segmento · SDR */}
@@ -4722,6 +4732,20 @@ const ContactoSDRDetailPage = () => {
                     if (contactoActualizado) setContacto(contactoActualizado);
                     setModalEditarContacto(false);
                     mostrarSnackbar('Contacto actualizado');
+                    cargarContacto();
+                }}
+            />
+
+            {/* Modal fusionar contacto duplicado */}
+            <ModalMergeContacto
+                open={modalMergeContacto}
+                onClose={() => setModalMergeContacto(false)}
+                contacto={contacto}
+                empresaId={empresaId}
+                mostrarSnackbar={mostrarSnackbar}
+                onSuccess={(contactoActualizado) => {
+                    if (contactoActualizado) setContacto(contactoActualizado);
+                    setModalMergeContacto(false);
                     cargarContacto();
                 }}
             />
