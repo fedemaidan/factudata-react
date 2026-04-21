@@ -32,6 +32,7 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import api from 'src/services/axiosConfig';
 import AcopioService from 'src/services/acopioService';
 import movimientosService from 'src/services/movimientosService';
+import DistribuirMaterialesDialog from './DistribuirMaterialesDialog';
 
 /**
  * Pasos del Dialog:
@@ -46,11 +47,14 @@ const STEP_SUBOPCIONES = 1;
 const STEP_EXTRACCION = 2;
 const STEP_DISCREPANCIAS = 3;
 const STEP_RESULTADO = 4;
+// Fase 3: paso de espera mientras DistribuirMaterialesDialog está abierto
+const STEP_DISTRIBUIR = 5;
 
 const DESTINOS = {
   ACOPIO: 'acopio',
   DEPOSITO: 'deposito',
   DIRECTO_OBRA: 'directo_obra',
+  DISTRIBUIR: 'distribuir',
   NADA: 'nada',
 };
 
@@ -97,6 +101,7 @@ const MaterialesFacturaActions = ({
   const [resoluciones, setResoluciones] = useState({});
   const [resultado, setResultado] = useState(null);
   const [error, setError] = useState(null);
+  const [openDistribuir, setOpenDistribuir] = useState(false);
 
   const urlImagen = movimiento?.url_imagen || null;
 
@@ -117,6 +122,11 @@ const MaterialesFacturaActions = ({
       return;
     }
     setDestino(dest);
+    // DISTRIBUIR no tiene sub-opciones: saltar directo a extracción
+    if (dest === DESTINOS.DISTRIBUIR) {
+      setStep(STEP_SUBOPCIONES);
+      return;
+    }
     setStep(STEP_SUBOPCIONES);
   }, [onDismiss]);
 
@@ -309,6 +319,9 @@ const MaterialesFacturaActions = ({
             });
             setResoluciones(resDefault);
             setStep(STEP_DISCREPANCIAS);
+          } else if (destino === DESTINOS.DISTRIBUIR) {
+            setStep(STEP_DISTRIBUIR);
+            setOpenDistribuir(true);
           } else {
             await crearDestinoConMateriales(statusRes.materiales);
           }
@@ -343,8 +356,14 @@ const MaterialesFacturaActions = ({
       if (res.codigo !== undefined) copia.codigo = res.codigo || mat.codigo;
       return copia;
     });
+    if (destino === DESTINOS.DISTRIBUIR) {
+      setMaterialesExtraidos(materialesResueltos);
+      setStep(STEP_DISTRIBUIR);
+      setOpenDistribuir(true);
+      return;
+    }
     await crearDestinoConMateriales(materialesResueltos);
-  }, [materialesExtraidos, resoluciones, crearDestinoConMateriales]);
+  }, [destino, materialesExtraidos, resoluciones, crearDestinoConMateriales]);
 
   // --- Destinos disponibles segun stock_config ---
   const destinosDisponibles = useMemo(() => {
@@ -369,6 +388,14 @@ const MaterialesFacturaActions = ({
       icon: <HomeWorkIcon />,
       description: 'Enviar materiales directamente a una obra',
     });
+    if (stockConfig.distribucion_por_linea) {
+      items.push({
+        key: DESTINOS.DISTRIBUIR,
+        label: 'Distribuir por línea',
+        icon: <InventoryIcon />,
+        description: 'Asignar un destino diferente a cada material',
+      });
+    }
     items.push({
       key: DESTINOS.NADA,
       label: 'No hacer nada',
@@ -376,7 +403,7 @@ const MaterialesFacturaActions = ({
       description: 'Ignorar los materiales por ahora',
     });
     return items;
-  }, [stockConfig.acopio_habilitado]);
+  }, [stockConfig.acopio_habilitado, stockConfig.distribucion_por_linea]);
 
   // --- Materiales con discrepancias ---
   const materialesConDiscrepancia = useMemo(() => {
@@ -387,6 +414,7 @@ const MaterialesFacturaActions = ({
 
   // --- Puede confirmar sub-opciones ---
   const canConfirmSub = useMemo(() => {
+    if (destino === DESTINOS.DISTRIBUIR) return true; // sin sub-opciones
     if (destino === DESTINOS.ACOPIO) {
       if (!subOpcion || !proveedorAcopio) return false;
       if (subOpcion === SUB_ACOPIO.OBRA && !proyectoSeleccionado) return false;
@@ -413,6 +441,7 @@ const MaterialesFacturaActions = ({
     if (step === STEP_EXTRACCION) return 'Extrayendo materiales...';
     if (step === STEP_DISCREPANCIAS) return 'Verificacion de materiales';
     if (step === STEP_RESULTADO) return 'Resultado';
+    if (step === STEP_DISTRIBUIR) return 'Distribuyendo materiales...';
     return '';
   }, [step, destino]);
 
@@ -546,6 +575,18 @@ const MaterialesFacturaActions = ({
       );
     }
 
+    if (destino === DESTINOS.DISTRIBUIR) {
+      return (
+        <Stack spacing={1.5}>
+          <Typography variant="subtitle2">Distribución por línea</Typography>
+          <Typography variant="body2" color="text.secondary">
+            Primero vamos a extraer los materiales de la factura con IA.
+            Después vas a poder asignarle un destino diferente a cada uno.
+          </Typography>
+        </Stack>
+      );
+    }
+
     return null;
   };
 
@@ -658,13 +699,94 @@ const MaterialesFacturaActions = ({
     </Stack>
   );
 
+  // --- Función para creación distribuida (Fase 3) ---
+  const crearDestinoDistribuido = useCallback(async (grupos) => {
+    setOpenDistribuir(false);
+    setLoading(true);
+    setStep(STEP_RESULTADO);
+
+    const normalizarMateriales = (mats) =>
+      mats
+        .map(({ _verificacion, _extraccion_inicial, _requiere_confirmacion_usuario, ...rest }) => {
+          const m = { ...rest };
+          if (m.Nombre && !m.nombre && !m.descripcion) m.nombre = m.Nombre;
+          if (m.SKU && !m.codigo) m.codigo = m.SKU;
+          if (m.precio_unitario != null && m.valorUnitario == null) m.valorUnitario = m.precio_unitario;
+          return m;
+        })
+        .filter((m) => (m.descripcion || m.nombre) && parseFloat(m.cantidad) > 0);
+
+    try {
+      const resultados = [];
+      let solicitudPrincipal = null;
+      let acopioPrincipal = null;
+
+      for (const grupo of grupos) {
+        const { destino: dest, proyecto_id, proyecto_nombre, proveedor, materiales: mats } = grupo;
+        const materialesNorm = normalizarMateriales(mats);
+        if (materialesNorm.length === 0) continue;
+
+        if (dest === 'acopio') {
+          const res = await api.post('/acopio/from-caja', {
+            empresa_id: empresaId,
+            proveedor,
+            proyecto_id,
+            materiales: materialesNorm,
+            movimiento_caja_id: movimientoId,
+            url_imagen_compra: urlImagen ? [urlImagen] : [],
+          });
+          if (!acopioPrincipal) acopioPrincipal = res.data?.acopio_id;
+          resultados.push({ tipo: 'acopio', id: res.data?.acopio_id, data: res.data });
+        } else {
+          let subtipo = 'COMPRA';
+          let destinoStock = 'deposito';
+          if (dest === 'pendiente_asignar') {
+            subtipo = 'PENDIENTE_ASIGNAR';
+            destinoStock = 'pendiente_asignar';
+          } else if (dest === 'obra') {
+            subtipo = 'COMPRA_DIRECTA';
+            destinoStock = 'obra';
+          }
+          const res = await api.post('/solicitud-material/from-caja', {
+            empresa_id: empresaId,
+            empresa_nombre: empresaNombre,
+            movimiento_caja_id: movimientoId,
+            materiales: materialesNorm,
+            proyecto_id,
+            proyecto_nombre,
+            subtipo,
+            destino: destinoStock,
+            proveedor: nombreProveedor ? { nombre: nombreProveedor } : null,
+            validacion_movimientos: stockConfig.validacion_movimientos || false,
+          });
+          const data = res.data?.data || res.data;
+          if (!solicitudPrincipal) solicitudPrincipal = data.solicitud_id;
+          resultados.push({ tipo: 'solicitud', id: data.solicitud_id, data });
+        }
+      }
+
+      const updateData = { stock_procesado: true };
+      if (solicitudPrincipal) updateData.solicitud_stock_id = solicitudPrincipal;
+      if (acopioPrincipal) updateData.acopio_id = acopioPrincipal;
+      await movimientosService.updateMovimiento(movimientoId, updateData);
+
+      setResultado({ tipo: 'distribuido', resultados, total: resultados.length });
+      setLoading(false);
+    } catch (err) {
+      setLoading(false);
+      const msg = err?.response?.data?.error?.message || err?.response?.data?.error || err.message || 'Error al distribuir materiales.';
+      setError(msg);
+      onError?.(msg);
+    }
+  }, [empresaId, empresaNombre, movimientoId, urlImagen, nombreProveedor, stockConfig, onError]);
+
   const renderStepResultado = () => {
     if (loading) {
       return (
         <Stack spacing={2} alignItems="center" sx={{ py: 3 }}>
           <CircularProgress size={40} />
           <Typography variant="body2">
-            Creando {destino === DESTINOS.ACOPIO ? 'acopio' : 'solicitud de stock'}...
+            Creando {destino === DESTINOS.ACOPIO ? 'acopio' : destino === DESTINOS.DISTRIBUIR ? 'solicitudes distribuidas' : 'solicitud de stock'}...
           </Typography>
         </Stack>
       );
@@ -675,6 +797,37 @@ const MaterialesFacturaActions = ({
     }
 
     if (!resultado) return null;
+
+    // Resultado distribuido
+    if (resultado.tipo === 'distribuido') {
+      return (
+        <Paper variant="outlined" sx={{ p: 2, bgcolor: 'success.50', borderColor: 'success.light' }}>
+          <Stack spacing={1.5}>
+            <Stack direction="row" alignItems="center" spacing={1}>
+              <CheckCircleIcon color="success" fontSize="small" />
+              <Typography variant="subtitle2" color="success.dark">
+                Distribución completada — {resultado.total} grupo(s) creado(s)
+              </Typography>
+            </Stack>
+            {resultado.resultados.map((r, i) => (
+              <Button
+                key={i}
+                size="small"
+                variant="outlined"
+                startIcon={<LinkIcon />}
+                href={
+                  r.tipo === 'solicitud'
+                    ? '/stockSolicitudes?solicitudId=' + r.id
+                    : '/movimientosAcopio?acopioId=' + r.id
+                }
+              >
+                {r.tipo === 'solicitud' ? `Ver solicitud ${String(r.id || '').slice(-6)}` : `Ver acopio ${String(r.id || '').slice(-6)}`}
+              </Button>
+            ))}
+          </Stack>
+        </Paper>
+      );
+    }
 
     const refId = resultado.id;
     const tipoRef = resultado.tipo;
@@ -718,6 +871,7 @@ const MaterialesFacturaActions = ({
 
   // --- Dialog principal ---
   return (
+    <>
     <Dialog
       open={open}
       onClose={step === STEP_EXTRACCION ? undefined : onClose}
@@ -785,11 +939,15 @@ const MaterialesFacturaActions = ({
         <DialogActions>
           <Button
             onClick={() => {
-              onComplete?.(
-                resultado.tipo === 'acopio'
-                  ? { tipo: 'acopio', acopio_id: resultado.id }
-                  : { tipo: 'solicitud', solicitud_stock_id: resultado.id }
-              );
+              if (resultado.tipo === 'distribuido') {
+                onComplete?.({ tipo: 'distribuido', resultados: resultado.resultados });
+              } else {
+                onComplete?.(
+                  resultado.tipo === 'acopio'
+                    ? { tipo: 'acopio', acopio_id: resultado.id }
+                    : { tipo: 'solicitud', solicitud_stock_id: resultado.id }
+                );
+              }
             }}
             variant="contained"
           >
@@ -798,6 +956,21 @@ const MaterialesFacturaActions = ({
         </DialogActions>
       )}
     </Dialog>
+
+    {/* Fase 3: Dialog de distribución por línea */}
+    <DistribuirMaterialesDialog
+      open={openDistribuir}
+      onClose={() => {
+        setOpenDistribuir(false);
+        setStep(STEP_SUBOPCIONES);
+      }}
+      onConfirm={crearDestinoDistribuido}
+      materiales={materialesExtraidos}
+      proyectos={proyectos}
+      proveedores={proveedores}
+      acopioHabilitado={Boolean(stockConfig.acopio_habilitado)}
+    />
+    </>
   );
 };
 

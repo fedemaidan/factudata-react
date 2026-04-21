@@ -366,6 +366,30 @@ export const SideNav = (props) => {
         });
       }
 
+      if (permisosUsuario.includes("VER_CONTROL_PAGOS")) {
+        baseItems.push({
+          title: "Control de pagos",
+          path: "/control-pagos",
+          icon: (
+            <SvgIcon fontSize="small">
+              <LocalAtm />
+            </SvgIcon>
+          ),
+        });
+      }
+
+      if (permisosUsuario.includes("VER_CUENTA_CORRIENTE_PROVEEDORES")) {
+        baseItems.push({
+          title: "Cuenta corriente proveedores",
+          path: "/cuenta-corriente-proveedores",
+          icon: (
+            <SvgIcon fontSize="small">
+              <LocalAtm />
+            </SvgIcon>
+          ),
+        });
+      }
+
       if (permisosUsuario.includes("VER_UNIDADES")) {
         baseItems.push({
           title: "Unidades",

@@ -20,13 +20,14 @@ export const DEFINICION_CAMPOS = [
   { section: 'importes', name: 'moneda', label: 'Moneda', type: 'select', options: ['ARS', 'USD'], stitchBlock: 'financial', stitchOrder: 20 },
   { section: 'pago', name: 'medio_pago', label: 'Medio de Pago', type: 'select', optionsKey: 'mediosPago', visibleIf: (info) => info.medio_pago, stitchBlock: 'financial', stitchOrder: 30 },
   { section: 'pago', name: 'estado', label: 'Estado', type: 'select', options: ['Pendiente', 'Parcialmente Pagado', 'Pagado'], visibleIf: (_, empresa) => empresa?.con_estados, stitchBlock: 'financial', stitchOrder: 40 },
-  { section: 'pago', name: 'caja_chica', label: 'Caja Chica', type: 'boolean', visibleIf: (info) => info.caja_chica, stitchBlock: 'financial', stitchOrder: 50 },
-  { section: 'importes', name: 'subtotal', label: 'Subtotal', type: 'number', visibleIf: (info) => info.subtotal, stitchBlock: 'financial', stitchOrder: 60 },
-  { section: 'importes', name: 'total_original', label: 'Total Original', type: 'number', visibleIf: (info) => info.total_original, stitchBlock: 'financial', stitchOrder: 70 },
-  { section: 'importes', name: 'dolar_referencia', label: 'Dolar de Referencia', type: 'number', visibleIf: (info) => info.dolar_referencia, stitchBlock: 'financial', stitchOrder: 80 },
-  { section: 'importes', name: 'subtotal_dolar', label: 'Subtotal USD', type: 'number', readonly: true, stitchBlock: 'financial', stitchOrder: 90 },
-  { section: 'importes', name: 'total_dolar', label: 'Total USD', type: 'number', readonly: true, stitchBlock: 'financial', stitchOrder: 100 },
-  { section: 'impuestos', name: 'impuestos', label: 'Impuestos', type: 'impuestos', visibleIf: (info) => info.impuestos, stitchBlock: 'financial', stitchOrder: 110 },
+  { section: 'pago', name: 'monto_aprobado', label: 'Monto aprobado', type: 'number', visibleIf: (info, _empresa, tipoMovimiento) => tipoMovimiento === 'egreso' && info.monto_aprobado, stitchBlock: 'financial', stitchOrder: 50 },
+  { section: 'pago', name: 'caja_chica', label: 'Caja Chica', type: 'boolean', visibleIf: (info) => info.caja_chica, stitchBlock: 'financial', stitchOrder: 90 },
+  { section: 'importes', name: 'subtotal', label: 'Subtotal', type: 'number', visibleIf: (info) => info.subtotal, stitchBlock: 'financial', stitchOrder: 100 },
+  { section: 'importes', name: 'total_original', label: 'Total Original', type: 'number', visibleIf: (info) => info.total_original, stitchBlock: 'financial', stitchOrder: 110 },
+  { section: 'importes', name: 'dolar_referencia', label: 'Dolar de Referencia', type: 'number', visibleIf: (info) => info.dolar_referencia, stitchBlock: 'financial', stitchOrder: 120 },
+  { section: 'importes', name: 'subtotal_dolar', label: 'Subtotal USD', type: 'number', readonly: true, stitchBlock: 'financial', stitchOrder: 130 },
+  { section: 'importes', name: 'total_dolar', label: 'Total USD', type: 'number', readonly: true, stitchBlock: 'financial', stitchOrder: 140 },
+  { section: 'impuestos', name: 'impuestos', label: 'Impuestos', type: 'impuestos', visibleIf: (info) => info.impuestos, stitchBlock: 'financial', stitchOrder: 150 },
 ];
 
 export const COMPROBANTE_INFO_DEFAULT = {
@@ -73,7 +74,7 @@ export const getCamposVisibles = (comprobanteInfo, empresa, ingresoInfo, tipoMov
 
   return DEFINICION_CAMPOS.filter((campo) => {
     if (!campo.visibleIf) return true;
-    return campo.visibleIf(info, empresa);
+    return campo.visibleIf(info, empresa, tipoMovimiento);
   });
 };
 

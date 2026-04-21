@@ -66,6 +66,132 @@ const notaPedidoService = {
     }
   },
 
+  /** Plantillas PDF (Mongo + IA en backend) */
+  getPdfTemplates: async (empresaId) => {
+    try {
+      const res = await api.get(`nota-pedido/pdf-templates/empresa/${empresaId}`);
+      return res.status === 200 ? res.data : [];
+    } catch (e) {
+      console.error('getPdfTemplates', e);
+      return [];
+    }
+  },
+
+  createPdfTemplate: async (body) => {
+    try {
+      const res = await api.post('nota-pedido/pdf-templates', body);
+      return res.status === 201 ? res.data : null;
+    } catch (e) {
+      console.error('createPdfTemplate', e);
+      return null;
+    }
+  },
+
+  updatePdfTemplate: async (id, body) => {
+    try {
+      const res = await api.put(`nota-pedido/pdf-templates/${id}`, body);
+      return res.status === 200 ? res.data : null;
+    } catch (e) {
+      console.error('updatePdfTemplate', e);
+      return null;
+    }
+  },
+
+  deletePdfTemplate: async (id) => {
+    try {
+      const res = await api.delete(`nota-pedido/pdf-templates/${id}`);
+      return res.status === 200;
+    } catch (e) {
+      console.error('deletePdfTemplate', e);
+      return false;
+    }
+  },
+
+  uploadPdfTemplateLogo: async (empresaId, file) => {
+    try {
+      const formData = new FormData();
+      formData.append('archivo', file);
+      formData.append('empresa_id', empresaId);
+      const res = await api.post('nota-pedido/pdf-templates/upload-logo', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      return res.status === 200 ? res.data?.url : null;
+    } catch (e) {
+      console.error('uploadPdfTemplateLogo', e);
+      return null;
+    }
+  },
+
+  getPdfBaseTemplate: async (empresaId) => {
+    try {
+      const res = await api.get(`nota-pedido/pdf-base/empresa/${empresaId}`);
+      return res.status === 200 ? res.data : null;
+    } catch (e) {
+      console.error('getPdfBaseTemplate', e);
+      return null;
+    }
+  },
+
+  putPdfBaseLogo: async (empresaId, payload) => {
+    try {
+      const res = await api.put(`nota-pedido/pdf-base/empresa/${empresaId}/logo`, payload);
+      return res.status === 200 ? res.data : null;
+    } catch (e) {
+      console.error('putPdfBaseLogo', e);
+      return null;
+    }
+  },
+
+  postPdfRenderConfig: async ({ notaId, empresaId, plantillaId }) => {
+    try {
+      const res = await api.post('nota-pedido/pdf-render-config', {
+        notaId,
+        empresaId,
+        plantillaId: plantillaId || undefined,
+      });
+      if (res.status !== 200 || !res.data) {
+        return { success: false, needsLogo: false, errorMessage: 'Respuesta inválida' };
+      }
+      return { success: true, config: res.data };
+    } catch (e) {
+      const data = e.response?.data;
+      const msg = data?.error || e.message || 'Error al obtener configuración del PDF';
+      const apiCode = data?.code;
+      const needsLogo = apiCode === 'logo-base-required';
+      return { success: false, needsLogo, errorMessage: msg, code: apiCode };
+    }
+  },
+
+  getComponentCode: async (templateId) => {
+    try {
+      const res = await api.get(`nota-pedido/pdf-templates/${templateId}/component-code`);
+      return res.status === 200 ? res.data?.code : null;
+    } catch (e) {
+      console.error('getComponentCode', e);
+      return null;
+    }
+  },
+
+  aiChatPlantilla: async ({ messages, empresaId, currentCode }) => {
+    try {
+      const res = await api.post('nota-pedido/pdf-templates/ai-chat', { messages, empresaId, currentCode: currentCode || null });
+      return res.status === 200 ? res.data : null;
+    } catch (e) {
+      console.error('aiChatPlantilla', e);
+      return null;
+    }
+  },
+
+  saveComponentPlantilla: async ({ code, empresaId }) => {
+    try {
+      const res = await api.post('nota-pedido/pdf-templates/save-component', { code, empresaId });
+      return res.status === 200 ? res.data?.url : null;
+    } catch (e) {
+      console.error('saveComponentPlantilla', e);
+      return null;
+    }
+  },
+
   subirArchivo: async (notaId, archivo) => {
     try {
       const formData = new FormData();

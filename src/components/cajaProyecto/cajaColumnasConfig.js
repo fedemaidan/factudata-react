@@ -12,6 +12,7 @@ export const CAJA_COL_DEFAULT_ORDER = [
   'tipo',
   'total',
   'montoPagado',
+  'montoAprobado',
   'categoria',
   'subcategoria',
   'medioPago',
@@ -44,6 +45,7 @@ const LABELS = {
   tipo: 'Tipo',
   total: 'Total',
   montoPagado: 'Monto pagado',
+  montoAprobado: 'Monto aprobado',
   categoria: 'Categoría',
   subcategoria: 'Subcategoría',
   medioPago: 'Medio de pago',
@@ -87,6 +89,7 @@ export function getCajaColumnasConfig(visibleCols, compactCols, empresa, options
   if (!compactCols && visibleCols?.tipo) result.push(['tipo', LABELS.tipo]);
   if (visibleCols?.total) result.push(['total', LABELS.total]);
   if (visibleCols?.montoPagado) result.push(['montoPagado', LABELS.montoPagado]);
+  if (visibleCols?.montoAprobado) result.push(['montoAprobado', LABELS.montoAprobado]);
   if (visibleCols?.categoria) result.push(['categoria', LABELS.categoria]);
   if (!compactCols && empresa?.comprobante_info?.subcategoria && visibleCols?.subcategoria) {
     result.push(['subcategoria', LABELS.subcategoria]);
@@ -151,6 +154,7 @@ export function getHeaderLabel(key, compactCols) {
     tipo: 'TIPO',
     total: 'TOTAL',
     montoPagado: 'MONTO PAGADO',
+    montoAprobado: 'MONTO APROBADO',
     subcategoria: 'SUBCATEGORÍA',
     medioPago: 'MEDIO DE PAGO',
     proveedor: 'PROVEEDOR',
@@ -202,6 +206,7 @@ export function getHeaderCellSx(key, COLS, cellBase) {
     tipo: { minWidth: COLS.tipo },
     total: { minWidth: COLS.total, textAlign: 'right' },
     montoPagado: { minWidth: COLS.montoPagado, textAlign: 'right' },
+    montoAprobado: { minWidth: COLS.montoAprobado, textAlign: 'right' },
     categoria: { minWidth: COLS.categoria },
     subcategoria: { minWidth: COLS.subcategoria },
     medioPago: { minWidth: COLS.medioPago },

@@ -28,10 +28,11 @@ const logCajaFilters = (label, payload) => {
 
 const PERSIST_KEYS = [
   'fechaDesde','fechaHasta','palabras','observacion',
-  'categorias','subcategorias','proveedores','medioPago',
+  'categorias','subcategorias','proveedores','medioPago','usuarios',
   'tipo','moneda','etapa','estados','cuentaInterna','tagsExtra',
   'montoMin','montoMax','ordenarPor','ordenarDir','caja', '_dayKey',
-  'empresaFacturacion','fechaPagoDesde','fechaPagoHasta','codigoSync','facturaCliente'
+  'empresaFacturacion','fechaPagoDesde','fechaPagoHasta','codigoSync','aprobacion','facturaCliente','cajaChica',
+  'fechaCreacionDesde','fechaCreacionHasta','fechaModificacionDesde','fechaModificacionHasta'
 ];
 
 const defaultFilters = {
@@ -39,9 +40,11 @@ const defaultFilters = {
   fechaHasta: null,
   palabras: '',
   observacion: '',
+  aprobacion: '',
   categorias: [],
   subcategorias: [],
   proveedores: [],
+  usuarios: [],
   medioPago: [],
   tipo: [],            // ['ingreso', 'egreso']
   moneda: [],          // ['ARS','USD']
@@ -56,13 +59,18 @@ const defaultFilters = {
   empresaFacturacion: [],   // select múltiple
   fechaPagoDesde: null,     // Date
   fechaPagoHasta: null,     // Date
+  fechaCreacionDesde: null,
+  fechaCreacionHasta: null,
+  fechaModificacionDesde: null,
+  fechaModificacionHasta: null,
   caja: null, // { moneda, medio_pago }
   codigoSync: '', // código de sincronización de importación masiva
   facturaCliente: '', // '' | 'cliente' | 'propia'
+  cajaChica: '', // '' | 'si' | 'no'
 };
 
 const arrayFields = [
-  'tipo','moneda','proveedores','categorias','subcategorias',
+  'tipo','moneda','proveedores','categorias','subcategorias','usuarios',
   'medioPago','estados','estado','etapa','cuentaInterna','tagsExtra'
 ];
 
@@ -114,7 +122,12 @@ export function useMovimientosFilters({
         out[k] = parseArray(query[k]);
         return;
       }
-      if (k === 'fechaDesde' || k === 'fechaHasta' || k === 'fechaPagoDesde' || k === 'fechaPagoHasta') {
+      if (
+        k === 'fechaDesde' || k === 'fechaHasta'
+        || k === 'fechaPagoDesde' || k === 'fechaPagoHasta'
+        || k === 'fechaCreacionDesde' || k === 'fechaCreacionHasta'
+        || k === 'fechaModificacionDesde' || k === 'fechaModificacionHasta'
+      ) {
         out[k] = parseDate(query[k]);
         return;
       }
@@ -229,6 +242,7 @@ export function useMovimientosFilters({
       Object.entries(subcatMap).map(([cat, set]) => [cat, sort([...set])])
     );
     return {
+      usuarios: sort(uniq(base.map(m => m.nombre_user))),
       categorias: sort(uniq(base.map(m => m.categoria))),
       subcategorias: sort(uniq(base.map(m => m.subcategoria))),
       subcategoriasByCategoria,
@@ -240,6 +254,7 @@ export function useMovimientosFilters({
       cuentasInternas: sort(uniq(base.map(m => m.cuenta_interna))),
       tags: sort(uniq(base.flatMap(m => Array.isArray(m.tags_extra) ? m.tags_extra : []))),
       empresasFacturacion: sort(uniq(base.map(m => m.empresa_facturacion))),
+      aprobacion: ['si', 'no'],
       tipos: ['ingreso', 'egreso'],
     };
   }, [movimientos, movimientosUSD]);
@@ -270,6 +285,19 @@ export function useMovimientosFilters({
     }
     return true;
   };
+
+  const insideAuditRange = (value, fechaDesde, fechaHasta) => {
+    const dt = toJsDate(value);
+    if (!fechaDesde && !fechaHasta) return true;
+    if (!dt) return false;
+    if (fechaDesde && dt < fechaDesde) return false;
+    if (fechaHasta) {
+      const end = new Date(fechaHasta);
+      end.setHours(23, 59, 59, 999);
+      if (dt > end) return false;
+    }
+    return true;
+  };
   
 
   // Filtrado
@@ -281,9 +309,10 @@ export function useMovimientosFilters({
 
     const {
       fechaDesde, fechaHasta, palabras, observacion, categorias, subcategorias,
-      proveedores, medioPago, tipo, moneda, etapa, cuentaInterna, estado, tagsExtra,
+      proveedores, usuarios, medioPago, tipo, moneda, etapa, cuentaInterna, estado, tagsExtra,
       montoMin, montoMax, ordenarPor, ordenarDir, empresaFacturacion, fechaPagoDesde, fechaPagoHasta,
-      codigoSync, facturaCliente
+      codigoSync, aprobacion, facturaCliente, cajaChica, fechaCreacionDesde, fechaCreacionHasta,
+      fechaModificacionDesde, fechaModificacionHasta
     } = filters;
 
     const match = (value, arr) => arr.length === 0 || arr.includes(value);
@@ -311,6 +340,13 @@ export function useMovimientosFilters({
       if (!codigoSync || codigoSync.trim() === '') return true;
       return mov.codigo_sync === codigoSync.trim();
     };
+    const matchAprobacion = (mov) => {
+      if (!aprobacion) return true;
+      const montoAprobado = Number(mov.monto_aprobado) || 0;
+      if (aprobacion === 'si') return montoAprobado > 0;
+      if (aprobacion === 'no') return montoAprobado <= 0;
+      return true;
+    };
     const matchFacturaCliente = (mov) => {
       if (!facturaCliente) return true;
       const isCliente = mov.factura_cliente === true;
@@ -318,13 +354,23 @@ export function useMovimientosFilters({
       if (facturaCliente === 'propia') return !isCliente;
       return true;
     };
+    const matchCajaChica = (mov) => {
+      if (!cajaChica) return true;
+      const isCajaChica = mov.caja_chica === true;
+      if (cajaChica === 'si') return isCajaChica;
+      if (cajaChica === 'no') return !isCajaChica;
+      return true;
+    };
 
     const res = base.filter(mov =>
       insideRange(mov, fechaDesde, fechaHasta)
+      && insideAuditRange(mov.createdAt, fechaCreacionDesde, fechaCreacionHasta)
+      && insideAuditRange(mov.updatedAt, fechaModificacionDesde, fechaModificacionHasta)
       && insideRangePago(mov, fechaPagoDesde, fechaPagoHasta)               // 🔹 NUEVO
       && match(mov.categoria, categorias)
       && match(mov.subcategoria, subcategorias)
       && match(mov.nombre_proveedor, proveedores)
+      && match(mov.nombre_user, usuarios)
       && match(mov.medio_pago, medioPago)
       && match(mov.type, tipo)
       && match(mov.moneda, moneda)
@@ -337,7 +383,9 @@ export function useMovimientosFilters({
       && matchEstado(mov)
       && matchCaja(mov)
       && matchCodigoSync(mov)
+      && matchAprobacion(mov)
       && matchFacturaCliente(mov)
+      && matchCajaChica(mov)
       && (empresaFacturacion.length === 0 || empresaFacturacion.includes(mov.empresa_facturacion)) // 🔹 NUEVO
     );
     
@@ -378,7 +426,10 @@ export function useMovimientosFilters({
 
     const checks = {
       fecha: base.filter((mov) => insideRange(mov, filters.fechaDesde, filters.fechaHasta)).length,
+      fechaCreacion: base.filter((mov) => insideAuditRange(mov.createdAt, filters.fechaCreacionDesde, filters.fechaCreacionHasta)).length,
+      fechaModificacion: base.filter((mov) => insideAuditRange(mov.updatedAt, filters.fechaModificacionDesde, filters.fechaModificacionHasta)).length,
       fechaPago: base.filter((mov) => insideRangePago(mov, filters.fechaPagoDesde, filters.fechaPagoHasta)).length,
+      usuarios: base.filter((mov) => filters.usuarios.length === 0 || filters.usuarios.includes(mov.nombre_user)).length,
       categoria: base.filter((mov) => filters.categorias.length === 0 || filters.categorias.includes(mov.categoria)).length,
       subcategoria: base.filter((mov) => filters.subcategorias.length === 0 || filters.subcategorias.includes(mov.subcategoria)).length,
       proveedor: base.filter((mov) => filters.proveedores.length === 0 || filters.proveedores.includes(mov.nombre_proveedor)).length,
@@ -388,10 +439,20 @@ export function useMovimientosFilters({
       estados: base.filter((mov) => filters.estados.length === 0 || filters.estados.includes(mov.estado)).length,
       empresaFacturacion: base.filter((mov) => filters.empresaFacturacion.length === 0 || filters.empresaFacturacion.includes(mov.empresa_facturacion)).length,
       codigoSync: base.filter((mov) => !filters.codigoSync || mov.codigo_sync === filters.codigoSync.trim()).length,
+      aprobacion: base.filter((mov) => {
+        if (!filters.aprobacion) return true;
+        const montoAprobado = Number(mov.monto_aprobado) || 0;
+        return filters.aprobacion === 'si' ? montoAprobado > 0 : montoAprobado <= 0;
+      }).length,
       facturaCliente: base.filter((mov) => {
         if (!filters.facturaCliente) return true;
         const isCliente = mov.factura_cliente === true;
         return filters.facturaCliente === 'cliente' ? isCliente : !isCliente;
+      }).length,
+      cajaChica: base.filter((mov) => {
+        if (!filters.cajaChica) return true;
+        const isCajaChica = mov.caja_chica === true;
+        return filters.cajaChica === 'si' ? isCajaChica : !isCajaChica;
       }).length,
       caja: base.filter((mov) => {
         const caja = filters.caja || cajaSeleccionada;

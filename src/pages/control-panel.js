@@ -20,6 +20,8 @@ import ContactsIcon from '@mui/icons-material/Contacts';
 import CurrencyExchangeIcon from '@mui/icons-material/CurrencyExchange';
 import HistoryIcon from '@mui/icons-material/History';
 import LeaderboardIcon from '@mui/icons-material/Leaderboard';
+import ManageSearchIcon from '@mui/icons-material/ManageSearch';
+import PaymentsOutlinedIcon from '@mui/icons-material/PaymentsOutlined';
 import PsychologyIcon from '@mui/icons-material/Psychology';
 import PersonSearchIcon from '@mui/icons-material/PersonSearch';
 import RocketLaunchIcon from '@mui/icons-material/RocketLaunch';
@@ -116,6 +118,7 @@ const ControlPanelPage = () => {
         { title: 'Analytics Onboarding', description: 'Adopción en primeros días', icon: RocketLaunchIcon, color: 'success', path: '/analyticsOnboarding' },
         { title: 'Empresas', description: 'Gestión y configuraciones', icon: BusinessIcon, color: 'primary', path: '/empresas' },
         { title: 'Perfiles Globales', description: 'Todos los perfiles con filtros cruzados', icon: PersonSearchIcon, color: 'warning', path: '/profiles-overview' },
+        { title: 'Movimientos Globales', description: 'Buscar movimientos en todas las empresas', icon: ManageSearchIcon, color: 'secondary', path: '/movimientos-globales' },
         { title: 'Usuarios del Bot', description: 'Estados activos en WhatsApp', icon: SmartToyIcon, color: 'info', path: '/bot-users', badge: !loading && stats.botUsers !== null ? `${stats.botUsers} activos` : null },
         { title: 'Conversaciones', description: 'Historial de mensajes', icon: ChatIcon, color: 'secondary', path: '/conversaciones' },
         { title: 'Monedas', description: 'Dólar, Blue, MEP e índices CAC', icon: CurrencyExchangeIcon, color: 'error', path: '/monedas' },

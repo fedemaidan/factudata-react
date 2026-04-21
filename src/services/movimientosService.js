@@ -571,6 +571,19 @@ const movimientosService = {
       throw err;
     }
   },
+
+  getResumenProveedores: async (params = {}) => {
+    try {
+      const response = await api.get('movimientos/resumen-proveedores', { params });
+      return {
+        success: !!response.data?.success,
+        resumen: response.data?.resumen || [],
+      };
+    } catch (err) {
+      console.error('Error al obtener resumen por proveedor:', err);
+      throw err;
+    }
+  },
   
   
 };

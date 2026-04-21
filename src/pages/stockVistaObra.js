@@ -52,10 +52,12 @@ const ESTADO_COLORS = {
   PENDIENTE: { bg: '#fff8e1', color: '#f57f17' },
   PENDIENTE_CONFIRMACION: { bg: '#fce4ec', color: '#c62828' },
   PARCIALMENTE_ENTREGADO: { bg: '#e0f2f1', color: '#00695c' },
+  EN_ACOPIO: { bg: '#f3e5f5', color: '#6a1b9a' },
 };
 
 const CLASIFICACION_COLORS = {
   asignado: { bg: '#e3f2fd', color: '#1565c0', label: 'Asignado', icon: 'warehouse' },
+  en_acopio: { bg: '#fff3e0', color: '#e65100', label: 'En acopio', icon: 'inventory' },
   en_obra: { bg: '#e8f5e9', color: '#2e7d32', label: 'En obra', icon: 'homeWork' },
 };
 
@@ -239,13 +241,22 @@ export default function StockVistaObra() {
                   </Stack>
                   <Typography variant="body2" color="text.secondary">Total valorizado</Typography>
                 </Paper>
-                <Paper sx={{ p: 2, flex: 1, textAlign: 'center', border: '1px solid', borderColor: '#1565c0' }}>
+                <Paper sx={{ p: 2, flex: 1, textAlign: 'center', border: '1px solid', borderColor: '#e65100' }}>
                   <Stack direction="row" spacing={1} justifyContent="center" alignItems="center">
-                    <LocalShippingIcon sx={{ color: '#1565c0' }} />
-                    <Typography variant="h6">{data.por_clasificacion?.asignado?.items || 0}</Typography>
+                    <InventoryIcon sx={{ color: '#e65100' }} />
+                    <Typography variant="h6">{data.por_clasificacion?.en_acopio?.items || 0}</Typography>
                   </Stack>
                   <Typography variant="body2" color="text.secondary">
-                    Asignado {data.por_clasificacion?.asignado?.total_valorizado ? `• ${fmtMoney(data.por_clasificacion.asignado.total_valorizado)}` : ''}
+                    En acopio {data.por_clasificacion?.en_acopio?.total_valorizado ? `• ${fmtMoney(data.por_clasificacion.en_acopio.total_valorizado)}` : ''}
+                  </Typography>
+                </Paper>
+                <Paper sx={{ p: 2, flex: 1, textAlign: 'center', border: '1px solid', borderColor: '#1565c0' }}>
+                  <Stack direction="row" spacing={1} justifyContent="center" alignItems="center">
+                    <WarehouseIcon sx={{ color: '#1565c0' }} />
+                    <Typography variant="h6">{data.por_clasificacion?.en_deposito?.items || 0}</Typography>
+                  </Stack>
+                  <Typography variant="body2" color="text.secondary">
+                    En depósito {data.por_clasificacion?.en_deposito?.total_valorizado ? `• ${fmtMoney(data.por_clasificacion.en_deposito.total_valorizado)}` : ''}
                   </Typography>
                 </Paper>
                 <Paper sx={{ p: 2, flex: 1, textAlign: 'center', border: '1px solid', borderColor: '#2e7d32' }}>
@@ -275,20 +286,6 @@ export default function StockVistaObra() {
                     <Typography variant="body2" color="text.secondary">Cantidad pendiente</Typography>
                   </Paper>
                 )}
-                <Paper sx={{ p: 2, textAlign: 'center' }}>
-                  <Stack direction="row" spacing={1} justifyContent="center" alignItems="center">
-                    <WarehouseIcon sx={{ color: ORIGEN_COLORS.stock_v2.color }} />
-                    <Typography variant="body1">{data.fuentes?.stock_v2 || 0}</Typography>
-                  </Stack>
-                  <Typography variant="body2" color="text.secondary">Depósito</Typography>
-                </Paper>
-                <Paper sx={{ p: 2, textAlign: 'center' }}>
-                  <Stack direction="row" spacing={1} justifyContent="center" alignItems="center">
-                    <InventoryIcon sx={{ color: ORIGEN_COLORS.acopio.color }} />
-                    <Typography variant="body1">{data.fuentes?.acopio || 0}</Typography>
-                  </Stack>
-                  <Typography variant="body2" color="text.secondary">Acopio</Typography>
-                </Paper>
               </Stack>
 
               {/* ── Filtros ── */}
@@ -299,7 +296,8 @@ export default function StockVistaObra() {
                     <InputLabel>Clasificación</InputLabel>
                     <Select value={filtroClasificacion} label="Clasificación" onChange={(e) => setFiltroClasificacion(e.target.value)}>
                       <MenuItem value="todos">Todos</MenuItem>
-                      <MenuItem value="asignado">Asignado</MenuItem>
+                      <MenuItem value="en_acopio">En acopio</MenuItem>
+                      <MenuItem value="asignado">En depósito</MenuItem>
                       <MenuItem value="en_obra">En obra</MenuItem>
                     </Select>
                   </FormControl>
@@ -319,6 +317,7 @@ export default function StockVistaObra() {
                       <MenuItem value="PENDIENTE">Pendiente</MenuItem>
                       <MenuItem value="PENDIENTE_CONFIRMACION">Pend. confirmación</MenuItem>
                       <MenuItem value="PARCIALMENTE_ENTREGADO">Parcial</MenuItem>
+                      <MenuItem value="EN_ACOPIO">En acopio</MenuItem>
                     </Select>
                   </FormControl>
                   <TextField

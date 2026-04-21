@@ -45,6 +45,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
     factura_cliente: false,
     dolar_referencia: false,
     detalle: false,
+    monto_aprobado: false,
   };
   const ingreso_info_default = {
     observacion: true,
@@ -217,6 +218,8 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
     "VER_PRESUPUESTOS_PROFESIONALES",
     "VER_PLANES_COBRO",
     "DHN_SYNC_DRIVE",
+    "VER_CONTROL_PAGOS",
+    "VER_CUENTA_CORRIENTE_PROVEEDORES",
   ];
 
   const celulandiaAcciones = [

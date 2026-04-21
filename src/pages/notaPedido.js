@@ -64,6 +64,10 @@ import AttachFileIcon from '@mui/icons-material/AttachFile';
 import SendIcon from '@mui/icons-material/Send';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import SearchIcon from '@mui/icons-material/Search';
+import ViewColumnIcon from '@mui/icons-material/ViewColumn';
+import Checkbox from '@mui/material/Checkbox';
+import FormControlLabel from '@mui/material/FormControlLabel';
+import Popover from '@mui/material/Popover';
 import Paper from '@mui/material/Paper';
 import Menu from '@mui/material/Menu';
 import ExcelJS from 'exceljs';
@@ -76,7 +80,30 @@ import { Timestamp } from 'firebase/firestore';
 import { Router } from 'react-router-dom';
 import { useRouter } from 'next/router';
 import { NotaPedidoAddDialog } from 'src/components/NotaPedidoAddDialog';
+import NotaPedidoPdfTemplateDialog, { NotaPedidoLogoRequeridoDialog } from 'src/components/NotaPedidoPdfDialogs';
 import { useBreadcrumbs } from 'src/contexts/breadcrumbs-context';
+import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
+import SettingsIcon from '@mui/icons-material/Settings';
+import { downloadNotaPedidoPdf } from 'src/utils/notaPedido/exportNotaPedidoToPdf';
+
+// ─── Design tokens ────────────────────────────────────────────────────────────
+const C = {
+  slate900: '#0f172a',
+  slate800: '#1e293b',
+  slate700: '#334155',
+  slate600: '#475569',
+  slate400: '#94a3b8',
+  slate200: '#e2e8f0',
+  slate100: '#f1f5f9',
+  slate50:  '#f8fafc',
+  indigo600: '#4f46e5',
+  indigo500: '#6366f1',
+  indigo50:  '#eef2ff',
+  indigo100: '#e0e7ff',
+  indigo200: '#c7d2fe',
+};
+
+const font = "'Plus Jakarta Sans', system-ui, sans-serif";
 
 const NotaPedidoPage = () => {
   const router = useRouter();
@@ -111,9 +138,36 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
   const [mobileMenuAnchor, setMobileMenuAnchor] = useState(null);
   const [mobileMenuNota, setMobileMenuNota] = useState(null);
+  const [openPdfPlantillasDialog, setOpenPdfPlantillasDialog] = useState(false);
+  const [openLogoRequeridoModal, setOpenLogoRequeridoModal] = useState(false);
+  const [pdfDownloading, setPdfDownloading] = useState(false);
+  const [basePdfTemplate, setBasePdfTemplate] = useState(null);
+  const [pdfUiLoading, setPdfUiLoading] = useState(false);
+  const [selectedPlantillaId, setSelectedPlantillaId] = useState(null);
+  const [columnMenuAnchor, setColumnMenuAnchor] = useState(null);
+  const [visibleColumns, setVisibleColumns] = useState({
+    codigo: true,
+    proyecto_nombre: true,
+    proveedor: true,
+    owner_name: true,
+    descripcion: true,
+    estado: true,
+    fechaCreacion: true,
+    fechaEstimadaFin: false,
+  });
+  const COLUMN_LABELS = {
+    codigo: 'Código',
+    proyecto_nombre: 'Proyecto',
+    proveedor: 'Proveedor',
+    owner_name: 'Asignado',
+    descripcion: 'Descripción',
+    estado: 'Estado',
+    fechaCreacion: 'Fecha Creación',
+    fechaEstimadaFin: 'Finalización estimada',
+  };
 
   const [formData, setFormData] = useState({
-    descripcion: '', proyecto_id: '', estado: '', owner: '', creador: '', proveedor: ''
+    descripcion: '', proyecto_id: '', estado: '', owner: '', creador: '', proveedor: '', fechaEstimadaFin: ''
   });
   const [filters, setFilters] = useState({ text: '', estado: '', proyecto_id: '', proveedor: '', misNotas: false });
   const [page, setPage] = useState(0);
@@ -262,6 +316,100 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
       console.error('Error al exportar a Excel:', error);
       setAlert({ open: true, message: 'Error al exportar a Excel', severity: 'error' });
     }
+  };
+
+  const getEmpresaId = () => user?.empresa?.id || user?.empresaData?.id || user?.empresa_id;
+
+  const loadPdfBaseForDrawer = useCallback(async () => {
+    const eid = getEmpresaId();
+    if (!eid) return;
+    const base = await notaPedidoService.getPdfBaseTemplate(eid);
+    setBasePdfTemplate(base);
+  }, [user]);
+
+  useEffect(() => {
+    if (user) loadPdfBaseForDrawer();
+  }, [user, loadPdfBaseForDrawer]);
+
+  useEffect(() => {
+    if (comentariosDialogNota) loadPdfBaseForDrawer();
+  }, [comentariosDialogNota, loadPdfBaseForDrawer]);
+
+  const handleDownloadPdfNota = async () => {
+    if (!comentariosDialogNota) return;
+    const eid = getEmpresaId();
+    if (!eid) {
+      setAlert({ open: true, message: 'No se pudo identificar la empresa', severity: 'error' });
+      return;
+    }
+    setPdfDownloading(true);
+    try {
+      const result = await notaPedidoService.postPdfRenderConfig({
+        notaId: comentariosDialogNota.id,
+        empresaId: eid,
+        plantillaId: selectedPlantillaId || undefined,
+      });
+      if (!result.success) {
+        if (result.needsLogo) { setOpenLogoRequeridoModal(true); return; }
+        setAlert({ open: true, message: result.errorMessage || 'No se pudo generar el PDF', severity: 'error' });
+        return;
+      }
+      const cfg = result.config;
+      if (!cfg?.layout) throw new Error('Sin configuración de PDF');
+      await downloadNotaPedidoPdf({
+        nota: comentariosDialogNota,
+        layout: cfg.layout,
+        logoUrl: cfg.logoUrl,
+        empresaNombre: cfg.empresaNombre,
+        templateId: cfg.templateId || null,
+      });
+      setAlert({ open: true, message: 'PDF descargado', severity: 'success' });
+    } catch (err) {
+      console.error(err);
+      setAlert({ open: true, message: 'No se pudo generar el PDF', severity: 'error' });
+    } finally {
+      setPdfDownloading(false);
+    }
+  };
+
+  const handleSaveLogoFromDialog = async (file) => {
+    const eid = getEmpresaId();
+    if (!eid || !file) return;
+    setPdfUiLoading(true);
+    try {
+      const url = await notaPedidoService.uploadPdfTemplateLogo(eid, file);
+      if (!url) throw new Error('Upload falló');
+      const updatedBase = await notaPedidoService.putPdfBaseLogo(eid, { logo_url: url });
+      setBasePdfTemplate(updatedBase);
+      await loadPdfBaseForDrawer();
+      setAlert({ open: true, message: 'Logo guardado', severity: 'success' });
+    } catch (e) {
+      console.error(e);
+      setAlert({ open: true, message: 'Error al guardar el logo', severity: 'error' });
+    } finally {
+      setPdfUiLoading(false);
+    }
+  };
+
+  const handleLogoRequiredSaveAndDownload = async (file) => {
+    const eid = getEmpresaId();
+    if (!eid || !file) return;
+    setPdfUiLoading(true);
+    try {
+      const url = await notaPedidoService.uploadPdfTemplateLogo(eid, file);
+      if (!url) throw new Error('Upload falló');
+      const updatedBase = await notaPedidoService.putPdfBaseLogo(eid, { logo_url: url });
+      setBasePdfTemplate(updatedBase);
+      setOpenLogoRequeridoModal(false);
+      await loadPdfBaseForDrawer();
+    } catch (e) {
+      console.error(e);
+      setAlert({ open: true, message: 'Error al guardar el logo', severity: 'error' });
+      setPdfUiLoading(false);
+      return;
+    }
+    setPdfUiLoading(false);
+    await handleDownloadPdfNota();
   };
 
   
@@ -444,7 +592,7 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
 
   const handleEdit = (nota) => {
     setCurrentNota(nota);
-    setFormData({ descripcion: nota.descripcion, estado: nota.estado, owner: nota.owner, creador: nota.creador, proyecto_id: nota.proyecto_id, proveedor: nota.proveedor });
+    setFormData({ descripcion: nota.descripcion, estado: nota.estado, owner: nota.owner, creador: nota.creador, proyecto_id: nota.proyecto_id, proveedor: nota.proveedor, fechaEstimadaFin: nota.fechaEstimadaFin ? new Date(nota.fechaEstimadaFin instanceof Object && nota.fechaEstimadaFin.seconds ? nota.fechaEstimadaFin.seconds * 1000 : nota.fechaEstimadaFin).toISOString().split('T')[0] : '' });
     setIsEditing(true);
   };
 
@@ -779,6 +927,11 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
               <DownloadIcon />
             </IconButton>
           </Tooltip>
+          <Tooltip title="Columnas visibles">
+            <IconButton onClick={(e) => setColumnMenuAnchor(e.currentTarget)} size="small">
+              <ViewColumnIcon />
+            </IconButton>
+          </Tooltip>
           <Button
             variant="contained"
             size="small"
@@ -792,6 +945,107 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
     </Box>
   )}
 </Stack>
+
+{/* Popover selector de columnas */}
+<Popover
+  open={Boolean(columnMenuAnchor)}
+  anchorEl={columnMenuAnchor}
+  onClose={() => setColumnMenuAnchor(null)}
+  anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+  transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+>
+  <Box sx={{ p: 2, minWidth: 220 }}>
+    <Typography variant="subtitle2" sx={{ mb: 1 }}>Columnas visibles</Typography>
+    {Object.entries(COLUMN_LABELS).map(([key, label]) => (
+      <Box key={key} sx={{ display: 'block' }}>
+        <FormControlLabel
+          control={
+            <Checkbox
+              checked={visibleColumns[key]}
+              onChange={(e) => setVisibleColumns(prev => ({ ...prev, [key]: e.target.checked }))}
+              size="small"
+            />
+          }
+          label={<Typography variant="body2">{label}</Typography>}
+        />
+      </Box>
+    ))}
+  </Box>
+</Popover>
+
+        {/* ── PDF CONFIG STRIP ─────────────────────────────────────────────── */}
+        <Paper
+          elevation={0}
+          sx={{
+            mb: 2.5,
+            px: { xs: 2, md: 2.5 },
+            py: 1.5,
+            border: `1.5px dashed ${alpha(C.indigo500, 0.35)}`,
+            borderRadius: 3,
+            background: `linear-gradient(135deg, ${alpha(C.indigo50, 0.9)} 0%, ${alpha(C.indigo100, 0.5)} 100%)`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 1.5,
+          }}
+        >
+          <Stack direction="row" spacing={2} alignItems="center">
+            <Box sx={{
+              width: 44, height: 44, borderRadius: 2,
+              bgcolor: 'white',
+              border: `1px solid ${alpha(C.indigo500, 0.2)}`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              overflow: 'hidden',
+              boxShadow: `0 2px 8px ${alpha(C.indigo500, 0.1)}`,
+              flexShrink: 0,
+            }}>
+              {basePdfTemplate?.logo_url ? (
+                <img
+                  src={basePdfTemplate.logo_url}
+                  alt="logo empresa"
+                  style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 6 }}
+                />
+              ) : (
+                <PictureAsPdfIcon sx={{ color: alpha(C.indigo500, 0.5), fontSize: 22 }} />
+              )}
+            </Box>
+            <Box>
+              <Typography
+                variant="caption"
+                sx={{ color: C.indigo600, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', fontFamily: font, lineHeight: 1, display: 'block' }}
+              >
+                Configuración de PDF
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.3, lineHeight: 1.3, fontFamily: font }}>
+                {pdfUiLoading
+                  ? 'Actualizando...'
+                  : basePdfTemplate?.logo_url
+                    ? selectedPlantillaId
+                      ? 'Logo configurado · Plantilla personalizada activa'
+                      : 'Logo configurado · Plantilla base activa'
+                    : 'Sin logo — requerido para generar PDFs'}
+              </Typography>
+            </Box>
+          </Stack>
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<SettingsIcon sx={{ fontSize: 16 }} />}
+            onClick={() => { setOpenPdfPlantillasDialog(true); loadPdfBaseForDrawer(); }}
+            sx={{
+              borderColor: alpha(C.indigo500, 0.5),
+              color: C.indigo600,
+              fontFamily: font,
+              fontWeight: 600,
+              borderRadius: 2,
+              textTransform: 'none',
+              '&:hover': { borderColor: C.indigo500, bgcolor: alpha(C.indigo500, 0.06) },
+            }}
+          >
+            Gestionar plantillas
+          </Button>
+        </Paper>
 
         {/* Estado de carga */}
         {loading && (
@@ -1021,27 +1275,46 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
           <Table>
             <TableHead>
               <TableRow>
+                {visibleColumns.codigo && (
                 <TableCell onClick={() => handleSort('codigo')} sx={{ cursor: 'pointer', userSelect: 'none' }}>
                   Código {sortConfig.key === 'codigo' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
                 </TableCell>
+                )}
+                {visibleColumns.proyecto_nombre && (
                 <TableCell onClick={() => handleSort('proyecto_nombre')} sx={{ cursor: 'pointer', userSelect: 'none' }}>
                   Proyecto {sortConfig.key === 'proyecto_nombre' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
                 </TableCell>
+                )}
+                {visibleColumns.proveedor && (
                 <TableCell onClick={() => handleSort('proveedor')} sx={{ cursor: 'pointer', userSelect: 'none' }}>
                   Proveedor {sortConfig.key === 'proveedor' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
                 </TableCell>
+                )}
+                {visibleColumns.owner_name && (
                 <TableCell onClick={() => handleSort('owner_name')} sx={{ cursor: 'pointer', userSelect: 'none' }}>
                   Asignado {sortConfig.key === 'owner_name' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
                 </TableCell>
+                )}
+                {visibleColumns.descripcion && (
                 <TableCell onClick={() => handleSort('descripcion')} sx={{ cursor: 'pointer', userSelect: 'none' }}>
                   Descripción {sortConfig.key === 'descripcion' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
                 </TableCell>
+                )}
+                {visibleColumns.estado && (
                 <TableCell onClick={() => handleSort('estado')} sx={{ cursor: 'pointer', userSelect: 'none' }}>
                   Estado {sortConfig.key === 'estado' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
                 </TableCell>
+                )}
+                {visibleColumns.fechaCreacion && (
                 <TableCell onClick={() => handleSort('fechaCreacion')} sx={{ cursor: 'pointer', userSelect: 'none' }}>
                   Fecha Creación {sortConfig.key === 'fechaCreacion' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
                 </TableCell>
+                )}
+                {visibleColumns.fechaEstimadaFin && (
+                <TableCell onClick={() => handleSort('fechaEstimadaFin')} sx={{ cursor: 'pointer', userSelect: 'none' }}>
+                  Finalización estimada {sortConfig.key === 'fechaEstimadaFin' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
+                </TableCell>
+                )}
                 <TableCell sx={{ textAlign: 'right' }}>Acciones</TableCell>
               </TableRow>
             </TableHead>
@@ -1059,9 +1332,10 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
                     cursor: 'pointer',
                   }}
                 >
-                  <TableCell>{nota.codigo}</TableCell>
-                  <TableCell>{nota.proyecto_nombre}</TableCell>
-                  <TableCell>{nota.proveedor}</TableCell>
+                  {visibleColumns.codigo && <TableCell>{nota.codigo}</TableCell>}
+                  {visibleColumns.proyecto_nombre && <TableCell>{nota.proyecto_nombre}</TableCell>}
+                  {visibleColumns.proveedor && <TableCell>{nota.proveedor}</TableCell>}
+                  {visibleColumns.owner_name && (
                   <TableCell>
                     <Typography variant="body2">{nota.owner_name}</Typography>
                     {nota.creador_name && nota.creador_name !== nota.owner_name && (
@@ -1070,6 +1344,8 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
                       </Typography>
                     )}
                   </TableCell>
+                  )}
+                  {visibleColumns.descripcion && (
                   <TableCell sx={{ maxWidth: 300 }}>
                     <Tooltip 
                       title={nota.descripcion || ''} 
@@ -1103,7 +1379,8 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
                       </Button>
                     )}
                   </TableCell>
-
+                  )}
+                  {visibleColumns.estado && (
                   <TableCell>
                     <Chip
                       label={nota.estado}
@@ -1112,7 +1389,9 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
                       }
                     />
                   </TableCell>
-                  <TableCell>{formatTimestamp(nota.fechaCreacion)}</TableCell>
+                  )}
+                  {visibleColumns.fechaCreacion && <TableCell>{formatTimestamp(nota.fechaCreacion)}</TableCell>}
+                  {visibleColumns.fechaEstimadaFin && <TableCell>{nota.fechaEstimadaFin ? formatTimestamp(nota.fechaEstimadaFin) : '—'}</TableCell>}
                   <TableCell sx={{ minWidth: 140 }} onClick={(e) => e.stopPropagation()}>
                     <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end">
                       {/* Acción principal visible */}
@@ -1268,7 +1547,14 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
       </MenuItem>
   </Select>
 </FormControl>
-
+<TextField
+  label="Fecha estimada de finalización"
+  type="date"
+  value={formData.fechaEstimadaFin || ''}
+  onChange={(e) => setFormData({ ...formData, fechaEstimadaFin: e.target.value || null })}
+  fullWidth
+  InputLabelProps={{ shrink: true }}
+/>
     </Stack>
   </DialogContent>
   <DialogActions>
@@ -1319,6 +1605,29 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
     </Button>
   </DialogActions>
 </Dialog>
+
+<NotaPedidoLogoRequeridoDialog
+  open={openLogoRequeridoModal}
+  onClose={() => setOpenLogoRequeridoModal(false)}
+  loading={pdfUiLoading}
+  onSaveAndDownload={handleLogoRequiredSaveAndDownload}
+/>
+
+<NotaPedidoPdfTemplateDialog
+  open={openPdfPlantillasDialog}
+  onClose={() => setOpenPdfPlantillasDialog(false)}
+  baseTemplate={basePdfTemplate}
+  loading={pdfUiLoading}
+  onSaveLogo={handleSaveLogoFromDialog}
+  empresaId={getEmpresaId()}
+  sampleNota={comentariosDialogNota}
+  selectedPlantillaId={selectedPlantillaId}
+  onTemplateSelected={(id) => setSelectedPlantillaId(id)}
+  onPlantillaGuardada={() => {
+    loadPdfBaseForDrawer();
+    setAlert({ open: true, message: 'Plantilla guardada correctamente', severity: 'success' });
+  }}
+/>
 
 {/* Drawer lateral estilo Notion para ver detalles de la nota */}
 <Drawer
@@ -1454,6 +1763,16 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
           >
             Eliminar
           </Button>
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={pdfDownloading ? <CircularProgress size={12} color="inherit" /> : <PictureAsPdfIcon />}
+            disabled={pdfDownloading}
+            onClick={handleDownloadPdfNota}
+            sx={{ textTransform: 'none', fontWeight: 600, borderRadius: 2, fontSize: '0.8rem' }}
+          >
+            Descargar PDF
+          </Button>
         </Stack>
       </Box>
 
@@ -1555,6 +1874,18 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
                 <Box>
                   <Typography variant="caption" color="text.secondary">Fecha</Typography>
                   <Typography variant="body2" fontWeight={500}>{formatTimestamp(comentariosDialogNota.fechaCreacion)}</Typography>
+                </Box>
+              </Stack>
+
+              <Stack direction="row" spacing={1.5} alignItems="center">
+                <Box sx={{ p: 1, bgcolor: 'action.hover', borderRadius: 1 }}>
+                  <CalendarTodayIcon fontSize="small" color="action" />
+                </Box>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Finalización estimada</Typography>
+                  <Typography variant="body2" fontWeight={500}>
+                    {comentariosDialogNota.fechaEstimadaFin ? formatTimestamp(comentariosDialogNota.fechaEstimadaFin) : '—'}
+                  </Typography>
                 </Box>
               </Stack>
             </Box>
