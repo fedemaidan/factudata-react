@@ -382,6 +382,24 @@ const PedidoDetalleModal = ({ open, onClose, resumen }) => {
     setAsignacionesNuevas((prev) => prev.filter((asignacion) => asignacion.id !== id));
   };
 
+  const handleAsignarTodasAContenedor = (config, { soloSinContenedor = false } = {}) => {
+    const aplicar = (asignacion) => {
+      if (soloSinContenedor && asignacion.tipoContenedor !== "sin") return asignacion;
+      return {
+        ...asignacion,
+        tipoContenedor: config.tipoContenedor,
+        contenedorId: config.tipoContenedor === "existente" ? config.contenedorId || "" : "",
+        contenedorCodigo:
+          config.tipoContenedor === "existente" || config.tipoContenedor === "nuevo"
+            ? config.contenedorCodigo || ""
+            : "",
+        contenedorFechaEstimada: config.contenedorFechaEstimada || "",
+      };
+    };
+    setAsignacionesEdicion((prev) => prev.map(aplicar));
+    setAsignacionesNuevas((prev) => prev.map(aplicar));
+  };
+
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
       <DialogTitle>Detalle del pedido {pedido?.numeroPedido}</DialogTitle>
@@ -459,6 +477,7 @@ const PedidoDetalleModal = ({ open, onClose, resumen }) => {
             onEliminarAsignacion={handleEliminarAsignacion}
             onEditarAsignacionNueva={handleEditarAsignacionNueva}
             onEliminarAsignacionNueva={handleEliminarAsignacionNueva}
+            onAsignarTodasAContenedor={handleAsignarTodasAContenedor}
           />
         )}
       </DialogContent>

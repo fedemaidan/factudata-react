@@ -3,10 +3,9 @@ import config from "src/config/config";
 import { auth } from "src/config/firebase"; // Asegúrate de tener la referencia correcta a tu configuración de Firebase
 
 const isProduction = process.env.NODE_ENV === "production";
-// const apiUrl = isProduction ? 'https://stock-whatsapp-sorby-production.up.railway.app' : 'http://localhost:3000/';
 const apiUrl = isProduction
-  ? "https://api.sorbydata.com/celulandia/api"
-  : "http://localhost:3002/api/";
+  ? "https://api.sorbydata.com/api/celulandia"
+  : "http://localhost:3003/api/celulandia";
 // Crea una instancia de axios
 const api = axios.create({
   baseURL: apiUrl,
@@ -26,7 +25,7 @@ const waitForUser = () =>
   });
 
 const waitForAuthReady = async () => {
-  if (typeof auth.authStateReady === 'function') {
+  if (typeof auth.authStateReady === "function") {
     await auth.authStateReady();
   }
 };
@@ -41,9 +40,9 @@ api.interceptors.request.use(
         config.headers["Authorization"] = `Bearer ${token}`;
       }
     } catch (error) {
-      const fallbackToken = window.localStorage.getItem('authToken');
+      const fallbackToken = window.localStorage.getItem("authToken");
       if (fallbackToken) {
-        config.headers['Authorization'] = `Bearer ${fallbackToken}`;
+        config.headers["Authorization"] = `Bearer ${fallbackToken}`;
         return config;
       }
       console.error("Error al obtener el token de Firebase:", error);
@@ -51,7 +50,7 @@ api.interceptors.request.use(
     }
     return config;
   },
-  (error) => Promise.reject(error)
+  (error) => Promise.reject(error),
 );
 
 api.interceptors.response.use(
@@ -78,7 +77,7 @@ api.interceptors.response.use(
     }
 
     return Promise.reject(error); // Si no es un error 401, o ya se reintentó, lanza el error
-  }
+  },
 );
 
 export default api;
