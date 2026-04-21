@@ -218,6 +218,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
     "VER_VALIDACION_BORRADORES",
     "VER_PRESUPUESTOS_PROFESIONALES",
     "VER_PLANES_COBRO",
+    "DHN_SYNC_DRIVE",
     "VER_CONTROL_PAGOS",
     "VER_CUENTA_CORRIENTE_PROVEEDORES",
   ];
