@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useCallback, useState } from 'react';
 import { useRouter } from 'next/router';
 import dayjs from 'dayjs';
+import 'dayjs/locale/es';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { Container, Stack, Alert, Box, TextField, InputAdornment, IconButton } from '@mui/material';
 import ClearIcon from '@mui/icons-material/Clear';
@@ -139,7 +140,7 @@ const ControlDiarioPage = () => {
     <DashboardLayout title="Control Diario">
       <Container maxWidth="xl">
         <Stack spacing={3}>
-          <LocalizationProvider dateAdapter={AdapterDayjs}>
+          <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="es">
             <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
               <DatePicker
                 label="Día"

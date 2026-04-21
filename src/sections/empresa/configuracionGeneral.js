@@ -218,10 +218,13 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
     "VER_VALIDACION_BORRADORES",
     "VER_PRESUPUESTOS_PROFESIONALES",
     "VER_PLANES_COBRO",
-    "DHN_SYNC_DRIVE",
     "VER_CONTROL_PAGOS",
     "VER_CUENTA_CORRIENTE_PROVEEDORES",
   ];
+
+  const dhnAcciones = [
+    "DHN_SYNC_DRIVE",
+  ]
 
   const celulandiaAcciones = [
     "CELULANDIA_COMPROBANTES",
@@ -238,6 +241,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
     "CELULANDIA_BACKUPS"
   ];
 
+  opcionesAcciones.push(...dhnAcciones);
   opcionesAcciones.push(...celulandiaAcciones);
 
   const dolarAjuste = [
