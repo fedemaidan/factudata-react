@@ -144,6 +144,9 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
   const [basePdfTemplate, setBasePdfTemplate] = useState(null);
   const [pdfUiLoading, setPdfUiLoading] = useState(false);
   const [selectedPlantillaId, setSelectedPlantillaId] = useState(null);
+  const [selectedNotaIds, setSelectedNotaIds] = useState(new Set());
+  const [bulkPdfDownloading, setBulkPdfDownloading] = useState(false);
+  const [bulkPdfProgress, setBulkPdfProgress] = useState({ current: 0, total: 0 });
   const [columnMenuAnchor, setColumnMenuAnchor] = useState(null);
   const [visibleColumns, setVisibleColumns] = useState({
     codigo: true,
@@ -369,6 +372,64 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
       setAlert({ open: true, message: 'No se pudo generar el PDF', severity: 'error' });
     } finally {
       setPdfDownloading(false);
+    }
+  };
+
+  const toggleSelectNota = useCallback((id, e) => {
+    e.stopPropagation();
+    setSelectedNotaIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const toggleSelectAll = useCallback(() => {
+    if (selectedNotaIds.size === paginatedNotas.length && paginatedNotas.length > 0) {
+      setSelectedNotaIds(new Set());
+    } else {
+      setSelectedNotaIds(new Set(paginatedNotas.map(n => n.id)));
+    }
+  }, [selectedNotaIds.size, paginatedNotas]);
+
+  const handleBulkDownloadPdf = async () => {
+    const eid = getEmpresaId();
+    if (!eid || selectedNotaIds.size === 0) return;
+    const selectedList = sortedNotas.filter(n => selectedNotaIds.has(n.id));
+    setBulkPdfDownloading(true);
+    setBulkPdfProgress({ current: 0, total: selectedList.length });
+    try {
+      const configResult = await notaPedidoService.postPdfRenderConfig({
+        notaId: selectedList[0].id,
+        empresaId: eid,
+        plantillaId: selectedPlantillaId || undefined,
+      });
+      if (!configResult.success) {
+        if (configResult.needsLogo) { setOpenLogoRequeridoModal(true); return; }
+        setAlert({ open: true, message: configResult.errorMessage || 'Error de configuración', severity: 'error' });
+        return;
+      }
+      const cfg = configResult.config;
+      for (let i = 0; i < selectedList.length; i++) {
+        setBulkPdfProgress({ current: i + 1, total: selectedList.length });
+        await downloadNotaPedidoPdf({
+          nota: selectedList[i],
+          layout: cfg.layout,
+          logoUrl: cfg.logoUrl,
+          empresaNombre: cfg.empresaNombre,
+          templateId: cfg.templateId || null,
+        });
+        if (i < selectedList.length - 1) await new Promise(r => setTimeout(r, 400));
+      }
+      setAlert({ open: true, message: `${selectedList.length} PDF${selectedList.length !== 1 ? 's' : ''} descargados`, severity: 'success' });
+      setSelectedNotaIds(new Set());
+    } catch (err) {
+      console.error(err);
+      setAlert({ open: true, message: 'Error al generar los PDFs', severity: 'error' });
+    } finally {
+      setBulkPdfDownloading(false);
+      setBulkPdfProgress({ current: 0, total: 0 });
     }
   };
 
@@ -1101,19 +1162,33 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
           <Box sx={{ pb: 16 }}>{/* padding inferior para no tapar con la toolbar fija */}
             <Stack spacing={1.5}>
               {paginatedNotas.map((nota) => (
-                <Card 
+                <Card
                   key={nota.id}
                   onClick={() => setComentariosDialogNota(nota)}
-                  sx={{ 
+                  sx={{
                     cursor: 'pointer',
                     '&:active': { transform: 'scale(0.98)' },
-                    transition: 'transform 0.1s',
+                    transition: 'transform 0.1s, background-color 0.15s',
+                    backgroundColor: selectedNotaIds.has(nota.id) ? alpha(C.indigo50, 0.9) : undefined,
+                    border: selectedNotaIds.has(nota.id) ? `1.5px solid ${alpha(C.indigo500, 0.4)}` : '1.5px solid transparent',
                   }}
                 >
                   <CardContent sx={{ py: 1.5, px: 2, '&:last-child': { pb: 1.5 } }}>
                     {/* Header: código + estado + menú */}
                     <Stack direction="row" alignItems="center" justifyContent="space-between">
                       <Stack direction="row" spacing={1} alignItems="center" sx={{ flex: 1, minWidth: 0 }}>
+                        <Checkbox
+                          checked={selectedNotaIds.has(nota.id)}
+                          onChange={(e) => toggleSelectNota(nota.id, e)}
+                          onClick={(e) => e.stopPropagation()}
+                          size="small"
+                          sx={{
+                            p: 0.25,
+                            mr: 0.5,
+                            color: alpha(C.indigo500, 0.4),
+                            '&.Mui-checked': { color: C.indigo600 },
+                          }}
+                        />
                         <Typography variant="subtitle2" fontWeight={700} noWrap>
                           #{nota.codigo}
                         </Typography>
@@ -1275,6 +1350,15 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
           <Table>
             <TableHead>
               <TableRow>
+                <TableCell padding="checkbox" onClick={(e) => e.stopPropagation()} sx={{ width: 48 }}>
+                  <Checkbox
+                    indeterminate={selectedNotaIds.size > 0 && selectedNotaIds.size < paginatedNotas.length}
+                    checked={paginatedNotas.length > 0 && selectedNotaIds.size === paginatedNotas.length}
+                    onChange={toggleSelectAll}
+                    size="small"
+                    sx={{ color: alpha(C.indigo500, 0.5), '&.Mui-checked, &.MuiCheckbox-indeterminate': { color: C.indigo600 } }}
+                  />
+                </TableCell>
                 {visibleColumns.codigo && (
                 <TableCell onClick={() => handleSort('codigo')} sx={{ cursor: 'pointer', userSelect: 'none' }}>
                   Código {sortConfig.key === 'codigo' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
@@ -1321,17 +1405,32 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
 
             <TableBody>
               {paginatedNotas.map((nota) => (
-                <TableRow 
+                <TableRow
                   key={nota.id}
                   onClick={() => setComentariosDialogNota(nota)}
                   sx={{
                     '&:hover': {
-                      backgroundColor: 'action.hover',
+                      backgroundColor: selectedNotaIds.has(nota.id) ? alpha(C.indigo100, 0.7) : 'action.hover',
+                      '& .row-checkbox': { opacity: 1 },
                     },
-                    transition: 'background-color 0.2s',
+                    transition: 'background-color 0.15s',
                     cursor: 'pointer',
+                    backgroundColor: selectedNotaIds.has(nota.id) ? alpha(C.indigo50, 0.9) : undefined,
                   }}
                 >
+                  <TableCell padding="checkbox" onClick={(e) => toggleSelectNota(nota.id, e)} sx={{ width: 48 }}>
+                    <Checkbox
+                      className="row-checkbox"
+                      checked={selectedNotaIds.has(nota.id)}
+                      size="small"
+                      sx={{
+                        opacity: selectedNotaIds.has(nota.id) ? 1 : 0,
+                        transition: 'opacity 0.15s',
+                        color: alpha(C.indigo500, 0.5),
+                        '&.Mui-checked': { color: C.indigo600 },
+                      }}
+                    />
+                  </TableCell>
                   {visibleColumns.codigo && <TableCell>{nota.codigo}</TableCell>}
                   {visibleColumns.proyecto_nombre && <TableCell>{nota.proyecto_nombre}</TableCell>}
                   {visibleColumns.proveedor && <TableCell>{nota.proveedor}</TableCell>}
@@ -2320,6 +2419,133 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
             {alert.message}
           </Alert>
         </Snackbar>
+
+        {/* ── Bulk action bar ─────────────────────────────────────────────── */}
+        {selectedNotaIds.size > 0 && (
+          <Paper
+            elevation={0}
+            sx={{
+              position: 'fixed',
+              bottom: isMobile ? 76 : 28,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              zIndex: 1300,
+              borderRadius: 3,
+              px: 2.5,
+              py: 1.25,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 2,
+              background: `linear-gradient(135deg, ${C.slate900} 0%, ${C.slate800} 100%)`,
+              border: `1px solid ${alpha(C.indigo500, 0.35)}`,
+              boxShadow: `0 12px 40px ${alpha(C.slate900, 0.45)}, 0 0 0 1px ${alpha(C.indigo500, 0.15)}, inset 0 1px 0 ${alpha('#ffffff', 0.04)}`,
+              minWidth: isMobile ? 'calc(100vw - 32px)' : 360,
+              maxWidth: isMobile ? 'calc(100vw - 32px)' : 560,
+            }}
+          >
+            {/* Count / progress */}
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              {bulkPdfDownloading ? (
+                <Box>
+                  <Stack direction="row" justifyContent="space-between" mb={0.5}>
+                    <Typography variant="caption" sx={{ color: alpha('#ffffff', 0.7), fontFamily: font }}>
+                      Descargando {bulkPdfProgress.current} de {bulkPdfProgress.total}...
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: C.indigo500, fontWeight: 700, fontFamily: font }}>
+                      {Math.round((bulkPdfProgress.current / bulkPdfProgress.total) * 100)}%
+                    </Typography>
+                  </Stack>
+                  <LinearProgress
+                    variant="determinate"
+                    value={(bulkPdfProgress.current / bulkPdfProgress.total) * 100}
+                    sx={{
+                      height: 3,
+                      borderRadius: 2,
+                      bgcolor: alpha('#ffffff', 0.08),
+                      '& .MuiLinearProgress-bar': {
+                        borderRadius: 2,
+                        background: `linear-gradient(90deg, ${C.indigo600}, ${C.indigo500})`,
+                      },
+                    }}
+                  />
+                </Box>
+              ) : (
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <Box
+                    sx={{
+                      width: 22,
+                      height: 22,
+                      borderRadius: 1,
+                      bgcolor: alpha(C.indigo500, 0.2),
+                      border: `1px solid ${alpha(C.indigo500, 0.4)}`,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <Typography variant="caption" sx={{ color: C.indigo500, fontWeight: 700, fontSize: '0.65rem', lineHeight: 1 }}>
+                      {selectedNotaIds.size}
+                    </Typography>
+                  </Box>
+                  <Typography variant="body2" sx={{ color: alpha('#ffffff', 0.9), fontFamily: font, fontWeight: 500 }}>
+                    Nota{selectedNotaIds.size !== 1 ? 's' : ''} seleccionada{selectedNotaIds.size !== 1 ? 's' : ''}
+                  </Typography>
+                </Stack>
+              )}
+            </Box>
+
+            {/* Deselect */}
+            <Button
+              size="small"
+              onClick={() => setSelectedNotaIds(new Set())}
+              disabled={bulkPdfDownloading}
+              sx={{
+                color: alpha('#ffffff', 0.5),
+                fontFamily: font,
+                fontWeight: 500,
+                textTransform: 'none',
+                fontSize: '0.78rem',
+                minWidth: 'auto',
+                px: 1,
+                '&:hover': { color: alpha('#ffffff', 0.85), bgcolor: alpha('#ffffff', 0.06) },
+              }}
+            >
+              Limpiar
+            </Button>
+
+            {/* Download PDFs */}
+            <Button
+              variant="contained"
+              size="small"
+              startIcon={bulkPdfDownloading
+                ? <CircularProgress size={13} sx={{ color: 'white' }} />
+                : <PictureAsPdfIcon sx={{ fontSize: '14px !important' }} />
+              }
+              onClick={handleBulkDownloadPdf}
+              disabled={bulkPdfDownloading}
+              sx={{
+                background: `linear-gradient(135deg, ${C.indigo600} 0%, ${C.indigo500} 100%)`,
+                fontFamily: font,
+                fontWeight: 600,
+                textTransform: 'none',
+                fontSize: '0.82rem',
+                px: 2,
+                py: 0.75,
+                borderRadius: 2,
+                boxShadow: `0 4px 14px ${alpha(C.indigo600, 0.5)}`,
+                '&:hover': {
+                  background: `linear-gradient(135deg, ${C.indigo500} 0%, ${C.indigo600} 100%)`,
+                  boxShadow: `0 6px 20px ${alpha(C.indigo600, 0.6)}`,
+                },
+                '&:disabled': { background: alpha(C.indigo600, 0.35), boxShadow: 'none' },
+                whiteSpace: 'nowrap',
+              }}
+            >
+              Descargar PDF{selectedNotaIds.size !== 1 ? 's' : ''}
+            </Button>
+          </Paper>
+        )}
       </Container>
     </Box>
   );
