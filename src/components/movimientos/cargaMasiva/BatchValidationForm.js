@@ -3,6 +3,7 @@ import {
   Box,
   Button,
   FormControl,
+  FormHelperText,
   InputLabel,
   MenuItem,
   Select,
@@ -29,6 +30,13 @@ const MONEY_FIELDS = new Set([
   'total_dolar',
   'monto_pagado',
 ]);
+
+const REQUIRED_FIELDS = new Set(['total', 'fecha_factura']);
+
+// Fields rendered before proyecto, then after, then rest
+const PRIORITY_BEFORE_PROYECTO = ['total', 'moneda'];
+const PRIORITY_AFTER_PROYECTO = ['fecha_factura', 'fecha_pago'];
+const PRIORITY_ALL = new Set([...PRIORITY_BEFORE_PROYECTO, ...PRIORITY_AFTER_PROYECTO]);
 
 /**
  * Formulario de validación por ítem (misma lógica de campos que EditarBorradorDrawer).
@@ -65,15 +73,28 @@ const BatchValidationForm = ({
   );
 
   const camposVisibles = useMemo(() => {
-    const vis = getCamposVisibles(comprobanteInfo, empresa, ingresoInfo, tipoMov).filter(
+    return getCamposVisibles(comprobanteInfo, empresa, ingresoInfo, tipoMov).filter(
       (campo) => campo.name !== 'type',
     );
-    const priority = ['fecha_factura'];
-    if (camposConfig.fecha_pago) priority.push('fecha_pago');
-    const head = priority.map((n) => vis.find((c) => c.name === n)).filter(Boolean);
-    const tail = vis.filter((c) => !priority.includes(c.name));
-    return [...head, ...tail];
-  }, [comprobanteInfo, empresa, ingresoInfo, tipoMov, camposConfig.fecha_pago]);
+  }, [comprobanteInfo, empresa, ingresoInfo, tipoMov]);
+
+  // Group fields into rendering order: [total, moneda] → proyecto → [fecha_factura, fecha_pago?] → rest
+  const headBeforeProyecto = useMemo(
+    () =>
+      PRIORITY_BEFORE_PROYECTO.map((n) => camposVisibles.find((c) => c.name === n)).filter(Boolean),
+    [camposVisibles],
+  );
+
+  const headAfterProyecto = useMemo(() => {
+    const names = ['fecha_factura'];
+    if (camposConfig.fecha_pago) names.push('fecha_pago');
+    return names.map((n) => camposVisibles.find((c) => c.name === n)).filter(Boolean);
+  }, [camposVisibles, camposConfig.fecha_pago]);
+
+  const tailFields = useMemo(
+    () => camposVisibles.filter((c) => !PRIORITY_ALL.has(c.name)),
+    [camposVisibles],
+  );
 
   const optionsContext = useMemo(
     () => ({
@@ -107,6 +128,9 @@ const BatchValidationForm = ({
 
   const renderCampo = (campo) => {
     const value = form[campo.name] ?? (campo.type === 'boolean' ? false : '');
+    const isRequired = REQUIRED_FIELDS.has(campo.name);
+    const isEmpty = value === '' || value === null || value === undefined;
+    const showFieldError = isRequired && isEmpty;
 
     if (campo.type === 'text' || campo.type === 'date' || campo.type === 'number') {
       const isMoneyField = MONEY_FIELDS.has(campo.name);
@@ -151,6 +175,8 @@ const BatchValidationForm = ({
           InputLabelProps={campo.type === 'date' ? { shrink: true } : undefined}
           InputProps={campo.readonly ? { readOnly: true } : undefined}
           disabled={Boolean(campo.readonly)}
+          error={showFieldError}
+          helperText={showFieldError ? 'Requerido' : undefined}
         />
       );
     }
@@ -274,13 +300,20 @@ const BatchValidationForm = ({
     form.total === null ||
     !form.fecha_factura;
 
+  const proyectoError = shouldShowProyecto && !form.proyecto_id;
+
   return (
     <Stack spacing={1.5}>
       <Typography variant="subtitle1" fontWeight={600}>
         Datos del comprobante
       </Typography>
+
+      {/* Priority: monto y moneda primero */}
+      {headBeforeProyecto.map((campo) => renderCampo(campo))}
+
+      {/* Proyecto */}
       {shouldShowProyecto && (
-        <FormControl fullWidth size="small">
+        <FormControl fullWidth size="small" error={proyectoError}>
           <InputLabel id="batch-proyecto-label">Proyecto</InputLabel>
           <Select
             labelId="batch-proyecto-label"
@@ -295,10 +328,15 @@ const BatchValidationForm = ({
               </MenuItem>
             ))}
           </Select>
+          {proyectoError && <FormHelperText>Requerido</FormHelperText>}
         </FormControl>
       )}
 
-      {camposVisibles.map((campo) => renderCampo(campo))}
+      {/* Fecha de factura (y fecha de pago si aplica) */}
+      {headAfterProyecto.map((campo) => renderCampo(campo))}
+
+      {/* Resto de campos en orden original */}
+      {tailFields.map((campo) => renderCampo(campo))}
 
       {showFooterActions && (
         <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mt: 2 }} alignItems="center">

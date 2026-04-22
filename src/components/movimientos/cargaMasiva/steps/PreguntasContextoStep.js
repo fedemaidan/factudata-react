@@ -61,11 +61,6 @@ function PreguntasContextoStep({
 
   return (
     <Stack spacing={2}>
-      <Typography variant="body2" color="text.secondary">
-        El proyecto por defecto y los datos fijos enriquecen el contexto del OCR para todo el lote. Las preguntas
-        adicionales solo aparecen cuando hace falta. Podés corregir por comprobante en el paso siguiente.
-      </Typography>
-
       {(pdfCount > 0 || imgCount > 0) && (
         <Alert severity="info">
           Lote: {imgCount} imagen(es), {pdfCount} PDF.
@@ -216,9 +211,6 @@ function PreguntasContextoStep({
             </MenuItem>
           ))}
         </Select>
-        <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-          Si elegís uno solo, se usa como medio por defecto; si varios, se envían como pistas al OCR.
-        </Typography>
       </FormControl>
 
       <TextField
