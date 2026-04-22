@@ -139,6 +139,18 @@ export const MediosPagoDetails = ({ empresa, refreshEmpresa }) => {
       <Divider />
       <CardContent>
         <List>
+          <ListItem divider>
+            <Radio
+              checked={medioPredeterminado === 'Ninguno'}
+              onChange={() => cambiarPredeterminado('Ninguno')}
+              value="Ninguno"
+              name="medio-predeterminado"
+            />
+            <ListItemText
+              primary="Ninguno (el bot lo pedirá siempre)"
+              secondary={medioPredeterminado === 'Ninguno' ? 'Medio predeterminado' : ''}
+            />
+          </ListItem>
           {mediosPago.map((medio, index) => (
             <ListItem key={index} divider>
               <Radio
