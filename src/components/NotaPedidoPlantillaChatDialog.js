@@ -1,21 +1,25 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import dynamic from 'next/dynamic';
+import { keyframes } from '@emotion/react';
 import {
   Box,
   Button,
+  Chip,
   CircularProgress,
   Dialog,
   DialogContent,
   DialogTitle,
   Divider,
   IconButton,
-  InputAdornment,
+  InputBase,
   Paper,
+  Skeleton,
   Stack,
   TextField,
   Tooltip,
   Typography,
 } from '@mui/material';
+import AddPhotoAlternateOutlinedIcon from '@mui/icons-material/AddPhotoAlternateOutlined';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import CloseIcon from '@mui/icons-material/Close';
 import SaveOutlinedIcon from '@mui/icons-material/SaveOutlined';
@@ -23,9 +27,80 @@ import SendIcon from '@mui/icons-material/Send';
 import SmartToyOutlinedIcon from '@mui/icons-material/SmartToyOutlined';
 import notaPedidoService from 'src/services/notaPedidoService';
 
+const dotBounce = keyframes`
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-5px); opacity: 1; }
+`;
+
+function PdfPageSkeleton() {
+  return (
+    <Box
+      sx={{
+        width: '100%',
+        height: '100%',
+        overflow: 'auto',
+        bgcolor: '#e0e0e0',
+        display: 'flex',
+        justifyContent: 'center',
+        pt: 4,
+        pb: 4,
+      }}
+    >
+      <Box
+        sx={{
+          width: 560,
+          bgcolor: 'background.paper',
+          boxShadow: 4,
+          borderRadius: 0.5,
+          px: 5,
+          py: 4,
+        }}
+      >
+        {/* Header */}
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2.5 }}>
+          <Skeleton variant="rectangular" width={130} height={42} sx={{ borderRadius: 0.5 }} animation="wave" />
+          <Box>
+            <Skeleton width={150} height={26} sx={{ ml: 'auto' }} animation="wave" />
+            <Skeleton width={80} height={18} sx={{ ml: 'auto', mt: 0.5 }} animation="wave" />
+            <Skeleton width={60} height={14} sx={{ ml: 'auto', mt: 0.5 }} animation="wave" />
+          </Box>
+        </Box>
+        <Skeleton variant="rectangular" height={2} sx={{ mb: 2.5 }} animation="wave" />
+
+        {/* Info general */}
+        <Skeleton width={110} height={12} sx={{ mb: 1.5 }} animation="wave" />
+        {['a', 'b', 'c', 'd'].map((k) => (
+          <Box key={k} sx={{ display: 'flex', mb: 1, alignItems: 'center' }}>
+            <Skeleton width={75} height={14} sx={{ mr: 2, flexShrink: 0 }} animation="wave" />
+            <Skeleton width={180} height={14} animation="wave" />
+          </Box>
+        ))}
+        <Skeleton variant="rectangular" width={64} height={22} sx={{ borderRadius: 1, mt: 1, mb: 3 }} animation="wave" />
+
+        {/* Descripción */}
+        <Skeleton width={75} height={12} sx={{ mb: 1.5 }} animation="wave" />
+        <Skeleton variant="rectangular" height={72} sx={{ borderRadius: 0.5, mb: 3 }} animation="wave" />
+
+        {/* Comentarios */}
+        <Skeleton width={90} height={12} sx={{ mb: 1.5 }} animation="wave" />
+        <Skeleton height={14} sx={{ mb: 0.75 }} animation="wave" />
+        <Skeleton width="65%" height={14} animation="wave" />
+
+        {/* Footer */}
+        <Skeleton width="45%" height={12} sx={{ mt: 5, mx: 'auto' }} animation="wave" />
+      </Box>
+    </Box>
+  );
+}
+
 const NotaPedidoPdfPreviewInner = dynamic(
   () => import('./NotaPedidoPdfPreviewInner'),
-  { ssr: false, loading: () => <CircularProgress sx={{ m: 'auto', display: 'block', mt: 6 }} /> }
+  { ssr: false, loading: () => <PdfPageSkeleton /> }
+);
+
+const NotaPedidoPdfBasePreviewInner = dynamic(
+  () => import('./NotaPedidoPdfBasePreviewInner'),
+  { ssr: false, loading: () => <PdfPageSkeleton /> }
 );
 
 const GREETING = '¡Hola! Te ayudo a diseñar cómo se ve el PDF de tu nota de pedido. Contame qué estilo querés: por ejemplo, "más formal", "con colores de mi empresa", "más moderno"... Con pocas palabras ya puedo hacer un diseño para que lo veas.';
@@ -44,16 +119,49 @@ const MOCK_NOTA = {
 
 async function compileComponent(jsCode) {
   const { Document, Page, Text, View, Image, StyleSheet } = await import('@react-pdf/renderer');
-
   // eslint-disable-next-line no-new-func
   const factory = new Function(
     'React', 'Document', 'Page', 'Text', 'View', 'Image', 'StyleSheet',
     `${jsCode}\nreturn typeof PlantillaPDF !== 'undefined' ? PlantillaPDF : null;`
   );
-
   const Component = factory(React, Document, Page, Text, View, Image, StyleSheet);
   if (!Component) throw new Error('El código no define PlantillaPDF');
   return Component;
+}
+
+function TypingIndicator() {
+  return (
+    <Box sx={{ display: 'flex', justifyContent: 'flex-start', mb: 1.5 }}>
+      <Box sx={{ mr: 1, mt: 0.5, color: 'primary.main', flexShrink: 0 }}>
+        <SmartToyOutlinedIcon fontSize="small" />
+      </Box>
+      <Paper
+        variant="outlined"
+        sx={{
+          px: 1.5,
+          py: 0.875,
+          borderRadius: '4px 12px 12px 12px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 0.625,
+        }}
+      >
+        {[0, 1, 2].map((i) => (
+          <Box
+            key={i}
+            sx={{
+              width: 6,
+              height: 6,
+              borderRadius: '50%',
+              bgcolor: 'text.disabled',
+              animation: `${dotBounce} 1.2s ease-in-out infinite`,
+              animationDelay: `${i * 0.2}s`,
+            }}
+          />
+        ))}
+      </Paper>
+    </Box>
+  );
 }
 
 function ChatBubble({ role, content }) {
@@ -102,8 +210,10 @@ export default function NotaPedidoPlantillaChatDialog({
   const [compileError, setCompileError] = useState(null);
   const [templateName, setTemplateName] = useState('');
   const [saving, setSaving] = useState(false);
+  const [referenceImageDataUrl, setReferenceImageDataUrl] = useState(null);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   const nota = sampleNota || MOCK_NOTA;
 
@@ -121,6 +231,7 @@ export default function NotaPedidoPlantillaChatDialog({
       setCompiledComponent(null);
       setCompileError(null);
       setTemplateName('');
+      setReferenceImageDataUrl(null);
     }
   }, [open]);
 
@@ -140,10 +251,21 @@ export default function NotaPedidoPlantillaChatDialog({
     }
   }, []);
 
+  const handleImageUpload = useCallback((e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = () => setReferenceImageDataUrl(reader.result);
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  }, []);
+
   const handleSend = useCallback(async () => {
     const text = input.trim();
     if (!text || loading) return;
     setInput('');
+    const imageToSend = referenceImageDataUrl;
+    setReferenceImageDataUrl(null);
 
     const userMessage = { role: 'user', content: text };
     const nextMessages = [...messages, userMessage];
@@ -154,6 +276,7 @@ export default function NotaPedidoPlantillaChatDialog({
       messages: nextMessages,
       empresaId,
       currentCode: currentCode || null,
+      referenceImageDataUrl: imageToSend || null,
     });
 
     if (result) {
@@ -171,7 +294,7 @@ export default function NotaPedidoPlantillaChatDialog({
     }
     setLoading(false);
     inputRef.current?.focus();
-  }, [input, loading, messages, empresaId, handleCompile]);
+  }, [input, loading, messages, empresaId, handleCompile, referenceImageDataUrl]);
 
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -239,51 +362,134 @@ export default function NotaPedidoPlantillaChatDialog({
             {messages.map((msg, i) => (
               <ChatBubble key={i} role={msg.role} content={msg.content} />
             ))}
-            {loading && (
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, pl: 4, mb: 1 }}>
-                <CircularProgress size={14} />
-                <Typography variant="caption" color="text.secondary">
-                  Generando diseño...
-                </Typography>
-              </Box>
-            )}
+            {loading && <TypingIndicator />}
             <div ref={bottomRef} />
           </Box>
 
           <Divider />
 
-          {/* Input */}
+          {/* Área de composición */}
           <Box sx={{ p: 1.5 }}>
-            <TextField
-              inputRef={inputRef}
-              fullWidth
-              multiline
-              maxRows={4}
-              size="small"
-              placeholder="Describí cómo querés el PDF..."
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              disabled={loading || saving}
-              InputProps={{
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <Tooltip title="Enviar (Enter)">
-                      <span>
-                        <IconButton
-                          size="small"
-                          color="primary"
-                          disabled={!input.trim() || loading || saving}
-                          onClick={handleSend}
-                        >
-                          <SendIcon fontSize="small" />
-                        </IconButton>
-                      </span>
-                    </Tooltip>
-                  </InputAdornment>
-                ),
-              }}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              style={{ display: 'none' }}
+              onChange={handleImageUpload}
             />
+
+            {/* Composer: textarea + imagen adjunta + barra de acciones */}
+            <Paper
+              variant="outlined"
+              sx={{
+                display: 'flex',
+                flexDirection: 'column',
+                borderRadius: 2,
+                overflow: 'hidden',
+                transition: 'border-color 0.15s',
+                '&:focus-within': { borderColor: 'primary.main' },
+              }}
+            >
+              <InputBase
+                inputRef={inputRef}
+                fullWidth
+                multiline
+                minRows={2}
+                maxRows={4}
+                placeholder="Describí cómo querés el PDF..."
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                disabled={loading || saving}
+                sx={{
+                  px: 1.5,
+                  pt: 1.25,
+                  pb: 0.75,
+                  fontSize: 14,
+                  alignItems: 'flex-start',
+                  '& textarea': { lineHeight: 1.55 },
+                }}
+              />
+
+              {/* Imagen adjunta */}
+              {referenceImageDataUrl && (
+                <Box sx={{ px: 1.25, pb: 0.75 }}>
+                  <Box
+                    sx={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 0.75,
+                      px: 1,
+                      py: 0.5,
+                      borderRadius: 1.5,
+                      border: '1px solid',
+                      borderColor: 'divider',
+                      bgcolor: 'action.hover',
+                    }}
+                  >
+                    <Box
+                      component="img"
+                      src={referenceImageDataUrl}
+                      alt="referencia"
+                      sx={{ width: 24, height: 24, objectFit: 'cover', borderRadius: 0.5, flexShrink: 0 }}
+                    />
+                    <Typography variant="caption" color="text.secondary" sx={{ fontSize: 11 }}>
+                      Referencia visual
+                    </Typography>
+                    <IconButton size="small" onClick={() => setReferenceImageDataUrl(null)} sx={{ p: 0.25 }}>
+                      <CloseIcon sx={{ fontSize: 12 }} />
+                    </IconButton>
+                  </Box>
+                </Box>
+              )}
+
+              <Divider />
+
+              {/* Barra de acciones */}
+              <Box sx={{ display: 'flex', alignItems: 'center', px: 1, py: 0.625, gap: 0.5 }}>
+                <Tooltip title="Adjuntar imagen de referencia">
+                  <span>
+                    <IconButton
+                      size="small"
+                      disabled={loading || saving}
+                      onClick={() => fileInputRef.current?.click()}
+                      sx={{
+                        color: referenceImageDataUrl ? 'primary.main' : 'text.disabled',
+                        '&:not(.Mui-disabled):hover': { color: 'text.primary' },
+                      }}
+                    >
+                      <AddPhotoAlternateOutlinedIcon fontSize="small" />
+                    </IconButton>
+                  </span>
+                </Tooltip>
+
+                <Box sx={{ flex: 1 }} />
+
+                <Tooltip title="Enviar (Enter)">
+                  <span>
+                    <IconButton
+                      size="small"
+                      aria-label="Enviar mensaje"
+                      disabled={!input.trim() || loading || saving}
+                      onClick={handleSend}
+                      sx={{
+                        bgcolor: 'primary.main',
+                        color: 'primary.contrastText',
+                        width: 28,
+                        height: 28,
+                        '&:hover': { bgcolor: 'primary.dark' },
+                        '&.Mui-disabled': {
+                          bgcolor: 'action.disabledBackground',
+                          color: 'action.disabled',
+                        },
+                      }}
+                    >
+                      <SendIcon sx={{ fontSize: 14 }} />
+                    </IconButton>
+                  </span>
+                </Tooltip>
+              </Box>
+            </Paper>
           </Box>
 
           <Divider />
@@ -327,8 +533,19 @@ export default function NotaPedidoPlantillaChatDialog({
             overflow: 'hidden',
           }}
         >
-          <Box sx={{ px: 2, py: 1, borderBottom: '1px solid', borderColor: 'divider', bgcolor: 'background.paper' }}>
-            <Typography variant="caption" color="text.secondary" fontWeight={500}>
+          <Box
+            sx={{
+              px: 2,
+              py: 1,
+              borderBottom: '1px solid',
+              borderColor: 'divider',
+              bgcolor: 'background.paper',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1,
+            }}
+          >
+            <Typography variant="caption" color="text.secondary" fontWeight={500} sx={{ flex: 1 }}>
               Vista previa en tiempo real
               {compileError && (
                 <Typography component="span" variant="caption" color="error.main" sx={{ ml: 1 }}>
@@ -336,30 +553,21 @@ export default function NotaPedidoPlantillaChatDialog({
                 </Typography>
               )}
             </Typography>
+            <Chip
+              label={CompiledComponent ? 'Diseño personalizado' : 'Plantilla base'}
+              size="small"
+              color={CompiledComponent ? 'primary' : 'default'}
+              variant={CompiledComponent ? 'filled' : 'outlined'}
+              sx={{ fontSize: 10, height: 20 }}
+            />
           </Box>
 
           <Box sx={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
-            {!CompiledComponent && !compileError && (
-              <Box
-                sx={{
-                  position: 'absolute',
-                  inset: 0,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 2,
-                  color: 'text.disabled',
-                }}
-              >
-                <AutoFixHighIcon sx={{ fontSize: 48 }} />
-                <Typography variant="body2" textAlign="center" sx={{ maxWidth: 280 }}>
-                  Describí cómo querés tu plantilla y verás el PDF aquí en tiempo real.
-                </Typography>
-              </Box>
-            )}
-
-            {CompiledComponent && (
+            {loading ? (
+              <PdfPageSkeleton />
+            ) : !CompiledComponent ? (
+              <NotaPedidoPdfBasePreviewInner nota={nota} logoDataUrl={logoDataUrl} empresaNombre="" />
+            ) : (
               <NotaPedidoPdfPreviewInner
                 key={previewKey}
                 PlantillaPDF={CompiledComponent}
