@@ -118,7 +118,20 @@ const MOCK_NOTA = {
   comentarios: [{ texto: 'Comentario de ejemplo.' }],
 };
 
+function sanitizePdfCode(code) {
+  // react-pdf doesn't support fontStyle/fontWeight — must use named font variants instead.
+  // Strip them so the PDF doesn't crash; the fontFamily already encodes the style.
+  return code
+    .replace(/fontStyle\s*:\s*['"][^'"]*['"]\s*,?\s*/g, '')
+    .replace(/fontWeight\s*:\s*['"\d][^,}]*,?\s*/g, '');
+}
+
 async function compileComponent(jsCode) {
+  console.log('[compileComponent] Iniciando, longitud del código:', jsCode?.length);
+  const sanitized = sanitizePdfCode(jsCode);
+  if (sanitized !== jsCode) console.warn('[compileComponent] Se eliminaron propiedades no soportadas (fontStyle/fontWeight)');
+  // eslint-disable-next-line no-param-reassign
+  jsCode = sanitized;
   const { Document, Page, Text, View, Image, StyleSheet } = await import('@react-pdf/renderer');
   // eslint-disable-next-line no-new-func
   const factory = new Function(
@@ -126,6 +139,7 @@ async function compileComponent(jsCode) {
     `${jsCode}\nreturn typeof PlantillaPDF !== 'undefined' ? PlantillaPDF : null;`
   );
   const Component = factory(React, Document, Page, Text, View, Image, StyleSheet);
+  console.log('[compileComponent] Resultado:', Component ? `OK (fn name: ${Component.name})` : 'NULL — PlantillaPDF no definida');
   if (!Component) throw new Error('El código no define PlantillaPDF');
   return Component;
 }
@@ -211,8 +225,7 @@ export default function NotaPedidoPlantillaChatDialog({
   const [compileError, setCompileError] = useState(null);
   const [templateName, setTemplateName] = useState('');
   const [saving, setSaving] = useState(false);
-  const [referenceAttachment, setReferenceAttachment] = useState(null); // { url, isPdf, name }
-  const [uploadingReference, setUploadingReference] = useState(false);
+  const [referenceAttachment, setReferenceAttachment] = useState(null); // { url, isPdf, name, uploading, error }
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -234,7 +247,6 @@ export default function NotaPedidoPlantillaChatDialog({
       setCompileError(null);
       setTemplateName('');
       setReferenceAttachment(null);
-      setUploadingReference(false);
     }
   }, [open]);
 
@@ -245,10 +257,13 @@ export default function NotaPedidoPlantillaChatDialog({
   const handleCompile = useCallback(async (code) => {
     setCompileError(null);
     try {
+      console.log('[handleCompile] Compilando componente...');
       const Component = await compileComponent(code);
+      console.log('[handleCompile] Éxito — seteando CompiledComponent y actualizando previewVersion');
       setCompiledComponent(() => Component);
       setPreviewVersion((v) => v + 1);
     } catch (err) {
+      console.error('[handleCompile] Error al compilar:', err.message, err);
       setCompileError(err.message);
       setCompiledComponent(null);
     }
@@ -258,20 +273,19 @@ export default function NotaPedidoPlantillaChatDialog({
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = '';
-    setUploadingReference(true);
-    try {
-      const url = await notaPedidoService.uploadReferenceImage({ file, empresaId });
-      if (url) {
-        setReferenceAttachment({ url, isPdf: file.type === 'application/pdf', name: file.name });
-      }
-    } finally {
-      setUploadingReference(false);
+    const isPdf = file.type === 'application/pdf';
+    setReferenceAttachment({ url: null, isPdf, name: file.name, uploading: true, error: false });
+    const url = await notaPedidoService.uploadReferenceImage({ file, empresaId });
+    if (url) {
+      setReferenceAttachment({ url, isPdf, name: file.name, uploading: false, error: false });
+    } else {
+      setReferenceAttachment((prev) => prev ? { ...prev, uploading: false, error: true } : null);
     }
   }, [empresaId]);
 
   const handleSend = useCallback(async () => {
     const text = input.trim();
-    if (!text || loading) return;
+    if (!text || loading || referenceAttachment?.uploading) return;
     setInput('');
     const imageToSend = referenceAttachment?.url || null;
     setReferenceAttachment(null);
@@ -289,6 +303,7 @@ export default function NotaPedidoPlantillaChatDialog({
     });
 
     if (result) {
+      console.log('[handleSend] Respuesta IA →', { hasMessage: !!result.message, hasCode: !!result.code, codeLength: result.code?.length });
       const aiMessage = { role: 'assistant', content: result.message };
       setMessages((prev) => [...prev, aiMessage]);
       if (result.code) {
@@ -428,30 +443,56 @@ export default function NotaPedidoPlantillaChatDialog({
                       display: 'inline-flex',
                       alignItems: 'center',
                       gap: 0.75,
-                      px: 1,
+                      px: 0.75,
                       py: 0.5,
                       borderRadius: 1.5,
                       border: '1px solid',
-                      borderColor: 'divider',
-                      bgcolor: 'action.hover',
+                      borderColor: referenceAttachment.error ? 'error.light' : 'primary.light',
+                      bgcolor: referenceAttachment.error ? 'rgba(211,47,47,0.06)' : 'rgba(25,118,210,0.06)',
+                      maxWidth: '100%',
                     }}
                   >
-                    {referenceAttachment.isPdf ? (
-                      <PictureAsPdfOutlinedIcon sx={{ fontSize: 18, color: 'error.light', flexShrink: 0 }} />
-                    ) : (
+                    {referenceAttachment.uploading ? (
+                      <CircularProgress size={20} sx={{ flexShrink: 0, my: 0.25 }} />
+                    ) : referenceAttachment.url ? (
                       <Box
                         component="img"
                         src={referenceAttachment.url}
-                        alt="referencia"
-                        sx={{ width: 24, height: 24, objectFit: 'cover', borderRadius: 0.5, flexShrink: 0 }}
+                        alt=""
+                        sx={{
+                          width: 32,
+                          height: 32,
+                          objectFit: 'cover',
+                          borderRadius: 0.75,
+                          flexShrink: 0,
+                          border: '1px solid',
+                          borderColor: 'divider',
+                        }}
                       />
+                    ) : referenceAttachment.isPdf ? (
+                      <PictureAsPdfOutlinedIcon sx={{ fontSize: 20, color: 'error.light', flexShrink: 0 }} />
+                    ) : (
+                      <AddPhotoAlternateOutlinedIcon sx={{ fontSize: 20, color: 'text.secondary', flexShrink: 0 }} />
                     )}
-                    <Typography variant="caption" color="text.secondary" sx={{ fontSize: 11, maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {referenceAttachment.name}
-                    </Typography>
-                    <IconButton size="small" onClick={() => setReferenceAttachment(null)} sx={{ p: 0.25 }}>
-                      <CloseIcon sx={{ fontSize: 12 }} />
-                    </IconButton>
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography
+                        variant="caption"
+                        color={referenceAttachment.error ? 'error.main' : referenceAttachment.uploading ? 'text.secondary' : 'text.primary'}
+                        sx={{ fontSize: 11, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 130, fontWeight: referenceAttachment.url ? 500 : 400 }}
+                      >
+                        {referenceAttachment.error ? 'Error al subir' : referenceAttachment.uploading ? 'Subiendo...' : referenceAttachment.name}
+                      </Typography>
+                      {!referenceAttachment.error && !referenceAttachment.uploading && (
+                        <Typography variant="caption" color="text.disabled" sx={{ fontSize: 10 }}>
+                          {referenceAttachment.isPdf ? 'PDF convertido a imagen' : 'Imagen de referencia'}
+                        </Typography>
+                      )}
+                    </Box>
+                    {!referenceAttachment.uploading && (
+                      <IconButton size="small" onClick={() => setReferenceAttachment(null)} sx={{ p: 0.25, ml: 0.25, flexShrink: 0 }}>
+                        <CloseIcon sx={{ fontSize: 12 }} />
+                      </IconButton>
+                    )}
                   </Box>
                 </Box>
               )}
@@ -464,16 +505,14 @@ export default function NotaPedidoPlantillaChatDialog({
                   <span>
                     <IconButton
                       size="small"
-                      disabled={loading || saving || uploadingReference}
+                      disabled={loading || saving || !!referenceAttachment?.uploading}
                       onClick={() => fileInputRef.current?.click()}
                       sx={{
-                        color: referenceAttachment ? 'primary.main' : 'text.disabled',
+                        color: (referenceAttachment && !referenceAttachment.error) ? 'primary.main' : 'text.disabled',
                         '&:not(.Mui-disabled):hover': { color: 'text.primary' },
                       }}
                     >
-                      {uploadingReference
-                        ? <CircularProgress size={16} />
-                        : <AddPhotoAlternateOutlinedIcon fontSize="small" />}
+                      <AddPhotoAlternateOutlinedIcon fontSize="small" />
                     </IconButton>
                   </span>
                 </Tooltip>
@@ -485,7 +524,7 @@ export default function NotaPedidoPlantillaChatDialog({
                     <IconButton
                       size="small"
                       aria-label="Enviar mensaje"
-                      disabled={!input.trim() || loading || saving}
+                      disabled={!input.trim() || loading || saving || !!referenceAttachment?.uploading}
                       onClick={handleSend}
                       sx={{
                         bgcolor: 'primary.main',
