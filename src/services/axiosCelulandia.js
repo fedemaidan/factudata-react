@@ -4,7 +4,7 @@ import { auth } from "src/config/firebase"; // Asegúrate de tener la referencia
 
 const isProduction = process.env.NODE_ENV === "production";
 const apiUrl = isProduction
-  ? "https://api.sorbydata.com/api/celulandia"
+  ? "https://api.sorbydata.com/celulandia/api"
   : "http://localhost:3003/api/celulandia";
 // Crea una instancia de axios
 const api = axios.create({

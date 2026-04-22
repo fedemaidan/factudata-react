@@ -8,7 +8,8 @@ import {
     List, ListItem, ListItemText, ListItemSecondaryAction,
     Dialog, DialogTitle, DialogContent, DialogActions,
     Table, TableBody, TableCell, TableHead, TableRow, TableContainer,
-    Tooltip, Divider, MenuItem, FormControl, InputLabel, Select
+    Tooltip, Divider, MenuItem, FormControl, InputLabel, Select,
+    Popover, Badge
 } from '@mui/material';
 import {
     ExpandMore as ExpandMoreIcon,
@@ -23,7 +24,8 @@ import {
     Settings as SettingsIcon,
     PowerSettingsNew as PowerIcon,
     VerifiedUser as VerifiedIcon,
-    Edit as EditIcon
+    Edit as EditIcon,
+    FilterList as FilterListIcon
 } from '@mui/icons-material';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useAuthContext } from 'src/contexts/auth-context';
@@ -41,6 +43,9 @@ const SeccionCalendarios = ({ snack }) => {
     const [equipo, setEquipo] = useState([]);
     const [editandoUrl, setEditandoUrl] = useState(null); // _id del cal que se está editando
     const [urlTmp, setUrlTmp] = useState('');
+    const [kwPopover, setKwPopover] = useState({ anchorEl: null, calId: null });
+    const [kwActuales, setKwActuales] = useState([]);
+    const [kwNueva, setKwNueva] = useState('');
 
     const handleCargar = useCallback(async () => {
         try {
@@ -85,6 +90,41 @@ const SeccionCalendarios = ({ snack }) => {
             await SDRService.adminToggleCalendario(id, !activo);
             snack(activo ? 'Calendario desactivado' : 'Calendario activado', 'success');
             handleCargar();
+        } catch (e) {
+            snack('Error: ' + e.message, 'error');
+        }
+    };
+
+    const handleAbrirKeywords = (e, cal) => {
+        setKwPopover({ anchorEl: e.currentTarget, calId: cal._id });
+        setKwActuales(cal.keywordsFiltro || []);
+        setKwNueva('');
+    };
+
+    const handleCerrarKeywords = () => {
+        setKwPopover({ anchorEl: null, calId: null });
+        handleCargar();
+    };
+
+    const handleAgregarKeyword = async () => {
+        const kw = kwNueva.trim();
+        if (!kw || !kwPopover.calId) return;
+        if (kwActuales.map(k => k.toLowerCase()).includes(kw.toLowerCase())) return;
+        const nuevos = [...kwActuales, kw];
+        try {
+            await SDRService.adminActualizarCalendarioFiltro(kwPopover.calId, nuevos);
+            setKwActuales(nuevos);
+            setKwNueva('');
+        } catch (e) {
+            snack('Error: ' + e.message, 'error');
+        }
+    };
+
+    const handleQuitarKeyword = async (keyword) => {
+        const nuevos = kwActuales.filter(k => k !== keyword);
+        try {
+            await SDRService.adminActualizarCalendarioFiltro(kwPopover.calId, nuevos);
+            setKwActuales(nuevos);
         } catch (e) {
             snack('Error: ' + e.message, 'error');
         }
@@ -213,6 +253,13 @@ const SeccionCalendarios = ({ snack }) => {
                                                                     <CircularProgress size={16} /> : <VerifiedIcon fontSize="small" />}
                                                             </IconButton>
                                                         </Tooltip>
+                                                        <Tooltip title={`Filtro por palabras clave: ${(cal.keywordsFiltro || []).length > 0 ? (cal.keywordsFiltro || []).join(', ') : 'sin filtro (todos los eventos)'}`}>
+                                                            <IconButton size="small" onClick={(e) => handleAbrirKeywords(e, cal)}>
+                                                                <Badge badgeContent={(cal.keywordsFiltro || []).length} color="primary" invisible={(cal.keywordsFiltro || []).length === 0}>
+                                                                    <FilterListIcon fontSize="small" color={(cal.keywordsFiltro || []).length > 0 ? 'primary' : 'disabled'} />
+                                                                </Badge>
+                                                            </IconButton>
+                                                        </Tooltip>
                                                         <Tooltip title={cal.activo ? 'Desactivar' : 'Activar'}>
                                                             <IconButton size="small" onClick={() => handleToggle(cal._id, cal.activo)}>
                                                                 <PowerIcon fontSize="small" color={cal.activo ? 'success' : 'disabled'} />
@@ -234,6 +281,45 @@ const SeccionCalendarios = ({ snack }) => {
                     </Stack>
                 </AccordionDetails>
             </Accordion>
+
+            {/* Popover: gestión de keywords de filtro */}
+            <Popover
+                open={Boolean(kwPopover.anchorEl)}
+                anchorEl={kwPopover.anchorEl}
+                onClose={handleCerrarKeywords}
+                anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+                transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+                PaperProps={{ sx: { p: 2, minWidth: 300, maxWidth: 380 } }}
+            >
+                <Typography variant="subtitle2" gutterBottom>Filtrar eventos por palabras clave</Typography>
+                <Typography variant="caption" color="text.secondary" display="block" mb={1.5}>
+                    Solo se procesan eventos cuyo título contenga alguna de estas palabras. Si no hay palabras configuradas, se procesan todos.
+                </Typography>
+                <Stack direction="row" flexWrap="wrap" gap={0.5} mb={1.5} minHeight={24}>
+                    {kwActuales.length === 0 && (
+                        <Typography variant="caption" color="text.disabled">Sin filtro — se procesan todos los eventos</Typography>
+                    )}
+                    {kwActuales.map(kw => (
+                        <Chip key={kw} label={kw} size="small" onDelete={() => handleQuitarKeyword(kw)} />
+                    ))}
+                </Stack>
+                <Stack direction="row" spacing={1}>
+                    <TextField
+                        size="small"
+                        placeholder="Ej: Demo, Meet, Comercial"
+                        value={kwNueva}
+                        onChange={e => setKwNueva(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && handleAgregarKeyword()}
+                        sx={{ flex: 1 }}
+                    />
+                    <Button
+                        size="small"
+                        variant="contained"
+                        onClick={handleAgregarKeyword}
+                        disabled={!kwNueva.trim()}
+                    >Agregar</Button>
+                </Stack>
+            </Popover>
 
             <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
                 <DialogTitle>Agregar Calendario</DialogTitle>
