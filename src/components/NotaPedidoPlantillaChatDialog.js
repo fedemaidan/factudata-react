@@ -229,6 +229,7 @@ export default function NotaPedidoPlantillaChatDialog({
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
   const fileInputRef = useRef(null);
+  const previewImageRef = useRef(null); // latest rendered image data URL for saving
 
   const nota = sampleNota || MOCK_NOTA;
 
@@ -247,8 +248,13 @@ export default function NotaPedidoPlantillaChatDialog({
       setCompileError(null);
       setTemplateName('');
       setReferenceAttachment(null);
+      previewImageRef.current = null;
     }
   }, [open]);
+
+  const handlePreviewImageReady = useCallback((src) => {
+    previewImageRef.current = src;
+  }, []);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -331,13 +337,26 @@ export default function NotaPedidoPlantillaChatDialog({
     if (!currentCode || !templateName.trim()) return;
     setSaving(true);
     try {
-      const url = await notaPedidoService.saveComponentPlantilla({ code: currentCode, empresaId });
-      if (!url) throw new Error('No se pudo guardar el componente');
+      let previewFile = null;
+      if (previewImageRef.current) {
+        const blob = await fetch(previewImageRef.current).then((r) => r.blob());
+        previewFile = new File([blob], 'preview.jpg', { type: 'image/jpeg' });
+      }
+
+      const [componentUrl, previewImageUrl] = await Promise.all([
+        notaPedidoService.saveComponentPlantilla({ code: currentCode, empresaId }),
+        previewFile
+          ? notaPedidoService.uploadReferenceImage({ file: previewFile, empresaId })
+          : Promise.resolve(null),
+      ]);
+
+      if (!componentUrl) throw new Error('No se pudo guardar el componente');
 
       const template = await notaPedidoService.createPdfTemplate({
         empresa_id: empresaId,
         nombre: templateName.trim(),
-        component_url: url,
+        component_url: componentUrl,
+        ...(previewImageUrl && { preview_image_url: previewImageUrl }),
         activa: true,
       });
 
@@ -628,6 +647,7 @@ export default function NotaPedidoPlantillaChatDialog({
                 nota={nota}
                 logoDataUrl={logoDataUrl}
                 empresaNombre=""
+                onImageReady={handlePreviewImageReady}
               />
             )}
           </Box>
