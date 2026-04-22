@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import PropTypes from 'prop-types';
 import {
   Box,
@@ -7,20 +7,19 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  LinearProgress,
   Stack,
-  Step,
-  StepLabel,
-  Stepper,
   Typography,
   Alert,
   CircularProgress,
   ToggleButton,
   ToggleButtonGroup,
+  IconButton,
 } from '@mui/material';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import TableChartIcon from '@mui/icons-material/TableChart';
 import ImageIcon from '@mui/icons-material/Image';
+import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
+import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos';
 import proveedorService from 'src/services/proveedorService';
 import movimientosService from 'src/services/movimientosService';
 import { getCamposConfig } from 'src/components/movementFieldsConfig';
@@ -117,6 +116,16 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
   const proveedoresRef = useRef(null);
   const aclaracionesRef = useRef(null);
   const validacionRef = useRef(null);
+  const validacionOcrRef = useRef(null);
+
+  const [validacionNavState, setValidacionNavState] = useState({
+    continuarDisabled: true,
+    confirmLabel: 'Revisado y siguiente',
+    hasPrev: false,
+    hasNext: false,
+    textoProgreso: '',
+    hasItems: false,
+  });
 
   const updateImportWizardData = useCallback((patch) => {
     setImportWizardData((prev) => ({ ...prev, ...patch }));
@@ -138,6 +147,14 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
     setImportWizardData(initialImportWizardData());
     setTabularError('');
     setTabularLoading(false);
+    setValidacionNavState({
+      continuarDisabled: true,
+      confirmLabel: 'Revisado y siguiente',
+      hasPrev: false,
+      hasNext: false,
+      textoProgreso: '',
+      hasItems: false,
+    });
   }, []);
 
   useEffect(() => {
@@ -491,10 +508,6 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
     onClose();
   };
 
-  const stepProgress = cargaModo
-    ? ((activeStep + 1) / steps.length) * 100
-    : 0;
-
   const nextDisabledOcr =
     (activeStep === 0 && (files.length === 0 || preguntasLoading)) ||
     (activeStep === 1 &&
@@ -618,20 +631,64 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
             </Typography>
           </Stack>
         </DialogTitle>
-        <Box sx={{ px: 3, pt: 0 }}>
-          {cargaModo && (
-            <>
-              <LinearProgress variant="determinate" value={stepProgress} sx={{ height: 4, borderRadius: 1, mb: 2 }} />
-              <Stepper activeStep={activeStep} alternativeLabel sx={{ mb: 2 }}>
-                {steps.map((label) => (
-                  <Step key={label}>
-                    <StepLabel>{label}</StepLabel>
-                  </Step>
-                ))}
-              </Stepper>
-            </>
-          )}
-        </Box>
+        {cargaModo && (
+          <Box sx={{ px: 3, pt: 1.5, pb: 1 }}>
+            <Stack direction="row" alignItems="center">
+              {steps.map((label, i) => {
+                const isCompleted = i < activeStep;
+                const isCurrent = i === activeStep;
+                return (
+                  <Fragment key={label}>
+                    {i > 0 && (
+                      <Box
+                        sx={{
+                          flex: 1,
+                          height: 2,
+                          borderRadius: 1,
+                          bgcolor: isCompleted ? 'success.light' : 'divider',
+                          mx: 0.75,
+                          minWidth: 8,
+                        }}
+                      />
+                    )}
+                    <Stack direction="row" alignItems="center" spacing={0.75} sx={{ flexShrink: 0 }}>
+                      <Box
+                        sx={{
+                          width: 22,
+                          height: 22,
+                          borderRadius: '50%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: '0.68rem',
+                          fontWeight: 700,
+                          flexShrink: 0,
+                          bgcolor: isCompleted ? 'success.main' : isCurrent ? 'primary.main' : 'transparent',
+                          border: 2,
+                          borderColor: isCompleted ? 'success.main' : isCurrent ? 'primary.main' : 'divider',
+                          color: isCompleted || isCurrent ? 'common.white' : 'text.disabled',
+                        }}
+                      >
+                        {isCompleted ? '✓' : i + 1}
+                      </Box>
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          fontWeight: isCurrent ? 600 : 400,
+                          color: isCurrent ? 'text.primary' : isCompleted ? 'text.secondary' : 'text.disabled',
+                          whiteSpace: 'nowrap',
+                          display: { xs: isCurrent ? 'block' : 'none', sm: 'block' },
+                        }}
+                      >
+                        {label}
+                      </Typography>
+                    </Stack>
+                  </Fragment>
+                );
+              })}
+            </Stack>
+          </Box>
+        )}
         <DialogContent dividers sx={{ minHeight: 420 }}>
           {tabularError && cargaModo === 'tabular' && (
             <Alert severity="error" sx={{ mb: 2 }} onClose={() => setTabularError('')}>
@@ -725,34 +782,24 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
                 />
               )}
               {activeStep === 2 && !analyzeLoading && (
-                <Stack spacing={2}>
-                  <Stack direction="row" flexWrap="wrap" useFlexGap spacing={1} alignItems="center">
-                    <Button size="small" variant="outlined" onClick={handleApplyProyectoToAll}>
-                      Aplicar proyecto por defecto a todos
-                    </Button>
-                    <Typography variant="caption" color="text.secondary">
-                      {batchItems.filter((i) => i.omitido).length} omitidos ·{' '}
-                      {batchItems.filter((i) => !i.omitido).length} a confirmar
-                    </Typography>
-                  </Stack>
-                  <ValidacionLoteStep
-                    items={batchItems}
-                    onUpdateItem={updateItem}
-                    empresa={empresa}
-                    proyectos={proyectos}
-                    comprobanteInfo={drawerCatalogos.comprobanteInfo}
-                    ingresoInfo={drawerCatalogos.ingresoInfo}
-                    proveedores={drawerCatalogos.proveedores}
-                    categorias={drawerCatalogos.categorias}
-                    tagsExtra={drawerCatalogos.tagsExtra}
-                    mediosPago={drawerCatalogos.mediosPago}
-                    etapas={drawerCatalogos.etapas}
-                    obrasOptions={drawerCatalogos.obrasOptions}
-                    clientesOptions={drawerCatalogos.clientesOptions}
-                    onRequestConfirm={handleOpenConfirm}
-                    canConfirm={canConfirm}
-                  />
-                </Stack>
+                <ValidacionLoteStep
+                  ref={validacionOcrRef}
+                  onNavStateChange={setValidacionNavState}
+                  items={batchItems}
+                  onUpdateItem={updateItem}
+                  empresa={empresa}
+                  proyectos={proyectos}
+                  comprobanteInfo={drawerCatalogos.comprobanteInfo}
+                  ingresoInfo={drawerCatalogos.ingresoInfo}
+                  proveedores={drawerCatalogos.proveedores}
+                  categorias={drawerCatalogos.categorias}
+                  tagsExtra={drawerCatalogos.tagsExtra}
+                  mediosPago={drawerCatalogos.mediosPago}
+                  etapas={drawerCatalogos.etapas}
+                  obrasOptions={drawerCatalogos.obrasOptions}
+                  clientesOptions={drawerCatalogos.clientesOptions}
+                  onRequestConfirm={handleOpenConfirm}
+                />
               )}
               {analyzeLoading && (
                 <Stack alignItems="center" spacing={2} sx={{ py: 6 }}>
@@ -789,19 +836,59 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
           )}
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
-          <Button onClick={handleClose} disabled={analyzeLoading || confirmLoading || tabularLoading}>
-            Cancelar
-          </Button>
-          {cargaModo && (
-            <Button onClick={handleBack} disabled={backDisabled}>
-              Atrás
+          <Stack direction="row" alignItems="center" spacing={1} sx={{ width: '100%' }}>
+            <Button onClick={handleClose} disabled={analyzeLoading || confirmLoading || tabularLoading}>
+              Cancelar
             </Button>
-          )}
-          {showPrimaryNext && (
-            <Button variant="contained" onClick={handleNext} disabled={primaryNextDisabled}>
-              {primaryNextLabel}
-            </Button>
-          )}
+            {cargaModo && (
+              <Button onClick={handleBack} disabled={backDisabled}>
+                Atrás
+              </Button>
+            )}
+
+            <Box sx={{ flex: 1 }} />
+
+            {cargaModo === 'ocr' && activeStep === 2 && validacionNavState.hasItems && (
+              <>
+                <Typography variant="caption" color="text.secondary">
+                  {validacionNavState.textoProgreso}
+                </Typography>
+                <IconButton
+                  size="small"
+                  onClick={() => validacionOcrRef.current?.prevNav()}
+                  disabled={!validacionNavState.hasPrev}
+                >
+                  <ArrowBackIosNewIcon fontSize="small" />
+                </IconButton>
+                <IconButton
+                  size="small"
+                  onClick={() => validacionOcrRef.current?.nextNav()}
+                  disabled={!validacionNavState.hasNext}
+                >
+                  <ArrowForwardIosIcon fontSize="small" />
+                </IconButton>
+                <Button
+                  variant="outlined"
+                  color="warning"
+                  onClick={() => validacionOcrRef.current?.omitir()}
+                >
+                  Omitir
+                </Button>
+                <Button
+                  variant="contained"
+                  onClick={() => validacionOcrRef.current?.continuar()}
+                  disabled={validacionNavState.continuarDisabled}
+                >
+                  {validacionNavState.confirmLabel}
+                </Button>
+              </>
+            )}
+            {showPrimaryNext && (
+              <Button variant="contained" onClick={handleNext} disabled={primaryNextDisabled}>
+                {primaryNextLabel}
+              </Button>
+            )}
+          </Stack>
         </DialogActions>
       </Dialog>
 
