@@ -172,6 +172,21 @@ const notaPedidoService = {
     }
   },
 
+  uploadReferenceImage: async ({ file, empresaId }) => {
+    try {
+      const formData = new FormData();
+      formData.append('archivo', file);
+      formData.append('empresa_id', empresaId);
+      const res = await api.post('nota-pedido/pdf-templates/upload-reference', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      return res.status === 200 ? res.data?.url : null;
+    } catch (e) {
+      console.error('uploadReferenceImage', e);
+      return null;
+    }
+  },
+
   aiChatPlantilla: async ({ messages, empresaId, currentCode, referenceImageDataUrl }) => {
     try {
       const res = await api.post('nota-pedido/pdf-templates/ai-chat', {

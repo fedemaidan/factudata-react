@@ -20,6 +20,7 @@ import {
   Typography,
 } from '@mui/material';
 import AddPhotoAlternateOutlinedIcon from '@mui/icons-material/AddPhotoAlternateOutlined';
+import PictureAsPdfOutlinedIcon from '@mui/icons-material/PictureAsPdfOutlined';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import CloseIcon from '@mui/icons-material/Close';
 import SaveOutlinedIcon from '@mui/icons-material/SaveOutlined';
@@ -103,7 +104,7 @@ const NotaPedidoPdfBasePreviewInner = dynamic(
   { ssr: false, loading: () => <PdfPageSkeleton /> }
 );
 
-const GREETING = '¡Hola! Te ayudo a diseñar cómo se ve el PDF de tu nota de pedido. Contame qué estilo querés: por ejemplo, "más formal", "con colores de mi empresa", "más moderno"... Con pocas palabras ya puedo hacer un diseño para que lo veas.';
+const GREETING = '¡Hola! Podés modificar la plantilla base del PDF de tu nota de pedido. Describí qué cambio querés hacer — por ejemplo "título más grande", "colores de mi empresa", "estilo más moderno" — o adjuntá una imagen o PDF de referencia para que tome ese estilo.';
 
 const MOCK_NOTA = {
   codigo: 1,
@@ -210,7 +211,8 @@ export default function NotaPedidoPlantillaChatDialog({
   const [compileError, setCompileError] = useState(null);
   const [templateName, setTemplateName] = useState('');
   const [saving, setSaving] = useState(false);
-  const [referenceImageDataUrl, setReferenceImageDataUrl] = useState(null);
+  const [referenceAttachment, setReferenceAttachment] = useState(null); // { url, isPdf, name }
+  const [uploadingReference, setUploadingReference] = useState(false);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -231,7 +233,8 @@ export default function NotaPedidoPlantillaChatDialog({
       setCompiledComponent(null);
       setCompileError(null);
       setTemplateName('');
-      setReferenceImageDataUrl(null);
+      setReferenceAttachment(null);
+      setUploadingReference(false);
     }
   }, [open]);
 
@@ -251,21 +254,27 @@ export default function NotaPedidoPlantillaChatDialog({
     }
   }, []);
 
-  const handleImageUpload = useCallback((e) => {
+  const handleImageUpload = useCallback(async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onloadend = () => setReferenceImageDataUrl(reader.result);
-    reader.readAsDataURL(file);
     e.target.value = '';
-  }, []);
+    setUploadingReference(true);
+    try {
+      const url = await notaPedidoService.uploadReferenceImage({ file, empresaId });
+      if (url) {
+        setReferenceAttachment({ url, isPdf: file.type === 'application/pdf', name: file.name });
+      }
+    } finally {
+      setUploadingReference(false);
+    }
+  }, [empresaId]);
 
   const handleSend = useCallback(async () => {
     const text = input.trim();
     if (!text || loading) return;
     setInput('');
-    const imageToSend = referenceImageDataUrl;
-    setReferenceImageDataUrl(null);
+    const imageToSend = referenceAttachment?.url || null;
+    setReferenceAttachment(null);
 
     const userMessage = { role: 'user', content: text };
     const nextMessages = [...messages, userMessage];
@@ -294,7 +303,7 @@ export default function NotaPedidoPlantillaChatDialog({
     }
     setLoading(false);
     inputRef.current?.focus();
-  }, [input, loading, messages, empresaId, handleCompile, referenceImageDataUrl]);
+  }, [input, loading, messages, empresaId, handleCompile, referenceAttachment]);
 
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -373,7 +382,7 @@ export default function NotaPedidoPlantillaChatDialog({
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/*"
+              accept="image/*,.pdf"
               style={{ display: 'none' }}
               onChange={handleImageUpload}
             />
@@ -411,8 +420,8 @@ export default function NotaPedidoPlantillaChatDialog({
                 }}
               />
 
-              {/* Imagen adjunta */}
-              {referenceImageDataUrl && (
+              {/* Archivo adjunto */}
+              {referenceAttachment && (
                 <Box sx={{ px: 1.25, pb: 0.75 }}>
                   <Box
                     sx={{
@@ -427,16 +436,20 @@ export default function NotaPedidoPlantillaChatDialog({
                       bgcolor: 'action.hover',
                     }}
                   >
-                    <Box
-                      component="img"
-                      src={referenceImageDataUrl}
-                      alt="referencia"
-                      sx={{ width: 24, height: 24, objectFit: 'cover', borderRadius: 0.5, flexShrink: 0 }}
-                    />
-                    <Typography variant="caption" color="text.secondary" sx={{ fontSize: 11 }}>
-                      Referencia visual
+                    {referenceAttachment.isPdf ? (
+                      <PictureAsPdfOutlinedIcon sx={{ fontSize: 18, color: 'error.light', flexShrink: 0 }} />
+                    ) : (
+                      <Box
+                        component="img"
+                        src={referenceAttachment.url}
+                        alt="referencia"
+                        sx={{ width: 24, height: 24, objectFit: 'cover', borderRadius: 0.5, flexShrink: 0 }}
+                      />
+                    )}
+                    <Typography variant="caption" color="text.secondary" sx={{ fontSize: 11, maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {referenceAttachment.name}
                     </Typography>
-                    <IconButton size="small" onClick={() => setReferenceImageDataUrl(null)} sx={{ p: 0.25 }}>
+                    <IconButton size="small" onClick={() => setReferenceAttachment(null)} sx={{ p: 0.25 }}>
                       <CloseIcon sx={{ fontSize: 12 }} />
                     </IconButton>
                   </Box>
@@ -447,18 +460,20 @@ export default function NotaPedidoPlantillaChatDialog({
 
               {/* Barra de acciones */}
               <Box sx={{ display: 'flex', alignItems: 'center', px: 1, py: 0.625, gap: 0.5 }}>
-                <Tooltip title="Adjuntar imagen de referencia">
+                <Tooltip title="Adjuntar imagen o PDF de referencia">
                   <span>
                     <IconButton
                       size="small"
-                      disabled={loading || saving}
+                      disabled={loading || saving || uploadingReference}
                       onClick={() => fileInputRef.current?.click()}
                       sx={{
-                        color: referenceImageDataUrl ? 'primary.main' : 'text.disabled',
+                        color: referenceAttachment ? 'primary.main' : 'text.disabled',
                         '&:not(.Mui-disabled):hover': { color: 'text.primary' },
                       }}
                     >
-                      <AddPhotoAlternateOutlinedIcon fontSize="small" />
+                      {uploadingReference
+                        ? <CircularProgress size={16} />
+                        : <AddPhotoAlternateOutlinedIcon fontSize="small" />}
                     </IconButton>
                   </span>
                 </Tooltip>
