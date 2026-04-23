@@ -21,6 +21,7 @@ import {
   FormControlLabel,
   FormControl,
   FormLabel,
+  Divider,
 } from '@mui/material';
 import WarehouseIcon from '@mui/icons-material/Warehouse';
 import HomeWorkIcon from '@mui/icons-material/HomeWork';
@@ -614,25 +615,84 @@ const MaterialesFacturaActions = ({
   );
 
   const renderStepDiscrepancias = () => (
-    <Stack spacing={2}>
+    <Stack spacing={2.5}>
+      {/* Imagen de referencia */}
+      {urlImagen && (
+        <Box>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.75 }}>
+            Imagen de la factura — usala para elegir el valor correcto
+          </Typography>
+          <Box
+            component="img"
+            src={urlImagen}
+            alt="Factura"
+            sx={{
+              width: '100%',
+              maxHeight: 320,
+              objectFit: 'contain',
+              borderRadius: 1,
+              border: '1px solid',
+              borderColor: 'divider',
+              bgcolor: 'grey.50',
+              cursor: 'zoom-in',
+              display: 'block',
+            }}
+            onClick={() => window.open(urlImagen, '_blank')}
+          />
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+            Clic para abrir en tamaño completo
+          </Typography>
+        </Box>
+      )}
+
+      <Divider />
+
       <Typography variant="body2" color="text.secondary">
-        La IA leyó dos valores distintos para {materialesConDiscrepancia.length === 1 ? 'este dato' : 'estos datos'}.
-        Elegi el que corresponde según la factura.
+        La IA leyó dos valores distintos para {materialesConDiscrepancia.length === 1 ? 'este campo' : 'estos campos'}.
+        Mirá la imagen y elegí el correcto.
       </Typography>
 
       {materialesConDiscrepancia.map((mat) => {
         const idx = mat._idx;
         const v = mat._verificacion || {};
-        const nombre = mat.descripcion || mat.nombre || 'Material ' + (idx + 1);
+        const descripcion = mat.descripcion || mat.nombre || null;
+        const codigo = mat.codigo || mat.SKU || null;
+        // Título claro del material
+        let tituloMaterial = descripcion || (codigo ? `Código ${codigo}` : `Línea ${idx + 1} de la factura`);
+        // Subtítulo: si tiene descripción, mostrar el código como referencia
+        const subtituloMaterial = descripcion && codigo ? `Cód. ${codigo}` : null;
+
         return (
           <Paper key={idx} variant="outlined" sx={{ p: 2 }}>
-            <Typography variant="subtitle2" sx={{ mb: 1.5 }}>
-              {nombre}
-            </Typography>
+            <Stack direction="row" alignItems="flex-start" spacing={1} sx={{ mb: 1.5 }}>
+              <Box
+                sx={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: '50%',
+                  bgcolor: 'warning.100',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                  mt: 0.25,
+                }}
+              >
+                <Typography variant="caption" sx={{ fontWeight: 700, color: 'warning.dark' }}>
+                  ?
+                </Typography>
+              </Box>
+              <Box>
+                <Typography variant="subtitle2">{tituloMaterial}</Typography>
+                {subtituloMaterial && (
+                  <Typography variant="caption" color="text.secondary">{subtituloMaterial}</Typography>
+                )}
+              </Box>
+            </Stack>
 
             {v.requiere_cantidad_input && (
               <FormControl sx={{ mb: 1.5 }} fullWidth>
-                <FormLabel sx={{ fontSize: '0.8rem', mb: 0.5 }}>Cantidad</FormLabel>
+                <FormLabel sx={{ fontSize: '0.8rem', mb: 0.5 }}>¿Cuál es la cantidad?</FormLabel>
                 <RadioGroup
                   value={resoluciones[idx]?.cantidad ?? ''}
                   onChange={(e) => setResoluciones((prev) => ({
@@ -643,12 +703,12 @@ const MaterialesFacturaActions = ({
                   <FormControlLabel
                     value={String(v.cantidad_original)}
                     control={<Radio size="small" />}
-                    label={String(v.cantidad_original)}
+                    label={<Typography variant="body2" sx={{ fontWeight: 500 }}>{v.cantidad_original}</Typography>}
                   />
                   <FormControlLabel
                     value={String(v.cantidad_verificada)}
                     control={<Radio size="small" />}
-                    label={String(v.cantidad_verificada)}
+                    label={<Typography variant="body2" sx={{ fontWeight: 500 }}>{v.cantidad_verificada}</Typography>}
                   />
                 </RadioGroup>
               </FormControl>
@@ -656,7 +716,7 @@ const MaterialesFacturaActions = ({
 
             {v.requiere_precio_input && (
               <FormControl sx={{ mb: 1.5 }} fullWidth>
-                <FormLabel sx={{ fontSize: '0.8rem', mb: 0.5 }}>Precio unitario</FormLabel>
+                <FormLabel sx={{ fontSize: '0.8rem', mb: 0.5 }}>¿Cuál es el precio unitario?</FormLabel>
                 <RadioGroup
                   value={resoluciones[idx]?.precio ?? ''}
                   onChange={(e) => setResoluciones((prev) => ({
@@ -667,12 +727,12 @@ const MaterialesFacturaActions = ({
                   <FormControlLabel
                     value={String(v.precio_original)}
                     control={<Radio size="small" />}
-                    label={'$' + v.precio_original}
+                    label={<Typography variant="body2" sx={{ fontWeight: 500 }}>${v.precio_original}</Typography>}
                   />
                   <FormControlLabel
                     value={String(v.precio_verificado)}
                     control={<Radio size="small" />}
-                    label={'$' + v.precio_verificado}
+                    label={<Typography variant="body2" sx={{ fontWeight: 500 }}>${v.precio_verificado}</Typography>}
                   />
                 </RadioGroup>
               </FormControl>
@@ -680,7 +740,7 @@ const MaterialesFacturaActions = ({
 
             {v.requiere_codigo_input && (
               <FormControl fullWidth>
-                <FormLabel sx={{ fontSize: '0.8rem', mb: 0.5 }}>Código</FormLabel>
+                <FormLabel sx={{ fontSize: '0.8rem', mb: 0.5 }}>¿Cuál es el código?</FormLabel>
                 <RadioGroup
                   value={resoluciones[idx]?.codigo ?? ''}
                   onChange={(e) => setResoluciones((prev) => ({
@@ -691,12 +751,12 @@ const MaterialesFacturaActions = ({
                   <FormControlLabel
                     value={v.codigo_original || ''}
                     control={<Radio size="small" />}
-                    label={v.codigo_original || '(sin código)'}
+                    label={<Typography variant="body2" sx={{ fontWeight: 500 }}>{v.codigo_original || '(sin código)'}</Typography>}
                   />
                   <FormControlLabel
                     value={v.codigo_verificado || ''}
                     control={<Radio size="small" />}
-                    label={v.codigo_verificado || '(sin código)'}
+                    label={<Typography variant="body2" sx={{ fontWeight: 500 }}>{v.codigo_verificado || '(sin código)'}</Typography>}
                   />
                 </RadioGroup>
               </FormControl>
@@ -883,7 +943,7 @@ const MaterialesFacturaActions = ({
     <Dialog
       open={open}
       onClose={step === STEP_EXTRACCION ? undefined : onClose}
-      maxWidth="sm"
+      maxWidth={step === STEP_DISCREPANCIAS ? 'md' : 'sm'}
       fullWidth
       PaperProps={{ sx: { minHeight: 300 } }}
     >
