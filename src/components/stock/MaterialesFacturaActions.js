@@ -122,13 +122,20 @@ const MaterialesFacturaActions = ({
       return;
     }
     setDestino(dest);
+    // Pre-seleccionar la obra del movimiento cuando va directo a obra
+    if (dest === DESTINOS.DIRECTO_OBRA && movimiento?.proyecto_id) {
+      const obraDelMovimiento = proyectos.find(
+        (p) => (p.id || p._id) === movimiento.proyecto_id
+      ) || null;
+      setProyectoSeleccionado(obraDelMovimiento);
+    }
     // DISTRIBUIR no tiene sub-opciones: saltar directo a extracción
     if (dest === DESTINOS.DISTRIBUIR) {
       setStep(STEP_SUBOPCIONES);
       return;
     }
     setStep(STEP_SUBOPCIONES);
-  }, [onDismiss]);
+  }, [onDismiss, movimiento, proyectos]);
 
   // --- Crear ticket/acopio con materiales extraidos ---
   const crearDestinoConMateriales = useCallback(async (materiales) => {
@@ -439,7 +446,7 @@ const MaterialesFacturaActions = ({
       return 'Opciones';
     }
     if (step === STEP_EXTRACCION) return 'Extrayendo materiales...';
-    if (step === STEP_DISCREPANCIAS) return 'Verificacion de materiales';
+    if (step === STEP_DISCREPANCIAS) return 'Revisar datos dudosos';
     if (step === STEP_RESULTADO) return 'Resultado';
     if (step === STEP_DISTRIBUIR) return 'Distribuyendo materiales...';
     return '';
@@ -595,7 +602,7 @@ const MaterialesFacturaActions = ({
       <CircularProgress size={48} />
       <Typography variant="subtitle2">Extrayendo materiales de la factura...</Typography>
       <Typography variant="caption" color="text.secondary">
-        Modo preciso (O3 + verificacion). Puede tardar ~1 min por hoja.
+        Gemini 2.5 Flash + GPT-5.4 · verificacion doble. Puede tardar ~1 min por hoja.
       </Typography>
       <Box sx={{ width: '100%' }}>
         <LinearProgress variant="determinate" value={progreso} sx={{ height: 6, borderRadius: 3 }} />
@@ -608,23 +615,24 @@ const MaterialesFacturaActions = ({
 
   const renderStepDiscrepancias = () => (
     <Stack spacing={2}>
-      <Alert severity="warning" variant="outlined">
-        Se encontraron {materialesConDiscrepancia.length} material(es) con discrepancias entre la extraccion y la verificacion.
-        Revisa y elegi el valor correcto para cada uno.
-      </Alert>
+      <Typography variant="body2" color="text.secondary">
+        La IA leyó dos valores distintos para {materialesConDiscrepancia.length === 1 ? 'este dato' : 'estos datos'}.
+        Elegi el que corresponde según la factura.
+      </Typography>
 
       {materialesConDiscrepancia.map((mat) => {
         const idx = mat._idx;
         const v = mat._verificacion || {};
+        const nombre = mat.descripcion || mat.nombre || 'Material ' + (idx + 1);
         return (
           <Paper key={idx} variant="outlined" sx={{ p: 2 }}>
-            <Typography variant="subtitle2" sx={{ mb: 1 }}>
-              {mat.descripcion || mat.nombre || 'Material ' + (idx + 1)}
+            <Typography variant="subtitle2" sx={{ mb: 1.5 }}>
+              {nombre}
             </Typography>
 
             {v.requiere_cantidad_input && (
               <FormControl sx={{ mb: 1.5 }} fullWidth>
-                <FormLabel sx={{ fontSize: '0.8rem' }}>Cantidad</FormLabel>
+                <FormLabel sx={{ fontSize: '0.8rem', mb: 0.5 }}>Cantidad</FormLabel>
                 <RadioGroup
                   value={resoluciones[idx]?.cantidad ?? ''}
                   onChange={(e) => setResoluciones((prev) => ({
@@ -635,12 +643,12 @@ const MaterialesFacturaActions = ({
                   <FormControlLabel
                     value={String(v.cantidad_original)}
                     control={<Radio size="small" />}
-                    label={'Extraccion: ' + v.cantidad_original}
+                    label={String(v.cantidad_original)}
                   />
                   <FormControlLabel
                     value={String(v.cantidad_verificada)}
                     control={<Radio size="small" />}
-                    label={'Verificacion: ' + v.cantidad_verificada}
+                    label={String(v.cantidad_verificada)}
                   />
                 </RadioGroup>
               </FormControl>
@@ -648,7 +656,7 @@ const MaterialesFacturaActions = ({
 
             {v.requiere_precio_input && (
               <FormControl sx={{ mb: 1.5 }} fullWidth>
-                <FormLabel sx={{ fontSize: '0.8rem' }}>Precio unitario</FormLabel>
+                <FormLabel sx={{ fontSize: '0.8rem', mb: 0.5 }}>Precio unitario</FormLabel>
                 <RadioGroup
                   value={resoluciones[idx]?.precio ?? ''}
                   onChange={(e) => setResoluciones((prev) => ({
@@ -659,12 +667,12 @@ const MaterialesFacturaActions = ({
                   <FormControlLabel
                     value={String(v.precio_original)}
                     control={<Radio size="small" />}
-                    label={'Extraccion: $' + v.precio_original}
+                    label={'$' + v.precio_original}
                   />
                   <FormControlLabel
                     value={String(v.precio_verificado)}
                     control={<Radio size="small" />}
-                    label={'Verificacion: $' + v.precio_verificado}
+                    label={'$' + v.precio_verificado}
                   />
                 </RadioGroup>
               </FormControl>
@@ -672,7 +680,7 @@ const MaterialesFacturaActions = ({
 
             {v.requiere_codigo_input && (
               <FormControl fullWidth>
-                <FormLabel sx={{ fontSize: '0.8rem' }}>Codigo</FormLabel>
+                <FormLabel sx={{ fontSize: '0.8rem', mb: 0.5 }}>Código</FormLabel>
                 <RadioGroup
                   value={resoluciones[idx]?.codigo ?? ''}
                   onChange={(e) => setResoluciones((prev) => ({
@@ -683,12 +691,12 @@ const MaterialesFacturaActions = ({
                   <FormControlLabel
                     value={v.codigo_original || ''}
                     control={<Radio size="small" />}
-                    label={'Extraccion: ' + (v.codigo_original || '(vacio)')}
+                    label={v.codigo_original || '(sin código)'}
                   />
                   <FormControlLabel
                     value={v.codigo_verificado || ''}
                     control={<Radio size="small" />}
-                    label={'Verificacion: ' + (v.codigo_verificado || '(vacio)')}
+                    label={v.codigo_verificado || '(sin código)'}
                   />
                 </RadioGroup>
               </FormControl>
