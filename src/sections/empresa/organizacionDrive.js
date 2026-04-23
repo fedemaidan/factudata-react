@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   Alert,
   Box,
@@ -21,6 +21,7 @@ import {
   LinearProgress,
   ListItemText,
   MenuItem,
+  Paper,
   Select,
   Snackbar,
   Stack,
@@ -32,7 +33,9 @@ import {
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import AddIcon from "@mui/icons-material/Add";
+import CheckIcon from "@mui/icons-material/Check";
 import CloseIcon from "@mui/icons-material/Close";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
@@ -43,7 +46,11 @@ import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
 import FolderIcon from "@mui/icons-material/Folder";
 import GridOnIcon from "@mui/icons-material/GridOn";
 import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
+import OpenInNewIcon from "@mui/icons-material/OpenInNew";
+import RefreshIcon from "@mui/icons-material/Refresh";
+import SyncIcon from "@mui/icons-material/Sync";
 import TableChartIcon from "@mui/icons-material/TableChart";
+import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import { getProyectosByEmpresa } from "src/services/proyectosService";
 import {
   KEY_ID,
@@ -57,6 +64,7 @@ import {
   createSheetConfig,
   updateSheetConfig,
   deleteSheetConfig,
+  syncSheetConfig,
 } from "src/services/sheetConfigService";
 
 // ────────────────────────────────────────────────────────────────
@@ -289,11 +297,271 @@ function AvailableColumnsPanel({ rows, onToggle }) {
 }
 
 // ────────────────────────────────────────────────────────────────
+//  Panel de error de acceso al Google Sheet (instrucciones)
+// ────────────────────────────────────────────────────────────────
+
+const SERVICE_ACCOUNT_EMAIL =
+  "firebase-adminsdk-xts1d@factudata-3afdf.iam.gserviceaccount.com";
+
+const ACCESS_ERROR_CODES = new Set([
+  "SHEET_ACCESS_DENIED",
+  "SHEET_NOT_FOUND",
+  "SHEET_API_NOT_SUPPORTED",
+]);
+
+function AccessStep({ index, label, children }) {
+  const theme = useTheme();
+  return (
+    <Stack direction="row" spacing={1.25} alignItems="flex-start">
+      <Box
+        sx={{
+          width: 20,
+          height: 20,
+          borderRadius: "50%",
+          flexShrink: 0,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: "0.62rem",
+          fontWeight: 700,
+          fontFamily: "'Roboto Mono', monospace",
+          bgcolor: alpha(theme.palette.warning.main, 0.18),
+          color: "warning.dark",
+          mt: "2px",
+        }}
+      >
+        {index}
+      </Box>
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+        <Typography variant="body2" sx={{ fontSize: "0.82rem", lineHeight: 1.5 }}>
+          {label}
+        </Typography>
+        {children}
+      </Box>
+    </Stack>
+  );
+}
+
+function ShareAccessErrorPanel({ sheetId, errorMessage, onRetry, retrying }) {
+  const theme = useTheme();
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(SERVICE_ACCOUNT_EMAIL);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* clipboard bloqueado */
+    }
+  };
+
+  return (
+    <Paper
+      elevation={0}
+      sx={{
+        borderRadius: 2,
+        overflow: "hidden",
+        border: `1px solid ${alpha(theme.palette.warning.main, 0.35)}`,
+        bgcolor: alpha(theme.palette.warning.main, 0.04),
+        position: "relative",
+        "&::before": {
+          content: '""',
+          position: "absolute",
+          top: 0,
+          bottom: 0,
+          left: 0,
+          width: 3,
+          bgcolor: "warning.main",
+        },
+      }}
+    >
+      {/* Header */}
+      <Stack direction="row" spacing={1.5} alignItems="flex-start" sx={{ p: 2, pl: 2.5 }}>
+        <Box
+          sx={{
+            width: 34,
+            height: 34,
+            borderRadius: "50%",
+            flexShrink: 0,
+            bgcolor: alpha(theme.palette.warning.main, 0.15),
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <LockIcon sx={{ fontSize: 17, color: "warning.dark" }} />
+        </Box>
+        <Box sx={{ flex: 1, minWidth: 0, pt: "2px" }}>
+          <Typography
+            variant="overline"
+            sx={{
+              display: "block",
+              color: "warning.dark",
+              fontSize: "0.62rem",
+              letterSpacing: "0.9px",
+              lineHeight: 1,
+              mb: 0.25,
+            }}
+          >
+            Sin acceso
+          </Typography>
+          <Typography variant="subtitle2" fontWeight={700} sx={{ fontSize: "0.88rem", lineHeight: 1.35 }}>
+            Sorby no puede acceder a este Google Sheet
+          </Typography>
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            sx={{ mt: 0.5, fontSize: "0.8rem", lineHeight: 1.5 }}
+          >
+            Para que el sistema escriba los movimientos, necesita permisos de{" "}
+            <strong>Editor</strong> sobre la planilla.
+          </Typography>
+        </Box>
+      </Stack>
+
+      <Divider sx={{ borderColor: alpha(theme.palette.warning.main, 0.18) }} />
+
+      {/* Steps */}
+      <Stack spacing={1.25} sx={{ px: 2.5, py: 1.75 }}>
+        <AccessStep
+          index={1}
+          label={sheetId ? "Abrí el Google Sheet" : "Abrí el Google Sheet en tu navegador"}
+        >
+          {sheetId && (
+            <Button
+              component="a"
+              href={`https://docs.google.com/spreadsheets/d/${sheetId}/edit`}
+              target="_blank"
+              rel="noopener noreferrer"
+              size="small"
+              variant="outlined"
+              color="warning"
+              startIcon={<OpenInNewIcon sx={{ fontSize: 13 }} />}
+              sx={{
+                mt: 0.5,
+                height: 24,
+                fontSize: "0.7rem",
+                borderRadius: 0.75,
+                textTransform: "none",
+              }}
+            >
+              Abrir planilla
+            </Button>
+          )}
+        </AccessStep>
+
+        <AccessStep index={2} label='Arriba a la izquierda tocá "Archivo" y despues "Compartir".' />
+
+        <AccessStep index={3} label="Agregá este mail y asignale el rol Editor:">
+          <Box
+            sx={{
+              mt: 0.75,
+              display: "flex",
+              alignItems: "stretch",
+              borderRadius: 1.25,
+              border: `1px solid ${alpha(theme.palette.warning.main, 0.3)}`,
+              bgcolor: "background.paper",
+              overflow: "hidden",
+            }}
+          >
+            <Typography
+              component="code"
+              sx={{
+                flex: 1,
+                px: 1.25,
+                py: 0.75,
+                fontFamily: "'Roboto Mono', monospace",
+                fontSize: "0.7rem",
+                color: "text.primary",
+                userSelect: "all",
+                wordBreak: "break-all",
+                lineHeight: 1.4,
+              }}
+            >
+              {SERVICE_ACCOUNT_EMAIL}
+            </Typography>
+            <Tooltip title={copied ? "¡Copiado!" : "Copiar mail"} arrow placement="top">
+              <IconButton
+                size="small"
+                onClick={handleCopy}
+                sx={{
+                  borderRadius: 0,
+                  borderLeft: `1px solid ${alpha(theme.palette.warning.main, 0.22)}`,
+                  color: copied ? "success.main" : "warning.dark",
+                  transition: "color 0.15s ease",
+                  "&:hover": { bgcolor: alpha(theme.palette.warning.main, 0.1) },
+                }}
+              >
+                {copied ? (
+                  <CheckIcon sx={{ fontSize: 15 }} />
+                ) : (
+                  <ContentCopyIcon sx={{ fontSize: 15 }} />
+                )}
+              </IconButton>
+            </Tooltip>
+          </Box>
+        </AccessStep>
+
+        <AccessStep index={4} label='Volvé acá y tocá "Reintentar".' />
+      </Stack>
+
+      <Divider sx={{ borderColor: alpha(theme.palette.warning.main, 0.15) }} />
+
+      {/* Footer */}
+      <Stack
+        direction="row"
+        spacing={1}
+        alignItems="center"
+        sx={{
+          px: 2.5,
+          py: 1.25,
+          bgcolor: alpha(theme.palette.warning.main, 0.035),
+        }}
+      >
+        {errorMessage && (
+          <Typography
+            variant="caption"
+            sx={{
+              flex: 1,
+              color: "text.disabled",
+              fontSize: "0.67rem",
+              fontStyle: "italic",
+              lineHeight: 1.4,
+              minWidth: 0,
+            }}
+            noWrap
+          >
+            {errorMessage}
+          </Typography>
+        )}
+        <Button
+          size="small"
+          variant="contained"
+          color="warning"
+          onClick={onRetry}
+          disabled={retrying}
+          startIcon={
+            retrying ? (
+              <CircularProgress size={12} color="inherit" />
+            ) : (
+              <RefreshIcon sx={{ fontSize: 15 }} />
+            )
+          }
+          sx={{ flexShrink: 0, height: 28, fontSize: "0.75rem", textTransform: "none" }}
+        >
+          Reintentar
+        </Button>
+      </Stack>
+    </Paper>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────
 //  SheetConfigsSection — planillas adicionales por empresa
 // ────────────────────────────────────────────────────────────────
 
 const SHEET_EMPTY_FORM = {
-  nombre: "",
   sheet_id: "",
   sheet_nombre: "",
   tab_name: "",
@@ -315,6 +583,17 @@ function SheetConfigsSection({ empresa }) {
   const [saving, setSaving] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, msg: "", severity: "success" });
   const [proyectosEmpresa, setProyectosEmpresa] = useState([]);
+  const [syncTarget, setSyncTarget] = useState(null);
+  const [syncing, setSyncing] = useState(false);
+  const [formAccessError, setFormAccessError] = useState(null);
+  const [syncAccessError, setSyncAccessError] = useState(null);
+  const formContentRef = useRef(null);
+
+  useEffect(() => {
+    if (formAccessError && formContentRef.current) {
+      formContentRef.current.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }, [formAccessError]);
 
   useEffect(() => {
     if (!empresa?.id) return;
@@ -381,12 +660,12 @@ function SheetConfigsSection({ empresa }) {
     setUsarColumnasCustom(false);
     setColumnRows(buildDefaultRows());
     setEditingId(null);
+    setFormAccessError(null);
     setDialogOpen(true);
   };
 
   const openEdit = (config) => {
     setForm({
-      nombre: config.nombre || "",
       sheet_id: config.sheet_id || "",
       sheet_nombre: config.sheet_nombre || "",
       tab_name: config.tab_name || "",
@@ -399,11 +678,13 @@ function SheetConfigsSection({ empresa }) {
     setUsarColumnasCustom(hasCustom);
     setColumnRows(buildRowsFromConfig(config.columnas));
     setEditingId(config._id);
+    setFormAccessError(null);
     setDialogOpen(true);
   };
 
   const handleSave = async () => {
     if (!form.sheet_id.trim() || !form.tab_name.trim()) return;
+    setFormAccessError(null);
     setSaving(true);
     let columnasPayload = null;
     if (usarColumnasCustom) {
@@ -428,16 +709,52 @@ function SheetConfigsSection({ empresa }) {
       : await createSheetConfig(payload);
     setSaving(false);
     if (result.error) {
-      setSnackbar({ open: true, msg: "Error al guardar la configuración.", severity: "error" });
+      if (ACCESS_ERROR_CODES.has(result.code)) {
+        setFormAccessError({ message: result.error, sheetId: form.sheet_id });
+      } else {
+        setSnackbar({
+          open: true,
+          msg: typeof result.error === "string" ? result.error : "Error al guardar la configuración.",
+          severity: "error",
+        });
+      }
     } else {
       setSnackbar({
         open: true,
-        msg: editingId ? "Configuración actualizada." : "Configuración creada.",
+        msg: editingId
+          ? "Configuración actualizada."
+          : "Configuración creada. Sincronizando movimientos históricos en segundo plano…",
         severity: "success",
       });
       setDialogOpen(false);
       loadConfigs();
     }
+  };
+
+  const handleConfirmSync = async () => {
+    if (!syncTarget) return;
+    setSyncAccessError(null);
+    setSyncing(true);
+    const { error, code } = await syncSheetConfig(syncTarget._id);
+    setSyncing(false);
+    if (error) {
+      if (ACCESS_ERROR_CODES.has(code)) {
+        setSyncAccessError({ message: error, sheetId: syncTarget.sheet_id });
+        return;
+      }
+      setSnackbar({
+        open: true,
+        msg: typeof error === "string" ? error : "Error al iniciar la sincronización.",
+        severity: "error",
+      });
+    } else {
+      setSnackbar({
+        open: true,
+        msg: "Sincronización iniciada en segundo plano.",
+        severity: "success",
+      });
+    }
+    setSyncTarget(null);
   };
 
   const handleDelete = async (id) => {
@@ -569,6 +886,26 @@ function SheetConfigsSection({ empresa }) {
                       "& .MuiChip-label": { px: 1 },
                     }}
                   />
+                  <Tooltip title="Abrir en Google Sheets" arrow>
+                    <IconButton
+                      size="small"
+                      component="a"
+                      href={`https://docs.google.com/spreadsheets/d/${group.sheet_id}/edit`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      sx={{
+                        p: "3px",
+                        color: "success.main",
+                        opacity: 0.55,
+                        "&:hover": {
+                          opacity: 1,
+                          bgcolor: alpha(theme.palette.success.main, 0.1),
+                        },
+                      }}
+                    >
+                      <OpenInNewIcon sx={{ fontSize: 12 }} />
+                    </IconButton>
+                  </Tooltip>
                 </Stack>
                 <Tooltip title="Agregar solapa en esta planilla">
                   <IconButton
@@ -601,18 +938,35 @@ function SheetConfigsSection({ empresa }) {
                     }}
                   >
                     <TableChartIcon sx={{ fontSize: 14, color: "text.disabled", flexShrink: 0 }} />
-                    <Typography
-                      variant="body2"
-                      sx={{
-                        fontFamily: '"Roboto Mono", monospace',
-                        fontWeight: 600,
-                        fontSize: "0.8rem",
-                        minWidth: 100,
-                        flexShrink: 0,
-                      }}
+                    <Stack
+                      direction="row"
+                      spacing={0.75}
+                      alignItems="baseline"
+                      sx={{ minWidth: 100, flexShrink: 0 }}
                     >
-                      {config.tab_name}
-                    </Typography>
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          fontFamily: '"Roboto Mono", monospace',
+                          fontWeight: 600,
+                          fontSize: "0.8rem",
+                        }}
+                      >
+                        {config.tab_name}
+                      </Typography>
+                      {config.nombre && (
+                        <Typography
+                          variant="caption"
+                          sx={{
+                            color: "text.disabled",
+                            fontSize: "0.68rem",
+                            fontStyle: "italic",
+                          }}
+                        >
+                          · {config.nombre}
+                        </Typography>
+                      )}
+                    </Stack>
 
                     <Box sx={{ flex: 1, display: "flex", flexWrap: "wrap", gap: 0.5 }}>
                       {!config.condiciones?.length ? (
@@ -688,6 +1042,21 @@ function SheetConfigsSection({ empresa }) {
                           onChange={() => handleToggleActivo(config)}
                           color="success"
                         />
+                      </Tooltip>
+                      <Tooltip title="Re-sincronizar históricos">
+                        <IconButton
+                          size="small"
+                          onClick={() => setSyncTarget(config)}
+                          sx={{
+                            color: "text.disabled",
+                            "&:hover": {
+                              color: "warning.main",
+                              bgcolor: alpha(theme.palette.warning.main, 0.08),
+                            },
+                          }}
+                        >
+                          <SyncIcon sx={{ fontSize: 16 }} />
+                        </IconButton>
                       </Tooltip>
                       <Tooltip title="Editar">
                         <IconButton
@@ -784,27 +1153,16 @@ function SheetConfigsSection({ empresa }) {
           </Typography>
         </DialogTitle>
 
-        <DialogContent sx={{ pt: 3, pb: 1 }}>
+        <DialogContent ref={formContentRef} sx={{ pt: 3, pb: 1 }}>
           <Stack spacing={3}>
-            {/* Identificación */}
-            <Box>
-              <Typography
-                variant="overline"
-                sx={{ color: "text.disabled", fontSize: "0.65rem", letterSpacing: "0.8px" }}
-              >
-                Identificación
-              </Typography>
-              <TextField
-                value={form.nombre}
-                onChange={(e) => setField("nombre", e.target.value)}
-                label="Etiqueta (opcional)"
-                size="small"
-                fullWidth
-                placeholder="ej: Materiales Obra Norte"
-                sx={{ mt: 0.75 }}
+            {formAccessError && (
+              <ShareAccessErrorPanel
+                sheetId={formAccessError.sheetId}
+                errorMessage={formAccessError.message}
+                onRetry={handleSave}
+                retrying={saving}
               />
-            </Box>
-
+            )}
             {/* Destino */}
             <Box>
               <Typography
@@ -817,7 +1175,10 @@ function SheetConfigsSection({ empresa }) {
                 <Stack direction="row" spacing={1.5}>
                   <TextField
                     value={form.sheet_id}
-                    onChange={(e) => setField("sheet_id", e.target.value)}
+                    onChange={(e) => {
+                      setField("sheet_id", e.target.value.replace(/^\/+|\/+$/g, "").trim());
+                      if (formAccessError) setFormAccessError(null);
+                    }}
                     label="ID de planilla *"
                     size="small"
                     required
@@ -829,21 +1190,19 @@ function SheetConfigsSection({ empresa }) {
                   <TextField
                     value={form.sheet_nombre}
                     onChange={(e) => setField("sheet_nombre", e.target.value)}
-                    label="Nombre de la planilla"
+                    label="Nombre del Google Sheet"
                     size="small"
                     fullWidth
-                    placeholder="ej: Hoja Obra Norte"
                     helperText="Para identificarla en la UI"
                   />
                 </Stack>
                 <TextField
                   value={form.tab_name}
                   onChange={(e) => setField("tab_name", e.target.value)}
-                  label="Nombre de la solapa *"
+                  label="Nombre de la solapa/hoja *"
                   size="small"
                   required
                   fullWidth
-                  placeholder="ej: Materiales"
                   helperText="Nombre exacto del tab. Se crea automáticamente si no existe."
                   sx={{ "& input": { fontFamily: '"Roboto Mono", monospace', fontSize: "0.8rem" } }}
                 />
@@ -1121,15 +1480,163 @@ function SheetConfigsSection({ empresa }) {
         </DialogActions>
       </Dialog>
 
+      {/* Confirmación de re-sincronización */}
+      <Dialog
+        open={!!syncTarget}
+        onClose={() => {
+          if (syncing) return;
+          setSyncTarget(null);
+          setSyncAccessError(null);
+        }}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 2,
+            border: `1px solid ${alpha(theme.palette.warning.main, 0.3)}`,
+            overflow: "hidden",
+          },
+        }}
+      >
+        <Box
+          sx={{
+            position: "relative",
+            px: 3,
+            pt: 3,
+            pb: 2,
+            bgcolor: alpha(theme.palette.warning.main, 0.05),
+            borderBottom: `1px solid ${alpha(theme.palette.warning.main, 0.18)}`,
+          }}
+        >
+          <Stack direction="row" spacing={1.5} alignItems="flex-start">
+            <Box
+              sx={{
+                width: 38,
+                height: 38,
+                borderRadius: "50%",
+                flexShrink: 0,
+                bgcolor: alpha(theme.palette.warning.main, 0.15),
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <WarningAmberIcon sx={{ fontSize: 20, color: "warning.dark" }} />
+            </Box>
+            <Box sx={{ minWidth: 0, pt: "2px" }}>
+              <Typography variant="subtitle1" fontWeight={700} sx={{ lineHeight: 1.25 }}>
+                Re-sincronizar movimientos históricos
+              </Typography>
+              {syncTarget && (
+                <Typography
+                  variant="caption"
+                  sx={{
+                    display: "block",
+                    mt: 0.25,
+                    color: "text.secondary",
+                    fontFamily: '"Roboto Mono", monospace',
+                    fontSize: "0.7rem",
+                  }}
+                  noWrap
+                >
+                  {syncTarget.sheet_nombre || syncTarget.sheet_id} · {syncTarget.tab_name}
+                </Typography>
+              )}
+            </Box>
+          </Stack>
+        </Box>
+
+        <DialogContent sx={{ px: 3, pt: 2.5, pb: 2 }}>
+          {syncAccessError ? (
+            <ShareAccessErrorPanel
+              sheetId={syncAccessError.sheetId}
+              errorMessage={syncAccessError.message}
+              onRetry={handleConfirmSync}
+              retrying={syncing}
+            />
+          ) : (
+            <>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5, lineHeight: 1.55 }}>
+                Se va a <strong>limpiar la solapa</strong> y reescribir con todos los movimientos que matchean las
+                condiciones actuales.
+              </Typography>
+              <Box
+                sx={{
+                  borderRadius: 1.5,
+                  bgcolor: alpha(theme.palette.warning.main, 0.06),
+                  border: `1px solid ${alpha(theme.palette.warning.main, 0.18)}`,
+                  p: 1.5,
+                }}
+              >
+                <Typography
+                  variant="caption"
+                  sx={{
+                    display: "block",
+                    fontWeight: 600,
+                    color: "warning.dark",
+                    letterSpacing: "0.3px",
+                    textTransform: "uppercase",
+                    fontSize: "0.65rem",
+                    mb: 0.5,
+                  }}
+                >
+                  Qué vas a perder
+                </Typography>
+                <Typography variant="body2" sx={{ fontSize: "0.8rem", color: "text.primary", lineHeight: 1.5 }}>
+                  Cualquier edición manual hecha directamente en Google Sheets sobre esta solapa se pierde.
+                  La operación es segura si la solapa está destinada solo a esta configuración.
+                </Typography>
+              </Box>
+            </>
+          )}
+        </DialogContent>
+
+        <DialogActions
+          sx={{
+            px: 3,
+            py: 2,
+            borderTop: `1px solid ${theme.palette.divider}`,
+            gap: 1,
+          }}
+        >
+          <Button
+            onClick={() => {
+              setSyncTarget(null);
+              setSyncAccessError(null);
+            }}
+            size="small"
+            variant="outlined"
+            color="inherit"
+            disabled={syncing}
+          >
+            {syncAccessError ? "Cerrar" : "Cancelar"}
+          </Button>
+          {!syncAccessError && (
+            <Button
+              onClick={handleConfirmSync}
+              size="small"
+              variant="contained"
+              color="warning"
+              disabled={syncing}
+              startIcon={
+                syncing ? <CircularProgress size={14} color="inherit" /> : <SyncIcon sx={{ fontSize: 16 }} />
+              }
+            >
+              Sincronizar
+            </Button>
+          )}
+        </DialogActions>
+      </Dialog>
+
       <Snackbar
         open={snackbar.open}
-        autoHideDuration={4000}
+        autoHideDuration={snackbar.severity === "error" ? 8000 : 4000}
         onClose={() => setSnackbar((s) => ({ ...s, open: false }))}
       >
         <Alert
           severity={snackbar.severity}
           onClose={() => setSnackbar((s) => ({ ...s, open: false }))}
-          sx={{ width: "100%" }}
+          sx={{ width: "100%", maxWidth: 520, whiteSpace: "pre-wrap" }}
         >
           {snackbar.msg}
         </Alert>
