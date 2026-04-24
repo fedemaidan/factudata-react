@@ -268,6 +268,17 @@ export const crearProyecto = async (proyecto, empresaId) => {
  * @param {string} proyectoId - El ID del proyecto a eliminar.
  * @returns {Promise<boolean>} - Retorna true si la eliminación fue exitosa, false si falló.
  */
+export const softDeleteMovimientosByProyectoId = async (proyectoId) => {
+  try {
+    await api.delete(`movimientos/by-proyecto/${proyectoId}`);
+    return true;
+  } catch (err) {
+    console.error('Error al soft-delete movimientos del proyecto:', err);
+    return false;
+  }
+};
+
+
 export const deleteProyectoById = async (proyectoId, empresaId = null) => {
   try {
     // Obtener IDs de movimientos asociados al proyecto via API

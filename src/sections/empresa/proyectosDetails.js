@@ -36,7 +36,7 @@ import * as Yup from 'yup';
 import EditIcon from '@mui/icons-material/Edit';
 import SaveIcon from '@mui/icons-material/Save';
 import AddCircleIcon from '@mui/icons-material/AddCircle';
-import { getProyectosByEmpresa, getProyectosFromUser, hasPermission, updateProyecto, crearProyecto, subirCSVProyecto, otorgarPermisosDriveProyecto  } from 'src/services/proyectosService';
+import { getProyectosByEmpresa, getProyectosFromUser, hasPermission, updateProyecto, crearProyecto, subirCSVProyecto, otorgarPermisosDriveProyecto, softDeleteMovimientosByProyectoId } from 'src/services/proyectosService';
 import { getEmpresaById } from 'src/services/empresaService';
 import { useRouter } from 'next/router';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
@@ -85,9 +85,10 @@ export const ProyectosDetails = ({ empresa, refreshEmpresa }) => {
 
   const confirmarEliminacionProyecto = async () => {
     try {
+      await softDeleteMovimientosByProyectoId(proyectoAEliminar.id);
       const updatedProyecto = { ...proyectoAEliminar, activo: false, eliminado: true };
       await updateProyecto(proyectoAEliminar.id, updatedProyecto);
-      setSnackbarMessage('Proyecto eliminado (lógicamente) con éxito');
+      setSnackbarMessage('Proyecto eliminado con éxito');
       setSnackbarSeverity('success');
     } catch (error) {
       await refreshEmpresa?.();
