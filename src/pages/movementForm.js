@@ -36,6 +36,7 @@ import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import movimientosService from 'src/services/movimientosService';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import { useAuthContext } from 'src/contexts/auth-context';
+import { useAlert } from 'src/contexts/alert-context';
 import proveedorService from 'src/services/proveedorService';
 import { useBreadcrumbs } from 'src/contexts/breadcrumbs-context';
 import { dateToTimestamp, formatCurrency, formatTimestamp } from 'src/utils/formatters';
@@ -199,6 +200,7 @@ const StitchBlock = ({ step, title, children }) => (
 
 const MovementFormPage = () => {
   const { user, signOut } = useAuthContext();
+  const { showAlert: showGlobalAlert } = useAlert();
   const { setBreadcrumbs } = useBreadcrumbs();
   const router = useRouter();
   const { movimientoId, proyectoId, proyectoName, lastPageUrl, lastPageName, showStockPopup } = router.query;
@@ -232,6 +234,7 @@ const MovementFormPage = () => {
   const [previewUrl, setPreviewUrl] = useState(null);
   const fileInputRef = useRef(null);
   const pendingExtraccionRef = useRef(false);
+  const returnAfterSaveRef = useRef(false);
   const [createdUser, setCreatedUser] = useState(null);
   const [comprobanteModalOpen, setComprobanteModalOpen] = useState(false);
   const [imagenModal, setImagenModal] = useState('');
@@ -331,9 +334,14 @@ const MovementFormPage = () => {
       }
 
       setAlert({ open: true, message: 'Movimiento guardado con éxito!', severity: 'success' });
+      if (returnAfterSaveRef.current) {
+        showGlobalAlert({ message: 'Movimiento guardado con éxito!', severity: 'success' });
+        router.push(lastPageUrl || '/');
+      }
     } catch (err) {
       setAlert({ open: true, message: err.message, severity: 'error' });
     } finally {
+      returnAfterSaveRef.current = false;
       setIsLoading(false);
       setConfirmOpen(false);
       setPendingPayload(null);
@@ -727,6 +735,11 @@ const createdAtStr = (() => {
   };
 
 
+  const handleSaveAndReturn = () => {
+    returnAfterSaveRef.current = true;
+    handleSubmitForm();
+  };
+
   const formik = useFormik({
     initialValues: {
       fecha_factura: getTodayLocalDate(),
@@ -1075,6 +1088,75 @@ const createdAtStr = (() => {
     requiredFieldNames,
     hideFooterButtons: true,
   };
+  const renderComprobanteBlock = () => {
+    if (hasComprobante) {
+      return (
+        <div className="flex flex-col gap-2">
+          {isComprobantePdf ? (
+            <div className="flex items-center gap-2 rounded-lg border border-divider bg-neutral-50 p-3">
+              <DocumentTextIcon className="h-8 w-8 shrink-0 text-error-main" aria-hidden />
+              <span className="text-xs text-neutral-600">Archivo PDF adjunto</span>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => { setImagenModal(comprobanteSrc); setComprobanteModalOpen(true); }}
+              className="block w-full overflow-hidden rounded-lg border border-divider bg-neutral-50 hover:opacity-90"
+            >
+              <img
+                src={comprobanteSrc}
+                alt="Comprobante"
+                className="max-h-[320px] w-full object-contain"
+              />
+            </button>
+          )}
+          <div className="flex flex-wrap gap-x-3 gap-y-1">
+            <button
+              type="button"
+              onClick={() => {
+                if (isComprobantePdf) { setPdfModalOpen(true); }
+                else { setImagenModal(comprobanteSrc); setComprobanteModalOpen(true); }
+              }}
+              className="text-xs font-medium text-primary-dark hover:underline"
+            >
+              Ver en tamaño completo
+            </button>
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="text-xs font-medium text-neutral-600 hover:underline"
+            >
+              {isEditMode ? 'Reemplazar comprobante' : 'Reemplazar archivo'}
+            </button>
+          </div>
+          {!isEditMode && nuevoArchivo && (
+            <button
+              type="button"
+              onClick={handleUploadImage}
+              disabled={isReemplazandoImagen}
+              className="rounded-lg border border-primary-main px-2 py-1 text-xs font-semibold text-primary-dark disabled:opacity-40"
+            >
+              {isReemplazandoImagen ? 'Subiendo…' : 'Subir comprobante'}
+            </button>
+          )}
+        </div>
+      );
+    }
+    return (
+      <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-neutral-300 bg-neutral-50 px-3 py-4 text-center">
+        <DocumentTextIcon className="h-8 w-8 text-neutral-300" aria-hidden />
+        <p className="text-xs text-neutral-500">Sin comprobante adjunto</p>
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          className="rounded-lg border border-primary-main px-3 py-1 text-xs font-semibold text-primary-dark hover:bg-primary-lightest"
+        >
+          Adjuntar archivo
+        </button>
+      </div>
+    );
+  };
+
   const renderSummaryBody = () => {
                       const V = formik.values || {};
                       const impuestos = Array.isArray(V.impuestos) ? V.impuestos : [];
@@ -1404,9 +1486,17 @@ const createdAtStr = (() => {
                 type="button"
                 onClick={handleSubmitForm}
                 disabled={isLoading}
-                className="inline-flex min-w-[5.5rem] items-center justify-center rounded-lg bg-primary-main px-4 py-1.5 text-sm font-semibold text-white shadow hover:bg-primary-dark disabled:opacity-50"
+                className="inline-flex min-w-[5.5rem] items-center justify-center rounded-lg border border-primary-main bg-white px-4 py-1.5 text-sm font-semibold text-primary-dark shadow-sm hover:bg-primary-lightest disabled:opacity-50"
               >
-                {isLoading ? <ArrowPathIcon className="h-5 w-5 animate-spin" aria-label="Cargando" /> : (isEditMode ? 'Guardar' : 'Crear')}
+                {isLoading && !returnAfterSaveRef.current ? <ArrowPathIcon className="h-5 w-5 animate-spin" aria-label="Cargando" /> : (isEditMode ? 'Guardar' : 'Crear')}
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveAndReturn}
+                disabled={isLoading}
+                className="inline-flex min-w-[7rem] items-center justify-center rounded-lg bg-primary-main px-4 py-1.5 text-sm font-semibold text-white shadow hover:bg-primary-dark disabled:opacity-50"
+              >
+                {isLoading && returnAfterSaveRef.current ? <ArrowPathIcon className="h-5 w-5 animate-spin" aria-label="Cargando" /> : 'Guardar y volver'}
               </button>
             </div>
           </div>
@@ -1526,58 +1616,14 @@ const createdAtStr = (() => {
                   </StitchBlock>
                 </div>
               </div>
-              <footer className="flex shrink-0 flex-wrap items-center gap-2 border-t border-divider bg-neutral-50 pt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!hasComprobante) {
-                      fileInputRef.current?.click();
-                      return;
-                    }
-                    if (isComprobantePdf) {
-                      setPdfModalOpen(true);
-                      return;
-                    }
-                    setImagenModal(comprobanteSrc);
-                    setComprobanteModalOpen(true);
-                  }}
-                  className="text-sm font-medium text-primary-dark hover:underline"
-                >
-                  Ver imagen de factura
-                </button>
-                {!isEditMode && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="text-sm font-medium text-neutral-700 hover:underline"
-                    >
-                      Elegir archivo
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleUploadImage}
-                      disabled={!nuevoArchivo || isReemplazandoImagen}
-                      className="rounded-lg border border-primary-main px-2 py-1 text-xs font-semibold text-primary-dark disabled:opacity-40"
-                    >
-                      {isReemplazandoImagen ? 'Subiendo…' : 'Subir comprobante'}
-                    </button>
-                  </>
-                )}
-                {isEditMode && (
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="text-sm font-medium text-neutral-700 hover:underline"
-                  >
-                    Reemplazar comprobante
-                  </button>
-                )}
-              </footer>
             </form>
 
-            <aside className="hidden min-h-0 w-full shrink-0 flex-col overflow-hidden rounded-xl border border-divider bg-white shadow-sm lg:flex lg:w-[280px]">
-              <div className="border-b border-divider px-3 py-2">
+            <aside className="hidden min-h-0 w-full shrink-0 flex-col overflow-hidden rounded-xl border border-divider bg-white shadow-sm lg:flex lg:w-[320px]">
+              <div className="shrink-0 border-b border-divider px-3 py-2">
+                <h2 className="mb-2 text-sm font-semibold text-neutral-900">Comprobante de factura</h2>
+                {renderComprobanteBlock()}
+              </div>
+              <div className="shrink-0 border-b border-divider px-3 py-2">
                 <h2 className="text-sm font-semibold text-neutral-900">Resumen</h2>
               </div>
               <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">{renderSummaryBody()}</div>
@@ -1599,6 +1645,10 @@ const createdAtStr = (() => {
             </aside>
 
             <div className="shrink-0 rounded-xl border border-divider bg-white p-3 shadow-sm lg:hidden">
+              <div className="mb-3 border-b border-divider pb-3">
+                <h2 className="mb-2 text-sm font-semibold text-neutral-900">Comprobante</h2>
+                {renderComprobanteBlock()}
+              </div>
               <h2 className="mb-2 text-sm font-semibold text-neutral-900">Resumen</h2>
               <div className="max-h-48 overflow-y-auto text-xs">{renderSummaryBody()}</div>
               {isEditMode && movimiento?.es_movimiento_prorrateo && (
