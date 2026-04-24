@@ -2385,6 +2385,7 @@ export const ModalEditarContacto = ({ open, onClose, contacto, empresaId, onSucc
         empresa: '',
         cargo: '',
         tamanoEmpresa: '',
+        rubro: '',
         telefonosSecundarios: []
     });
     const [loading, setLoading] = useState(false);
@@ -2400,6 +2401,7 @@ export const ModalEditarContacto = ({ open, onClose, contacto, empresaId, onSucc
                 empresa: contacto.empresa || '',
                 cargo: contacto.cargo || '',
                 tamanoEmpresa: contacto.tamanoEmpresa || '',
+                rubro: contacto.rubro || '',
                 telefonosSecundarios: contacto.telefonosSecundarios || []
             });
             setError(null);
@@ -2544,6 +2546,15 @@ export const ModalEditarContacto = ({ open, onClose, contacto, empresaId, onSucc
                             ))}
                         </Select>
                     </FormControl>
+
+                    <TextField
+                        fullWidth
+                        label="Tipo de negocio"
+                        value={formData.rubro}
+                        onChange={(e) => handleChange('rubro', e.target.value)}
+                        size="small"
+                        placeholder="Ej: Constructora, Desarrolladora..."
+                    />
                     
                     {/* Teléfonos secundarios */}
                     <Divider sx={{ my: 1 }} />
