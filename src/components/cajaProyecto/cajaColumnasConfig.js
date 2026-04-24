@@ -11,6 +11,8 @@ export const CAJA_COL_DEFAULT_ORDER = [
   'fechaCreacion',
   'tipo',
   'total',
+  'subtotal',
+  'impuestos',
   'montoPagado',
   'montoAprobado',
   'categoria',
@@ -64,6 +66,8 @@ const LABELS = {
   fechaPago: 'Fecha de pago',
   tagsExtra: 'Tags extra',
   dolarReferencia: 'TC Referencia',
+  subtotal: 'Subtotal',
+  impuestos: 'Impuestos',
   totalDolar: 'Total USD',
   subtotalDolar: 'Subtotal USD',
   acciones: 'Acciones',
@@ -88,6 +92,8 @@ export function getCajaColumnasConfig(visibleCols, compactCols, empresa, options
 
   if (!compactCols && visibleCols?.tipo) result.push(['tipo', LABELS.tipo]);
   if (visibleCols?.total) result.push(['total', LABELS.total]);
+  if (visibleCols?.subtotal) result.push(['subtotal', LABELS.subtotal]);
+  if (visibleCols?.impuestos) result.push(['impuestos', LABELS.impuestos]);
   if (visibleCols?.montoPagado) result.push(['montoPagado', LABELS.montoPagado]);
   if (visibleCols?.montoAprobado) result.push(['montoAprobado', LABELS.montoAprobado]);
   if (visibleCols?.categoria) result.push(['categoria', LABELS.categoria]);
@@ -172,6 +178,8 @@ export function getHeaderLabel(key, compactCols) {
     fechaPago: 'FECHA PAGO',
     tagsExtra: 'TAGS EXTRA',
     dolarReferencia: 'TC REF.',
+    subtotal: 'SUBTOTAL',
+    impuestos: 'IMPUESTOS',
     totalDolar: 'TOTAL USD',
     subtotalDolar: 'SUBTOTAL USD',
     acciones: 'ACCIONES',
@@ -225,6 +233,8 @@ export function getHeaderCellSx(key, COLS, cellBase) {
     fechaPago: { minWidth: COLS.fechaPago },
     tagsExtra: { minWidth: COLS.tagsExtra },
     dolarReferencia: { minWidth: COLS.dolarReferencia },
+    subtotal: { minWidth: COLS.subtotal, textAlign: 'right' },
+    impuestos: { minWidth: COLS.impuestos, textAlign: 'right' },
     totalDolar: { minWidth: COLS.totalDolar, textAlign: 'right' },
     subtotalDolar: { minWidth: COLS.subtotalDolar, textAlign: 'right' },
     acciones: { minWidth: COLS.acciones, textAlign: 'center', ...stickyRight },

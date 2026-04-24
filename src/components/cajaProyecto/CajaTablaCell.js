@@ -108,6 +108,20 @@ const CajaTablaCell = ({ colKey, mov, amountColor, ctx, isProrrateo = false }) =
           ? formatCurrencyWithCode(Number(mov.monto_aprobado) || 0, mov.moneda || 'ARS')
           : '—'
       );
+    case 'subtotal':
+      return cell(
+        { ...cellBase, minWidth: COLS.subtotal, textAlign: 'right' },
+        formatCurrencyWithCode(Number(mov.subtotal ?? mov.total) || 0, mov.moneda || 'ARS')
+      );
+    case 'impuestos': {
+      const subtotalN = Number(mov.subtotal ?? mov.total) || 0;
+      const totalN = Number(mov.total) || 0;
+      const impuestosN = totalN - subtotalN;
+      return cell(
+        { ...cellBase, minWidth: COLS.impuestos, textAlign: 'right' },
+        impuestosN > 0 ? formatCurrencyWithCode(impuestosN, mov.moneda || 'ARS') : '—'
+      );
+    }
     case 'categoria':
       return cell(
         { ...cellBase, minWidth: COLS.categoria },

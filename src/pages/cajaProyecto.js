@@ -64,6 +64,8 @@ const COLS = {
   obra: 200,
   cliente: 200,
   total: 160,
+  subtotal: 160,
+  impuestos: 160,
   montoPagado: 170,
   montoAprobado: 170,
   categoria: 160,
@@ -121,6 +123,36 @@ const logCajaDebug = (label, payload) => {
     return;
   }
   console.log(`[CajaProyecto] ${label}`, formatDebugValue(payload));
+};
+
+// Serializa el estado de filters para guardarlo en una caja (fechas → ISO string, excluye 'caja')
+const serializeFilterSet = (f) => {
+  const out = { ...f };
+  delete out.caja;
+  const dateKeys = [
+    'fechaDesde', 'fechaHasta', 'fechaPagoDesde', 'fechaPagoHasta',
+    'fechaCreacionDesde', 'fechaCreacionHasta', 'fechaModificacionDesde', 'fechaModificacionHasta',
+  ];
+  dateKeys.forEach((k) => {
+    if (out[k] instanceof Date) out[k] = out[k].toISOString().slice(0, 10);
+    else if (!out[k]) delete out[k];
+  });
+  return out;
+};
+
+// Restaura un filterSet almacenado, convirtiendo strings de fecha de vuelta a Date
+const deserializeFilterSet = (stored) => {
+  if (!stored) return {};
+  const out = { ...stored };
+  const dateKeys = [
+    'fechaDesde', 'fechaHasta', 'fechaPagoDesde', 'fechaPagoHasta',
+    'fechaCreacionDesde', 'fechaCreacionHasta', 'fechaModificacionDesde', 'fechaModificacionHasta',
+  ];
+  dateKeys.forEach((k) => {
+    if (out[k] && typeof out[k] === 'string') out[k] = new Date(out[k]);
+    else if (out[k]?.seconds) out[k] = new Date(out[k].seconds * 1000);
+  });
+  return out;
 };
 
 const parseFechaCsv = (value) => {
@@ -273,7 +305,7 @@ const getMovimientoCsvExportFields = () => [
 ];
 
 
-const TotalesFiltrados = ({ t, fmt, moneda, showUsdBlue = false, usdBlue = null, chips = [], onOpenFilters, isMobile = false, showDetails = false, onToggleDetails }) => {
+const TotalesFiltrados = ({ t, fmt, moneda, showUsdBlue = false, usdBlue = null, chips = [], onOpenFilters, isMobile = false, showDetails = false, onToggleDetails, baseCalculo = 'total' }) => {
   const up = (moneda || '').toUpperCase();
   const ingreso = t[up]?.ingreso ?? 0;
   const egreso  = t[up]?.egreso  ?? 0;
@@ -297,7 +329,7 @@ const TotalesFiltrados = ({ t, fmt, moneda, showUsdBlue = false, usdBlue = null,
       >
         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1, gap: 1 }}>
           <Typography variant="subtitle2" color="text.secondary">
-            Totales filtrados
+            Totales filtrados{baseCalculo === 'subtotal' ? ' (neto)' : ''}
           </Typography>
           <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             {chips.length > 0 && (
@@ -447,9 +479,9 @@ const ProyectoMovimientosPage = () => {
 
   const [anchorEl, setAnchorEl] = useState(null);
   const [cajasVirtuales, setCajasVirtuales] = useState([
-    { nombre: 'Caja en Pesos', moneda: 'ARS', medio_pago: "" , equivalencia: 'none', type: '' },
-    { nombre: 'Caja en Dólares', moneda: 'USD', medio_pago: "" , equivalencia: 'none', type: '' },
-    { nombre: 'Gastos en USD Blue', moneda: 'ARS', medio_pago: "" , equivalencia: 'usd_blue', type: 'egreso' },
+    { nombre: 'Caja en Pesos', moneda: 'ARS', medio_pago: "" , equivalencia: 'none', type: '', baseCalculo: 'total' },
+    { nombre: 'Caja en Dólares', moneda: 'USD', medio_pago: "" , equivalencia: 'none', type: '', baseCalculo: 'total' },
+    { nombre: 'Gastos en USD Blue', moneda: 'ARS', medio_pago: "" , equivalencia: 'usd_blue', type: 'egreso', baseCalculo: 'total' },
   ]);  
   const [showCrearCaja, setShowCrearCaja] = useState(false);
   const [nombreCaja, setNombreCaja] = useState('');
@@ -510,6 +542,8 @@ const scrollRef = useRef(null);      // contenedor principal con overflow
 const topScrollRef = useRef(null);   // barra superior "fantasma"
 const tableRef = useRef(null);
 const [typeCaja, setTypeCaja] = useState(''); // '' | 'ingreso' | 'egreso'
+const [baseCalculoCaja, setBaseCalculoCaja] = useState('total'); // 'total' | 'subtotal'
+const [savedViewMode, setSavedViewMode] = useState(false); // true cuando se guarda vista con filtros
 
 const [atEdges, setAtEdges] = useState({ left: true, right: false });
 const [atStart, setAtStart] = useState(true);
@@ -646,6 +680,8 @@ const handleSaveCols = async () => {
     fechaCreacion: !compactCols,
     tipo: !compactCols,
     total: true,
+    subtotal: false,
+    impuestos: false,
     montoPagado: false,
     montoAprobado: false,
     categoria: true,
@@ -831,29 +867,31 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
     setShowCrearCaja(true);
     setTypeCaja(caja.type || '');
     setEstadoCaja(caja.estado || '');
+    setBaseCalculoCaja(caja.baseCalculo || 'total');
     handleCloseCajaMenu();
     setEquivalenciaCaja(caja.equivalencia || 'none');
   };
 
   const applyCajaSelection = useCallback((caja) => {
-    const normalizedFilters = {
-      caja: caja || null,
-      moneda: caja?.moneda ? [caja.moneda] : [],
-      medioPago: caja?.medio_pago ? [caja.medio_pago] : [],
-      estados: caja?.estado ? [caja.estado] : [],
-      tipo: caja?.type ? [caja.type] : [],
-    };
-
-    logCajaDebug('Aplicando selección de caja', {
-      caja,
-      normalizedFilters,
-    });
-
-    setCajaSeleccionada(caja || null);
-    setFilters((f) => ({
-      ...f,
-      ...normalizedFilters,
-    }));
+    if (caja?.filterSet) {
+      // Caja con vista guardada: aplica su filterSet completo
+      const restoredFilters = deserializeFilterSet(caja.filterSet);
+      logCajaDebug('Aplicando caja con filterSet', { caja, restoredFilters });
+      setCajaSeleccionada(caja);
+      setFilters((f) => ({ ...f, ...restoredFilters, caja }));
+    } else {
+      // Caja clásica: mapea campos a filtros
+      const normalizedFilters = {
+        caja: caja || null,
+        moneda: caja?.moneda ? [caja.moneda] : [],
+        medioPago: caja?.medio_pago ? [caja.medio_pago] : [],
+        estados: caja?.estado ? [caja.estado] : [],
+        tipo: caja?.type ? [caja.type] : [],
+      };
+      logCajaDebug('Aplicando selección de caja', { caja, normalizedFilters });
+      setCajaSeleccionada(caja || null);
+      setFilters((f) => ({ ...f, ...normalizedFilters }));
+    }
   }, [setFilters]);
   
   const handleEliminarCaja = (index) => {
@@ -1150,8 +1188,8 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
       });
 
       const cajasIniciales = empresa.cajas_virtuales?.length > 0 ? empresa.cajas_virtuales : [
-        { nombre: 'Caja en Pesos', moneda: 'ARS', medio_pago: "" , equivalencia: 'none', type: '' },
-        { nombre: 'Caja en Dólares', moneda: 'USD', medio_pago: "" , equivalencia: 'none', type: '' },
+        { nombre: 'Caja en Pesos', moneda: 'ARS', medio_pago: "" , equivalencia: 'none', type: '', baseCalculo: 'total' },
+        { nombre: 'Caja en Dólares', moneda: 'USD', medio_pago: "" , equivalencia: 'none', type: '', baseCalculo: 'total' },
       ];
       if (!empresa.cajas_virtuales || empresa.cajas_virtuales.length === 0) {
         updateEmpresaDetails(empresa.id, { cajas_virtuales: cajasIniciales }); // fire-and-forget
@@ -1340,21 +1378,26 @@ const getTime = (v) => {
       ? EQUIV_META[activeCaja.equivalencia]
       : null;
   
+    const useSubtotal = activeCaja?.baseCalculo === 'subtotal' && (!activeCaja.equivalencia || activeCaja.equivalencia === 'none');
+
     movimientosFiltrados.forEach((m) => {
       const tipo = m.type === 'ingreso' ? 'ingreso' : 'egreso';
 
       if (equiv?.out && equiv.path) {
-        // Usar valor convertido por equivalencia
+        // Con equivalencia: siempre usar total (las equivalencias se calculan sobre total)
         const converted = equiv.path(m.equivalencias);
         const val = typeof converted === 'number' ? converted : 0;
         const outKey = equiv.out.toUpperCase();
         if (!base[outKey]) base[outKey] = { ingreso: 0, egreso: 0 };
         base[outKey][tipo] += val;
       } else {
-        // Sin equivalencia: monto nativo
+        // Sin equivalencia: usar subtotal o total según baseCalculo de la caja activa
+        const monto = useSubtotal
+          ? (Number(m.subtotal ?? m.total) || 0)
+          : (Number(m.total) || 0);
         const moneda = (m.moneda || 'ARS').toUpperCase();
         if (!base[moneda]) base[moneda] = { ingreso: 0, egreso: 0 };
-        base[moneda][tipo] += m.total || 0;
+        base[moneda][tipo] += monto;
       }
     });
   
@@ -1508,9 +1551,6 @@ const movimientosConProrrateo = useMemo(() => {
 
 
    const calcularTotalParaCaja = (caja) => {
-       // Filtramos por medio de pago / estado sobre TODOS los movimientos relevantes
-       // (si querés mantener la restricción por moneda nativa de la caja, podés filtrar por mov.moneda también)
-       
        // EVITAR DUPLICADOS: Si un movimiento existe en ambos arrays, solo tomarlo una vez
        const movimientosUnicos = new Map();
        [...movimientos, ...movimientosUSD].forEach(mov => {
@@ -1519,13 +1559,12 @@ const movimientosConProrrateo = useMemo(() => {
        const allMovs = Array.from(movimientosUnicos.values());
        
        const meta = EQUIV_META[caja.equivalencia || 'none'] || EQUIV_META.none;
+       // Con equivalencia activa siempre usamos total (las equivalencias se calculan sobre total)
+       const useSubtotal = caja.baseCalculo === 'subtotal' && (!caja.equivalencia || caja.equivalencia === 'none');
        
-       // DEBUG: Log para detectar problemas
        if (caja.equivalencia && caja.equivalencia !== 'none') {
          console.group(`🔍 DEBUG Caja: ${caja.nombre} (${caja.equivalencia})`);
          console.log(`📊 Total movimientos únicos: ${allMovs.length}`);
-         console.log(`💰 ARS: ${allMovs.filter(m => m.moneda === 'ARS').length} movimientos`);
-         console.log(`💵 USD: ${allMovs.filter(m => m.moneda === 'USD').length} movimientos`);
        }
      
        const mergeMonedas = (caja.equivalencia && caja.equivalencia !== 'none');
@@ -1537,25 +1576,21 @@ const movimientosConProrrateo = useMemo(() => {
          const matchMoneda    = mergeMonedas ? true : (caja.moneda ? mov.moneda === caja.moneda : true);
          if (!matchMedioPago || !matchEstado || !matchType || !matchMoneda) return acc;
      
-         // valor según equivalencia
          let val;
          if (meta.path) {
            const equivVal = meta.path(mov.equivalencias);
            if (typeof equivVal === 'number') {
-              val = equivVal;
-              // DEBUG: Log conversiones exitosas
-              if (caja.equivalencia && caja.equivalencia !== 'none') {
-                console.log(`✅ ${mov.id}: ${mov.moneda} $${mov.total} → ${meta.out} $${val.toFixed(2)}`);
-              }
-            } else {
-              // Si no hay equivalencia calculada, usar 0 para evitar mezclar monedas
-              // ANTES: usaba mov.total que podía ser en otra moneda
-              val = 0;
-              console.warn(`❌ Movimiento ${mov.id} (${mov.moneda} $${mov.total}) sin equivalencia ${caja.equivalencia} calculada`);
-            }
+             val = equivVal;
+             if (caja.equivalencia && caja.equivalencia !== 'none') {
+               console.log(`✅ ${mov.id}: ${mov.moneda} $${mov.total} → ${meta.out} $${val.toFixed(2)}`);
+             }
+           } else {
+             val = 0;
+             console.warn(`❌ Movimiento ${mov.id} (${mov.moneda} $${mov.total}) sin equivalencia ${caja.equivalencia} calculada`);
+           }
          } else {
-           // sin equivalencia → monto nativo
-           val = mov.total || 0;
+           // sin equivalencia → monto nativo (total o subtotal según config)
+           val = useSubtotal ? (Number(mov.subtotal ?? mov.total) || 0) : (Number(mov.total) || 0);
          }
          
          const contribution = (mov.type === 'ingreso' ? val : -val);
@@ -1566,7 +1601,6 @@ const movimientosConProrrateo = useMemo(() => {
          return acc + contribution;
        }, 0);
        
-       // DEBUG: Log resultado final
        if (caja.equivalencia && caja.equivalencia !== 'none') {
          console.log(`🎯 Total final: ${result.toFixed(2)}`);
          console.groupEnd();
@@ -1659,13 +1693,14 @@ const movimientosConProrrateo = useMemo(() => {
   const handleGuardarCaja = async () => {
     const nuevaCaja = {
       nombre: nombreCaja,
-      moneda: monedaCaja || '', 
+      moneda: monedaCaja || '',
       medio_pago: medioPagoCaja,
       estado: estadoCaja,
       equivalencia: equivalenciaCaja || 'none',
       type: typeCaja || '',
+      baseCalculo: baseCalculoCaja || 'total',
+      ...(savedViewMode ? { filterSet: serializeFilterSet(filters) } : {}),
     };
-    
   
     const nuevasCajas = [...cajasVirtuales];
   
@@ -1677,12 +1712,14 @@ const movimientosConProrrateo = useMemo(() => {
   
     setCajasVirtuales(nuevasCajas);
     setShowCrearCaja(false);
+    setSavedViewMode(false);
     setNombreCaja('');
     setMonedaCaja('ARS');
     setMedioPagoCaja('Efectivo');
     setEstadoCaja('');
     setEquivalenciaCaja('none');
     setTypeCaja('');
+    setBaseCalculoCaja('total');
     setEditandoCaja(null);
     await updateEmpresaDetails(empresa.id, { cajas_virtuales: nuevasCajas });
   };
@@ -1989,6 +2026,14 @@ useEffect(() => {
                                   {caja.equivalencia.replace('_', ' ')}
                                 </Typography>
                               )}
+                              <Stack direction="row" spacing={0.5}>
+                                {caja.baseCalculo === 'subtotal' && (
+                                  <Chip size="small" label="neto" color="info" variant="outlined" />
+                                )}
+                                {caja.filterSet && (
+                                  <Chip size="small" label="vista" color="secondary" variant="outlined" />
+                                )}
+                              </Stack>
                             </Stack>
                             <Typography variant="body2" sx={{ fontWeight: 600 }}>
                               {formatCajaAmount(caja, calcularTotalParaCaja(caja))}
@@ -2025,6 +2070,12 @@ useEffect(() => {
                         <Typography>{caja.nombre}</Typography>
                         {caja.equivalencia && caja.equivalencia !== 'none' && (
                           <Chip size="small" label={caja.equivalencia.replace('_', ' ')} sx={{ ml: 1 }} />
+                        )}
+                        {caja.baseCalculo === 'subtotal' && (
+                          <Chip size="small" label="neto" color="info" variant="outlined" sx={{ ml: 0.5 }} />
+                        )}
+                        {caja.filterSet && (
+                          <Chip size="small" label="vista" color="secondary" variant="outlined" sx={{ ml: 0.5 }} />
                         )}
                         <Typography>{formatCajaAmount(caja, calcularTotalParaCaja(caja))}</Typography>
                       </Button>
@@ -2101,10 +2152,26 @@ useEffect(() => {
 )}
 
             </Stack>
-            <Dialog open={showCrearCaja} onClose={() => setShowCrearCaja(false)}>
-  <DialogTitle>Crear vista de caja personalizada</DialogTitle>
+            <Dialog open={showCrearCaja} onClose={() => { setShowCrearCaja(false); setSavedViewMode(false); }}>
+  <DialogTitle>
+    {savedViewMode ? 'Guardar vista actual como caja' : (editandoCaja !== null ? 'Editar caja' : 'Crear vista de caja personalizada')}
+  </DialogTitle>
   <DialogContent>
+    {savedViewMode && filterChips.length > 0 && (
+      <Box sx={{ mb: 2, p: 1.5, bgcolor: 'action.hover', borderRadius: 1.5 }}>
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.75 }}>
+          Filtros activos que se guardarán con esta caja:
+        </Typography>
+        <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
+          {filterChips.map((chip, idx) => (
+            <Chip key={idx} label={chip.label} size="small" variant="outlined" />
+          ))}
+        </Box>
+      </Box>
+    )}
     <TextField label="Nombre de la caja" fullWidth value={nombreCaja} onChange={(e) => setNombreCaja(e.target.value)} />
+    {!savedViewMode && (
+      <>
     <FormControl fullWidth sx={{ mt: 2 }}>
       <InputLabel>Moneda</InputLabel>
       <Select value={monedaCaja} onChange={(e) => setMonedaCaja(e.target.value)}>
@@ -2157,10 +2224,23 @@ useEffect(() => {
         <MenuItem value="usd_mep_medio">USD mep (medio)</MenuItem>
       </Select>
     </FormControl>
+    </>
+    )}
+    <FormControl fullWidth sx={{ mt: 2 }}>
+      <InputLabel>Base de cálculo</InputLabel>
+      <Select
+        value={baseCalculoCaja}
+        label="Base de cálculo"
+        onChange={(e) => setBaseCalculoCaja(e.target.value)}
+      >
+        <MenuItem value="total">Total (con impuestos)</MenuItem>
+        <MenuItem value="subtotal">Subtotal (sin impuestos)</MenuItem>
+      </Select>
+    </FormControl>
 
   </DialogContent>
   <DialogActions>
-    <Button onClick={() => setShowCrearCaja(false)}>Cancelar</Button>
+    <Button onClick={() => { setShowCrearCaja(false); setSavedViewMode(false); }}>Cancelar</Button>
     <Button onClick={handleGuardarCaja}>Crear</Button>
   </DialogActions>
 </Dialog>
@@ -2228,6 +2308,7 @@ useEffect(() => {
                   isMobile={isMobile}
                   showDetails={showTotalsDetails}
                   onToggleDetails={() => setShowTotalsDetails((s) => !s)}
+                  baseCalculo={activeCaja?.baseCalculo || 'total'}
                 />
 
               </Stack>
@@ -2354,6 +2435,8 @@ useEffect(() => {
       <FormControlLabel control={<Checkbox size="small" checked={visibleCols.tipo} onChange={() => toggleCol('tipo')} />} label="Tipo" />
     )}
     <FormControlLabel control={<Checkbox size="small" checked={visibleCols.total}        onChange={() => toggleCol('total')} />}        label="Total" />
+    <FormControlLabel control={<Checkbox size="small" checked={visibleCols.subtotal}     onChange={() => toggleCol('subtotal')} />}     label="Subtotal (sin impuestos)" />
+    <FormControlLabel control={<Checkbox size="small" checked={visibleCols.impuestos}    onChange={() => toggleCol('impuestos')} />}    label="Impuestos" />
     <FormControlLabel control={<Checkbox size="small" checked={visibleCols.montoPagado}  onChange={() => toggleCol('montoPagado')} />}  label="Monto pagado" />
     <FormControlLabel control={<Checkbox size="small" checked={visibleCols.montoAprobado} onChange={() => toggleCol('montoAprobado')} />} label="Monto aprobado" />
     <FormControlLabel control={<Checkbox size="small" checked={visibleCols.categoria}    onChange={() => toggleCol('categoria')} />}    label={compactCols ? "Categoría / Subcat." : "Categoría"} />
@@ -2772,6 +2855,22 @@ useEffect(() => {
   }}>
     <AddCircleIcon sx={{ mr: 1 }} />
     Agregar nueva caja
+  </MenuOption>
+  <MenuOption onClick={() => {
+    setSavedViewMode(true);
+    setEditandoCaja(null);
+    setNombreCaja('');
+    setMonedaCaja('');
+    setMedioPagoCaja('');
+    setEstadoCaja('');
+    setEquivalenciaCaja('none');
+    setTypeCaja('');
+    setBaseCalculoCaja('total');
+    setShowCrearCaja(true);
+    handleCloseMenu();
+  }}>
+    <AccountBalanceWalletIcon sx={{ mr: 1 }} />
+    Guardar vista actual como caja
   </MenuOption>
   <MenuOption onClick={() => {
     handleRefresh();

@@ -121,8 +121,9 @@ const buildDashboardParams = ({ filterState, tabPreset, page, limit, empresaId, 
 
 const buildTabPreset = (tab, tieneMontoAprobado = true) => {
   if (tab === 'porPagar') {
-    // Si monto_aprobado está desactivado, mostrar todos los pendientes sin filtro de aprobación
-    return { estados: ['Pendiente', 'Parcialmente Pagado'], aprobacion: tieneMontoAprobado ? 'si' : '' };
+    // Si monto_aprobado está desactivado, mostrar todos los pendientes sin filtro de aprobación.
+    // Con monto_aprobado habilitado, solo mostrar los que tienen saldo aprobado sin pagar todavía.
+    return { estados: ['Pendiente', 'Parcialmente Pagado'], aprobacion: tieneMontoAprobado ? 'pendiente_pago' : '' };
   }
   if (tab === 'pagados') {
     return { estados: ['Pagado'], aprobacion: '' };
@@ -1012,11 +1013,25 @@ const PagosAprobacionesPage = () => {
                               return (
                                 <TableCell key={`${movimiento.id}-${column.key}`} align="right" sx={{ whiteSpace: 'nowrap' }}>
                                   <Stack direction="row" spacing={0.5} alignItems="center" justifyContent="flex-end">
-                                    {pctAprobado !== null && (
-                                      <Typography variant="caption" sx={{ color: 'text.disabled', fontSize: '0.7rem', minWidth: 28, textAlign: 'right' }}>
-                                        {pctAprobado}%
-                                      </Typography>
-                                    )}
+                                    <TextField
+                                      size="small"
+                                      type="number"
+                                      value={pctAprobado ?? ''}
+                                      onChange={(event) => {
+                                        const pct = parseFloat(event.target.value);
+                                        const t = Number(movimiento.total) || 0;
+                                        if (Number.isFinite(pct) && t > 0) {
+                                          handleDraftChange(movimiento.id, 'monto_aprobado', String(Math.round((pct / 100) * t)));
+                                        } else if (event.target.value === '') {
+                                          handleDraftChange(movimiento.id, 'monto_aprobado', '');
+                                        }
+                                      }}
+                                      onKeyDown={(event) => { if (event.key === 'Enter') event.preventDefault(); }}
+                                      disabled={savingRow || bulkSaveLoading}
+                                      inputProps={{ style: { padding: '3px 4px', fontSize: '0.7rem', textAlign: 'right' }, min: 0, max: 100 }}
+                                      sx={{ width: 52 }}
+                                    />
+                                    <Typography variant="caption" sx={{ color: 'text.disabled', fontSize: '0.7rem' }}>%</Typography>
                                     <TextField
                                       size="small"
                                       type="number"
@@ -1053,11 +1068,25 @@ const PagosAprobacionesPage = () => {
                               return (
                                 <TableCell key={`${movimiento.id}-${column.key}`} align="right" sx={{ whiteSpace: 'nowrap' }}>
                                   <Stack direction="row" spacing={0.5} alignItems="center" justifyContent="flex-end">
-                                    {pctPagado !== null && (
-                                      <Typography variant="caption" sx={{ color: 'text.disabled', fontSize: '0.7rem', minWidth: 28, textAlign: 'right' }}>
-                                        {pctPagado}%
-                                      </Typography>
-                                    )}
+                                    <TextField
+                                      size="small"
+                                      type="number"
+                                      value={pctPagado ?? ''}
+                                      onChange={(event) => {
+                                        const pct = parseFloat(event.target.value);
+                                        const t = Number(movimiento.total) || 0;
+                                        if (Number.isFinite(pct) && t > 0) {
+                                          handleDraftChange(movimiento.id, 'monto_pagado', String(Math.round((pct / 100) * t)));
+                                        } else if (event.target.value === '') {
+                                          handleDraftChange(movimiento.id, 'monto_pagado', '');
+                                        }
+                                      }}
+                                      onKeyDown={(event) => { if (event.key === 'Enter') event.preventDefault(); }}
+                                      disabled={savingRow || bulkSaveLoading}
+                                      inputProps={{ style: { padding: '3px 4px', fontSize: '0.7rem', textAlign: 'right' }, min: 0, max: 100 }}
+                                      sx={{ width: 52 }}
+                                    />
+                                    <Typography variant="caption" sx={{ color: 'text.disabled', fontSize: '0.7rem' }}>%</Typography>
                                     <TextField
                                       size="small"
                                       type="number"

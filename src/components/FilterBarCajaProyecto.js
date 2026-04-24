@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, forwardRef, useRef, useCallback } from 'r
 import {
   Stack, TextField, Select, MenuItem, FormControl, InputLabel, Button, Autocomplete,
   Chip, Divider, Box, Typography, Collapse, IconButton, Popover, List, ListItem,
-  ListItemText, ListItemSecondaryAction, ListItemIcon,
+  ListItemText, ListItemSecondaryAction, ListItemIcon, Tooltip, FormHelperText,
 } from '@mui/material';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
@@ -328,15 +328,28 @@ export const FilterBarCajaProyecto = ({
       }
 
       const isSub = filtro.name === 'subcategorias';
+      const isSubDisabled = isSub && !filters.categorias?.length;
       const selectOptions = isSub ? subcategoriasDisponibles : (filtro.options || options[filtro.optionsKey] || []);
 
       return (
-        <FormControl sx={overrideSx || { minWidth: 0, width: '100%' }} key={filtro.name} disabled={isSub && !filters.categorias?.length} size="small">
-          <InputLabel>{filtro.label}</InputLabel>
-          <Select multiple value={value} onChange={(e) => set(filtro.name, e.target.value)} label={filtro.label} autoFocus={focusField === filtro.name} size="small">
-            {selectOptions.map((opt) => (<MenuItem key={opt} value={opt}>{opt}</MenuItem>))}
-          </Select>
-        </FormControl>
+        <Tooltip
+          key={filtro.name}
+          title={isSubDisabled ? 'Seleccioná una categoría primero para filtrar por subcategoría' : ''}
+          placement="top"
+          arrow
+        >
+          <Box sx={overrideSx || { minWidth: 0, width: '100%' }}>
+            <FormControl sx={{ width: '100%' }} disabled={isSubDisabled} size="small">
+              <InputLabel>{filtro.label}</InputLabel>
+              <Select multiple value={value} onChange={(e) => set(filtro.name, e.target.value)} label={filtro.label} autoFocus={focusField === filtro.name} size="small">
+                {selectOptions.map((opt) => (<MenuItem key={opt} value={opt}>{opt}</MenuItem>))}
+              </Select>
+              {isSubDisabled && (
+                <FormHelperText>Seleccioná una categoría primero</FormHelperText>
+              )}
+            </FormControl>
+          </Box>
+        </Tooltip>
       );
     }
 

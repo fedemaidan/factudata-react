@@ -68,6 +68,8 @@ const COLS = {
   obra: 200,
   cliente: 200,
   total: 160,
+  subtotal: 160,
+  impuestos: 160,
   montoPagado: 170,
   montoAprobado: 170,
   categoria: 160,
@@ -133,6 +135,29 @@ const logCajaDebug = (label, payload) => {
     return;
   }
   console.log(`[CajaProyecto] ${label}`, formatDebugValue(payload));
+};
+
+const serializeFilterSet = (f) => {
+  const copy = { ...f };
+  delete copy.caja;
+  const out = {};
+  for (const [k, v] of Object.entries(copy)) {
+    if (v instanceof Date) out[k] = v.toISOString();
+    else if (v && typeof v === 'object' && v.toDate) out[k] = v.toDate().toISOString();
+    else out[k] = v;
+  }
+  return out;
+};
+
+const deserializeFilterSet = (stored) => {
+  const out = {};
+  const DATE_KEYS = ['fechaDesde', 'fechaHasta', 'fechaPagoDesde', 'fechaPagoHasta'];
+  for (const [k, v] of Object.entries(stored)) {
+    if (DATE_KEYS.includes(k) && typeof v === 'string' && v) out[k] = new Date(v);
+    else if (v && typeof v === 'object' && v._seconds) out[k] = new Date(v._seconds * 1000);
+    else out[k] = v;
+  }
+  return out;
 };
 
 const parseFechaCsv = (value) => {
@@ -498,7 +523,7 @@ const getCajaAccent = (caja, amount) => {
 };
 
 
-const TotalesFiltrados = ({ t, fmt, moneda, totalesFormat = 'full', showUsdBlue = false, usdBlue = null, chips = [], onOpenFilters, isMobile = false, showDetails = false, onToggleDetails }) => {
+const TotalesFiltrados = ({ t, fmt, moneda, totalesFormat = 'full', showUsdBlue = false, usdBlue = null, chips = [], onOpenFilters, isMobile = false, showDetails = false, onToggleDetails, baseCalculo = 'total' }) => {
   const up = (moneda || '').toUpperCase();
   const ingreso = t[up]?.ingreso ?? 0;
   const egreso  = t[up]?.egreso  ?? 0;
@@ -565,7 +590,7 @@ const TotalesFiltrados = ({ t, fmt, moneda, totalesFormat = 'full', showUsdBlue 
           <Stack spacing={{ xs: 2, lg: 1.25 }} sx={{ width: '100%' }}>
             {/* Título con moneda integrada */}
             <Typography sx={{ fontSize: '0.64rem', fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: BRAND_COLORS.teal, whiteSpace: 'nowrap', lineHeight: 1.05 }}>
-              Totales filtrados&nbsp;·&nbsp;{up}
+              Totales filtrados{baseCalculo === 'subtotal' ? ' (neto)' : ''}&nbsp;·&nbsp;{up}
             </Typography>
 
             {/* Layout flat: neto a la izquierda, ing/egr a la derecha — sin sub-tarjetas */}
@@ -809,9 +834,9 @@ const CajasPage = () => {
 
   const [anchorEl, setAnchorEl] = useState(null);
   const [cajasVirtuales, setCajasVirtuales] = useState([
-    { nombre: 'Caja en Pesos', moneda: 'ARS', medio_pago: "" , equivalencia: 'none', type: '' },
-    { nombre: 'Caja en Dólares', moneda: 'USD', medio_pago: "" , equivalencia: 'none', type: '' },
-    { nombre: 'Gastos en USD Blue', moneda: 'ARS', medio_pago: "" , equivalencia: 'usd_blue', type: 'egreso' },
+    { nombre: 'Caja en Pesos', moneda: 'ARS', medio_pago: "" , equivalencia: 'none', type: '', baseCalculo: 'total' },
+    { nombre: 'Caja en Dólares', moneda: 'USD', medio_pago: "" , equivalencia: 'none', type: '', baseCalculo: 'total' },
+    { nombre: 'Gastos en USD Blue', moneda: 'ARS', medio_pago: "" , equivalencia: 'usd_blue', type: 'egreso', baseCalculo: 'total' },
   ]);  
   const [showCrearCaja, setShowCrearCaja] = useState(false);
   const [nombreCaja, setNombreCaja] = useState('');
@@ -873,6 +898,8 @@ const scrollRef = useRef(null);      // contenedor principal con overflow
 const topScrollRef = useRef(null);   // barra superior "fantasma"
 const tableRef = useRef(null);
 const [typeCaja, setTypeCaja] = useState(''); // '' | 'ingreso' | 'egreso'
+const [baseCalculoCaja, setBaseCalculoCaja] = useState('total');
+const [savedViewMode, setSavedViewMode] = useState(false);
 
 const [atEdges, setAtEdges] = useState({ left: true, right: false });
 const [atStart, setAtStart] = useState(true);
@@ -1040,6 +1067,8 @@ const handleSaveCols = async () => {
     dolarReferencia: false,
     totalDolar: false,
     subtotalDolar: false,
+    subtotal: false,
+    impuestos: false,
     tagsExtra: false,
   }), [empresa]);
 
@@ -1238,6 +1267,7 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
     setShowCrearCaja(true);
     setTypeCaja(caja.type || '');
     setEstadoCaja(caja.estado || '');
+    setBaseCalculoCaja(caja.baseCalculo || 'total');
     handleCloseCajaMenu();
     setEquivalenciaCaja(caja.equivalencia || 'none');
   };
@@ -1247,11 +1277,17 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
       caja,
     });
 
-    setCajaSeleccionada(caja || null);
-    setFilters((f) => ({
-      ...f,
-      caja: caja || null,
-    }));
+    if (caja?.filterSet) {
+      const restoredFilters = deserializeFilterSet(caja.filterSet);
+      setCajaSeleccionada(caja);
+      setFilters((f) => ({ ...f, ...restoredFilters, caja }));
+    } else {
+      setCajaSeleccionada(caja || null);
+      setFilters((f) => ({
+        ...f,
+        caja: caja || null,
+      }));
+    }
   }, [setFilters]);
   
   const handleEliminarCaja = (index) => {
@@ -1631,8 +1667,8 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
       const initialSelectedIds = requestedIds.length > 0 ? requestedIds : [];
 
       const cajasIniciales = empresa.cajas_virtuales?.length > 0 ? empresa.cajas_virtuales : [
-        { nombre: 'Caja en Pesos', moneda: 'ARS', medio_pago: "" , equivalencia: 'none', type: '' },
-        { nombre: 'Caja en Dólares', moneda: 'USD', medio_pago: "" , equivalencia: 'none', type: '' },
+        { nombre: 'Caja en Pesos', moneda: 'ARS', medio_pago: "" , equivalencia: 'none', type: '', baseCalculo: 'total' },
+        { nombre: 'Caja en Dólares', moneda: 'USD', medio_pago: "" , equivalencia: 'none', type: '', baseCalculo: 'total' },
       ];
       if (!empresa.cajas_virtuales || empresa.cajas_virtuales.length === 0) {
         updateEmpresaDetails(empresa.id, { cajas_virtuales: cajasIniciales }); // fire-and-forget
@@ -1888,6 +1924,8 @@ const getTime = (v) => {
       estado: estadoCaja,
       equivalencia: equivalenciaCaja || 'none',
       type: typeCaja || '',
+      baseCalculo: baseCalculoCaja || 'total',
+      ...(savedViewMode ? { filterSet: serializeFilterSet(filters) } : {}),
     };
     
   
@@ -1901,12 +1939,14 @@ const getTime = (v) => {
   
     setCajasVirtuales(nuevasCajas);
     setShowCrearCaja(false);
+    setSavedViewMode(false);
     setNombreCaja('');
     setMonedaCaja('ARS');
     setMedioPagoCaja('Efectivo');
     setEstadoCaja('');
     setEquivalenciaCaja('none');
     setTypeCaja('');
+    setBaseCalculoCaja('total');
     setEditandoCaja(null);
     await updateEmpresaDetails(empresa.id, { cajas_virtuales: nuevasCajas });
   };
@@ -2337,6 +2377,12 @@ useEffect(() => {
                                       {caja.type}
                                     </Typography>
                                   )}
+                                  {caja.baseCalculo === 'subtotal' && (
+                                    <Chip size="small" label="neto" color="info" variant="outlined" sx={{ height: 16, fontSize: '0.6rem' }} />
+                                  )}
+                                  {caja.filterSet && (
+                                    <Chip size="small" label="vista" color="secondary" variant="outlined" sx={{ height: 16, fontSize: '0.6rem' }} />
+                                  )}
                                 </Stack>
                                 <Typography variant="caption" color={selected ? 'inherit' : 'text.secondary'} sx={{ opacity: 0.9 }}>
                                   Saldo actual
@@ -2382,6 +2428,7 @@ useEffect(() => {
                       isMobile={isMobile}
                       showDetails={showTotalsDetails}
                       onToggleDetails={() => setShowTotalsDetails((s) => !s)}
+                      baseCalculo={activeCaja?.baseCalculo || 'total'}
                     />
                   </Paper>
                   </Box>
@@ -2439,67 +2486,77 @@ useEffect(() => {
   <MenuItem onClick={() => handleEditarCaja(cajaMenuIndex)}>Editar</MenuItem>
   <MenuItem onClick={() => handleEliminarCaja(cajaMenuIndex)}>Eliminar</MenuItem>
 </Menu>
-            <Dialog open={showCrearCaja} onClose={() => setShowCrearCaja(false)}>
-  <DialogTitle>Crear vista de caja personalizada</DialogTitle>
+            <Dialog open={showCrearCaja} onClose={() => { setShowCrearCaja(false); setSavedViewMode(false); }}>
+  <DialogTitle>{savedViewMode ? 'Guardar vista actual como caja' : (editandoCaja !== null ? 'Editar caja' : 'Crear vista de caja personalizada')}</DialogTitle>
   <DialogContent>
-    <TextField label="Nombre de la caja" fullWidth value={nombreCaja} onChange={(e) => setNombreCaja(e.target.value)} />
-    <FormControl fullWidth sx={{ mt: 2 }}>
-      <InputLabel>Moneda</InputLabel>
-      <Select value={monedaCaja} onChange={(e) => setMonedaCaja(e.target.value)}>
-        <MenuItem value="">Todas</MenuItem>
-        <MenuItem value="ARS">Pesos</MenuItem>
-        <MenuItem value="USD">Dólares</MenuItem>
-      </Select>
-    </FormControl>
-    <FormControl fullWidth sx={{ mt: 2 }}>
-      <InputLabel>Tipo</InputLabel>
-      <Select value={typeCaja} label="Tipo" onChange={(e) => setTypeCaja(e.target.value)}>
-        <MenuItem value="">Todos</MenuItem>
-        <MenuItem value="ingreso">Ingresos</MenuItem>
-        <MenuItem value="egreso">Egresos</MenuItem>
-      </Select>
-    </FormControl>
-    <FormControl fullWidth sx={{ mt: 2 }}>
-      <InputLabel>Medio de pago</InputLabel>
-      <Select value={medioPagoCaja} onChange={(e) => setMedioPagoCaja(e.target.value)}>
-      <MenuItem key="" value="">
-            Todos
-          </MenuItem>
-        {empresa?.medios_pago.map((medio) => (
-          <MenuItem key={medio} value={medio}>
-            {medio}
-          </MenuItem>
-        ))}
-      </Select>
-    </FormControl>
-    {empresa?.con_estados && (
-      <FormControl fullWidth sx={{ mt: 2 }}>
-        <InputLabel>Estado</InputLabel>
-        <Select value={estadoCaja} onChange={(e) => setEstadoCaja(e.target.value)}>
-          <MenuItem value="">Todos</MenuItem>
-          <MenuItem value="Pendiente">Pendiente</MenuItem>
-          <MenuItem value="Pagado">Pagado</MenuItem>
-        </Select>
-      </FormControl>
+    {savedViewMode && filterChips.length > 0 && (
+      <Box sx={{ mb: 2, p: 1.5, bgcolor: 'rgba(35,181,211,0.07)', borderRadius: 2, border: '1px solid rgba(35,181,211,0.25)' }}>
+        <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', display: 'block', mb: 0.75 }}>Filtros que se guardarán en esta caja:</Typography>
+        <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
+          {filterChips.map((chip, idx) => <Chip key={idx} label={chip.label} size="small" variant="outlined" />)}
+        </Box>
+      </Box>
     )}
-     <FormControl fullWidth sx={{ mt: 2 }}>
-      <InputLabel>Mostrar como</InputLabel>
-      <Select
-        value={equivalenciaCaja}
-        label="Mostrar como"
-        onChange={(e) => setEquivalenciaCaja(e.target.value)}
-      >
-        <MenuItem value="none">Moneda original</MenuItem>
-        <MenuItem value="usd_blue">USD blue</MenuItem>
-        <MenuItem value="usd_oficial">USD oficial</MenuItem>
-        <MenuItem value="usd_mep_medio">USD mep (medio)</MenuItem>
+    <TextField label="Nombre de la caja" fullWidth value={nombreCaja} onChange={(e) => setNombreCaja(e.target.value)} />
+    {!savedViewMode && (
+      <>
+        <FormControl fullWidth sx={{ mt: 2 }}>
+          <InputLabel>Moneda</InputLabel>
+          <Select value={monedaCaja} onChange={(e) => setMonedaCaja(e.target.value)}>
+            <MenuItem value="">Todas</MenuItem>
+            <MenuItem value="ARS">Pesos</MenuItem>
+            <MenuItem value="USD">Dólares</MenuItem>
+          </Select>
+        </FormControl>
+        <FormControl fullWidth sx={{ mt: 2 }}>
+          <InputLabel>Tipo</InputLabel>
+          <Select value={typeCaja} label="Tipo" onChange={(e) => setTypeCaja(e.target.value)}>
+            <MenuItem value="">Todos</MenuItem>
+            <MenuItem value="ingreso">Ingresos</MenuItem>
+            <MenuItem value="egreso">Egresos</MenuItem>
+          </Select>
+        </FormControl>
+        <FormControl fullWidth sx={{ mt: 2 }}>
+          <InputLabel>Medio de pago</InputLabel>
+          <Select value={medioPagoCaja} onChange={(e) => setMedioPagoCaja(e.target.value)}>
+            <MenuItem key="" value="">Todos</MenuItem>
+            {empresa?.medios_pago.map((medio) => (
+              <MenuItem key={medio} value={medio}>{medio}</MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+        {empresa?.con_estados && (
+          <FormControl fullWidth sx={{ mt: 2 }}>
+            <InputLabel>Estado</InputLabel>
+            <Select value={estadoCaja} onChange={(e) => setEstadoCaja(e.target.value)}>
+              <MenuItem value="">Todos</MenuItem>
+              <MenuItem value="Pendiente">Pendiente</MenuItem>
+              <MenuItem value="Pagado">Pagado</MenuItem>
+            </Select>
+          </FormControl>
+        )}
+        <FormControl fullWidth sx={{ mt: 2 }}>
+          <InputLabel>Mostrar como</InputLabel>
+          <Select value={equivalenciaCaja} label="Mostrar como" onChange={(e) => setEquivalenciaCaja(e.target.value)}>
+            <MenuItem value="none">Moneda original</MenuItem>
+            <MenuItem value="usd_blue">USD blue</MenuItem>
+            <MenuItem value="usd_oficial">USD oficial</MenuItem>
+            <MenuItem value="usd_mep_medio">USD mep (medio)</MenuItem>
+          </Select>
+        </FormControl>
+      </>
+    )}
+    <FormControl fullWidth sx={{ mt: 2 }}>
+      <InputLabel>Base de cálculo</InputLabel>
+      <Select value={baseCalculoCaja} label="Base de cálculo" onChange={(e) => setBaseCalculoCaja(e.target.value)}>
+        <MenuItem value="total">Total (con impuestos)</MenuItem>
+        <MenuItem value="subtotal">Subtotal (sin impuestos)</MenuItem>
       </Select>
     </FormControl>
-
   </DialogContent>
   <DialogActions>
-    <Button onClick={() => setShowCrearCaja(false)}>Cancelar</Button>
-    <Button onClick={handleGuardarCaja}>Crear</Button>
+    <Button onClick={() => { setShowCrearCaja(false); setSavedViewMode(false); }}>Cancelar</Button>
+    <Button onClick={handleGuardarCaja}>{editandoCaja !== null ? 'Guardar' : 'Crear'}</Button>
   </DialogActions>
 </Dialog>
             <Paper>
@@ -2656,6 +2713,8 @@ useEffect(() => {
             )}
             {!compactCols && <FormControlLabel control={<Checkbox size="small" checked={visibleCols.tipo} onChange={() => toggleCol('tipo')} />} label="Tipo" />}
             <FormControlLabel control={<Checkbox size="small" checked={visibleCols.total} onChange={() => toggleCol('total')} />} label="Total" />
+            <FormControlLabel control={<Checkbox size="small" checked={visibleCols.subtotal ?? false} onChange={() => toggleCol('subtotal')} />} label="Subtotal (sin impuestos)" />
+            <FormControlLabel control={<Checkbox size="small" checked={visibleCols.impuestos ?? false} onChange={() => toggleCol('impuestos')} />} label="Impuestos" />
             <FormControlLabel control={<Checkbox size="small" checked={visibleCols.montoPagado} onChange={() => toggleCol('montoPagado')} />} label="Monto pagado" />
             <FormControlLabel control={<Checkbox size="small" checked={visibleCols.montoAprobado} onChange={() => toggleCol('montoAprobado')} />} label="Monto aprobado" />
             <FormControlLabel control={<Checkbox size="small" checked={visibleCols.categoria} onChange={() => toggleCol('categoria')} />} label={compactCols ? 'Categoría / Subcat.' : 'Categoría'} />
@@ -3103,6 +3162,17 @@ useEffect(() => {
   }}>
     <AddCircleIcon sx={{ mr: 1 }} />
     Agregar nueva caja
+  </MenuOption>
+  <MenuOption onClick={() => {
+    setSavedViewMode(true);
+    setEditandoCaja(null);
+    setNombreCaja(''); setMonedaCaja(''); setMedioPagoCaja('');
+    setEstadoCaja(''); setEquivalenciaCaja('none'); setTypeCaja(''); setBaseCalculoCaja('total');
+    setShowCrearCaja(true);
+    handleCloseMenu();
+  }}>
+    <AccountBalanceWalletIcon sx={{ mr: 1 }} />
+    Guardar vista actual como caja
   </MenuOption>
   <MenuOption onClick={() => {
     handleRefresh();

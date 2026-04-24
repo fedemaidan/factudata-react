@@ -19,6 +19,8 @@ import {
 import { Logo } from "src/components/logo";
 import { Scrollbar } from "src/components/scrollbar";
 import { SideNavItem } from "./side-nav-item";
+import { SideNavCelulandia } from "./side-nav-celulandia";
+import { SideNavDHN } from "./side-nav-dhn";
 import { useAuthContext } from "src/contexts/auth-context";
 import { getProyectosFromUser } from "src/services/proyectosService";
 import { getEmpresaDetailsFromUser } from "src/services/empresaService";
@@ -52,12 +54,15 @@ export const SideNav = (props) => {
   const lgUp = useMediaQuery((theme) => theme.breakpoints.up("lg"), { noSsr: true });
   const { user, isSpying } = useAuthContext();
 
-  const [items, setItems] = useState([]);
-  const [proyectos, setProyectos] = useState([]);
-  const [proyectosPlanObra, setProyectosPlanObra] = useState([]);
-
+  const [groups, setGroups] = useState([]);
   const [empresa, setEmpresa] = useState(null);
-  const [showProyectos, setShowProyectos] = useState(true);
+  const [navType, setNavType] = useState(null); // null = loading | 'celulandia' | 'dhn' | 'default'
+  const [navPermisos, setNavPermisos] = useState([]);
+  const [openGroups, setOpenGroups] = useState({
+    finanzas: true, materiales: true, obras: true,
+    revision: true, gestion: true, configuracion: false,
+  });
+  const toggleGroup = (id) => setOpenGroups((prev) => ({ ...prev, [id]: !prev[id] }));
 
   const paperSx = {
     backgroundColor: isSpying() ? "neutral.600" : "neutral.800",
@@ -92,620 +97,127 @@ export const SideNav = (props) => {
   useEffect(() => {
     const fetchProyectosData = async () => {
       const emp = await getEmpresaDetailsFromUser(user);
-      if (emp?.cuenta_suspendida) {
-        return;
-      }
+      if (emp?.cuenta_suspendida) return;
       setEmpresa(emp || null);
 
-
       if (!emp) {
-        setItems([
-          {
-            title: "Onboarding",
-            path: "/onboarding",
-            icon: (
-              <SvgIcon fontSize="small">
-                <DashboardIcon />
-              </SvgIcon>
-            ),
-          },
-        ]);
-        setProyectos([]);
-        return;
-      } else if (emp?.tipo === "Logistica") {
-        setItems([
-          {
-            title: "Hojas de ruta",
-            path: "/hojasDeRuta?empresaId=" + emp.id,
-            icon: (
-              <SvgIcon fontSize="small">
-                <DashboardIcon />
-              </SvgIcon>
-            ),
-          },
-        ]);
-        setProyectos([]);
+        setGroups([{ id: "onboarding", label: null, alwaysOpen: true, items: [
+          { title: "Onboarding", path: "/onboarding", icon: <SvgIcon fontSize="small"><DashboardIcon /></SvgIcon> },
+        ]}]);
         return;
       }
 
-      // Empresa estándar
+      if (emp?.tipo === "Logistica") {
+        setGroups([{ id: "logistica", label: null, alwaysOpen: true, items: [
+          { title: "Hojas de ruta", path: "/hojasDeRuta?empresaId=" + emp.id, icon: <SvgIcon fontSize="small"><DashboardIcon /></SvgIcon> },
+        ]}]);
+        return;
+      }
+
       const permisosUsuario = getPermisosVisibles(emp.acciones || [], user?.permisosOcultos || []);
-      let baseItems = [
-        {
-          title: "Cuenta",
-          path: "account",
-          icon: (
-            <SvgIcon fontSize="small">
-              <PeopleIcon />
-            </SvgIcon>
-          ),
-        },
-        {
-          title: "Reportes",
-          path: "/reportes",
-          icon: (
-            <SvgIcon fontSize="small">
-              <AssessmentIcon />
-            </SvgIcon>
-          ),
-        },
-      ];
 
-      if (permisosUsuario.includes("CREAR_EGRESO_SIMPLIFICADO")) {
-        baseItems.push({
-          title: "Ver caja",
-          path: "/cajaSimple",
-          icon: (
-            <SvgIcon fontSize="small">
-              <SettingsIcon />
-            </SvgIcon>
-          ),
-        });
+      if (permisosUsuario.some((p) => p.startsWith("CELULANDIA_"))) {
+        setNavType("celulandia");
+        setNavPermisos(permisosUsuario);
+        return;
       }
-
-      if (permisosUsuario.includes("CELULANDIA_COMPROBANTES")) {
-        baseItems.push({
-          title: "Comprobantes",
-          path: "/celulandia/comprobantes",
-          icon: (
-            <SvgIcon fontSize="small">
-              <DashboardIcon />
-            </SvgIcon>
-          ),
-        });
-      }
-
-      if (permisosUsuario.includes("CELULANDIA_ENTREGAS")) {
-        baseItems.push({
-          title: "Entregas",
-          path: "/celulandia/entregas",
-          icon: (
-            <SvgIcon fontSize="small">
-              <DashboardIcon />
-            </SvgIcon>
-          ),
-        });
-      }
-
-      if (permisosUsuario.includes("CELULANDIA_PAGOS")) {
-        baseItems.push({
-          title: "Pagos",
-          path: "/celulandia/pagos",
-          icon: (
-            <SvgIcon fontSize="small">
-              <DashboardIcon />
-            </SvgIcon>
-          ),
-        });
-      }
-
-      if (permisosUsuario.includes("CELULANDIA_CONCILIACION")) {
-        baseItems.push({
-          title: "Conciliación bancaria",
-          path: "/celulandia/conciliacionBancaria",
-          icon: (
-            <SvgIcon fontSize="small">
-              <Checklist />
-            </SvgIcon>
-          ),
-        });
-      }
-
-      if (permisosUsuario.includes("CELULANDIA_CUENTA_CORRIENTE")) {
-        baseItems.push({
-          title: "Cuenta Corriente",
-          path: "/celulandia/cuentaCorriente",
-          icon: (
-            <SvgIcon fontSize="small">
-              <PeopleIcon />
-            </SvgIcon>
-          ),
-        });
-      }
-
-      if (permisosUsuario.includes("CELULANDIA_CLIENTES")) {
-        baseItems.push({
-          title: "Clientes",
-          path: "/celulandia/clientes",
-          icon: (
-            <SvgIcon fontSize="small">
-              <PeopleIcon />
-            </SvgIcon>
-          ),
-        });
-      }
-
-      if (permisosUsuario.includes("CELULANDIA_CHEQUES")) {
-        baseItems.push({
-          title: "Cheques",
-          path: "/celulandia/cheques",
-          icon: (
-            <SvgIcon fontSize="small">
-              <AttachMoneyIcon />
-            </SvgIcon>
-          ),
-        });
-      }
-
-      if (permisosUsuario.includes("CELULANDIA_ARQUEO_CAJA")) {
-        baseItems.push({
-          title: "Arqueo de caja",
-          path: "/celulandia/arqueoCaja",
-          icon: (
-            <SvgIcon fontSize="small">
-              <LocalAtm />
-            </SvgIcon>
-          ),
-        });
-      }
-
-      if (permisosUsuario.includes("CELULANDIA_EZE_NICO")) {
-        baseItems.push({
-          title: "Eze y Nico",
-          path: "/celulandia/ezeNico",
-          icon: (
-            <SvgIcon fontSize="small">
-              <AccountBalanceWallet />
-            </SvgIcon>
-          ),
-        });
-      }
-
-      if (permisosUsuario.includes("CELULANDIA_PROYECCIONES")) {
-        baseItems.push({
-          title: "Proyecciones",
-          path: "/celulandia/proyecciones",
-          icon: (
-            <SvgIcon fontSize="small">
-              <InventoryIcon />
-            </SvgIcon>
-          ),
-        });
-      }
-
-      if (permisosUsuario.includes("CELULANDIA_RESUMEN")) {
-        baseItems.push({
-          title: "Resumen",
-          path: "/celulandia/resumen",
-          icon: (
-            <SvgIcon fontSize="small">
-              <DashboardIcon />
-            </SvgIcon>
-          ),
-        });
-      }
-
-      if (permisosUsuario.includes("CELULANDIA_BACKUPS")) {
-        baseItems.push({
-          title: "Backups",
-          path: "/celulandia/backups",
-          icon: <SvgIcon fontSize="small"><BackupIcon /></SvgIcon>,
-        });
-     }
-
-      // SDR - Mostrar a usuarios marcados como SDR (sdr: true en su perfil)
-      if (user?.sdr === true) {
-        baseItems.push({
-          title: "Contactos SDR",
-          path: "/contactosSDR",
-          icon: (
-            <SvgIcon fontSize="small">
-              <ContactsIcon />
-            </SvgIcon>
-          ),
-        });
-      }
-
-      if (user?.admin) {
-        baseItems.push({
-          title: "Panel de Control",
-          path: "/control-panel",
-          icon: (
-            <SvgIcon fontSize="small">
-              <AdminPanelSettingsIcon />
-            </SvgIcon>
-          ),
-        });
-      }
-
-      if (user?.admin) {
-        baseItems.push({
-          title: "Configurar " + emp.nombre,
-          path: "empresa?empresaId=" + emp.id,
-          icon: (
-            <SvgIcon fontSize="small">
-              <SettingsIcon />
-            </SvgIcon>
-          ),
-        });
-      }
-
-      // Templates WhatsApp y Eventos movidos al Panel de Control
-
-      if (permisosUsuario.includes("ADMIN_USUARIOS")) {
-        baseItems.push({
-          title: "Administrar" + emp.nombre,
-          path: "/configuracionBasica/?empresaId=" + emp.id,
-          icon: (
-            <SvgIcon fontSize="small">
-              <SettingsIcon />
-            </SvgIcon>
-          ),
-        });
-      }
-
-      if (permisosUsuario.includes("VER_PLANES_COBRO")) {
-        baseItems.push({
-          title: "Plan de Cobros",
-          path: "cobros",
-          icon: (
-            <SvgIcon fontSize="small">
-              <AttachMoneyIcon />
-            </SvgIcon>
-          ),
-        });
-      }
-
-      if (permisosUsuario.includes("VER_CONTROL_PAGOS")) {
-        baseItems.push({
-          title: "Control de pagos",
-          path: "/control-pagos",
-          icon: (
-            <SvgIcon fontSize="small">
-              <LocalAtm />
-            </SvgIcon>
-          ),
-        });
-      }
-
-      if (permisosUsuario.includes("VER_CUENTA_CORRIENTE_PROVEEDORES")) {
-        baseItems.push({
-          title: "Cuenta corriente proveedores",
-          path: "/cuenta-corriente-proveedores",
-          icon: (
-            <SvgIcon fontSize="small">
-              <LocalAtm />
-            </SvgIcon>
-          ),
-        });
-      }
-
-      if (permisosUsuario.includes("VER_UNIDADES")) {
-        baseItems.push({
-          title: "Unidades",
-          path: "unidadesTable?empresaId=" + emp.id,
-          icon: (
-            <SvgIcon fontSize="small">
-              <SettingsIcon />
-            </SvgIcon>
-          ),
-        });
-      }
-
-      // LEGACY V1 — "Movimientos de material" ocultado en Fase 0 de Stock V2.
-      // La página sigue existiendo para acceso directo por URL si es necesario.
-      // if (permisosUsuario.includes("GESTIONAR_MATERIALES")) {
-      //   baseItems.push({
-      //     title: "Movimientos de material",
-      //     path: "movimientosMateriales/?empresaId=" + emp.id,
-      //     icon: ( <SvgIcon fontSize="small"><SettingsIcon /></SvgIcon> ),
-      //   });
-      // }
-
-      if (permisosUsuario.includes("VER_STOCK_MATERIALES")) {
-        baseItems.push({
-          title: "Stock de materiales",
-          path: "/stockMateriales?empresaId=" + emp.id,
-          icon: (
-            <SvgIcon fontSize="small">
-              <InventoryIcon />
-            </SvgIcon>
-          ),
-        });
-      }
-
-      if (permisosUsuario.includes("VER_STOCK_SOLICITUDES")) {
-        baseItems.push({
-          title: "Tickets de stock",
-          path: "/stockSolicitudes?empresaId=" + emp.id,
-          icon: (
-            <SvgIcon fontSize="small">
-              <NoteAltIcon />
-            </SvgIcon>
-          ),
-        });
-      }
-
-      if (permisosUsuario.includes("VER_STOCK_MOVIMIENTOS")) {
-        baseItems.push({
-          title: "Movimientos de stock",
-          path: "/stockMovimientos?empresaId=" + emp.id,
-          icon: (
-            <SvgIcon fontSize="small">
-              <CompareArrowsIcon />
-            </SvgIcon>
-          ),
-        });
-      }
-
-      // Fase 1 — Vista unificada de materiales por obra
-      if (permisosUsuario.includes("VER_STOCK_MATERIALES") || permisosUsuario.includes("VER_STOCK_SOLICITUDES")) {
-        baseItems.push({
-          title: "Materiales por obra",
-          path: "/stockVistaObra?empresaId=" + emp.id,
-          icon: (
-            <SvgIcon fontSize="small">
-              <ConstructionIcon />
-            </SvgIcon>
-          ),
-        });
-      }
-
-      if (permisosUsuario.includes("VER_INVENTARIO_PRODUCTOS")) {
-        baseItems.push({
-          title: "Inventario Productos",
-          path: "/inventarioProductos?empresaId=" + emp.id,
-          icon: (
-            <SvgIcon fontSize="small">
-              <InventoryIcon />
-            </SvgIcon>
-          ),
-        });
-      }
-
-      if (permisosUsuario.includes("VER_NOTAS_DE_PEDIDO")) {
-        baseItems.push({
-          title: "Notas de pedido",
-          path: "/notaPedido",
-          icon: (
-            <SvgIcon fontSize="small">
-              <NoteAltIcon />
-            </SvgIcon>
-          ),
-        });
-      }
-
-      if (permisosUsuario.includes("CREAR_ACOPIO")) {
-        baseItems.push({
-          title: "Acopio",
-          path: "/acopios?empresaId=" + emp.id,
-          icon: (
-            <SvgIcon fontSize="small">
-              <InventoryIcon />
-            </SvgIcon>
-          ),
-        });
-      }
-
-      if (permisosUsuario.includes("VER_MI_CAJA_CHICA")) {
-        baseItems.push({
-          title: "Caja Chica",
-          path: "/cajaChica",
-          icon: (
-            <SvgIcon fontSize="small">
-              <AttachMoneyIcon />
-            </SvgIcon>
-          ),
-        });
-      }
-
       if (permisosUsuario.includes("MOCK_DHN")) {
-        baseItems.push({
-          title: "Trabajadores",
-          path: "/dhn/trabajador",
-          icon: (
-            <SvgIcon fontSize="small">
-              <PeopleIcon />
-            </SvgIcon>
-          ),
-        });
-
-        baseItems.push({
-          title: "Sincronización",
-          path: "/dhn/cargarDrive",
-          icon: (
-            <SvgIcon fontSize="small">
-              <SyncIcon />
-            </SvgIcon>
-          ),
-        });
-
-        baseItems.push({
-          title: "Errores", 
-          path: "/dhn/sync/errores",
-          icon: (
-            <SvgIcon fontSize="small">
-              <ErrorOutlineIcon />
-            </SvgIcon>
-          ),
-        })
-  
-        baseItems.push({
-          title: "Control Diario",
-          path: "/dhn/controlDiario",
-          icon: (
-            <SvgIcon fontSize="small">
-              <TodayIcon />
-            </SvgIcon>
-          ),
-        });
-
-        baseItems.push({
-          title: "Control Quincenal",
-          path: "/dhn/controlQuincenal",
-          icon: (
-            <SvgIcon fontSize="small">
-              <DateRangeIcon />
-            </SvgIcon>
-          ),
-        });
-
-        baseItems.push({
-          title: "Conciliacion",
-          path: "/dhn/conciliacion",
-          icon: (
-            <SvgIcon fontSize="small">
-              <CompareArrowsIcon />
-            </SvgIcon>
-          ),
-        })
-
-        baseItems.push({
-          title: "Horarios / Licencias",
-          path: "/dhn/configuracion",
-          icon: (
-            <SvgIcon fontSize="small">
-              <SettingsIcon />
-            </SvgIcon>
-          ),
-        });
+        setNavType("dhn");
+        setNavPermisos(permisosUsuario);
+        return;
       }
 
-      if (permisosUsuario.includes("VER_CAJAS") && !permisosUsuario.includes("CREAR_EGRESO_SIMPLIFICADO")) {
-        if (permisosUsuario.includes("VER_MI_CAJA_CHICA")) {
-          baseItems.push({
-            title: "Ver cajas chicas",
-            path: "/perfilesEmpresa",
-            icon: (
-              <SvgIcon fontSize="small">
-                <AttachMoneyIcon />
-              </SvgIcon>
-            ),
-          });
-        }
+      setNavType("default");
+      const empId = emp.id;
+      const esAdmin = permisosUsuario.includes("VER_CAJAS") && !permisosUsuario.includes("CREAR_EGRESO_SIMPLIFICADO");
+      const newGroups = [];
 
-        baseItems.push({
-          title: "Resumen general",
-          path: "/vistaResumen?empresaId=" + emp.id,
-          icon: (
-            <SvgIcon fontSize="small">
-              <DashboardIcon />
-            </SvgIcon>
-          ),
-        });
+      // ——— INICIO ———
+      const inicioItems = [];
+      if (user?.admin) inicioItems.push({ title: "Panel de Control", path: "/control-panel", icon: <SvgIcon fontSize="small"><AdminPanelSettingsIcon /></SvgIcon> });
+      if (esAdmin) inicioItems.push({ title: "Resumen general", path: `/vistaResumen?empresaId=${empId}`, icon: <SvgIcon fontSize="small"><DashboardIcon /></SvgIcon> });
+      inicioItems.push({ title: "Reportes", path: "/reportes", icon: <SvgIcon fontSize="small"><AssessmentIcon /></SvgIcon> });
+      newGroups.push({ id: "inicio", label: "Inicio", alwaysOpen: true, items: inicioItems });
 
-        baseItems.push({
-          title: "Control Presupuestos",
-          path: "/control-presupuestos",
-          icon: (
-            <SvgIcon fontSize="small">
-              <NoteAltIcon />
-            </SvgIcon>
-          ),
-        });
+      // ——— FINANZAS ———
+      const finanzasItems = [];
+      if (esAdmin) finanzasItems.push({ title: "Todos los movimientos", path: `/todosProyectos?empresaId=${empId}`, icon: <SvgIcon fontSize="small"><DashboardIcon /></SvgIcon> });
+      if (permisosUsuario.includes("CREAR_EGRESO_SIMPLIFICADO")) finanzasItems.push({ title: "Ver caja", path: "/cajaSimple", icon: <SvgIcon fontSize="small"><AccountBalanceWallet /></SvgIcon> });
+      if (permisosUsuario.includes("VER_MI_CAJA_CHICA")) finanzasItems.push({ title: "Caja chica", path: "/cajaChica", icon: <SvgIcon fontSize="small"><AttachMoneyIcon /></SvgIcon> });
+      if (esAdmin && permisosUsuario.includes("VER_MI_CAJA_CHICA")) finanzasItems.push({ title: "Todas las cajas chicas", path: "/perfilesEmpresa", icon: <SvgIcon fontSize="small"><AttachMoneyIcon /></SvgIcon> });
+      if (permisosUsuario.includes("VER_CONTROL_PAGOS")) finanzasItems.push({ title: "Control de pagos", path: "/control-pagos", icon: <SvgIcon fontSize="small"><LocalAtm /></SvgIcon> });
+      if (permisosUsuario.includes("VER_CUENTA_CORRIENTE_PROVEEDORES")) finanzasItems.push({ title: "Cta. cte. proveedores", path: "/cuenta-corriente-proveedores", icon: <SvgIcon fontSize="small"><LocalAtm /></SvgIcon> });
+      if (permisosUsuario.includes("VER_PLANES_COBRO")) finanzasItems.push({ title: "Plan de cobros", path: "cobros", icon: <SvgIcon fontSize="small"><AttachMoneyIcon /></SvgIcon> });
+      if (esAdmin) {
+        finanzasItems.push({ title: "Control presupuestos", path: "/control-presupuestos", icon: <SvgIcon fontSize="small"><NoteAltIcon /></SvgIcon> });
+        if (permisosUsuario.includes("VER_PRESUPUESTOS_PROFESIONALES")) finanzasItems.push({ title: "Presupuestos profesionales", path: "/presupuestosProfesionales", icon: <SvgIcon fontSize="small"><NoteAltIcon /></SvgIcon> });
+      }
+      if (finanzasItems.length > 0) newGroups.push({ id: "finanzas", label: "Finanzas", items: finanzasItems });
 
+      // ——— MATERIALES ———
+      const materialesItems = [];
+      if (permisosUsuario.includes("VER_STOCK_MATERIALES")) materialesItems.push({ title: "Stock de materiales", path: `/stockMateriales?empresaId=${empId}`, icon: <SvgIcon fontSize="small"><InventoryIcon /></SvgIcon> });
+      if (permisosUsuario.includes("VER_INVENTARIO_PRODUCTOS")) materialesItems.push({ title: "Inventario productos", path: `/inventarioProductos?empresaId=${empId}`, icon: <SvgIcon fontSize="small"><InventoryIcon /></SvgIcon> });
+      if (permisosUsuario.includes("CREAR_ACOPIO")) materialesItems.push({ title: "Acopio", path: `/acopios?empresaId=${empId}`, icon: <SvgIcon fontSize="small"><InventoryIcon /></SvgIcon> });
+      if (permisosUsuario.includes("VER_NOTAS_DE_PEDIDO")) materialesItems.push({ title: "Notas de pedido", path: "/notaPedido", icon: <SvgIcon fontSize="small"><NoteAltIcon /></SvgIcon> });
+      if (permisosUsuario.includes("VER_STOCK_SOLICITUDES")) materialesItems.push({ title: "Tickets de stock", path: `/stockSolicitudes?empresaId=${empId}`, icon: <SvgIcon fontSize="small"><NoteAltIcon /></SvgIcon> });
+      if (permisosUsuario.includes("VER_STOCK_MOVIMIENTOS")) materialesItems.push({ title: "Movimientos de stock", path: `/stockMovimientos?empresaId=${empId}`, icon: <SvgIcon fontSize="small"><CompareArrowsIcon /></SvgIcon> });
+      if (permisosUsuario.includes("VER_STOCK_MATERIALES") || permisosUsuario.includes("VER_STOCK_SOLICITUDES")) materialesItems.push({ title: "Materiales por obra", path: `/stockVistaObra?empresaId=${empId}`, icon: <SvgIcon fontSize="small"><ConstructionIcon /></SvgIcon> });
+      if (materialesItems.length > 0) newGroups.push({ id: "materiales", label: "Materiales", items: materialesItems });
 
-        if (permisosUsuario.includes("VER_PRESUPUESTOS_PROFESIONALES")) {
-        baseItems.push({
-          title: "Presupuestos Profesionales",
-          path: "/presupuestosProfesionales",
-            icon: (
-              <SvgIcon fontSize="small">
-                <NoteAltIcon />
-              </SvgIcon>
-            ),
-          });
-        }
-
-        const todos = {
-          title: "Todos los movimientos",
-          path: "/todosProyectos?empresaId=" + emp.id,
-          icon: (
-            <SvgIcon fontSize="small">
-              <DashboardIcon />
-            </SvgIcon>
-          ),
-        };
-        const revision = {
-          title: "Revision de facturas",
-          path: "/revisionFacturas?empresaId=" + emp.id,
-          icon: (
-            <SvgIcon fontSize="small">
-              <DashboardIcon />
-            </SvgIcon>
-          ),
-        };
-
-        
-        baseItems = [ todos, revision, ...baseItems];
-        
-        if (permisosUsuario.includes("VER_VALIDACION_BORRADORES")) {
-          baseItems.push({
-          title: "Validacion borradores",
-          path: "/panelValidacion?empresaId=" + emp.id,
-          icon: (
-            <SvgIcon fontSize="small">
-              <Checklist />
-            </SvgIcon>
-          ),
-        });
-        }
-
-        // proyectos activos
+      // ——— OBRAS ———
+      if (esAdmin) {
         let proys = await getProyectosFromUser(user);
         proys = (proys || []).filter((p) => p.activo);
-
-        // Cajas (beta) — visible para todos los que pueden ver cajaProyecto
         if (proys.length > 0) {
-          baseItems.push({
-            title: "Cajas (beta)",
-            path: "/cajas",
-            icon: (
-              <SvgIcon fontSize="small">
-                <AccountBalanceWallet />
-              </SvgIcon>
-            ),
+          // Cajas (beta) va en Finanzas
+          const finGroup = newGroups.find((g) => g.id === "finanzas");
+          if (finGroup) finGroup.items.push({ title: "Cajas (beta)", path: "/cajas", icon: <SvgIcon fontSize="small"><AccountBalanceWallet /></SvgIcon> });
+          // Proyectos van en Obras
+          newGroups.push({
+            id: "obras", label: "Obras",
+            items: proys.map((proy) => ({
+              title: proy.nombre,
+              path: `cajaProyecto?proyectoId=${proy.id}`,
+              icon: <SvgIcon fontSize="small" sx={{ color: proy.activo ? "success.main" : "text.disabled" }}><StoreIcon /></SvgIcon>,
+            })),
           });
         }
-
-        setProyectos(proys);
-      } else {
-        setProyectos([]);
       }
 
-      if (permisosUsuario.includes("GESTIONAR_PLAN_DE_OBRA")) {
-        let proys = await getProyectosFromUser(user);
-        proys = (proys || []).filter((p) => p.activo);
-        setProyectosPlanObra(proys);
-      }
+      // ——— REVISIÓN ———
+      const revisionItems = [];
+      if (esAdmin) revisionItems.push({ title: "Revisión de facturas", path: `/revisionFacturas?empresaId=${empId}`, icon: <SvgIcon fontSize="small"><DashboardIcon /></SvgIcon> });
+      if (permisosUsuario.includes("VER_VALIDACION_BORRADORES")) revisionItems.push({ title: "Validación borradores", path: `/panelValidacion?empresaId=${empId}`, icon: <SvgIcon fontSize="small"><Checklist /></SvgIcon> });
+      if (revisionItems.length > 0) newGroups.push({ id: "revision", label: "Revisión", items: revisionItems });
 
-      if (permisosUsuario.includes("INTEGRACION_ODOO")) {
-        baseItems.push({
-          title: "Integración con Odoo",
-          path: "/odooIntegracion?empresaId=" + emp.id,
-          icon: (
-            <SvgIcon fontSize="small">
-              <NoteAltIcon />
-            </SvgIcon>
-          ),
-        });
-      }
+      // ——— GESTIÓN ———
+      const gestionItems = [];
+      if (user?.sdr === true) gestionItems.push({ title: "Contactos SDR", path: "/contactosSDR", icon: <SvgIcon fontSize="small"><ContactsIcon /></SvgIcon> });
+      gestionItems.push({ title: "Mi cuenta", path: "/account", icon: <SvgIcon fontSize="small"><PeopleIcon /></SvgIcon> });
+      newGroups.push({ id: "gestion", label: "Gestión", items: gestionItems });
 
-      setItems(baseItems);
+      // ——— CONFIGURACIÓN ———
+      const configItems = [];
+      if (user?.admin) configItems.push({ title: "Configurar " + emp.nombre, path: `empresa?empresaId=${empId}`, icon: <SvgIcon fontSize="small"><SettingsIcon /></SvgIcon> });
+      if (permisosUsuario.includes("ADMIN_USUARIOS")) configItems.push({ title: "Administración", path: `/configuracionBasica/?empresaId=${empId}`, icon: <SvgIcon fontSize="small"><SettingsIcon /></SvgIcon> });
+      if (permisosUsuario.includes("VER_UNIDADES")) configItems.push({ title: "Unidades", path: `unidadesTable?empresaId=${empId}`, icon: <SvgIcon fontSize="small"><SettingsIcon /></SvgIcon> });
+      if (permisosUsuario.includes("INTEGRACION_ODOO")) configItems.push({ title: "Integración con Odoo", path: `/odooIntegracion?empresaId=${empId}`, icon: <SvgIcon fontSize="small"><NoteAltIcon /></SvgIcon> });
+      if (configItems.length > 0) newGroups.push({ id: "configuracion", label: "Configuración", items: configItems });
+
+      setGroups(newGroups);
     };
 
     fetchProyectosData();
   }, [user]);
+
+  // Navs de empresas específicas
+  if (navType === "celulandia") {
+    return <SideNavCelulandia {...props} empresa={empresa} permisos={navPermisos} />;
+  }
+  if (navType === "dhn") {
+    return <SideNavDHN {...props} empresa={empresa} permisos={navPermisos} />;
+  }
 
   const content = (
     <Scrollbar
@@ -735,138 +247,62 @@ export const SideNav = (props) => {
 
         {/* Navegación */}
         <Box component="nav" sx={{ flexGrow: 1, px: 1, py: 1 }}>
-          <Stack component="ul" spacing={0.25} sx={{ listStyle: "none", p: 0, m: 0 }}>
-            {items.map((item) => {
-              const active = item.path ? pathname === item.path : false;
-              const node = (
-                <SideNavItem
-                  compact={collapsed}
-                  active={active}
-                  disabled={item.disabled}
-                  external={item.external}
-                  icon={item.icon}
-                  key={item.title}
-                  path={item.path}
-                  title={item.title}
-                />
-              );
-              return collapsed ? (
-                <Tooltip key={item.title} title={item.title} placement="right">
-                  <span>{node}</span>
-                </Tooltip>
-              ) : (
-                node
-              );
-            })}
-
-            {/* Proyectos agrupados */}
-            {proyectos.length > 0 && (
-              <>
-                {!collapsed && (
+          <Stack component="ul" spacing={0} sx={{ listStyle: "none", p: 0, m: 0 }}>
+            {groups.map((group) => (
+              <React.Fragment key={group.id}>
+                {!collapsed && group.label && (
                   <ListSubheader
                     component="div"
                     disableSticky
-                    sx={{ color: "neutral.400", pl: 1, display: "flex", alignItems: "center" }}
+                    onClick={() => !group.alwaysOpen && toggleGroup(group.id)}
+                    sx={{
+                      color: "neutral.400",
+                      pl: 1,
+                      display: "flex",
+                      alignItems: "center",
+                      cursor: group.alwaysOpen ? "default" : "pointer",
+                      userSelect: "none",
+                      fontSize: 11,
+                      fontWeight: 700,
+                      letterSpacing: "0.08em",
+                      textTransform: "uppercase",
+                      mt: 0.5,
+                      lineHeight: "32px",
+                      backgroundColor: "transparent",
+                    }}
                   >
-                    <IconButton
-                      size="small"
-                      onClick={() => setShowProyectos((v) => !v)}
-                      sx={{ mr: 0.5 }}
-                    >
-                      {showProyectos ? (
-                        <ExpandMoreIcon fontSize="small" />
-                      ) : (
-                        <ChevronRightIcon fontSize="small" />
-                      )}
-                    </IconButton>
-                    Cajas de proyectos
+                    {!group.alwaysOpen && (
+                      <Box component="span" sx={{ mr: 0.5, display: "inline-flex", alignItems: "center" }}>
+                        {openGroups[group.id] ? <ExpandMoreIcon fontSize="small" /> : <ChevronRightIcon fontSize="small" />}
+                      </Box>
+                    )}
+                    {group.label}
                   </ListSubheader>
                 )}
-                <Box sx={{ px: collapsed ? 0 : 0.5 }}>
-                  <Collapse in={showProyectos || collapsed}>
-                    {proyectos.map((proy) => {
-                      const el = (
-                        <SideNavItem
-                          compact={collapsed}
-                          key={proy.id}
-                          title={proy.nombre}
-                          path={`cajaProyecto?proyectoId=${proy.id}`}
-                          icon={
-                            <SvgIcon
-                              fontSize="small"
-                              sx={{ color: proy.activo ? "success.main" : "text.disabled" }}
-                            >
-                              <StoreIcon />
-                            </SvgIcon>
-                          }
-                        />
-                      );
-                      return collapsed ? (
-                        <Tooltip key={proy.id} title={proy.nombre} placement="right">
-                          <span>{el}</span>
-                        </Tooltip>
-                      ) : (
-                        el
-                      );
-                    })}
-                  </Collapse>
-                </Box>
-              </>
-            )}
-  
-            {proyectosPlanObra.length > 0 && (
-              <>
-                {!collapsed && (
-                  <ListSubheader
-                    component="div"
-                    disableSticky
-                    sx={{ color: "neutral.400", pl: 1, display: "flex", alignItems: "center" }}
-                  >
-                    <IconButton
-                      size="small"
-                      onClick={() => setShowProyectos((v) => !v)}
-                      sx={{ mr: 0.5 }}
-                    >
-                      {showProyectos ? (
-                        <ExpandMoreIcon fontSize="small" />
-                      ) : (
-                        <ChevronRightIcon fontSize="small" />
-                      )}
-                    </IconButton>
-                    Plan de obras
-                  </ListSubheader>
-                )}
-                <Box sx={{ px: collapsed ? 0 : 0.5 }}>
-                  <Collapse in={showProyectos || collapsed}>
-                    {proyectosPlanObra.map((proy) => {
-                      const el = (
-                        <SideNavItem
-                          compact={collapsed}
-                          key={proy.id}
-                          title={proy.nombre}
-                          path={`planobra?proyectoId=${proy.id}`}
-                          icon={
-                            <SvgIcon
-                              fontSize="small"
-                              sx={{ color: proy.activo ? "success.main" : "text.disabled" }}
-                            >
-                              <StoreIcon />
-                            </SvgIcon>
-                          }
-                        />
-                      );
-                      return collapsed ? (
-                        <Tooltip key={proy.id} title={proy.nombre} placement="right">
-                          <span>{el}</span>
-                        </Tooltip>
-                      ) : (
-                        el
-                      );
-                    })}
-                  </Collapse>
-                </Box>
-              </>
-            )}
+                <Collapse in={!!group.alwaysOpen || !!collapsed || !!openGroups[group.id]} unmountOnExit>
+                  {group.items.map((item) => {
+                    const active = item.path ? pathname === item.path : false;
+                    const node = (
+                      <SideNavItem
+                        compact={collapsed}
+                        active={active}
+                        disabled={item.disabled}
+                        external={item.external}
+                        icon={item.icon}
+                        key={item.title}
+                        path={item.path}
+                        title={item.title}
+                      />
+                    );
+                    return collapsed ? (
+                      <Tooltip key={item.title} title={item.title} placement="right">
+                        <span>{node}</span>
+                      </Tooltip>
+                    ) : node;
+                  })}
+                </Collapse>
+              </React.Fragment>
+            ))}
           </Stack>
         </Box>
         <Divider sx={{ borderColor: "neutral.700" }} />
