@@ -107,6 +107,15 @@ function toNormalizedSet(values = []) {
   return new Set((values || []).map((v) => normalizeFilterText(v)).filter(Boolean));
 }
 
+function normalizeCategoryFilterValue(value) {
+  return normalizeFilterText(value == null || value === '' ? 'Sin categoría' : value);
+}
+
+function getPresupuestoCategoryLabel(presupuesto) {
+  const value = presupuesto?.categoria ?? presupuesto?.rubro;
+  return value == null || value === '' ? 'Sin categoría' : value;
+}
+
 function getMovimientoUserCandidates(m) {
   const values = [];
 
@@ -282,7 +291,7 @@ export function filterMovimientos(movimientos, filters = {}, extraContext = {}) 
   // Categorías
   if (filters.categorias?.length > 0) {
     const set = toNormalizedSet(filters.categorias);
-    result = result.filter((m) => set.has(normalizeFilterText(m.categoria)));
+    result = result.filter((m) => set.has(normalizeCategoryFilterValue(m.categoria)));
   }
 
   // Proveedores
@@ -359,7 +368,7 @@ export function applyBlockFilters(movimientos, block) {
   if (fe) {
     if (fe.categorias?.length > 0) {
       const set = toNormalizedSet(fe.categorias);
-      result = result.filter((m) => set.has(normalizeFilterText(m.categoria)));
+      result = result.filter((m) => set.has(normalizeCategoryFilterValue(m.categoria)));
     }
     if (fe.proveedores?.length > 0) {
       const set = toNormalizedSet(fe.proveedores);
@@ -378,7 +387,7 @@ export function applyBlockFilters(movimientos, block) {
   if (ex) {
     if (ex.categorias?.length > 0) {
       const set = toNormalizedSet(ex.categorias);
-      result = result.filter((m) => !set.has(normalizeFilterText(m.categoria)));
+      result = result.filter((m) => !set.has(normalizeCategoryFilterValue(m.categoria)));
     }
     if (ex.proveedores?.length > 0) {
       const set = toNormalizedSet(ex.proveedores);
@@ -430,6 +439,31 @@ export function aggregate(values, operacion) {
   return fn(values);
 }
 
+function findLinkedBudgetVsActualBlock(metricBlock, reportConfig) {
+  const layout = reportConfig?.layout;
+  if (!Array.isArray(layout) || layout.length === 0) return null;
+
+  if (metricBlock?.linked_budget_block_id) {
+    const byId = layout.find(
+      (b) => b?.type === 'budget_vs_actual' && b?.id === metricBlock.linked_budget_block_id,
+    );
+    if (byId) return byId;
+  }
+
+  if (Number.isInteger(metricBlock?.linked_budget_block_index)) {
+    const byIndex = layout[metricBlock.linked_budget_block_index];
+    if (byIndex?.type === 'budget_vs_actual') return byIndex;
+  }
+
+  const title = normalizeFilterText(metricBlock?.titulo || '');
+  const shouldAutoLink =
+    metricBlock?.sync_with_budget_vs_actual === true
+    || title.includes('resumen presupuest');
+
+  if (!shouldAutoLink) return null;
+  return layout.find((b) => b?.type === 'budget_vs_actual') || null;
+}
+
 // ─── Agrupación ───
 
 const GROUP_KEYS = {
@@ -466,11 +500,21 @@ export function groupBy(movimientos, campo) {
  * Procesa un bloque metric_cards
  * @returns {Array<{ id, titulo, valor, formato, color }>}
  */
-export function processMetricCards(block, movimientos, _presupuestos, currencies) {
+export function processMetricCards(block, movimientos, _presupuestos, currencies, _cotizaciones, extraContext = {}) {
   const metricas = block.metricas || [];
+  const linkedBudgetBlock = findLinkedBudgetVsActualBlock(block, extraContext?.reportConfig);
 
   return metricas.map((metrica) => {
     let data = movimientos;
+
+    // Si esta metrica está asociada al bloque Presupuesto vs Ejecución,
+    // hereda sus filtros/exclusiones para que no sume categorías ocultas.
+    if (linkedBudgetBlock) {
+      data = applyBlockFilters(data, linkedBudgetBlock);
+      if (!metrica.filtro_tipo && linkedBudgetBlock.mostrar_tipo && linkedBudgetBlock.mostrar_tipo !== 'ambos') {
+        data = data.filter((m) => m.type === linkedBudgetBlock.mostrar_tipo);
+      }
+    }
 
     // Filtro de tipo del metric card individual
     if (metrica.filtro_tipo) {
@@ -482,7 +526,7 @@ export function processMetricCards(block, movimientos, _presupuestos, currencies
     if (fe) {
       if (fe.categorias?.length > 0) {
         const set = toNormalizedSet(fe.categorias);
-        data = data.filter((m) => set.has(normalizeFilterText(m.categoria)));
+        data = data.filter((m) => set.has(normalizeCategoryFilterValue(m.categoria)));
       }
       if (fe.proveedores?.length > 0) {
         const set = toNormalizedSet(fe.proveedores);
@@ -687,6 +731,7 @@ export function processBudgetVsActual(block, movimientos, presupuestos, currenci
   const data = applyBlockFilters(movimientos, block);
   const agruparPor = block.agrupar_por || 'categoria';
   const runtimeProjectIds = new Set((extraContext?.filters?.proyectos || []).map((id) => String(id)));
+  const runtimeCategorySet = toNormalizedSet(extraContext?.filters?.categorias || []);
 
   // Filtrar presupuestos por tipo si corresponde
   let presFiltered = presupuestos || [];
@@ -709,6 +754,11 @@ export function processBudgetVsActual(block, movimientos, presupuestos, currenci
     presFiltered = presFiltered.filter((p) => runtimeProjectIds.has(getPresupuestoProjectInfo(p).id));
   }
 
+  // Respetar filtro global de categorías también en presupuestos
+  if (runtimeCategorySet.size > 0) {
+    presFiltered = presFiltered.filter((p) => runtimeCategorySet.has(normalizeCategoryFilterValue(getPresupuestoCategoryLabel(p))));
+  }
+
   // Excluir presupuestos específicos
   if (block.excluir?.presupuestos?.length > 0) {
     const exSet = new Set(block.excluir.presupuestos.map((n) => n.toLowerCase()));
@@ -724,7 +774,7 @@ export function processBudgetVsActual(block, movimientos, presupuestos, currenci
       case 'etapa': return (p.etapa || 'Sin etapa').toLowerCase();
       case 'proveedor': return (p.proveedor || p.nombre_proveedor || 'Sin proveedor').toLowerCase();
       case 'categoria':
-      default: return (p.categoria || p.rubro || 'Sin categoría').toLowerCase();
+      default: return getPresupuestoCategoryLabel(p).toLowerCase();
     }
   };
   const getPresNombre = (p) => {
@@ -732,7 +782,7 @@ export function processBudgetVsActual(block, movimientos, presupuestos, currenci
       case 'etapa': return p.etapa || 'Sin etapa';
       case 'proveedor': return p.proveedor || p.nombre_proveedor || 'Sin proveedor';
       case 'categoria':
-      default: return p.categoria || p.rubro || 'Sin categoría';
+      default: return getPresupuestoCategoryLabel(p);
     }
   };
 
@@ -1544,6 +1594,7 @@ export function executeReport(reportConfig, movimientos, presupuestos = [], disp
     ? displayCurrencies
     : [reportConfig.display_currency || 'ARS'];
   const layout = reportConfig.layout || [];
+  const processorContext = { ...(extraContext || {}), reportConfig };
 
   return layout.map((block) => {
     const processor = BLOCK_PROCESSORS[block.type];
@@ -1552,7 +1603,7 @@ export function executeReport(reportConfig, movimientos, presupuestos = [], disp
     }
 
     try {
-      const data = processor(block, movimientos, presupuestos, currencies, cotizaciones, extraContext);
+      const data = processor(block, movimientos, presupuestos, currencies, cotizaciones, processorContext);
       return { type: block.type, titulo: block.titulo || '', data };
     } catch (err) {
       console.error(`Error procesando bloque ${block.type}:`, err);
@@ -1573,7 +1624,7 @@ function capitalizar(str) {
  */
 export function getUniqueValues(movimientos, campo) {
   const map = {
-    categoria: (m) => m.categoria,
+    categoria: (m) => (m?.categoria == null || m?.categoria === '' ? 'Sin categoría' : m.categoria),
     proveedor: (m) => m.nombre_proveedor,
     etapa: (m) => m.etapa,
     proyecto: (m) => m.proyecto,
