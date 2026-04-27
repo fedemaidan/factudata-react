@@ -4,6 +4,7 @@ import { styled } from '@mui/material/styles';
 import { withAuthGuard } from 'src/hocs/with-auth-guard';
 import { SideNav } from './side-nav';
 import { TopNav } from './top-nav';
+import { AgentChatFab } from 'src/components/agent/AgentChatFab';
 import { useVersionCheck } from 'src/hooks/use-version-check';
 import { getRemoteVersionFromFirestore } from 'src/services/versionService';
 
@@ -88,6 +89,7 @@ export const Layout = withAuthGuard((props) => {
       <LayoutRoot navwidth={navWidth}>
         <LayoutContainer>{children}</LayoutContainer>
       </LayoutRoot>
+      <AgentChatFab />
     </>
   );
 });
