@@ -856,7 +856,7 @@ const CajasPage = () => {
   const [medioPagoCaja, setMedioPagoCaja] = useState('Efectivo');
   const [equivalenciaCaja, setEquivalenciaCaja] = useState('none'); // 'none' | 'usd_blue' | ...
   const [editandoCaja, setEditandoCaja] = useState(null); // null o index de la caja
-  const [cajaSeleccionada, setCajaSeleccionada] = useState(null);
+  // cajaSeleccionada eliminado: filters.caja es la única fuente de verdad
   const [prefsHydrated, setPrefsHydrated] = useState(false);
   const [savingCols, setSavingCols] = useState(false);
   const [saveMsg, setSaveMsg] = useState(null); // opcional: feedback breve
@@ -1215,7 +1215,7 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
     proyectoId: activeProjectId,
     movimientos: [],
     movimientosUSD: [],
-    cajaSeleccionada,
+    cajaSeleccionada: null, // La caja vive en filters.caja; este param solo afecta el filtrado local (no usado)
   });
 
   const options = backendOptions || hookOptions;
@@ -1284,20 +1284,12 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
   };
 
   const applyCajaSelection = useCallback((caja) => {
-    logCajaDebug('Aplicando selección de caja', {
-      caja,
-    });
-
+    logCajaDebug('Aplicando selección de caja', { caja });
     if (caja?.filterSet) {
       const restoredFilters = deserializeFilterSet(caja.filterSet);
-      setCajaSeleccionada(caja);
       setFilters((f) => ({ ...f, ...restoredFilters, caja }));
     } else {
-      setCajaSeleccionada(caja || null);
-      setFilters((f) => ({
-        ...f,
-        caja: caja || null,
-      }));
+      setFilters((f) => ({ ...f, caja: caja || null }));
     }
   }, [setFilters]);
   
@@ -1305,7 +1297,8 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
     const nuevas = cajasVirtuales.filter((_, i) => i !== index);
     setCajasVirtuales(nuevas);
     updateEmpresaDetails(empresa.id, { cajas_virtuales: nuevas });
-    if (cajaSeleccionada === cajasVirtuales[index]) {
+    // Comparar por nombre porque filters.caja puede ser un objeto rehidratado (nueva referencia)
+    if (filters.caja?.nombre === cajasVirtuales[index]?.nombre) {
       const fallback = nuevas[0] || null;
       applyCajaSelection(fallback);
     }
@@ -1500,7 +1493,7 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
       const params = {
         ...buildCajaDashboardParams({
           filters,
-          caja: filters.caja || cajaSeleccionada,
+          caja: filters.caja,
           page,
           limit: rowsPerPage,
           includeOptions,
@@ -1563,7 +1556,7 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
     } finally {
       setLoadingDashboard(false);
     }
-  }, [cajaSeleccionada, empresa?.id, filters, page, rowsPerPage, scopeProjectIds]);
+  }, [empresa?.id, filters, page, rowsPerPage, scopeProjectIds]);
 
   const fetchDashboardOptions = useCallback(async () => {
     if (!empresa?.id) return null;
@@ -1762,7 +1755,7 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
       return "$ 0";
   };
 
-  const activeCaja = useMemo(() => filters.caja || cajaSeleccionada || null, [filters.caja, cajaSeleccionada]);
+  const activeCaja = useMemo(() => filters.caja || null, [filters.caja]);
   const activeTotalsCurrency = useMemo(() => {
     if (activeCaja?.equivalencia && activeCaja.equivalencia !== 'none') {
       const meta = EQUIV_META[activeCaja.equivalencia];
@@ -1888,7 +1881,7 @@ const getTime = (v) => {
         const response = await movimientosService.getCajasDashboard({
           ...buildCajaDashboardParams({
             filters,
-            caja: filters.caja || cajaSeleccionada,
+            caja: filters.caja,
             page: exportPage,
             limit: batchSize,
             includeOptions: false,
@@ -1925,7 +1918,7 @@ const getTime = (v) => {
     } finally {
       setCsvExporting(false);
     }
-  }, [activeProject?.nombre, cajaSeleccionada, csvExportFields, csvFieldOrder, csvSelectedFields, empresa?.id, filters, scopeProjectIds]);
+  }, [activeProject?.nombre, csvExportFields, csvFieldOrder, csvSelectedFields, empresa?.id, filters, scopeProjectIds]);
 
   const handleGuardarCaja = async () => {
     const nuevaCaja = {
@@ -2131,7 +2124,6 @@ const getTime = (v) => {
     logCajaDebug('Estado visible de filtros/caja/totales', {
       proyectoId: queryProyectoId,
       proyectoIds: scopeProjectIds,
-      cajaSeleccionada,
       filters,
       dashboardItems: dashboardItems.length,
       movimientosFiltrados: movimientosFiltrados.length,
@@ -2144,7 +2136,6 @@ const getTime = (v) => {
   }, [
     queryProyectoId,
     scopeProjectIds,
-    cajaSeleccionada,
     filters,
     dashboardItems.length,
     movimientosFiltrados.length,
@@ -2309,7 +2300,7 @@ useEffect(() => {
                       }}
                     >
                       {cajasVirtuales.map((caja, index) => {
-                        const selected = cajaSeleccionada?.nombre === caja.nombre;
+                        const selected = filters.caja?.nombre === caja.nombre;
                         const totalCaja = calcularTotalParaCaja(caja);
                         const tone = getCajaAccent(caja, totalCaja);
                         const ToneIcon = tone.Icon;

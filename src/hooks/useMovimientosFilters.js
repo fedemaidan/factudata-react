@@ -151,6 +151,15 @@ export function useMovimientosFilters({
     return JSON.stringify(sorted);
   };
 
+  // Extrae solo los params de filtros (PERSIST_KEYS) del query para el hash.
+  // Si se incluye el query completo, cambios de scope (proyectoId/proyectoIds)
+  // hacen que los effects de filtros se disparen innecesariamente.
+  const filterParamsSubset = (query) => {
+    const out = {};
+    PERSIST_KEYS.forEach((k) => { if (k in (query || {})) out[k] = query[k]; });
+    return out;
+  };
+
   const buildQueryFromFilters = (f, baseQuery = {}) => {
     const out = { ...baseQuery };
     PERSIST_KEYS.forEach((k) => {
@@ -191,7 +200,9 @@ export function useMovimientosFilters({
 
   useEffect(() => {
     if (!router.isReady) return;
-    const incomingHash = stableStringify(router.query || {});
+    // Solo hasheamos los params de filtros; cambios de proyectoId/proyectoIds
+    // no deben re-hidratar el estado de filtros.
+    const incomingHash = stableStringify(filterParamsSubset(router.query));
     if (incomingHash === lastQueryHashRef.current) return;
     const parsed = parseFiltersFromQuery(router.query);
     const merged = { ...defaultFilters, ...parsed };
@@ -200,30 +211,35 @@ export function useMovimientosFilters({
     });
     setFilters(merged);
     logCajaFilters('Filtros rehidratados desde query', {
-      empresaId,
-      proyectoId,
       routerQuery: router.query,
       parsed,
       merged,
     });
     lastQueryHashRef.current = incomingHash;
     initializedRef.current = true;
-  }, [empresaId, proyectoId, router.isReady, router.query]);
+  // empresaId y proyectoId no se usan en el cuerpo del effect; incluirlos
+  // como deps causaba re-hidrataciones al cambiar de scope.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router.isReady, router.query]);
 
   useEffect(() => {
     if (!initializedRef.current || !router.isReady) return;
     const nextQuery = buildQueryFromFilters(filters, router.query || {});
-    const qHash = stableStringify(nextQuery);
+    // Solo comparamos los params de filtros para evitar false-positives cuando
+    // el scope (proyectoId) acaba de cambiar la URL.
+    const qHash = stableStringify(filterParamsSubset(nextQuery));
     if (qHash === lastQueryHashRef.current) return;
     logCajaFilters('Sincronizando filtros hacia query', {
-      proyectoId,
       filters,
       previousQuery: router.query,
       nextQuery,
     });
     lastQueryHashRef.current = qHash;
     router.replace({ pathname: router.pathname, query: nextQuery }, undefined, { shallow: true, scroll: false });
-  }, [filters, proyectoId, router]);
+  // proyectoId solo se usaba en el log; tenerlo como dep hacía que este effect
+  // se disparara al cambiar scope, compitiendo con el router.replace del scope effect.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters, router]);
 
 
   // opciones únicas (para selects múltiples)
