@@ -149,6 +149,11 @@ const serializeFilterSet = (f) => {
   return out;
 };
 
+const FILTER_ARRAY_KEYS = [
+  'tipo', 'moneda', 'proveedores', 'categorias', 'subcategorias', 'usuarios',
+  'medioPago', 'estados', 'etapa', 'cuentaInterna', 'tagsExtra', 'empresaFacturacion',
+];
+
 const deserializeFilterSet = (stored) => {
   const out = {};
   const DATE_KEYS = ['fechaDesde', 'fechaHasta', 'fechaPagoDesde', 'fechaPagoHasta'];
@@ -157,6 +162,12 @@ const deserializeFilterSet = (stored) => {
     else if (v && typeof v === 'object' && v._seconds) out[k] = new Date(v._seconds * 1000);
     else out[k] = v;
   }
+  // garantizar que los campos array siempre sean arrays (datos legados o corruptos)
+  FILTER_ARRAY_KEYS.forEach((k) => {
+    if (k in out && !Array.isArray(out[k])) {
+      out[k] = out[k] ? [out[k]] : [];
+    }
+  });
   return out;
 };
 
@@ -2083,6 +2094,7 @@ const getTime = (v) => {
   const filterChips = useMemo(() => {
     const chips = [];
     const add = (label, onDelete) => chips.push({ label, onDelete });
+    const toArr = (v) => (Array.isArray(v) ? v : (v ? [v] : []));
     if (filters.fechaDesde || filters.fechaHasta) {
       const label = filters.fechaDesde && filters.fechaHasta
         ? `Fecha: ${formatDateChip(filters.fechaDesde)} - ${formatDateChip(filters.fechaHasta)}`
@@ -2098,17 +2110,17 @@ const getTime = (v) => {
     if (filters.palabras) add(`Buscar: ${filters.palabras}`, () => setFilters((f) => ({ ...f, palabras: '' })));
     if (filters.observacion) add(`Observación: ${filters.observacion}`, () => setFilters((f) => ({ ...f, observacion: '' })));
     if (filters.codigoSync) add(`Código: ${filters.codigoSync}`, () => setFilters((f) => ({ ...f, codigoSync: '' })));
-    (filters.tipo || []).forEach((v) => add(`Tipo: ${v}`, () => setFilters((f) => ({ ...f, tipo: f.tipo.filter((x) => x !== v) }))));
-    (filters.moneda || []).forEach((v) => add(`Moneda: ${v}`, () => setFilters((f) => ({ ...f, moneda: f.moneda.filter((x) => x !== v) }))));
-    (filters.proveedores || []).forEach((v) => add(`Proveedor: ${v}`, () => setFilters((f) => ({ ...f, proveedores: f.proveedores.filter((x) => x !== v) }))));
-    (filters.categorias || []).forEach((v) => add(`Categoría: ${v}`, () => setFilters((f) => ({ ...f, categorias: f.categorias.filter((x) => x !== v) }))));
-    (filters.subcategorias || []).forEach((v) => add(`Subcategoría: ${v}`, () => setFilters((f) => ({ ...f, subcategorias: f.subcategorias.filter((x) => x !== v) }))));
-    (filters.medioPago || []).forEach((v) => add(`Medio: ${v}`, () => setFilters((f) => ({ ...f, medioPago: f.medioPago.filter((x) => x !== v) }))));
-    (filters.etapa || []).forEach((v) => add(`Etapa: ${v}`, () => setFilters((f) => ({ ...f, etapa: f.etapa.filter((x) => x !== v) }))));
-    (filters.estados || []).forEach((v) => add(`Estado: ${v}`, () => setFilters((f) => ({ ...f, estados: f.estados.filter((x) => x !== v) }))));
-    (filters.cuentaInterna || []).forEach((v) => add(`Cuenta: ${v}`, () => setFilters((f) => ({ ...f, cuentaInterna: f.cuentaInterna.filter((x) => x !== v) }))));
-    (filters.tagsExtra || []).forEach((v) => add(`Tag: ${v}`, () => setFilters((f) => ({ ...f, tagsExtra: f.tagsExtra.filter((x) => x !== v) }))));
-    (filters.empresaFacturacion || []).forEach((v) => add(`Emp. fact.: ${v}`, () => setFilters((f) => ({ ...f, empresaFacturacion: f.empresaFacturacion.filter((x) => x !== v) }))));
+    toArr(filters.tipo).forEach((v) => add(`Tipo: ${v}`, () => setFilters((f) => ({ ...f, tipo: toArr(f.tipo).filter((x) => x !== v) }))));
+    toArr(filters.moneda).forEach((v) => add(`Moneda: ${v}`, () => setFilters((f) => ({ ...f, moneda: toArr(f.moneda).filter((x) => x !== v) }))));
+    toArr(filters.proveedores).forEach((v) => add(`Proveedor: ${v}`, () => setFilters((f) => ({ ...f, proveedores: toArr(f.proveedores).filter((x) => x !== v) }))));
+    toArr(filters.categorias).forEach((v) => add(`Categoría: ${v}`, () => setFilters((f) => ({ ...f, categorias: toArr(f.categorias).filter((x) => x !== v) }))));
+    toArr(filters.subcategorias).forEach((v) => add(`Subcategoría: ${v}`, () => setFilters((f) => ({ ...f, subcategorias: toArr(f.subcategorias).filter((x) => x !== v) }))));
+    toArr(filters.medioPago).forEach((v) => add(`Medio: ${v}`, () => setFilters((f) => ({ ...f, medioPago: toArr(f.medioPago).filter((x) => x !== v) }))));
+    toArr(filters.etapa).forEach((v) => add(`Etapa: ${v}`, () => setFilters((f) => ({ ...f, etapa: toArr(f.etapa).filter((x) => x !== v) }))));
+    toArr(filters.estados).forEach((v) => add(`Estado: ${v}`, () => setFilters((f) => ({ ...f, estados: toArr(f.estados).filter((x) => x !== v) }))));
+    toArr(filters.cuentaInterna).forEach((v) => add(`Cuenta: ${v}`, () => setFilters((f) => ({ ...f, cuentaInterna: toArr(f.cuentaInterna).filter((x) => x !== v) }))));
+    toArr(filters.tagsExtra).forEach((v) => add(`Tag: ${v}`, () => setFilters((f) => ({ ...f, tagsExtra: toArr(f.tagsExtra).filter((x) => x !== v) }))));
+    toArr(filters.empresaFacturacion).forEach((v) => add(`Emp. fact.: ${v}`, () => setFilters((f) => ({ ...f, empresaFacturacion: toArr(f.empresaFacturacion).filter((x) => x !== v) }))));
     if (filters.facturaCliente) add(filters.facturaCliente === 'cliente' ? 'Factura: Cliente' : 'Factura: Propia', () => setFilters((f) => ({ ...f, facturaCliente: '' })));
     if (filters.montoMin) add(`Monto min: ${filters.montoMin}`, () => setFilters((f) => ({ ...f, montoMin: '' })));
     if (filters.montoMax) add(`Monto max: ${filters.montoMax}`, () => setFilters((f) => ({ ...f, montoMax: '' })));
