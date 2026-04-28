@@ -47,6 +47,7 @@ import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
 import ContactsIcon from "@mui/icons-material/Contacts";
 import AssessmentIcon from "@mui/icons-material/Assessment";
 import ConstructionIcon from "@mui/icons-material/Construction";
+import AutoAwesomeRoundedIcon from "@mui/icons-material/AutoAwesomeRounded";
 
 export const SideNav = (props) => {
   const { open, onClose, collapsed = false, onToggleCollapsed, width = 280 } = props;
@@ -134,6 +135,7 @@ export const SideNav = (props) => {
 
       // ——— INICIO ———
       const inicioItems = [];
+      inicioItems.push({ title: "Asistente IA", path: "/agente", icon: <SvgIcon fontSize="small"><AutoAwesomeRoundedIcon /></SvgIcon> });
       if (user?.admin) inicioItems.push({ title: "Panel de Control", path: "/control-panel", icon: <SvgIcon fontSize="small"><AdminPanelSettingsIcon /></SvgIcon> });
       if (esAdmin) inicioItems.push({ title: "Resumen general", path: `/vistaResumen?empresaId=${empId}`, icon: <SvgIcon fontSize="small"><DashboardIcon /></SvgIcon> });
       inicioItems.push({ title: "Reportes", path: "/reportes", icon: <SvgIcon fontSize="small"><AssessmentIcon /></SvgIcon> });

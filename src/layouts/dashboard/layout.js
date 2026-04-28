@@ -4,7 +4,6 @@ import { styled } from '@mui/material/styles';
 import { withAuthGuard } from 'src/hocs/with-auth-guard';
 import { SideNav } from './side-nav';
 import { TopNav } from './top-nav';
-import { AgentChatFab } from 'src/components/agent/AgentChatFab';
 import { useVersionCheck } from 'src/hooks/use-version-check';
 import { getRemoteVersionFromFirestore } from 'src/services/versionService';
 
@@ -32,7 +31,7 @@ const LayoutContainer = styled('div')({
 });
 
 export const Layout = withAuthGuard((props) => {
-  const { children, title, headerActions } = props;
+  const { children, title, titleIcon, headerActions } = props;
   const pathname = usePathname();
   const [openNav, setOpenNav] = useState(false); // mobile
   const [collapsed, setCollapsed] = useState(() => {
@@ -73,6 +72,7 @@ export const Layout = withAuthGuard((props) => {
         onNavOpen={() => setOpenNav(true)}
         onToggleNav={() => setCollapsed((v) => !v)}
         title={title || ""}
+        titleIcon={titleIcon}
         collapsed={collapsed}
         navWidth={navWidth}
         updateAvailable={updateAvailable}   // boolean
@@ -89,7 +89,6 @@ export const Layout = withAuthGuard((props) => {
       <LayoutRoot navwidth={navWidth}>
         <LayoutContainer>{children}</LayoutContainer>
       </LayoutRoot>
-      <AgentChatFab />
     </>
   );
 });
