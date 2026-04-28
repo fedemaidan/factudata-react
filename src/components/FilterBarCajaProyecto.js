@@ -283,6 +283,7 @@ export const FilterBarCajaProyecto = ({
   /* ── Render genérico de un campo de filtro ── */
   const renderFiltro = (filtro, overrideSx) => {
     const value = filters[filtro.name];
+    const toArrLocal = (v) => (Array.isArray(v) ? v : (v ? [v] : []));
 
     if (filtro.type === 'text') {
       if (filtro.name === 'palabras' && searchRequiresSubmit) {
@@ -327,7 +328,7 @@ export const FilterBarCajaProyecto = ({
             key={filtro.name}
             multiple
             options={selectOptions}
-            value={value}
+            value={toArrLocal(value)}
             onChange={(_e, v) => set(filtro.name, v)}
             filterSelectedOptions
             renderInput={(params) => (
@@ -340,7 +341,7 @@ export const FilterBarCajaProyecto = ({
       }
 
       const isSub = filtro.name === 'subcategorias';
-      const isSubDisabled = isSub && !filters.categorias?.length;
+      const isSubDisabled = isSub && !(Array.isArray(filters.categorias) && filters.categorias.length > 0);
       const selectOptions = isSub ? subcategoriasDisponibles : (filtro.options || options[filtro.optionsKey] || []);
 
       return (
@@ -353,7 +354,7 @@ export const FilterBarCajaProyecto = ({
           <Box sx={overrideSx || { minWidth: 0, width: '100%' }}>
             <FormControl sx={{ width: '100%' }} disabled={isSubDisabled} size="small">
               <InputLabel>{filtro.label}</InputLabel>
-              <Select multiple value={value} onChange={(e) => set(filtro.name, e.target.value)} label={filtro.label} autoFocus={focusField === filtro.name} size="small">
+              <Select multiple value={toArrLocal(value)} onChange={(e) => set(filtro.name, e.target.value)} label={filtro.label} autoFocus={focusField === filtro.name} size="small">
                 {selectOptions.map((opt) => (<MenuItem key={opt} value={opt}>{opt}</MenuItem>))}
               </Select>
               {isSubDisabled && (
