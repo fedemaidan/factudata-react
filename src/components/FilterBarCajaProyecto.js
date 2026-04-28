@@ -93,6 +93,16 @@ const serializeFilters = (f) => {
 const deserializeFilters = (f) => {
   const out = { ...f };
   DATE_KEYS.forEach((k) => { if (typeof out[k] === 'string' && out[k]) out[k] = new Date(out[k]); });
+  // garantizar que los campos array siempre sean arrays (datos legados o corruptos)
+  const ARRAY_KEYS = [
+    'tipo', 'moneda', 'proveedores', 'categorias', 'subcategorias', 'usuarios',
+    'medioPago', 'estados', 'etapa', 'cuentaInterna', 'tagsExtra', 'empresaFacturacion',
+  ];
+  ARRAY_KEYS.forEach((k) => {
+    if (k in out && !Array.isArray(out[k])) {
+      out[k] = out[k] ? [out[k]] : [];
+    }
+  });
   return out;
 };
 
@@ -138,7 +148,7 @@ export const FilterBarCajaProyecto = ({
 
   /* ── Subcategorías dependientes de categorías ── */
   const subcategoriasDisponibles = useMemo(() => {
-    const cats = filters.categorias || [];
+    const cats = Array.isArray(filters.categorias) ? filters.categorias : [];
     if (!cats.length) return [];
     const map = options?.subcategoriasByCategoria || {};
     const acc = new Set();
@@ -147,14 +157,15 @@ export const FilterBarCajaProyecto = ({
   }, [filters.categorias, options?.subcategoriasByCategoria]);
 
   useEffect(() => {
-    const cats = filters.categorias || [];
+    const cats = Array.isArray(filters.categorias) ? filters.categorias : [];
     if (!cats.length) {
-      if ((filters.subcategorias || []).length > 0) setFilters((f) => ({ ...f, subcategorias: [] }));
+      if ((Array.isArray(filters.subcategorias) ? filters.subcategorias : []).length > 0) setFilters((f) => ({ ...f, subcategorias: [] }));
       return;
     }
     const allowed = new Set(subcategoriasDisponibles);
-    const next = (filters.subcategorias || []).filter((s) => allowed.has(s));
-    if (next.length !== (filters.subcategorias || []).length) setFilters((f) => ({ ...f, subcategorias: next }));
+    const currentSubs = Array.isArray(filters.subcategorias) ? filters.subcategorias : [];
+    const next = currentSubs.filter((s) => allowed.has(s));
+    if (next.length !== currentSubs.length) setFilters((f) => ({ ...f, subcategorias: next }));
   }, [filters.categorias, subcategoriasDisponibles, filters.subcategorias, setFilters]);
 
   /* ── Definición de filtros ── */
