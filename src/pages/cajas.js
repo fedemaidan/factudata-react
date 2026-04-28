@@ -2520,7 +2520,7 @@ useEffect(() => {
           <InputLabel>Medio de pago</InputLabel>
           <Select value={medioPagoCaja} onChange={(e) => setMedioPagoCaja(e.target.value)}>
             <MenuItem key="" value="">Todos</MenuItem>
-            {empresa?.medios_pago.map((medio) => (
+            {(empresa?.medios_pago || []).map((medio) => (
               <MenuItem key={medio} value={medio}>{medio}</MenuItem>
             ))}
           </Select>

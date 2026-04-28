@@ -71,7 +71,8 @@ const defaultFilters = {
 
 const arrayFields = [
   'tipo','moneda','proveedores','categorias','subcategorias','usuarios',
-  'medioPago','estados','estado','etapa','cuentaInterna','tagsExtra'
+  'medioPago','estados','estado','etapa','cuentaInterna','tagsExtra',
+  'empresaFacturacion',
 ];
 
 export function useMovimientosFilters({
