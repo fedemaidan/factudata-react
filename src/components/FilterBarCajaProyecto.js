@@ -15,8 +15,9 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import DatePicker from 'react-datepicker';
 import { subDays, startOfMonth, endOfMonth } from 'date-fns';
 import FiltrosGuardadosService from 'src/services/filtrosGuardadosService';
+import { FILTER_ARRAY_KEYS, FILTER_DATE_KEYS, defaultMovimientosFilters } from 'src/utils/parseData';
 
-const DEBUG_CAJA_FILTERBAR = true;
+const DEBUG_CAJA_FILTERBAR = process.env.NODE_ENV !== 'production';
 
 const formatDebugValue = (value) => {
   if (value instanceof Date) return value.toISOString();
@@ -41,46 +42,11 @@ const logFilterBar = (label, payload) => {
 
 /* ────────────────────────── constantes ────────────────────────── */
 
-const defaultFilters = {
-  fechaDesde: null,
-  fechaHasta: null,
-  palabras: '',
-  observacion: '',
-  codigoSync: '',
-  aprobacion: '',
-  usuarios: [],
-  categorias: [],
-  subcategorias: [],
-  proveedores: [],
-  medioPago: [],
-  tipo: [],
-  moneda: [],
-  etapa: [],
-  cuentaInterna: [],
-  tagsExtra: [],
-  montoMin: '',
-  montoMax: '',
-  ordenarPor: 'fecha_factura',
-  ordenarDir: 'desc',
-  caja: null,
-  estados: [],
-  empresaFacturacion: [],
-  fechaPagoDesde: null,
-  fechaPagoHasta: null,
-  fechaCreacionDesde: null,
-  fechaCreacionHasta: null,
-  fechaModificacionDesde: null,
-  fechaModificacionHasta: null,
-  facturaCliente: '',
-  cajaChica: '',
-};
+// defaultFilters importado como defaultMovimientosFilters desde parseData.js
+const defaultFilters = defaultMovimientosFilters;
 
-const DATE_KEYS = [
-  'fechaDesde', 'fechaHasta',
-  'fechaPagoDesde', 'fechaPagoHasta',
-  'fechaCreacionDesde', 'fechaCreacionHasta',
-  'fechaModificacionDesde', 'fechaModificacionHasta',
-];
+const DATE_KEYS = FILTER_DATE_KEYS;
+const TEXT_DRAFT_KEYS = ['palabras', 'observacion', 'codigoSync'];
 const serializeFilters = (f) => {
   const out = { ...f };
   DATE_KEYS.forEach((k) => { if (out[k] instanceof Date) out[k] = out[k].toISOString(); });
@@ -94,11 +60,7 @@ const deserializeFilters = (f) => {
   const out = { ...f };
   DATE_KEYS.forEach((k) => { if (typeof out[k] === 'string' && out[k]) out[k] = new Date(out[k]); });
   // garantizar que los campos array siempre sean arrays (datos legados o corruptos)
-  const ARRAY_KEYS = [
-    'tipo', 'moneda', 'proveedores', 'categorias', 'subcategorias', 'usuarios',
-    'medioPago', 'estados', 'etapa', 'cuentaInterna', 'tagsExtra', 'empresaFacturacion',
-  ];
-  ARRAY_KEYS.forEach((k) => {
+  FILTER_ARRAY_KEYS.forEach((k) => {
     if (k in out && !Array.isArray(out[k])) {
       out[k] = out[k] ? [out[k]] : [];
     }
@@ -124,7 +86,42 @@ export const FilterBarCajaProyecto = ({
   searchMinLength = 0,
 }) => {
   const [focusField, setFocusField] = useState(null);
-  const [searchDraft, setSearchDraft] = useState(filters.palabras || '');
+
+  // textDrafts: estado local para campos de texto libre.
+  // El debounce evita que cada tecla dispare un request al backend.
+  const [textDrafts, setTextDrafts] = useState({
+    palabras: filters.palabras || '',
+    observacion: filters.observacion || '',
+    codigoSync: filters.codigoSync || '',
+  });
+  // Marca los últimos valores ya commiteados a filters para no re-disparar el debounce
+  // cuando una limpieza externa (chip, clearAll) sincroniza los drafts hacia abajo.
+  const lastCommitRef = useRef({ palabras: filters.palabras || '', observacion: filters.observacion || '', codigoSync: filters.codigoSync || '' });
+  const debounceTimerRef = useRef(null);
+
+  // Sincronizar drafts cuando los filtros cambian externamente (chips, clearAll, cargar filtro guardado).
+  useEffect(() => {
+    const next = {
+      palabras: filters.palabras || '',
+      observacion: filters.observacion || '',
+      codigoSync: filters.codigoSync || '',
+    };
+    lastCommitRef.current = next; // marcar como ya commiteado para que el debounce no vuelva a disparar
+    setTextDrafts(next);
+  }, [filters.palabras, filters.observacion, filters.codigoSync]);
+
+  // Debounce: propaga los drafts a filters 350ms después del último cambio.
+  useEffect(() => {
+    const hasChange = TEXT_DRAFT_KEYS.some((k) => textDrafts[k] !== lastCommitRef.current[k]);
+    if (!hasChange) return;
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    debounceTimerRef.current = setTimeout(() => {
+      lastCommitRef.current = { ...textDrafts };
+      setFilters((f) => ({ ...f, ...textDrafts }));
+    }, 600);
+    return () => clearTimeout(debounceTimerRef.current);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [textDrafts]);
 
   /* ── DateInput helper ── */
   const DateInput = forwardRef(function DateInput(props, ref) {
@@ -198,18 +195,17 @@ export const FilterBarCajaProyecto = ({
   );
 
   const set = (k, v) => setFilters((f) => ({ ...f, [k]: v }));
+  // Commit inmediato del draft de palavras (usado por searchRequiresSubmit con Enter)
   const commitSearchDraft = useCallback(() => {
-    const nextValue = (searchDraft || '').trim();
+    const nextValue = (textDrafts.palabras || '').trim();
     if (nextValue && nextValue.length < searchMinLength) return false;
-    set('palabras', nextValue);
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    lastCommitRef.current = { ...lastCommitRef.current, palabras: nextValue };
+    setFilters((f) => ({ ...f, palabras: nextValue }));
     return true;
-  }, [searchDraft, searchMinLength]);
+  }, [textDrafts.palabras, searchMinLength, setFilters]);
   const formatDate = (d) => (d ? d.toLocaleDateString('es-AR') : '');
   const clearAll = () => setFilters((prev) => ({ ...prev, ...defaultFilters }));
-
-  useEffect(() => {
-    setSearchDraft(filters.palabras || '');
-  }, [filters.palabras]);
 
   /* ── Chips activos ── */
   const activeChips = useMemo(() => {
@@ -286,13 +282,15 @@ export const FilterBarCajaProyecto = ({
     const toArrLocal = (v) => (Array.isArray(v) ? v : (v ? [v] : []));
 
     if (filtro.type === 'text') {
+      // Todos los campos de texto usan draft local + debounce de 350ms.
+      // La única excepción es palabras con searchRequiresSubmit, que commitía en Enter.
       if (filtro.name === 'palabras' && searchRequiresSubmit) {
         return (
           <TextField
             key={filtro.name}
             label={filtro.label}
-            value={searchDraft}
-            onChange={(e) => setSearchDraft(e.target.value)}
+            value={textDrafts.palabras}
+            onChange={(e) => setTextDrafts((prev) => ({ ...prev, palabras: e.target.value }))}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 e.preventDefault();
@@ -306,12 +304,20 @@ export const FilterBarCajaProyecto = ({
           />
         );
       }
+      const draftValue = filtro.name in textDrafts ? textDrafts[filtro.name] : (value ?? '');
       return (
         <TextField
           key={filtro.name}
           label={filtro.label}
-          value={value}
-          onChange={(e) => set(filtro.name, e.target.value)}
+          value={draftValue}
+          onChange={(e) => {
+            const v = e.target.value;
+            if (filtro.name in textDrafts) {
+              setTextDrafts((prev) => ({ ...prev, [filtro.name]: v }));
+            } else {
+              set(filtro.name, v);
+            }
+          }}
           size="small"
           variant="outlined"
           sx={overrideSx || { minWidth: 0, width: '100%' }}

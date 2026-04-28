@@ -3,7 +3,9 @@ import { subDays, addDays } from 'date-fns';
 import { useRouter } from 'next/router';
 import { toJsDate } from 'src/utils/dateSerde';
 
-const DEBUG_CAJA_FILTERS = true;
+import { parseQueryParamList, FILTER_ARRAY_KEYS, FILTER_DATE_KEYS, defaultMovimientosFilters } from 'src/utils/parseData';
+
+const DEBUG_CAJA_FILTERS = process.env.NODE_ENV !== 'production';
 
 const formatDebugValue = (value) => {
   if (value instanceof Date) return value.toISOString();
@@ -35,63 +37,21 @@ const PERSIST_KEYS = [
   'fechaCreacionDesde','fechaCreacionHasta','fechaModificacionDesde','fechaModificacionHasta'
 ];
 
-const defaultFilters = {
-  fechaDesde: null,
-  fechaHasta: null,
-  palabras: '',
-  observacion: '',
-  aprobacion: '',
-  categorias: [],
-  subcategorias: [],
-  proveedores: [],
-  usuarios: [],
-  medioPago: [],
-  tipo: [],            // ['ingreso', 'egreso']
-  moneda: [],          // ['ARS','USD']
-  etapa: [],
-  estados: [],
-  cuentaInterna: [],
-  tagsExtra: [],
-  montoMin: '',
-  montoMax: '',
-  ordenarPor: 'fecha_factura',
-  ordenarDir: 'desc',
-  empresaFacturacion: [],   // select múltiple
-  fechaPagoDesde: null,     // Date
-  fechaPagoHasta: null,     // Date
-  fechaCreacionDesde: null,
-  fechaCreacionHasta: null,
-  fechaModificacionDesde: null,
-  fechaModificacionHasta: null,
-  caja: null, // { moneda, medio_pago }
-  codigoSync: '', // código de sincronización de importación masiva
-  facturaCliente: '', // '' | 'cliente' | 'propia'
-  cajaChica: '', // '' | 'si' | 'no'
-};
-
-const arrayFields = [
-  'tipo','moneda','proveedores','categorias','subcategorias','usuarios',
-  'medioPago','estados','estado','etapa','cuentaInterna','tagsExtra',
-  'empresaFacturacion',
-];
+// Alias locales para legibilidad dentro del hook
+const defaultFilters = defaultMovimientosFilters;
+const arrayFields = FILTER_ARRAY_KEYS;
 
 export function useMovimientosFilters({
   empresaId, proyectoId,
-  movimientos, movimientosUSD, cajaSeleccionada
+  movimientos, movimientosUSD,
 }) {
   const router = useRouter();
   const [filters, setFilters] = useState(defaultFilters);
   const initializedRef = useRef(false);
   const lastQueryHashRef = useRef(null);
 
-  const parseArray = (v) => {
-    if (!v) return [];
-    if (Array.isArray(v)) v = v.join(',');
-    return String(v)
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
-  };
+  // parseArray unificada con la utilidad compartida parseQueryParamList
+  const parseArray = parseQueryParamList;
 
   const parseDate = (v) => {
     if (!v) return null;
@@ -123,12 +83,7 @@ export function useMovimientosFilters({
         out[k] = parseArray(query[k]);
         return;
       }
-      if (
-        k === 'fechaDesde' || k === 'fechaHasta'
-        || k === 'fechaPagoDesde' || k === 'fechaPagoHasta'
-        || k === 'fechaCreacionDesde' || k === 'fechaCreacionHasta'
-        || k === 'fechaModificacionDesde' || k === 'fechaModificacionHasta'
-      ) {
+      if (FILTER_DATE_KEYS.includes(k)) {
         out[k] = parseDate(query[k]);
         return;
       }
@@ -320,7 +275,7 @@ export function useMovimientosFilters({
   // Filtrado
   const movimientosFiltrados = useMemo(() => {
     const base =
-      (filters.caja?.moneda || cajaSeleccionada?.moneda) === 'USD'
+      filters.caja?.moneda === 'USD'
         ? (movimientosUSD || [])
         : (movimientos || []);
 
@@ -337,12 +292,14 @@ export function useMovimientosFilters({
     const matchTags = (tags, needed) =>
       needed.length === 0 || (Array.isArray(tags) && needed.every(t => tags.includes(t)));
     const matchMonto = (total) => {
-      const minOk = montoMin ? total >= Number(montoMin) : true;
-      const maxOk = montoMax ? total <= Number(montoMax) : true;
+      const min = parseFloat(montoMin);
+      const max = parseFloat(montoMax);
+      const minOk = !isNaN(min) ? total >= min : true;
+      const maxOk = !isNaN(max) ? total <= max : true;
       return minOk && maxOk;
     };
     const matchCaja = (mov) => {
-      const caja = filters.caja || cajaSeleccionada;
+      const caja = filters.caja;
       if (!caja) return true;
       const monedaOk = !caja.moneda || mov.moneda === caja.moneda;
       const medioOk = !caja.medio_pago || mov.medio_pago === caja.medio_pago;
@@ -396,7 +353,17 @@ export function useMovimientosFilters({
       && matchTags(mov.tags_extra, tagsExtra)
       && matchMonto(mov.total)
       && matchText(mov.observacion, observacion)
-      && matchText(Object.values(mov).join(' '), palabras)
+      && (!palabras || [
+          mov.nombre_proveedor,
+          mov.categoria,
+          mov.subcategoria,
+          mov.codigo_operacion,
+          mov.codigo,
+          mov.observacion,
+          mov.nombre_user,
+          mov.codigo_sync,
+          mov.medio_pago,
+        ].filter(Boolean).join(' ').toLowerCase().includes(palabras.toLowerCase()))
       && matchEstado(mov)
       && matchCaja(mov)
       && matchCodigoSync(mov)
@@ -426,10 +393,10 @@ export function useMovimientosFilters({
         ? String(av).localeCompare(String(bv))
         : String(bv).localeCompare(String(av));
     });
-  }, [filters, movimientos, movimientosUSD, cajaSeleccionada]);
+  }, [filters, movimientos, movimientosUSD]);
 
   useEffect(() => {
-    const base = (filters.caja?.moneda || cajaSeleccionada?.moneda) === 'USD'
+    const base = filters.caja?.moneda === 'USD'
       ? (movimientosUSD || [])
       : (movimientos || []);
 
@@ -472,7 +439,7 @@ export function useMovimientosFilters({
         return filters.cajaChica === 'si' ? isCajaChica : !isCajaChica;
       }).length,
       caja: base.filter((mov) => {
-        const caja = filters.caja || cajaSeleccionada;
+        const caja = filters.caja;
         if (!caja) return true;
         const monedaOk = !caja.moneda || mov.moneda === caja.moneda;
         const medioOk = !caja.medio_pago || mov.medio_pago === caja.medio_pago;
@@ -480,20 +447,19 @@ export function useMovimientosFilters({
         return monedaOk && medioOk && estadoOk;
       }).length,
       monto: base.filter((mov) => {
-        const minOk = filters.montoMin ? mov.total >= Number(filters.montoMin) : true;
-        const maxOk = filters.montoMax ? mov.total <= Number(filters.montoMax) : true;
-        return minOk && maxOk;
+        const min = parseFloat(filters.montoMin);
+        const max = parseFloat(filters.montoMax);
+        return (!isNaN(min) ? mov.total >= min : true) && (!isNaN(max) ? mov.total <= max : true);
       }).length,
     };
 
     logCajaFilters('Resumen de filtrado', {
       empresaId,
       proyectoId,
-      tablaBase: (filters.caja?.moneda || cajaSeleccionada?.moneda) === 'USD' ? 'USD' : 'ARS',
+      tablaBase: filters.caja?.moneda === 'USD' ? 'USD' : 'ARS',
       baseCount: base.length,
       filteredCount: movimientosFiltrados.length,
       activeFilterKeys,
-      cajaSeleccionada,
       filters,
       checks,
       primerasCoincidencias: movimientosFiltrados.slice(0, 5).map((mov) => ({
@@ -505,7 +471,7 @@ export function useMovimientosFilters({
         estado: mov.estado,
       })),
     });
-  }, [empresaId, proyectoId, filters, cajaSeleccionada, movimientos, movimientosUSD, movimientosFiltrados]);
+  }, [empresaId, proyectoId, filters, movimientos, movimientosUSD, movimientosFiltrados]);
 
   const totales = useMemo(() => {
     return movimientosFiltrados.reduce((acc, m) => {

@@ -35,6 +35,7 @@ import FolderIcon from '@mui/icons-material/Folder';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet'; 
 import { getProyectosByEmpresa } from 'src/services/proyectosService';
 import { formatTimestamp } from 'src/utils/formatters';
+import { parseQueryParamList, FILTER_ARRAY_KEYS, FILTER_DATE_KEYS } from 'src/utils/parseData';
 import { useMovimientosFilters } from 'src/hooks/useMovimientosFilters';
 import { FilterBarCajaProyecto } from 'src/components/FilterBarCajaProyecto';
 import AsistenteFlotanteProyecto from 'src/components/asistenteFlotanteProyecto';
@@ -102,39 +103,12 @@ const ellipsis = (maxWidth) => ({
   textOverflow: 'ellipsis',
 });
 
-const DEBUG_CAJA = true;
-
 const BRAND_COLORS = {
   navy: '#1E4469',
   cyan: '#23B5D3',
   teal: '#0097B2',
   mint: '#2DC197',
   cloud: '#F6F6F6',
-};
-
-const formatDebugValue = (value) => {
-  if (value instanceof Date) {
-    return value.toISOString();
-  }
-  if (Array.isArray(value)) {
-    return value.map(formatDebugValue);
-  }
-  if (value && typeof value === 'object') {
-    return Object.entries(value).reduce((acc, [key, current]) => {
-      acc[key] = formatDebugValue(current);
-      return acc;
-    }, {});
-  }
-  return value;
-};
-
-const logCajaDebug = (label, payload) => {
-  if (!DEBUG_CAJA) return;
-  if (typeof payload === 'undefined') {
-    console.log(`[CajaProyecto] ${label}`);
-    return;
-  }
-  console.log(`[CajaProyecto] ${label}`, formatDebugValue(payload));
 };
 
 const serializeFilterSet = (f) => {
@@ -149,16 +123,10 @@ const serializeFilterSet = (f) => {
   return out;
 };
 
-const FILTER_ARRAY_KEYS = [
-  'tipo', 'moneda', 'proveedores', 'categorias', 'subcategorias', 'usuarios',
-  'medioPago', 'estados', 'etapa', 'cuentaInterna', 'tagsExtra', 'empresaFacturacion',
-];
-
 const deserializeFilterSet = (stored) => {
   const out = {};
-  const DATE_KEYS = ['fechaDesde', 'fechaHasta', 'fechaPagoDesde', 'fechaPagoHasta'];
   for (const [k, v] of Object.entries(stored)) {
-    if (DATE_KEYS.includes(k) && typeof v === 'string' && v) out[k] = new Date(v);
+    if (FILTER_DATE_KEYS.includes(k) && typeof v === 'string' && v) out[k] = new Date(v);
     else if (v && typeof v === 'object' && v._seconds) out[k] = new Date(v._seconds * 1000);
     else out[k] = v;
   }
@@ -390,19 +358,8 @@ const writeCajasLocalPrefs = (prefs) => {
   window.localStorage.setItem(CAJAS_UI_PREFS_STORAGE_KEY, JSON.stringify(prefs));
 };
 
-const parseListParam = (value) => {
-  if (!value) return [];
-  if (Array.isArray(value)) {
-    return value
-      .flatMap((item) => String(item).split(','))
-      .map((item) => item.trim())
-      .filter(Boolean);
-  }
-  return String(value)
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean);
-};
+// parseListParam es un alias de la utilidad compartida (evita romper las llamadas existentes)
+const parseListParam = parseQueryParamList;
 
 const flattenDashboardItems = (items = []) => items.flatMap((item) => {
   if (item?.tipo === 'grupo_prorrateo') return item.movimientos || [];
@@ -431,7 +388,7 @@ const buildCajaDashboardParams = ({ filters, caja, page, limit, includeOptions =
   params.sort = sortField;
   params.order = getSortDirectionForFilters(filters);
 
-  if (filters?.palabras?.trim()) params.palabras = filters.palabras.trim();
+  if ((filters?.palabras?.trim()?.length ?? 0) >= 2) params.palabras = filters.palabras.trim();
   if (filters?.observacion?.trim()) params.observacion = filters.observacion.trim();
   if (filters?.codigoSync?.trim()) params.codigoSync = filters.codigoSync.trim();
   if (filters?.aprobacion) params.aprobacion = filters.aprobacion;
@@ -767,6 +724,9 @@ const CajasPage = () => {
   const [proyectos, setProyectos] = useState([]);
   const router = useRouter();
   const { proyectoId: queryProyectoId, proyectoIds: queryProyectoIds } = router.query;
+  // Ref para leer los params del router dentro de effects sin convertirlos en deps reactivas.
+  const routerRef = useRef(router);
+  useEffect(() => { routerRef.current = router; });
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
@@ -1238,18 +1198,6 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
     setPage(0);
   }, [setFilters]);
 
-  useEffect(() => {
-    logCajaDebug('Contexto inicial usuario/router', {
-      proyectoId: queryProyectoId,
-      proyectoIds: queryProyectoIds,
-      authUserUid,
-      userIdPerfil: user?.id || null,
-      userUidDirecto: user?.uid || null,
-      routerPath: router.asPath,
-      routerQuery: router.query,
-    });
-  }, [authUserUid, queryProyectoId, queryProyectoIds, router.asPath, router.query, user?.id, user?.uid]);
-
   const columnasConfig = useMemo(
     () => getCajaColumnasConfig(visibleCols, compactCols, empresa, options),
     [visibleCols, compactCols, empresa, options]
@@ -1284,7 +1232,6 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
   };
 
   const applyCajaSelection = useCallback((caja) => {
-    logCajaDebug('Aplicando selección de caja', { caja });
     if (caja?.filterSet) {
       const restoredFilters = deserializeFilterSet(caja.filterSet);
       setFilters((f) => ({ ...f, ...restoredFilters, caja }));
@@ -1502,12 +1449,6 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
       };
       if (scopeProjectIds.length > 0) params.proyectoIds = scopeProjectIds.join(',');
 
-      logCajaDebug('Cargando dashboard V2 de caja', {
-        empresaId: empresa.id,
-        proyectoIds: scopeProjectIds,
-        params,
-      });
-
       const response = await movimientosService.getCajasDashboard(params);
       let nextItems = response?.items || [];
       const flatRows = flattenDashboardItems(nextItems);
@@ -1638,12 +1579,6 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
   useEffect(() => {
     const fetchBaseData = async () => {
       setLoadingPage(true);
-      logCajaDebug('Inicio fetchBaseData Cajas', {
-        proyectoId: queryProyectoId,
-        proyectoIds: queryProyectoIds,
-        routerQuery: router.query,
-        authUserUid,
-      });
       setDashboardItems([]);
       setDashboardTotals(EMPTY_CAJA_TOTALS);
       setDashboardPagination({ page: 1, limit: rowsPerPage, total: 0, totalPages: 0, hasNext: false, hasPrev: false });
@@ -1663,9 +1598,10 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
         });
       const proyectosCargados = Array.from(proyectosEmpresaMap.values());
       const proyectosIdsDisponibles = proyectosCargados.map((item) => item.id).filter(Boolean);
+      const { proyectoId: initPid, proyectoIds: initPids } = routerRef.current.query || {};
       const requestedIds = [...new Set([
-        ...parseListParam(queryProyectoIds),
-        ...(queryProyectoId ? [queryProyectoId] : []),
+        ...parseListParam(initPids),
+        ...(initPid ? [initPid] : []),
       ])].filter((id) => proyectosIdsDisponibles.includes(id));
       const initialScopeMode = requestedIds.length > 0 ? 'selection' : 'all';
       const initialSelectedIds = requestedIds.length > 0 ? requestedIds : [];
@@ -1683,7 +1619,7 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
       setProjectScopeMode(initialScopeMode);
       setSelectedProjectIds(initialSelectedIds);
 
-      const cajaFromUrl = router.query.caja ? (() => { try { return JSON.parse(router.query.caja); } catch { return null; } })() : null;
+      const cajaFromUrl = routerRef.current.query.caja ? (() => { try { return JSON.parse(routerRef.current.query.caja); } catch { return null; } })() : null;
       const cajaDefault = (cajaFromUrl && cajasIniciales.find(c => c.moneda === cajaFromUrl.moneda && c.medio_pago === (cajaFromUrl.medio_pago || '')))
         || cajasIniciales[0]
         || null;
@@ -1705,7 +1641,11 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
     };
 
     if (authUserUid) fetchData();
-  }, [authUserUid, queryProyectoId, queryProyectoIds]);
+  // Solo depende de authUserUid. Los params de scope (proyectoId/proyectoIds) se leen
+  // de routerRef.current para evitar que el scope effect —que escribe esos params en la
+  // URL— re-dispare una carga completa de datos cada vez que el usuario cambia de proyecto.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authUserUid]);
 
   useEffect(() => {
     if (!empresa?.id) return;
@@ -2119,32 +2059,6 @@ const getTime = (v) => {
     if (filters.montoMax) add(`Monto max: ${filters.montoMax}`, () => setFilters((f) => ({ ...f, montoMax: '' })));
     return chips;
   }, [filters, setFilters]);
-
-  useEffect(() => {
-    logCajaDebug('Estado visible de filtros/caja/totales', {
-      proyectoId: queryProyectoId,
-      proyectoIds: scopeProjectIds,
-      filters,
-      dashboardItems: dashboardItems.length,
-      movimientosFiltrados: movimientosFiltrados.length,
-      totalRows,
-      page,
-      rowsPerPage,
-      totalesDetallados,
-      filterChips: filterChips.map((chip) => chip.label),
-    });
-  }, [
-    queryProyectoId,
-    scopeProjectIds,
-    filters,
-    dashboardItems.length,
-    movimientosFiltrados.length,
-    totalRows,
-    page,
-    rowsPerPage,
-    totalesDetallados,
-    filterChips,
-  ]);
 
   const totalesUsdBlue = useMemo(() => {
     const base = dashboardTotals?.equivalencias?.usd_blue || EMPTY_CAJA_TOTALS.equivalencias.usd_blue;
