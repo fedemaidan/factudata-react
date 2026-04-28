@@ -1877,6 +1877,10 @@ const getTime = (v) => {
   
     if (editandoCaja !== null) {
       nuevasCajas[editandoCaja] = nuevaCaja;
+      // Si la caja editada es la activa, actualizar filters.caja para reflejar el nuevo objeto
+      if (filters.caja?.nombre === cajasVirtuales[editandoCaja]?.nombre) {
+        applyCajaSelection(nuevaCaja);
+      }
     } else {
       nuevasCajas.push(nuevaCaja);
     }
