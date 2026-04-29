@@ -1,5 +1,7 @@
-import { useCallback, useReducer, useRef } from 'react';
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import api from 'src/services/axiosConfig';
+
+const DEBUG_TRACE_KEY = 'sorby:agentDebugTrace';
 
 const initialState = {
   messages: [],
@@ -8,6 +10,7 @@ const initialState = {
   sessionActive: false,
   awaitingConfirm: false,
   confirmAction: null,
+  activeSpecialist: null,
   error: null,
   hasLoadedHistory: false,
 };
@@ -25,6 +28,7 @@ function reducer(state, action) {
         sessionActive: action.payload.sessionActive,
         awaitingConfirm: action.payload.awaitingConfirm,
         confirmAction: action.payload.confirmAction,
+        activeSpecialist: action.payload.activeSpecialist || null,
       };
     case 'load:error':
       // Marcamos hasLoadedHistory: true aunque haya fallado para evitar reintentos
@@ -46,6 +50,8 @@ function reducer(state, action) {
         sessionActive: action.payload.sessionActive,
         awaitingConfirm: action.payload.awaitingConfirm,
         confirmAction: action.payload.confirmAction,
+        activeSpecialist: action.payload.activeSpecialist,
+        lastDebugTrace: action.payload.debugTrace || null,
       };
     case 'send:error':
       return {
@@ -116,10 +122,14 @@ export function useAgentChat() {
             role: 'assistant',
             content: data.replyText,
             createdAt: new Date().toISOString(),
+            debugTrace: data.debugTrace || null,
+            actions: Array.isArray(data.actions) ? data.actions : [],
           },
           sessionActive: data.sessionActive,
           awaitingConfirm: data.awaitingConfirm,
           confirmAction: data.confirmAction,
+          activeSpecialist: data.activeSpecialist || null,
+          debugTrace: data.debugTrace || null,
         },
       });
     } catch (err) {
@@ -151,4 +161,31 @@ export function useAgentChat() {
     cancelCurrent,
     dismissError,
   };
+}
+
+/**
+ * Toggle persistente para mostrar/ocultar el trace dev del agente.
+ * Solo disponible si el backend incluye debugTrace en las respuestas (NODE_ENV !== production).
+ */
+export function useAgentDebugTrace() {
+  const [enabled, setEnabled] = useState(false);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(DEBUG_TRACE_KEY);
+      if (raw === '1') setEnabled(true);
+    } catch (_) { /* noop */ }
+  }, []);
+
+  const toggle = useCallback(() => {
+    setEnabled((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem(DEBUG_TRACE_KEY, next ? '1' : '0');
+      } catch (_) { /* noop */ }
+      return next;
+    });
+  }, []);
+
+  return { enabled, toggle };
 }

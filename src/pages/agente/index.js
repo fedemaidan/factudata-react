@@ -22,9 +22,10 @@ import SearchRoundedIcon from '@mui/icons-material/SearchRounded';
 import EditRoundedIcon from '@mui/icons-material/EditRounded';
 import CheckCircleRoundedIcon from '@mui/icons-material/CheckCircleRounded';
 import CancelRoundedIcon from '@mui/icons-material/CancelRounded';
+import TerminalRoundedIcon from '@mui/icons-material/TerminalRounded';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { AgentMessage, AgentTypingIndicator } from 'src/components/agent/AgentMessage';
-import { useAgentChat } from 'src/hooks/useAgentChat';
+import { useAgentChat, useAgentDebugTrace } from 'src/hooks/useAgentChat';
 
 const QUICK_ACTIONS = [
   {
@@ -79,6 +80,7 @@ const AgentChatPage = () => {
     cancelCurrent,
     dismissError,
   } = useAgentChat();
+  const { enabled: debugVisible, toggle: toggleDebugVisible } = useAgentDebugTrace();
 
   useEffect(() => {
     if (!hasLoadedHistory) loadHistory();
@@ -147,6 +149,22 @@ const AgentChatPage = () => {
     });
   }, []);
 
+  // Despacho de acciones declarativas que vienen en el message del asistente
+  // (open_report → navega; suggest_create_report → manda mensaje al chat).
+  const handleMessageAction = useCallback(
+    (action) => {
+      if (!action || !action.type) return;
+      if (action.type === 'open_report' && action.url) {
+        router.push(action.url);
+        return;
+      }
+      if (action.type === 'suggest_create_report') {
+        sendMessage('guardar como reporte');
+      }
+    },
+    [router, sendMessage],
+  );
+
   const showEmptyState = !isLoadingHistory && messages.length === 0 && !isSending;
 
   const headerActions = useMemo(() => {
@@ -170,19 +188,36 @@ const AgentChatPage = () => {
       );
     }
     return (
-      <Tooltip title="Nueva conversación">
-        <span>
+      <Stack direction="row" spacing={0.25} alignItems="center">
+        <Tooltip title={debugVisible ? 'Ocultar trace dev' : 'Mostrar trace dev (tools + Mongo)'}>
           <IconButton
             size="small"
-            onClick={() => setConfirmingReset(true)}
-            disabled={messages.length === 0 || isSending}
+            onClick={toggleDebugVisible}
+            sx={{
+              color: debugVisible ? 'primary.main' : 'text.secondary',
+              backgroundColor: debugVisible ? (t) => `${t.palette.primary.main}14` : 'transparent',
+              '&:hover': {
+                backgroundColor: (t) => `${t.palette.primary.main}1f`,
+              },
+            }}
           >
-            <RestartAltRoundedIcon fontSize="small" />
+            <TerminalRoundedIcon fontSize="small" />
           </IconButton>
-        </span>
-      </Tooltip>
+        </Tooltip>
+        <Tooltip title="Nueva conversación">
+          <span>
+            <IconButton
+              size="small"
+              onClick={() => setConfirmingReset(true)}
+              disabled={messages.length === 0 || isSending}
+            >
+              <RestartAltRoundedIcon fontSize="small" />
+            </IconButton>
+          </span>
+        </Tooltip>
+      </Stack>
     );
-  }, [confirmingReset, handleReset, messages.length, isSending]);
+  }, [confirmingReset, handleReset, messages.length, isSending, debugVisible, toggleDebugVisible]);
 
   const titleIcon = useMemo(
     () => (
@@ -266,6 +301,10 @@ const AgentChatPage = () => {
                     role={m.role}
                     content={m.content}
                     createdAt={m.createdAt}
+                    debugTrace={m.debugTrace}
+                    debugVisible={debugVisible}
+                    actions={m.actions}
+                    onAction={handleMessageAction}
                   />
                 ))}
                 {isSending ? <AgentTypingIndicator /> : null}

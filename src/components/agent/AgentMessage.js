@@ -1,8 +1,109 @@
-import { Avatar, Box, Typography, useTheme } from '@mui/material';
+import { Avatar, Box, Button, Stack, Typography, alpha, useTheme } from '@mui/material';
 import AutoAwesomeRoundedIcon from '@mui/icons-material/AutoAwesomeRounded';
+import LaunchRoundedIcon from '@mui/icons-material/LaunchRounded';
+import BookmarkAddRoundedIcon from '@mui/icons-material/BookmarkAddRounded';
 import ReactMarkdown from 'react-markdown';
 import { whatsappToMarkdown } from './markdownPreprocess';
 import { useAuthContext } from 'src/contexts/auth-context';
+import { AgentTracePanel } from './AgentTracePanel';
+
+// Mapa de tipo de acción → recurso visual. Para sumar un tipo nuevo (ej. delete
+// confirmation, share, etc.), agregar una entrada acá. Sin tocar el resto.
+const ACTION_VISUAL_BY_TYPE = {
+  open_report: {
+    variant: 'contained',
+    color: 'primary',
+    Icon: LaunchRoundedIcon,
+    primary: true,
+  },
+  suggest_create_report: {
+    variant: 'outlined',
+    color: 'inherit',
+    Icon: BookmarkAddRoundedIcon,
+    primary: false,
+  },
+};
+
+function AgentActionsRow({ actions, onAction }) {
+  if (!Array.isArray(actions) || actions.length === 0) return null;
+
+  return (
+    <Stack
+      direction="row"
+      spacing={0.75}
+      flexWrap="wrap"
+      useFlexGap
+      sx={{ mt: 1, alignSelf: 'flex-start', rowGap: 0.75 }}
+    >
+      {actions.map((action, idx) => {
+        const visual = ACTION_VISUAL_BY_TYPE[action?.type];
+        if (!visual) return null;
+        const Icon = visual.Icon;
+        const isPrimary = visual.primary;
+        return (
+          <Button
+            key={`${action.type}-${idx}`}
+            size="small"
+            variant={visual.variant}
+            color={visual.color}
+            disableElevation
+            startIcon={<Icon />}
+            onClick={() => onAction?.(action)}
+            sx={(theme) => ({
+              borderRadius: 1.5,
+              px: 1.5,
+              py: 0.5,
+              minHeight: 30,
+              fontSize: '0.8125rem',
+              fontWeight: 500,
+              letterSpacing: '0.005em',
+              textTransform: 'none',
+              transition: theme.transitions.create(
+                ['box-shadow', 'border-color', 'background-color'],
+                { duration: 180 },
+              ),
+              '& .MuiButton-startIcon': {
+                marginRight: 0.75,
+                '& > *': { fontSize: '1rem' },
+              },
+              '&:focus-visible': {
+                outline: `2px solid ${theme.palette.primary.main}`,
+                outlineOffset: 2,
+              },
+              ...(isPrimary
+                ? {
+                    boxShadow:
+                      theme.palette.mode === 'dark'
+                        ? '0 1px 2px rgba(0,0,0,0.4), inset 0 0 0 1px rgba(255,255,255,0.06)'
+                        : '0 1px 2px rgba(15,23,42,0.08), inset 0 0 0 1px rgba(255,255,255,0.12)',
+                    '&:hover': {
+                      boxShadow: `0 4px 10px -2px ${alpha(
+                        theme.palette.primary.main,
+                        0.35,
+                      )}, inset 0 0 0 1px rgba(255,255,255,0.16)`,
+                    },
+                  }
+                : {
+                    borderColor: 'divider',
+                    color: 'text.primary',
+                    backgroundColor: 'transparent',
+                    '&:hover': {
+                      borderColor: theme.palette.primary.main,
+                      backgroundColor: alpha(
+                        theme.palette.primary.main,
+                        theme.palette.mode === 'dark' ? 0.08 : 0.04,
+                      ),
+                    },
+                  }),
+            })}
+          >
+            {action.label}
+          </Button>
+        );
+      })}
+    </Stack>
+  );
+}
 
 function formatTimestamp(value) {
   if (!value) return null;
@@ -63,11 +164,21 @@ export function UserAvatar({ size = 32 }) {
   );
 }
 
-export function AgentMessage({ role, content, createdAt }) {
+export function AgentMessage({
+  role,
+  content,
+  createdAt,
+  debugTrace,
+  debugVisible = false,
+  actions,
+  onAction,
+}) {
   const theme = useTheme();
   const isUser = role === 'user';
   const isAssistant = role === 'assistant';
   const time = formatTimestamp(createdAt);
+  const showTrace = isAssistant && debugVisible && debugTrace;
+  const hasActions = isAssistant && Array.isArray(actions) && actions.length > 0;
 
   return (
     <Box
@@ -143,6 +254,7 @@ export function AgentMessage({ role, content, createdAt }) {
             <ReactMarkdown>{whatsappToMarkdown(content)}</ReactMarkdown>
           </Typography>
         </Box>
+        {hasActions ? <AgentActionsRow actions={actions} onAction={onAction} /> : null}
         {time ? (
           <Typography
             variant="caption"
@@ -157,6 +269,7 @@ export function AgentMessage({ role, content, createdAt }) {
             {time}
           </Typography>
         ) : null}
+        {showTrace ? <AgentTracePanel trace={debugTrace} /> : null}
       </Box>
     </Box>
   );
