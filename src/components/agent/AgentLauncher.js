@@ -11,6 +11,7 @@ import {
 } from '@mui/material';
 import AutoAwesomeRoundedIcon from '@mui/icons-material/AutoAwesomeRounded';
 import { AgentLauncherDialog } from './AgentLauncherDialog';
+import { useAgenteAccess } from 'src/hooks/useAgenteAccess';
 
 function detectMacLike() {
   if (typeof navigator === 'undefined') return false;
@@ -47,7 +48,10 @@ export function AgentLauncher() {
     [router?.pathname],
   );
 
+  const { loading: loadingAccess, canUse: canUseAgent } = useAgenteAccess();
+
   if (onAgentPage) return null;
+  if (loadingAccess || !canUseAgent) return null;
 
   if (isCompact) {
     return (

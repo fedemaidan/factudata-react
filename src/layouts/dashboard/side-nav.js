@@ -48,12 +48,14 @@ import ContactsIcon from "@mui/icons-material/Contacts";
 import AssessmentIcon from "@mui/icons-material/Assessment";
 import ConstructionIcon from "@mui/icons-material/Construction";
 import AutoAwesomeRoundedIcon from "@mui/icons-material/AutoAwesomeRounded";
+import { useAgenteAccess } from "src/hooks/useAgenteAccess";
 
 export const SideNav = (props) => {
   const { open, onClose, collapsed = false, onToggleCollapsed, width = 280 } = props;
   const pathname = usePathname();
   const lgUp = useMediaQuery((theme) => theme.breakpoints.up("lg"), { noSsr: true });
   const { user, isSpying } = useAuthContext();
+  const { loading: loadingAgenteAccess, canUse: canUseAgente } = useAgenteAccess();
 
   const [groups, setGroups] = useState([]);
   const [empresa, setEmpresa] = useState(null);
@@ -135,7 +137,9 @@ export const SideNav = (props) => {
 
       // ——— INICIO ———
       const inicioItems = [];
-      inicioItems.push({ title: "Asistente IA", path: "/agente", icon: <SvgIcon fontSize="small"><AutoAwesomeRoundedIcon /></SvgIcon> });
+      if (canUseAgente) {
+        inicioItems.push({ title: "Asistente IA", path: "/agente", icon: <SvgIcon fontSize="small"><AutoAwesomeRoundedIcon /></SvgIcon> });
+      }
       if (user?.admin) inicioItems.push({ title: "Panel de Control", path: "/control-panel", icon: <SvgIcon fontSize="small"><AdminPanelSettingsIcon /></SvgIcon> });
       if (esAdmin) inicioItems.push({ title: "Resumen general", path: `/vistaResumen?empresaId=${empId}`, icon: <SvgIcon fontSize="small"><DashboardIcon /></SvgIcon> });
       inicioItems.push({ title: "Reportes", path: "/reportes", icon: <SvgIcon fontSize="small"><AssessmentIcon /></SvgIcon> });
@@ -211,7 +215,7 @@ export const SideNav = (props) => {
     };
 
     fetchProyectosData();
-  }, [user]);
+  }, [user, canUseAgente]);
 
   // Navs de empresas específicas
   if (navType === "celulandia") {
