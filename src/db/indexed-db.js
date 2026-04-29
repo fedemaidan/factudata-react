@@ -159,8 +159,6 @@ export const cacheConversation = async (conversation) => {
   await db.conversations.put(record);
 };
 
-export const countCachedConversations = () => db.conversations.count();
-
 export const getCachedMessagesForConversation = async (conversationId, { limit = 200 } = {}) => {
   if (!conversationId) return [];
   const records = await db.messages

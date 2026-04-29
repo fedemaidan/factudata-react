@@ -684,6 +684,8 @@ export function ConversationsProvider({ children }) {
   const handleFiltersChange = useCallback(
     async (newFilters) => {
       const normalizedFilters = normalizeFilterDates(newFilters);
+      const agentModeChanged =
+        Boolean(filters?.agentMode) !== Boolean(normalizedFilters?.agentMode);
 
       // Actualizar query params (guardamos solo YYYY-MM-DD para URLs limpias)
       const newQuery = { ...router.query };
@@ -743,11 +745,20 @@ export function ConversationsProvider({ children }) {
         delete newQuery.agentMode;
       }
 
+      // Al cambiar de modo, la conversación abierta queda fuera del filtro nuevo: deseleccionar.
+      if (agentModeChanged) {
+        delete newQuery.conversationId;
+        dispatch({ type: ACTIONS.SET_SELECTED, payload: null });
+        dispatch({ type: ACTIONS.SET_MESSAGES, payload: [] });
+        dispatch({ type: ACTIONS.SET_SCROLL_TO_MESSAGE_ID, payload: null });
+        dispatch({ type: ACTIONS.SET_HIGHLIGHTED_MESSAGE_ID, payload: null });
+      }
+
       router.replace({ pathname: router.pathname, query: newQuery }, undefined, { shallow: true });
       const query = search || "";
       await runCachedFilters(normalizedFilters);
     },
-    [search, router, runCachedFilters]
+    [filters, search, router, runCachedFilters]
   );
 
   const handleRefreshCurrentConversation = useCallback(async () => {

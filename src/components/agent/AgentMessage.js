@@ -1,11 +1,17 @@
+import { useState, useEffect, useRef } from 'react';
 import { Avatar, Box, Button, Stack, Typography, alpha, useTheme } from '@mui/material';
 import AutoAwesomeRoundedIcon from '@mui/icons-material/AutoAwesomeRounded';
 import LaunchRoundedIcon from '@mui/icons-material/LaunchRounded';
 import BookmarkAddRoundedIcon from '@mui/icons-material/BookmarkAddRounded';
+import AccountBalanceWalletOutlinedIcon from '@mui/icons-material/AccountBalanceWalletOutlined';
+import KeyboardArrowDownRoundedIcon from '@mui/icons-material/KeyboardArrowDownRounded';
+import KeyboardArrowUpRoundedIcon from '@mui/icons-material/KeyboardArrowUpRounded';
 import ReactMarkdown from 'react-markdown';
 import { whatsappToMarkdown } from './markdownPreprocess';
 import { useAuthContext } from 'src/contexts/auth-context';
 import { AgentTracePanel } from './AgentTracePanel';
+
+const COLLAPSED_HEIGHT = 800; // ~15 lines
 
 // Mapa de tipo de acción → recurso visual. Para sumar un tipo nuevo (ej. delete
 // confirmation, share, etc.), agregar una entrada acá. Sin tocar el resto.
@@ -20,6 +26,12 @@ const ACTION_VISUAL_BY_TYPE = {
     variant: 'outlined',
     color: 'inherit',
     Icon: BookmarkAddRoundedIcon,
+    primary: false,
+  },
+  view_in_caja: {
+    variant: 'outlined',
+    color: 'inherit',
+    Icon: AccountBalanceWalletOutlinedIcon,
     primary: false,
   },
 };
@@ -180,6 +192,29 @@ export function AgentMessage({
   const showTrace = isAssistant && debugVisible && debugTrace;
   const hasActions = isAssistant && Array.isArray(actions) && actions.length > 0;
 
+  const [expanded, setExpanded] = useState(false);
+  const [overflows, setOverflows] = useState(false);
+  const contentRef = useRef(null);
+
+  useEffect(() => {
+    if (!isAssistant) return;
+    const el = contentRef.current;
+    if (!el) return;
+    const check = () => setOverflows(el.scrollHeight > COLLAPSED_HEIGHT + 4);
+    check();
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [isAssistant, content]);
+
+  const bubbleBg = isUser
+    ? `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.primary.dark} 100%)`
+    : theme.palette.mode === 'dark'
+      ? theme.palette.neutral?.[800] ?? '#1f2229'
+      : '#ffffff';
+
+  const collapsing = isAssistant && overflows && !expanded;
+
   return (
     <Box
       sx={{
@@ -209,18 +244,15 @@ export function AgentMessage({
             px: 1.75,
             py: 1.25,
             borderRadius: isUser ? '14px 14px 2px 14px' : '14px 14px 14px 2px',
-            background: isUser
-              ? `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.primary.dark} 100%)`
-              : theme.palette.mode === 'dark'
-                ? theme.palette.neutral?.[800] ?? '#1f2229'
-                : '#ffffff',
+            background: bubbleBg,
             color: isUser ? theme.palette.primary.contrastText : theme.palette.text.primary,
             border: isAssistant ? 1 : 0,
             borderColor: 'divider',
             boxShadow: isAssistant
               ? '0 1px 2px rgba(15, 23, 42, 0.04)'
               : '0 4px 14px -6px rgba(99, 102, 241, 0.45)',
-            // Markdown reset within bubble
+            position: 'relative',
+            overflow: 'hidden',
             '& p': { m: 0 },
             '& p + p': { mt: 0.75 },
             '& ul, & ol': { my: 0.5, pl: 2.5 },
@@ -241,19 +273,71 @@ export function AgentMessage({
             '& a': { color: 'inherit', textDecoration: 'underline' },
           }}
         >
-          <Typography
-            component="div"
-            variant="body2"
+          <Box
+            ref={contentRef}
             sx={{
-              lineHeight: 1.55,
-              fontSize: '0.9375rem',
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-word',
+              overflow: 'hidden',
+              maxHeight: collapsing ? COLLAPSED_HEIGHT : 'none',
+              transition: 'max-height 0.25s ease',
             }}
           >
-            <ReactMarkdown>{whatsappToMarkdown(content)}</ReactMarkdown>
-          </Typography>
+            <Typography
+              component="div"
+              variant="body2"
+              sx={{
+                lineHeight: 1.55,
+                fontSize: '0.9375rem',
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+              }}
+            >
+              <ReactMarkdown>{whatsappToMarkdown(content)}</ReactMarkdown>
+            </Typography>
+          </Box>
+          {collapsing && (
+            <Box
+              aria-hidden
+              sx={{
+                position: 'absolute',
+                bottom: 0,
+                left: 0,
+                right: 0,
+                height: 72,
+                background: theme.palette.mode === 'dark'
+                  ? `linear-gradient(to bottom, transparent, ${theme.palette.neutral?.[800] ?? '#1f2229'})`
+                  : 'linear-gradient(to bottom, transparent, #ffffff)',
+                pointerEvents: 'none',
+              }}
+            />
+          )}
         </Box>
+
+        {isAssistant && overflows && (
+          <Button
+            size="small"
+            variant="text"
+            endIcon={expanded ? <KeyboardArrowUpRoundedIcon /> : <KeyboardArrowDownRoundedIcon />}
+            onClick={() => setExpanded((v) => !v)}
+            sx={{
+              mt: 0.5,
+              px: 1,
+              py: 0.25,
+              minHeight: 28,
+              fontSize: '0.8rem',
+              fontWeight: 500,
+              color: 'text.secondary',
+              textTransform: 'none',
+              letterSpacing: '0.01em',
+              alignSelf: 'flex-start',
+              borderRadius: 1.5,
+              '&:hover': { color: 'text.primary', bgcolor: 'action.hover' },
+              '& .MuiButton-endIcon': { ml: 0.4, '& > *': { fontSize: '1rem' } },
+            }}
+          >
+            {expanded ? 'Ver menos' : 'Ver más'}
+          </Button>
+        )}
+
         {hasActions ? <AgentActionsRow actions={actions} onAction={onAction} /> : null}
         {time ? (
           <Typography

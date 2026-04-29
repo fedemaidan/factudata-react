@@ -160,6 +160,10 @@ const AgentChatPage = () => {
       }
       if (action.type === 'suggest_create_report') {
         sendMessage('guardar como reporte');
+        return;
+      }
+      if (action.type === 'view_in_caja' && action.url) {
+        window.open(action.url, '_blank', 'noopener,noreferrer');
       }
     },
     [router, sendMessage],
