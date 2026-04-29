@@ -109,8 +109,15 @@ const matchesDateRange = (conversation, { fechaDesde, fechaHasta, creadaDesde, c
   return true;
 };
 
+const matchesAgentMode = (conversation, agentMode) => {
+  const isAgent = conversation?.source === 'agent_web';
+  return agentMode ? isAgent : !isAgent;
+};
+
 const filterConversations = (conversations = [], filters = {}) => {
+  const agentMode = !!filters.agentMode;
   return (conversations || []).filter((conversation) => {
+    if (!matchesAgentMode(conversation, agentMode)) return false;
     if (!matchesEstadoCliente(conversation, filters.estadoCliente)) return false;
     if (!matchesTipoContacto(conversation, filters.tipoContacto)) return false;
     if (filters.empresaId && String(filters.empresaId) !== String(conversation?.empresa?.id)) {
@@ -278,12 +285,14 @@ export const searchCachedConversations = async (
   { filters = {}, limit = 100 } = {}
 ) => {
   const normalizedQuery = normalizeSearchText(query);
+  const agentMode = !!filters.agentMode;
   const allConversations = await db.conversations
     .orderBy("updatedAt")
     .reverse()
     .toArray();
   const results = [];
   for (const conversation of allConversations) {
+    if (!matchesAgentMode(conversation, agentMode)) continue;
     if (!matchesEstadoCliente(conversation, filters.estadoCliente)) continue;
     if (filters.empresaId && String(filters.empresaId) !== String(conversation.empresa?.id)) {
       continue;
@@ -307,11 +316,14 @@ export const searchCachedMessages = async (
   const normalizedQuery = normalizeSearchText(query);
   const startDate = filters.fechaDesde ? parseDateRange(filters.fechaDesde, false) : null;
   const endDate = filters.fechaHasta ? parseDateRange(filters.fechaHasta, true) : null;
+  const agentMode = !!filters.agentMode;
   const conversations = await db.conversations.toArray();
   const conversationMap = new Map(conversations.map((c) => [String(c.id), c]));
   const allMessages = await db.messages.orderBy("createdAt").reverse().toArray();
   const matches = [];
   for (const message of allMessages) {
+    const msgIsAgent = message.source === 'agent_web';
+    if (agentMode ? !msgIsAgent : msgIsAgent) continue;
     if (normalizedQuery) {
       const haystack = [
         message.message,

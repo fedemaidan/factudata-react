@@ -103,9 +103,29 @@ La lista del sidebar usa un flujo híbrido según los filtros activos:
 - **Sin filtros de insights**: se usa solo `getCachedConversations` (IndexedDB). `filterConversations` aplica el resto de filtros (estado, empresa, fechas, etc.).
 - Cuando se cachean conversaciones del backend con insights, `insightCount` se conserva en IndexedDB. Si luego se lee desde cache con `showInsight` activo, `filterConversations` excluye las que tienen `insightCount <= 0`.
 
+## Modo asistente IA (toggle en `ConversacionesFilter`)
+
+La cache es **única para WA + agente web**. Las conversaciones y mensajes del agente web tienen `source: 'agent_web'`; las de WhatsApp no tienen ese campo. El filtro `agentMode` decide qué se muestra y qué se sincroniza:
+
+| Toggle | Filtro de cache (`filterConversations`) | `agentMode` enviado al backend |
+|--------|------------------------------------------|--------------------------------|
+| Off (default) | solo `source !== 'agent_web'` | implícito (default backend ya excluye `agent_web`) |
+| On — "Solo asistente IA" | solo `source === 'agent_web'` | `agentMode=true` en `/conversaciones`, `/conversaciones/sync`, `/conversaciones/sync/conversations`, `/conversaciones/:id`, `/conversaciones/search/messages` |
+
+**Comportamiento:**
+- El toggle vive en URL (`?agentMode=true`) y en `filters.agentMode`.
+- `runSync` periódico pasa `agentMode` actual; al toggleear se sincroniza el set correspondiente sin limpiar la cache.
+- `useMessagesFetch` deriva `agentMode` desde `selected.source === 'agent_web'` (no del toggle), para que al seleccionar una conversación se pidan los mensajes correctos aunque el toggle haya cambiado entre clicks.
+- `searchCachedConversations` y `searchCachedMessages` también filtran por `source` según el toggle. Las búsquedas nunca mezclan los dos universos.
+- Cuando `agentMode` está activo, los filtros `showInsight`, `tipoContacto` y `estadoCliente` se ocultan en el popup (no aplican al agente web).
+
+**Display name de conversaciones del agente:** `getNombreCliente` ahora soporta perfiles sin `phone` (web-only): cae a `email` y omite el sufijo de últimos 4 dígitos. El backend al crear/refrescar la conversación del agente popula `profile.firstName/lastName/email` y `empresa.{id,nombre,esCliente,estaDadoDeBaja}`, así que la lista, el header y el avatar funcionan igual que con WA.
+
 ## Migración de esquema (Dexie v2)
 
 El esquema v2 eliminó `recentAt` de `conversations` y `syncState`. Dexie aplica la migración automáticamente al abrir la DB; los datos existentes se conservan.
+
+> Nota: no se versionó schema nuevo para incluir `source` como índice — el campo se almacena en cada record vía spread, y el filtrado se hace in-memory en `filterConversations`/`searchCached*`. Si el volumen crece, conviene agregar un índice `source` en una v3.
 
 ---
 
