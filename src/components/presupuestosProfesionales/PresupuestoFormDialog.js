@@ -693,6 +693,26 @@ const PresupuestoFormDialog = ({
   const logoPdfEscalaMostrada =
     logoEscalaLocal !== null && Number.isFinite(logoEscalaLocal) ? logoEscalaLocal : logoPdfEscala;
 
+  // Detectar si el formulario tiene cambios sin guardar
+  const initialFormRef = useRef(null);
+  useEffect(() => {
+    if (open) {
+      initialFormRef.current = JSON.stringify(form);
+    }
+  // Solo capturar snapshot cuando se abre el dialog
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+  const isDirty = open && initialFormRef.current !== null && JSON.stringify(form) !== initialFormRef.current;
+
+  const [confirmSalir, setConfirmSalir] = useState(false);
+  const handleRequestClose = () => {
+    if (isDirty && !saving) {
+      setConfirmSalir(true);
+    } else {
+      onClose();
+    }
+  };
+
   const [pdfFullPreviewOpen, setPdfFullPreviewOpen] = useState(false);
   const [pdfFullPreviewLoading, setPdfFullPreviewLoading] = useState(false);
   const [pdfFullPreviewState, setPdfFullPreviewState] = useState(null);
@@ -758,7 +778,7 @@ const PresupuestoFormDialog = ({
 
   return (
     <>
-  <Dialog open={open} onClose={onClose} fullWidth maxWidth="lg">
+  <Dialog open={open} onClose={handleRequestClose} fullWidth maxWidth="lg">
     <DialogTitle>{isEdit ? 'Editar Presupuesto' : 'Nuevo Presupuesto Profesional'}</DialogTitle>
     <DialogContent dividers>
       <Stack spacing={2} sx={{ mt: 1 }}>
@@ -1354,7 +1374,7 @@ const PresupuestoFormDialog = ({
       </Stack>
     </DialogContent>
     <DialogActions>
-      <Button onClick={onClose}>Cancelar</Button>
+      <Button onClick={handleRequestClose}>Cancelar</Button>
       <Button
         variant="contained"
         onClick={onSave}
@@ -1364,6 +1384,18 @@ const PresupuestoFormDialog = ({
       </Button>
     </DialogActions>
   </Dialog>
+    {/* Dialog de confirmación para salir sin guardar */}
+    <Dialog open={confirmSalir} onClose={() => setConfirmSalir(false)} maxWidth="xs" fullWidth>
+      <DialogTitle>¿Salir sin guardar?</DialogTitle>
+      <DialogContent>
+        <Typography sx={{ pt: 1 }}>Tenés cambios sin guardar. Si salís ahora, se perderá la información ingresada.</Typography>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={() => setConfirmSalir(false)}>Seguir editando</Button>
+        <Button color="error" variant="contained" onClick={() => { setConfirmSalir(false); onClose(); }}>Salir sin guardar</Button>
+      </DialogActions>
+    </Dialog>
+
     <PresupuestoPdfFullPreviewDialog
       open={pdfFullPreviewOpen}
       onClose={handleClosePdfFullPreview}
