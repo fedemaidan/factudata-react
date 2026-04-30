@@ -86,13 +86,27 @@ const Page = () => {
     return re.test(forgotEmail) ? '' : 'Ingresá un email válido';
   }, [forgotOpen, forgotEmail]);
 
+  const getFirebaseResetError = (error) => {
+    switch (error?.code) {
+      case 'auth/user-not-found':
+        return 'No encontramos una cuenta con ese email. Verificá que sea el email con el que te registraste.';
+      case 'auth/invalid-email':
+        return 'El formato del email no es válido.';
+      case 'auth/too-many-requests':
+        return 'Demasiados intentos seguidos. Esperá unos minutos antes de volver a intentar.';
+      case 'auth/unauthorized-domain':
+        return 'No se pudo enviar el email desde este dominio. Contactá al soporte.';
+      default:
+        return error?.message || 'No pudimos enviar el email de restablecimiento. Intentá de nuevo más tarde.';
+    }
+  };
+
   const handleSendReset = useCallback(async () => {
     if (forgotEmailError) return;
-    setForgotSended(true);
     try {
       setForgotSending(true);
-      // Si tenés página propia de reset, tu AuthProvider ya puede estar enviando con actionCodeSettings.
       await auth.sendResetPasswordEmail(forgotEmail);
+      setForgotSended(true);
       setSnack({
         open: true,
         message: 'Te enviamos un correo para restablecer tu contraseña desde el email "noreply@factudata-3afdf.firebaseapp.com". Revisa tu bandeja de spam.',
@@ -102,7 +116,7 @@ const Page = () => {
     } catch (error) {
       setSnack({
         open: true,
-        message: error?.message || 'No pudimos enviar el email de restablecimiento.',
+        message: getFirebaseResetError(error),
         severity: 'error'
       });
     } finally {

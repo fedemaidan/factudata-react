@@ -15,8 +15,9 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import DatePicker from 'react-datepicker';
 import { subDays, startOfMonth, endOfMonth } from 'date-fns';
 import FiltrosGuardadosService from 'src/services/filtrosGuardadosService';
+import { FILTER_ARRAY_KEYS, FILTER_DATE_KEYS, defaultMovimientosFilters } from 'src/utils/parseData';
 
-const DEBUG_CAJA_FILTERBAR = true;
+const DEBUG_CAJA_FILTERBAR = process.env.NODE_ENV !== 'production';
 
 const formatDebugValue = (value) => {
   if (value instanceof Date) return value.toISOString();
@@ -41,46 +42,11 @@ const logFilterBar = (label, payload) => {
 
 /* ────────────────────────── constantes ────────────────────────── */
 
-const defaultFilters = {
-  fechaDesde: null,
-  fechaHasta: null,
-  palabras: '',
-  observacion: '',
-  codigoSync: '',
-  aprobacion: '',
-  usuarios: [],
-  categorias: [],
-  subcategorias: [],
-  proveedores: [],
-  medioPago: [],
-  tipo: [],
-  moneda: [],
-  etapa: [],
-  cuentaInterna: [],
-  tagsExtra: [],
-  montoMin: '',
-  montoMax: '',
-  ordenarPor: 'fecha_factura',
-  ordenarDir: 'desc',
-  caja: null,
-  estados: [],
-  empresaFacturacion: [],
-  fechaPagoDesde: null,
-  fechaPagoHasta: null,
-  fechaCreacionDesde: null,
-  fechaCreacionHasta: null,
-  fechaModificacionDesde: null,
-  fechaModificacionHasta: null,
-  facturaCliente: '',
-  cajaChica: '',
-};
+// defaultFilters importado como defaultMovimientosFilters desde parseData.js
+const defaultFilters = defaultMovimientosFilters;
 
-const DATE_KEYS = [
-  'fechaDesde', 'fechaHasta',
-  'fechaPagoDesde', 'fechaPagoHasta',
-  'fechaCreacionDesde', 'fechaCreacionHasta',
-  'fechaModificacionDesde', 'fechaModificacionHasta',
-];
+const DATE_KEYS = FILTER_DATE_KEYS;
+const TEXT_DRAFT_KEYS = ['palabras', 'observacion', 'codigoSync'];
 const serializeFilters = (f) => {
   const out = { ...f };
   DATE_KEYS.forEach((k) => { if (out[k] instanceof Date) out[k] = out[k].toISOString(); });
@@ -93,6 +59,12 @@ const serializeFilters = (f) => {
 const deserializeFilters = (f) => {
   const out = { ...f };
   DATE_KEYS.forEach((k) => { if (typeof out[k] === 'string' && out[k]) out[k] = new Date(out[k]); });
+  // garantizar que los campos array siempre sean arrays (datos legados o corruptos)
+  FILTER_ARRAY_KEYS.forEach((k) => {
+    if (k in out && !Array.isArray(out[k])) {
+      out[k] = out[k] ? [out[k]] : [];
+    }
+  });
   return out;
 };
 
@@ -114,7 +86,42 @@ export const FilterBarCajaProyecto = ({
   searchMinLength = 0,
 }) => {
   const [focusField, setFocusField] = useState(null);
-  const [searchDraft, setSearchDraft] = useState(filters.palabras || '');
+
+  // textDrafts: estado local para campos de texto libre.
+  // El debounce evita que cada tecla dispare un request al backend.
+  const [textDrafts, setTextDrafts] = useState({
+    palabras: filters.palabras || '',
+    observacion: filters.observacion || '',
+    codigoSync: filters.codigoSync || '',
+  });
+  // Marca los últimos valores ya commiteados a filters para no re-disparar el debounce
+  // cuando una limpieza externa (chip, clearAll) sincroniza los drafts hacia abajo.
+  const lastCommitRef = useRef({ palabras: filters.palabras || '', observacion: filters.observacion || '', codigoSync: filters.codigoSync || '' });
+  const debounceTimerRef = useRef(null);
+
+  // Sincronizar drafts cuando los filtros cambian externamente (chips, clearAll, cargar filtro guardado).
+  useEffect(() => {
+    const next = {
+      palabras: filters.palabras || '',
+      observacion: filters.observacion || '',
+      codigoSync: filters.codigoSync || '',
+    };
+    lastCommitRef.current = next; // marcar como ya commiteado para que el debounce no vuelva a disparar
+    setTextDrafts(next);
+  }, [filters.palabras, filters.observacion, filters.codigoSync]);
+
+  // Debounce: propaga los drafts a filters 350ms después del último cambio.
+  useEffect(() => {
+    const hasChange = TEXT_DRAFT_KEYS.some((k) => textDrafts[k] !== lastCommitRef.current[k]);
+    if (!hasChange) return;
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    debounceTimerRef.current = setTimeout(() => {
+      lastCommitRef.current = { ...textDrafts };
+      setFilters((f) => ({ ...f, ...textDrafts }));
+    }, 600);
+    return () => clearTimeout(debounceTimerRef.current);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [textDrafts]);
 
   /* ── DateInput helper ── */
   const DateInput = forwardRef(function DateInput(props, ref) {
@@ -138,7 +145,7 @@ export const FilterBarCajaProyecto = ({
 
   /* ── Subcategorías dependientes de categorías ── */
   const subcategoriasDisponibles = useMemo(() => {
-    const cats = filters.categorias || [];
+    const cats = Array.isArray(filters.categorias) ? filters.categorias : [];
     if (!cats.length) return [];
     const map = options?.subcategoriasByCategoria || {};
     const acc = new Set();
@@ -147,14 +154,15 @@ export const FilterBarCajaProyecto = ({
   }, [filters.categorias, options?.subcategoriasByCategoria]);
 
   useEffect(() => {
-    const cats = filters.categorias || [];
+    const cats = Array.isArray(filters.categorias) ? filters.categorias : [];
     if (!cats.length) {
-      if ((filters.subcategorias || []).length > 0) setFilters((f) => ({ ...f, subcategorias: [] }));
+      if ((Array.isArray(filters.subcategorias) ? filters.subcategorias : []).length > 0) setFilters((f) => ({ ...f, subcategorias: [] }));
       return;
     }
     const allowed = new Set(subcategoriasDisponibles);
-    const next = (filters.subcategorias || []).filter((s) => allowed.has(s));
-    if (next.length !== (filters.subcategorias || []).length) setFilters((f) => ({ ...f, subcategorias: next }));
+    const currentSubs = Array.isArray(filters.subcategorias) ? filters.subcategorias : [];
+    const next = currentSubs.filter((s) => allowed.has(s));
+    if (next.length !== currentSubs.length) setFilters((f) => ({ ...f, subcategorias: next }));
   }, [filters.categorias, subcategoriasDisponibles, filters.subcategorias, setFilters]);
 
   /* ── Definición de filtros ── */
@@ -187,18 +195,17 @@ export const FilterBarCajaProyecto = ({
   );
 
   const set = (k, v) => setFilters((f) => ({ ...f, [k]: v }));
+  // Commit inmediato del draft de palavras (usado por searchRequiresSubmit con Enter)
   const commitSearchDraft = useCallback(() => {
-    const nextValue = (searchDraft || '').trim();
+    const nextValue = (textDrafts.palabras || '').trim();
     if (nextValue && nextValue.length < searchMinLength) return false;
-    set('palabras', nextValue);
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    lastCommitRef.current = { ...lastCommitRef.current, palabras: nextValue };
+    setFilters((f) => ({ ...f, palabras: nextValue }));
     return true;
-  }, [searchDraft, searchMinLength]);
+  }, [textDrafts.palabras, searchMinLength, setFilters]);
   const formatDate = (d) => (d ? d.toLocaleDateString('es-AR') : '');
   const clearAll = () => setFilters((prev) => ({ ...prev, ...defaultFilters }));
-
-  useEffect(() => {
-    setSearchDraft(filters.palabras || '');
-  }, [filters.palabras]);
 
   /* ── Chips activos ── */
   const activeChips = useMemo(() => {
@@ -234,18 +241,19 @@ export const FilterBarCajaProyecto = ({
     if (filters.codigoSync) add(`Código: ${filters.codigoSync}`, () => set('codigoSync', ''), 'codigoSync');
     if (filters.aprobacion) add(filters.aprobacion === 'si' ? 'Con aprobación' : 'Sin aprobación', () => set('aprobacion', ''), 'aprobacion');
 
-    (filters.usuarios || []).forEach((v) => add(`Usuario: ${v}`, () => set('usuarios', (filters.usuarios || []).filter((x) => x !== v)), 'usuarios'));
-    (filters.tipo || []).forEach((v) => add(`Tipo: ${v}`, () => set('tipo', (filters.tipo || []).filter((x) => x !== v)), 'tipo'));
-    (filters.moneda || []).forEach((v) => add(`${v}`, () => set('moneda', (filters.moneda || []).filter((x) => x !== v)), 'moneda'));
-    (filters.proveedores || []).forEach((v) => add(`Prov: ${v}`, () => set('proveedores', (filters.proveedores || []).filter((x) => x !== v)), 'proveedores'));
-    (filters.categorias || []).forEach((v) => add(`Cat: ${v}`, () => set('categorias', (filters.categorias || []).filter((x) => x !== v)), 'categorias'));
-    (filters.subcategorias || []).forEach((v) => add(`Subcat: ${v}`, () => set('subcategorias', (filters.subcategorias || []).filter((x) => x !== v)), 'subcategorias'));
-    (filters.medioPago || []).forEach((v) => add(`Medio: ${v}`, () => set('medioPago', (filters.medioPago || []).filter((x) => x !== v)), 'medioPago'));
-    (filters.etapa || []).forEach((v) => add(`Etapa: ${v}`, () => set('etapa', (filters.etapa || []).filter((x) => x !== v)), 'etapa'));
-    (filters.estados || []).forEach((v) => add(`Estado: ${v}`, () => set('estados', (filters.estados || []).filter((x) => x !== v)), 'estados'));
-    (filters.cuentaInterna || []).forEach((v) => add(`Cuenta: ${v}`, () => set('cuentaInterna', (filters.cuentaInterna || []).filter((x) => x !== v)), 'cuentaInterna'));
-    (filters.tagsExtra || []).forEach((v) => add(`Tag: ${v}`, () => set('tagsExtra', (filters.tagsExtra || []).filter((x) => x !== v)), 'tagsExtra'));
-    (filters.empresaFacturacion || []).forEach((v) => add(`Emp: ${v}`, () => set('empresaFacturacion', (filters.empresaFacturacion || []).filter((x) => x !== v)), 'empresaFacturacion'));
+    const toArr = (v) => (Array.isArray(v) ? v : (v ? [v] : []));
+    toArr(filters.usuarios).forEach((v) => add(`Usuario: ${v}`, () => set('usuarios', toArr(filters.usuarios).filter((x) => x !== v)), 'usuarios'));
+    toArr(filters.tipo).forEach((v) => add(`Tipo: ${v}`, () => set('tipo', toArr(filters.tipo).filter((x) => x !== v)), 'tipo'));
+    toArr(filters.moneda).forEach((v) => add(`${v}`, () => set('moneda', toArr(filters.moneda).filter((x) => x !== v)), 'moneda'));
+    toArr(filters.proveedores).forEach((v) => add(`Prov: ${v}`, () => set('proveedores', toArr(filters.proveedores).filter((x) => x !== v)), 'proveedores'));
+    toArr(filters.categorias).forEach((v) => add(`Cat: ${v}`, () => set('categorias', toArr(filters.categorias).filter((x) => x !== v)), 'categorias'));
+    toArr(filters.subcategorias).forEach((v) => add(`Subcat: ${v}`, () => set('subcategorias', toArr(filters.subcategorias).filter((x) => x !== v)), 'subcategorias'));
+    toArr(filters.medioPago).forEach((v) => add(`Medio: ${v}`, () => set('medioPago', toArr(filters.medioPago).filter((x) => x !== v)), 'medioPago'));
+    toArr(filters.etapa).forEach((v) => add(`Etapa: ${v}`, () => set('etapa', toArr(filters.etapa).filter((x) => x !== v)), 'etapa'));
+    toArr(filters.estados).forEach((v) => add(`Estado: ${v}`, () => set('estados', toArr(filters.estados).filter((x) => x !== v)), 'estados'));
+    toArr(filters.cuentaInterna).forEach((v) => add(`Cuenta: ${v}`, () => set('cuentaInterna', toArr(filters.cuentaInterna).filter((x) => x !== v)), 'cuentaInterna'));
+    toArr(filters.tagsExtra).forEach((v) => add(`Tag: ${v}`, () => set('tagsExtra', toArr(filters.tagsExtra).filter((x) => x !== v)), 'tagsExtra'));
+    toArr(filters.empresaFacturacion).forEach((v) => add(`Emp: ${v}`, () => set('empresaFacturacion', toArr(filters.empresaFacturacion).filter((x) => x !== v)), 'empresaFacturacion'));
     if (filters.facturaCliente) add(filters.facturaCliente === 'cliente' ? 'Fact: Cliente' : 'Fact: Propia', () => set('facturaCliente', ''), 'facturaCliente');
     if (filters.cajaChica) add(filters.cajaChica === 'si' ? 'Caja chica: Sí' : 'Caja chica: No', () => set('cajaChica', ''), 'cajaChica');
     if (filters.montoMin) add(`≥ $${filters.montoMin}`, () => set('montoMin', ''), 'montoMin');
@@ -271,15 +279,18 @@ export const FilterBarCajaProyecto = ({
   /* ── Render genérico de un campo de filtro ── */
   const renderFiltro = (filtro, overrideSx) => {
     const value = filters[filtro.name];
+    const toArrLocal = (v) => (Array.isArray(v) ? v : (v ? [v] : []));
 
     if (filtro.type === 'text') {
+      // Todos los campos de texto usan draft local + debounce de 350ms.
+      // La única excepción es palabras con searchRequiresSubmit, que commitía en Enter.
       if (filtro.name === 'palabras' && searchRequiresSubmit) {
         return (
           <TextField
             key={filtro.name}
             label={filtro.label}
-            value={searchDraft}
-            onChange={(e) => setSearchDraft(e.target.value)}
+            value={textDrafts.palabras}
+            onChange={(e) => setTextDrafts((prev) => ({ ...prev, palabras: e.target.value }))}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 e.preventDefault();
@@ -293,12 +304,20 @@ export const FilterBarCajaProyecto = ({
           />
         );
       }
+      const draftValue = filtro.name in textDrafts ? textDrafts[filtro.name] : (value ?? '');
       return (
         <TextField
           key={filtro.name}
           label={filtro.label}
-          value={value}
-          onChange={(e) => set(filtro.name, e.target.value)}
+          value={draftValue}
+          onChange={(e) => {
+            const v = e.target.value;
+            if (filtro.name in textDrafts) {
+              setTextDrafts((prev) => ({ ...prev, [filtro.name]: v }));
+            } else {
+              set(filtro.name, v);
+            }
+          }}
           size="small"
           variant="outlined"
           sx={overrideSx || { minWidth: 0, width: '100%' }}
@@ -315,7 +334,7 @@ export const FilterBarCajaProyecto = ({
             key={filtro.name}
             multiple
             options={selectOptions}
-            value={value}
+            value={toArrLocal(value)}
             onChange={(_e, v) => set(filtro.name, v)}
             filterSelectedOptions
             renderInput={(params) => (
@@ -328,7 +347,7 @@ export const FilterBarCajaProyecto = ({
       }
 
       const isSub = filtro.name === 'subcategorias';
-      const isSubDisabled = isSub && !filters.categorias?.length;
+      const isSubDisabled = isSub && !(Array.isArray(filters.categorias) && filters.categorias.length > 0);
       const selectOptions = isSub ? subcategoriasDisponibles : (filtro.options || options[filtro.optionsKey] || []);
 
       return (
@@ -341,7 +360,7 @@ export const FilterBarCajaProyecto = ({
           <Box sx={overrideSx || { minWidth: 0, width: '100%' }}>
             <FormControl sx={{ width: '100%' }} disabled={isSubDisabled} size="small">
               <InputLabel>{filtro.label}</InputLabel>
-              <Select multiple value={value} onChange={(e) => set(filtro.name, e.target.value)} label={filtro.label} autoFocus={focusField === filtro.name} size="small">
+              <Select multiple value={toArrLocal(value)} onChange={(e) => set(filtro.name, e.target.value)} label={filtro.label} autoFocus={focusField === filtro.name} size="small">
                 {selectOptions.map((opt) => (<MenuItem key={opt} value={opt}>{opt}</MenuItem>))}
               </Select>
               {isSubDisabled && (

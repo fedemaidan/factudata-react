@@ -35,6 +35,7 @@ import FolderIcon from '@mui/icons-material/Folder';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet'; 
 import { getProyectosByEmpresa } from 'src/services/proyectosService';
 import { formatTimestamp } from 'src/utils/formatters';
+import { parseQueryParamList, FILTER_ARRAY_KEYS, FILTER_DATE_KEYS } from 'src/utils/parseData';
 import { useMovimientosFilters } from 'src/hooks/useMovimientosFilters';
 import { FilterBarCajaProyecto } from 'src/components/FilterBarCajaProyecto';
 import AsistenteFlotanteProyecto from 'src/components/asistenteFlotanteProyecto';
@@ -102,39 +103,12 @@ const ellipsis = (maxWidth) => ({
   textOverflow: 'ellipsis',
 });
 
-const DEBUG_CAJA = true;
-
 const BRAND_COLORS = {
   navy: '#1E4469',
   cyan: '#23B5D3',
   teal: '#0097B2',
   mint: '#2DC197',
   cloud: '#F6F6F6',
-};
-
-const formatDebugValue = (value) => {
-  if (value instanceof Date) {
-    return value.toISOString();
-  }
-  if (Array.isArray(value)) {
-    return value.map(formatDebugValue);
-  }
-  if (value && typeof value === 'object') {
-    return Object.entries(value).reduce((acc, [key, current]) => {
-      acc[key] = formatDebugValue(current);
-      return acc;
-    }, {});
-  }
-  return value;
-};
-
-const logCajaDebug = (label, payload) => {
-  if (!DEBUG_CAJA) return;
-  if (typeof payload === 'undefined') {
-    console.log(`[CajaProyecto] ${label}`);
-    return;
-  }
-  console.log(`[CajaProyecto] ${label}`, formatDebugValue(payload));
 };
 
 const serializeFilterSet = (f) => {
@@ -151,12 +125,17 @@ const serializeFilterSet = (f) => {
 
 const deserializeFilterSet = (stored) => {
   const out = {};
-  const DATE_KEYS = ['fechaDesde', 'fechaHasta', 'fechaPagoDesde', 'fechaPagoHasta'];
   for (const [k, v] of Object.entries(stored)) {
-    if (DATE_KEYS.includes(k) && typeof v === 'string' && v) out[k] = new Date(v);
+    if (FILTER_DATE_KEYS.includes(k) && typeof v === 'string' && v) out[k] = new Date(v);
     else if (v && typeof v === 'object' && v._seconds) out[k] = new Date(v._seconds * 1000);
     else out[k] = v;
   }
+  // garantizar que los campos array siempre sean arrays (datos legados o corruptos)
+  FILTER_ARRAY_KEYS.forEach((k) => {
+    if (k in out && !Array.isArray(out[k])) {
+      out[k] = out[k] ? [out[k]] : [];
+    }
+  });
   return out;
 };
 
@@ -379,19 +358,8 @@ const writeCajasLocalPrefs = (prefs) => {
   window.localStorage.setItem(CAJAS_UI_PREFS_STORAGE_KEY, JSON.stringify(prefs));
 };
 
-const parseListParam = (value) => {
-  if (!value) return [];
-  if (Array.isArray(value)) {
-    return value
-      .flatMap((item) => String(item).split(','))
-      .map((item) => item.trim())
-      .filter(Boolean);
-  }
-  return String(value)
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean);
-};
+// parseListParam es un alias de la utilidad compartida (evita romper las llamadas existentes)
+const parseListParam = parseQueryParamList;
 
 const flattenDashboardItems = (items = []) => items.flatMap((item) => {
   if (item?.tipo === 'grupo_prorrateo') return item.movimientos || [];
@@ -420,7 +388,7 @@ const buildCajaDashboardParams = ({ filters, caja, page, limit, includeOptions =
   params.sort = sortField;
   params.order = getSortDirectionForFilters(filters);
 
-  if (filters?.palabras?.trim()) params.palabras = filters.palabras.trim();
+  if ((filters?.palabras?.trim()?.length ?? 0) >= 2) params.palabras = filters.palabras.trim();
   if (filters?.observacion?.trim()) params.observacion = filters.observacion.trim();
   if (filters?.codigoSync?.trim()) params.codigoSync = filters.codigoSync.trim();
   if (filters?.aprobacion) params.aprobacion = filters.aprobacion;
@@ -756,6 +724,9 @@ const CajasPage = () => {
   const [proyectos, setProyectos] = useState([]);
   const router = useRouter();
   const { proyectoId: queryProyectoId, proyectoIds: queryProyectoIds } = router.query;
+  // Ref para leer los params del router dentro de effects sin convertirlos en deps reactivas.
+  const routerRef = useRef(router);
+  useEffect(() => { routerRef.current = router; });
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
@@ -845,7 +816,7 @@ const CajasPage = () => {
   const [medioPagoCaja, setMedioPagoCaja] = useState('Efectivo');
   const [equivalenciaCaja, setEquivalenciaCaja] = useState('none'); // 'none' | 'usd_blue' | ...
   const [editandoCaja, setEditandoCaja] = useState(null); // null o index de la caja
-  const [cajaSeleccionada, setCajaSeleccionada] = useState(null);
+  // cajaSeleccionada eliminado: filters.caja es la única fuente de verdad
   const [prefsHydrated, setPrefsHydrated] = useState(false);
   const [savingCols, setSavingCols] = useState(false);
   const [saveMsg, setSaveMsg] = useState(null); // opcional: feedback breve
@@ -1204,7 +1175,7 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
     proyectoId: activeProjectId,
     movimientos: [],
     movimientosUSD: [],
-    cajaSeleccionada,
+    cajaSeleccionada: null, // La caja vive en filters.caja; este param solo afecta el filtrado local (no usado)
   });
 
   const options = backendOptions || hookOptions;
@@ -1226,18 +1197,6 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
     });
     setPage(0);
   }, [setFilters]);
-
-  useEffect(() => {
-    logCajaDebug('Contexto inicial usuario/router', {
-      proyectoId: queryProyectoId,
-      proyectoIds: queryProyectoIds,
-      authUserUid,
-      userIdPerfil: user?.id || null,
-      userUidDirecto: user?.uid || null,
-      routerPath: router.asPath,
-      routerQuery: router.query,
-    });
-  }, [authUserUid, queryProyectoId, queryProyectoIds, router.asPath, router.query, user?.id, user?.uid]);
 
   const columnasConfig = useMemo(
     () => getCajaColumnasConfig(visibleCols, compactCols, empresa, options),
@@ -1273,20 +1232,11 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
   };
 
   const applyCajaSelection = useCallback((caja) => {
-    logCajaDebug('Aplicando selección de caja', {
-      caja,
-    });
-
     if (caja?.filterSet) {
       const restoredFilters = deserializeFilterSet(caja.filterSet);
-      setCajaSeleccionada(caja);
       setFilters((f) => ({ ...f, ...restoredFilters, caja }));
     } else {
-      setCajaSeleccionada(caja || null);
-      setFilters((f) => ({
-        ...f,
-        caja: caja || null,
-      }));
+      setFilters((f) => ({ ...f, caja: caja || null }));
     }
   }, [setFilters]);
   
@@ -1294,7 +1244,8 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
     const nuevas = cajasVirtuales.filter((_, i) => i !== index);
     setCajasVirtuales(nuevas);
     updateEmpresaDetails(empresa.id, { cajas_virtuales: nuevas });
-    if (cajaSeleccionada === cajasVirtuales[index]) {
+    // Comparar por nombre porque filters.caja puede ser un objeto rehidratado (nueva referencia)
+    if (filters.caja?.nombre === cajasVirtuales[index]?.nombre) {
       const fallback = nuevas[0] || null;
       applyCajaSelection(fallback);
     }
@@ -1489,7 +1440,7 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
       const params = {
         ...buildCajaDashboardParams({
           filters,
-          caja: filters.caja || cajaSeleccionada,
+          caja: filters.caja,
           page,
           limit: rowsPerPage,
           includeOptions,
@@ -1497,12 +1448,6 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
         empresaId: empresa.id,
       };
       if (scopeProjectIds.length > 0) params.proyectoIds = scopeProjectIds.join(',');
-
-      logCajaDebug('Cargando dashboard V2 de caja', {
-        empresaId: empresa.id,
-        proyectoIds: scopeProjectIds,
-        params,
-      });
 
       const response = await movimientosService.getCajasDashboard(params);
       let nextItems = response?.items || [];
@@ -1552,7 +1497,7 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
     } finally {
       setLoadingDashboard(false);
     }
-  }, [cajaSeleccionada, empresa?.id, filters, page, rowsPerPage, scopeProjectIds]);
+  }, [empresa?.id, filters, page, rowsPerPage, scopeProjectIds]);
 
   const fetchDashboardOptions = useCallback(async () => {
     if (!empresa?.id) return null;
@@ -1634,12 +1579,6 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
   useEffect(() => {
     const fetchBaseData = async () => {
       setLoadingPage(true);
-      logCajaDebug('Inicio fetchBaseData Cajas', {
-        proyectoId: queryProyectoId,
-        proyectoIds: queryProyectoIds,
-        routerQuery: router.query,
-        authUserUid,
-      });
       setDashboardItems([]);
       setDashboardTotals(EMPTY_CAJA_TOTALS);
       setDashboardPagination({ page: 1, limit: rowsPerPage, total: 0, totalPages: 0, hasNext: false, hasPrev: false });
@@ -1659,9 +1598,10 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
         });
       const proyectosCargados = Array.from(proyectosEmpresaMap.values());
       const proyectosIdsDisponibles = proyectosCargados.map((item) => item.id).filter(Boolean);
+      const { proyectoId: initPid, proyectoIds: initPids } = routerRef.current.query || {};
       const requestedIds = [...new Set([
-        ...parseListParam(queryProyectoIds),
-        ...(queryProyectoId ? [queryProyectoId] : []),
+        ...parseListParam(initPids),
+        ...(initPid ? [initPid] : []),
       ])].filter((id) => proyectosIdsDisponibles.includes(id));
       const initialScopeMode = requestedIds.length > 0 ? 'selection' : 'all';
       const initialSelectedIds = requestedIds.length > 0 ? requestedIds : [];
@@ -1679,7 +1619,7 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
       setProjectScopeMode(initialScopeMode);
       setSelectedProjectIds(initialSelectedIds);
 
-      const cajaFromUrl = router.query.caja ? (() => { try { return JSON.parse(router.query.caja); } catch { return null; } })() : null;
+      const cajaFromUrl = routerRef.current.query.caja ? (() => { try { return JSON.parse(routerRef.current.query.caja); } catch { return null; } })() : null;
       const cajaDefault = (cajaFromUrl && cajasIniciales.find(c => c.moneda === cajaFromUrl.moneda && c.medio_pago === (cajaFromUrl.medio_pago || '')))
         || cajasIniciales[0]
         || null;
@@ -1701,7 +1641,11 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
     };
 
     if (authUserUid) fetchData();
-  }, [authUserUid, queryProyectoId, queryProyectoIds]);
+  // Solo depende de authUserUid. Los params de scope (proyectoId/proyectoIds) se leen
+  // de routerRef.current para evitar que el scope effect —que escribe esos params en la
+  // URL— re-dispare una carga completa de datos cada vez que el usuario cambia de proyecto.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authUserUid]);
 
   useEffect(() => {
     if (!empresa?.id) return;
@@ -1751,7 +1695,7 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
       return "$ 0";
   };
 
-  const activeCaja = useMemo(() => filters.caja || cajaSeleccionada || null, [filters.caja, cajaSeleccionada]);
+  const activeCaja = useMemo(() => filters.caja || null, [filters.caja]);
   const activeTotalsCurrency = useMemo(() => {
     if (activeCaja?.equivalencia && activeCaja.equivalencia !== 'none') {
       const meta = EQUIV_META[activeCaja.equivalencia];
@@ -1877,7 +1821,7 @@ const getTime = (v) => {
         const response = await movimientosService.getCajasDashboard({
           ...buildCajaDashboardParams({
             filters,
-            caja: filters.caja || cajaSeleccionada,
+            caja: filters.caja,
             page: exportPage,
             limit: batchSize,
             includeOptions: false,
@@ -1914,7 +1858,7 @@ const getTime = (v) => {
     } finally {
       setCsvExporting(false);
     }
-  }, [activeProject?.nombre, cajaSeleccionada, csvExportFields, csvFieldOrder, csvSelectedFields, empresa?.id, filters, scopeProjectIds]);
+  }, [activeProject?.nombre, csvExportFields, csvFieldOrder, csvSelectedFields, empresa?.id, filters, scopeProjectIds]);
 
   const handleGuardarCaja = async () => {
     const nuevaCaja = {
@@ -1933,6 +1877,10 @@ const getTime = (v) => {
   
     if (editandoCaja !== null) {
       nuevasCajas[editandoCaja] = nuevaCaja;
+      // Si la caja editada es la activa, actualizar filters.caja para reflejar el nuevo objeto
+      if (filters.caja?.nombre === cajasVirtuales[editandoCaja]?.nombre) {
+        applyCajaSelection(nuevaCaja);
+      }
     } else {
       nuevasCajas.push(nuevaCaja);
     }
@@ -2083,6 +2031,7 @@ const getTime = (v) => {
   const filterChips = useMemo(() => {
     const chips = [];
     const add = (label, onDelete) => chips.push({ label, onDelete });
+    const toArr = (v) => (Array.isArray(v) ? v : (v ? [v] : []));
     if (filters.fechaDesde || filters.fechaHasta) {
       const label = filters.fechaDesde && filters.fechaHasta
         ? `Fecha: ${formatDateChip(filters.fechaDesde)} - ${formatDateChip(filters.fechaHasta)}`
@@ -2098,50 +2047,22 @@ const getTime = (v) => {
     if (filters.palabras) add(`Buscar: ${filters.palabras}`, () => setFilters((f) => ({ ...f, palabras: '' })));
     if (filters.observacion) add(`Observación: ${filters.observacion}`, () => setFilters((f) => ({ ...f, observacion: '' })));
     if (filters.codigoSync) add(`Código: ${filters.codigoSync}`, () => setFilters((f) => ({ ...f, codigoSync: '' })));
-    (filters.tipo || []).forEach((v) => add(`Tipo: ${v}`, () => setFilters((f) => ({ ...f, tipo: f.tipo.filter((x) => x !== v) }))));
-    (filters.moneda || []).forEach((v) => add(`Moneda: ${v}`, () => setFilters((f) => ({ ...f, moneda: f.moneda.filter((x) => x !== v) }))));
-    (filters.proveedores || []).forEach((v) => add(`Proveedor: ${v}`, () => setFilters((f) => ({ ...f, proveedores: f.proveedores.filter((x) => x !== v) }))));
-    (filters.categorias || []).forEach((v) => add(`Categoría: ${v}`, () => setFilters((f) => ({ ...f, categorias: f.categorias.filter((x) => x !== v) }))));
-    (filters.subcategorias || []).forEach((v) => add(`Subcategoría: ${v}`, () => setFilters((f) => ({ ...f, subcategorias: f.subcategorias.filter((x) => x !== v) }))));
-    (filters.medioPago || []).forEach((v) => add(`Medio: ${v}`, () => setFilters((f) => ({ ...f, medioPago: f.medioPago.filter((x) => x !== v) }))));
-    (filters.etapa || []).forEach((v) => add(`Etapa: ${v}`, () => setFilters((f) => ({ ...f, etapa: f.etapa.filter((x) => x !== v) }))));
-    (filters.estados || []).forEach((v) => add(`Estado: ${v}`, () => setFilters((f) => ({ ...f, estados: f.estados.filter((x) => x !== v) }))));
-    (filters.cuentaInterna || []).forEach((v) => add(`Cuenta: ${v}`, () => setFilters((f) => ({ ...f, cuentaInterna: f.cuentaInterna.filter((x) => x !== v) }))));
-    (filters.tagsExtra || []).forEach((v) => add(`Tag: ${v}`, () => setFilters((f) => ({ ...f, tagsExtra: f.tagsExtra.filter((x) => x !== v) }))));
-    (filters.empresaFacturacion || []).forEach((v) => add(`Emp. fact.: ${v}`, () => setFilters((f) => ({ ...f, empresaFacturacion: f.empresaFacturacion.filter((x) => x !== v) }))));
+    toArr(filters.tipo).forEach((v) => add(`Tipo: ${v}`, () => setFilters((f) => ({ ...f, tipo: toArr(f.tipo).filter((x) => x !== v) }))));
+    toArr(filters.moneda).forEach((v) => add(`Moneda: ${v}`, () => setFilters((f) => ({ ...f, moneda: toArr(f.moneda).filter((x) => x !== v) }))));
+    toArr(filters.proveedores).forEach((v) => add(`Proveedor: ${v}`, () => setFilters((f) => ({ ...f, proveedores: toArr(f.proveedores).filter((x) => x !== v) }))));
+    toArr(filters.categorias).forEach((v) => add(`Categoría: ${v}`, () => setFilters((f) => ({ ...f, categorias: toArr(f.categorias).filter((x) => x !== v) }))));
+    toArr(filters.subcategorias).forEach((v) => add(`Subcategoría: ${v}`, () => setFilters((f) => ({ ...f, subcategorias: toArr(f.subcategorias).filter((x) => x !== v) }))));
+    toArr(filters.medioPago).forEach((v) => add(`Medio: ${v}`, () => setFilters((f) => ({ ...f, medioPago: toArr(f.medioPago).filter((x) => x !== v) }))));
+    toArr(filters.etapa).forEach((v) => add(`Etapa: ${v}`, () => setFilters((f) => ({ ...f, etapa: toArr(f.etapa).filter((x) => x !== v) }))));
+    toArr(filters.estados).forEach((v) => add(`Estado: ${v}`, () => setFilters((f) => ({ ...f, estados: toArr(f.estados).filter((x) => x !== v) }))));
+    toArr(filters.cuentaInterna).forEach((v) => add(`Cuenta: ${v}`, () => setFilters((f) => ({ ...f, cuentaInterna: toArr(f.cuentaInterna).filter((x) => x !== v) }))));
+    toArr(filters.tagsExtra).forEach((v) => add(`Tag: ${v}`, () => setFilters((f) => ({ ...f, tagsExtra: toArr(f.tagsExtra).filter((x) => x !== v) }))));
+    toArr(filters.empresaFacturacion).forEach((v) => add(`Emp. fact.: ${v}`, () => setFilters((f) => ({ ...f, empresaFacturacion: toArr(f.empresaFacturacion).filter((x) => x !== v) }))));
     if (filters.facturaCliente) add(filters.facturaCliente === 'cliente' ? 'Factura: Cliente' : 'Factura: Propia', () => setFilters((f) => ({ ...f, facturaCliente: '' })));
     if (filters.montoMin) add(`Monto min: ${filters.montoMin}`, () => setFilters((f) => ({ ...f, montoMin: '' })));
     if (filters.montoMax) add(`Monto max: ${filters.montoMax}`, () => setFilters((f) => ({ ...f, montoMax: '' })));
     return chips;
   }, [filters, setFilters]);
-
-  useEffect(() => {
-    logCajaDebug('Estado visible de filtros/caja/totales', {
-      proyectoId: queryProyectoId,
-      proyectoIds: scopeProjectIds,
-      cajaSeleccionada,
-      filters,
-      dashboardItems: dashboardItems.length,
-      movimientosFiltrados: movimientosFiltrados.length,
-      totalRows,
-      page,
-      rowsPerPage,
-      totalesDetallados,
-      filterChips: filterChips.map((chip) => chip.label),
-    });
-  }, [
-    queryProyectoId,
-    scopeProjectIds,
-    cajaSeleccionada,
-    filters,
-    dashboardItems.length,
-    movimientosFiltrados.length,
-    totalRows,
-    page,
-    rowsPerPage,
-    totalesDetallados,
-    filterChips,
-  ]);
 
   const totalesUsdBlue = useMemo(() => {
     const base = dashboardTotals?.equivalencias?.usd_blue || EMPTY_CAJA_TOTALS.equivalencias.usd_blue;
@@ -2297,7 +2218,7 @@ useEffect(() => {
                       }}
                     >
                       {cajasVirtuales.map((caja, index) => {
-                        const selected = cajaSeleccionada?.nombre === caja.nombre;
+                        const selected = filters.caja?.nombre === caja.nombre;
                         const totalCaja = calcularTotalParaCaja(caja);
                         const tone = getCajaAccent(caja, totalCaja);
                         const ToneIcon = tone.Icon;
@@ -2520,7 +2441,7 @@ useEffect(() => {
           <InputLabel>Medio de pago</InputLabel>
           <Select value={medioPagoCaja} onChange={(e) => setMedioPagoCaja(e.target.value)}>
             <MenuItem key="" value="">Todos</MenuItem>
-            {empresa?.medios_pago.map((medio) => (
+            {(empresa?.medios_pago || []).map((medio) => (
               <MenuItem key={medio} value={medio}>{medio}</MenuItem>
             ))}
           </Select>
