@@ -422,6 +422,7 @@ const buildCajaDashboardParams = ({ filters, caja, page, limit, includeOptions =
   if (caja?.medio_pago) params.cajaMedioPago = caja.medio_pago;
   if (caja?.estado) params.cajaEstado = caja.estado;
   if (caja?.type) params.cajaTipo = caja.type;
+  if (caja?.baseCalculo && caja.baseCalculo !== 'total') params.baseCalculo = caja.baseCalculo;
 
   return params;
 };
@@ -433,6 +434,7 @@ const getCajaTotalsKey = (caja) => JSON.stringify({
   estado: caja?.estado || '',
   type: caja?.type || '',
   equivalencia: caja?.equivalencia || 'none',
+  baseCalculo: caja?.baseCalculo || 'total',
 });
 
 const getCajaNetFromTotals = (caja, totals = EMPTY_CAJA_TOTALS) => {
