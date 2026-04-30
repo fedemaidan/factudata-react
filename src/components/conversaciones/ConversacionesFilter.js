@@ -103,30 +103,51 @@ const ConversacionesFilter = () => {
   const handleApply = () => setOpen(false);
 
   const handleRestart = () => {
-    onFiltersChange?.({ 
-      ...filters, 
-      fechaDesde: "", 
-      fechaHasta: "", 
-      creadaDesde: "", 
-      creadaHasta: "", 
-      empresaId: "", 
+    onFiltersChange?.({
+      ...filters,
+      fechaDesde: "",
+      fechaHasta: "",
+      creadaDesde: "",
+      creadaHasta: "",
+      empresaId: "",
       estadoCliente: "todos",
-      tipoContacto: "todos", 
+      tipoContacto: "todos",
       showInsight: false,
       insightCategory: "todos",
       insightTypes: [],
+      agentMode: false,
     });
   };
 
-  const hasActiveFilters = 
-    filters?.fechaDesde || 
-    filters?.fechaHasta || 
+  const handleAgentModeChange = (checked) => {
+    // Al activar modo agente, limpiamos filtros que no aplican (insights, tipoContacto,
+    // estadoCliente). El usuario sigue pudiendo filtrar por fecha/empresa.
+    if (checked) {
+      onFiltersChange?.({
+        ...filters,
+        agentMode: true,
+        showInsight: false,
+        insightCategory: "todos",
+        insightTypes: [],
+        tipoContacto: "todos",
+        estadoCliente: "todos",
+      });
+    } else {
+      onFiltersChange?.({ ...filters, agentMode: false });
+    }
+  };
+
+  const agentMode = !!filters?.agentMode;
+  const hasActiveFilters =
+    filters?.fechaDesde ||
+    filters?.fechaHasta ||
     filters?.creadaDesde ||
     filters?.creadaHasta ||
-    filters?.empresaId || 
+    filters?.empresaId ||
     (filters?.estadoCliente && filters.estadoCliente !== "todos") ||
     (filters?.tipoContacto && filters.tipoContacto !== "todos") ||
-    filters?.showInsight;
+    filters?.showInsight ||
+    agentMode;
 
   return (
     <>
@@ -177,6 +198,31 @@ const ConversacionesFilter = () => {
             >
               <CloseIcon fontSize="small" />
             </IconButton>
+          </Box>
+
+          <Box
+            sx={{
+              p: 1,
+              border: "1px solid",
+              borderColor: agentMode ? "primary.main" : "divider",
+              borderRadius: 2,
+              bgcolor: agentMode ? "primary.lightest" : "action.hover",
+            }}
+          >
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={agentMode}
+                  onChange={(e) => handleAgentModeChange(e.target.checked)}
+                  size="small"
+                />
+              }
+              label="Solo asistente IA"
+              sx={{ ml: 0 }}
+            />
+            <Box sx={{ fontSize: "0.7rem", color: "text.secondary", ml: 0.5 }}>
+              Muestra únicamente las conversaciones del agente web. Oculta los chats de WhatsApp.
+            </Box>
           </Box>
 
           <Box
@@ -265,6 +311,7 @@ const ConversacionesFilter = () => {
             </Box>
           </Box>
 
+          {!agentMode && (
           <TextField
             select
             label="Estado de Cliente"
@@ -288,6 +335,7 @@ const ConversacionesFilter = () => {
             <MenuItem value="dado_de_baja">Dado de baja</MenuItem>
             <MenuItem value="no_cliente">No es cliente</MenuItem>
           </TextField>
+          )}
 
           <Autocomplete
             options={filteredEmpresaOptions}
@@ -319,6 +367,7 @@ const ConversacionesFilter = () => {
             isOptionEqualToValue={(opt, v) => opt?.value === v?.value}
             noOptionsText={loadingEmpresas ? "Cargando empresas..." : "Sin empresas"}          />
 
+          {!agentMode && (
           <TextField
             select
             label="Tipo de contacto"
@@ -332,7 +381,9 @@ const ConversacionesFilter = () => {
             <MenuItem value="cliente">Cliente</MenuItem>
             <MenuItem value="noCliente">No cliente</MenuItem>
           </TextField>
+          )}
 
+          {!agentMode && (
           <FormControlLabel
             control={
               <Switch
@@ -344,8 +395,9 @@ const ConversacionesFilter = () => {
             label="Mostrar insights"
             sx={{ ml: 0, mt: 0.5 }}
           />
+          )}
 
-          {filters?.showInsight && (
+          {!agentMode && filters?.showInsight && (
             <Box
               sx={{
                 p: 1,

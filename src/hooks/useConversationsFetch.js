@@ -1,5 +1,5 @@
 import { useCallback, useEffect } from "react";
-import { getCachedConversations, cacheConversations, countCachedConversations } from "src/db/indexed-db";
+import { getCachedConversations, cacheConversations } from "src/db/indexed-db";
 import { fetchConversations } from "src/services/conversacionService";
 
 const hasInsightFilters = (filters) =>
@@ -30,15 +30,14 @@ export function useConversationsFetch({
             filters: currentFilters,
           });
           if (!conversations.length) {
-            const totalCount = await countCachedConversations();
-            if (totalCount === 0) {
-              const data = await fetchConversations();
-              const items = Array.isArray(data) ? data : data?.items ?? [];
-              await cacheConversations(items).catch(() => {});
-              conversations = await getCachedConversations({
-                filters: currentFilters,
-              });
-            }
+            // Cache vacía para este combo de filtros (ej. primera vez con agentMode=true):
+            // pedimos al backend con los filtros actuales para sembrarla.
+            const data = await fetchConversations(currentFilters);
+            const items = Array.isArray(data) ? data : data?.items ?? [];
+            await cacheConversations(items).catch(() => {});
+            conversations = await getCachedConversations({
+              filters: currentFilters,
+            });
           }
           onConversationsLoaded?.(conversations);
         }
