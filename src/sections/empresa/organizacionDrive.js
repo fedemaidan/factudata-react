@@ -1155,6 +1155,7 @@ const nivelesDisponibles = [
 
 // Tokens disponibles para el nombre del archivo
 const tokensNombreArchivo = [
+  { value: "codigo_operacion", label: "Código de Operación", ejemplo: "OP-00123" },
   { value: "categoria", label: "Categoría", ejemplo: "Materiales" },
   { value: "fecha", label: "Fecha", ejemplo: "2026-03-05" },
   { value: "proyecto_nombre", label: "Proyecto", ejemplo: "Lares_76" },
