@@ -215,6 +215,7 @@ function ListaProveedores({ resumen, loading, onSelect, filtroProveedor, onFiltr
 
 const COL_REMITOS_BASE = [
   { key: 'fecha_factura', label: 'Fecha' },
+  { key: 'fecha_vencimiento', label: 'Vencimiento' },
   { key: 'proyecto', label: 'Obra' },
   { key: 'categoria', label: 'Categoría' },
   { key: 'estado', label: 'Estado' },
@@ -294,6 +295,9 @@ function DetalleProveedor({ proveedor, remitos, loading, savingById, draftsById,
             return (
               <TableRow key={id}>
                 <TableCell>{formatTimestamp(rem.fecha_factura)}</TableCell>
+                <TableCell sx={{ color: rem.fecha_vencimiento && new Date(rem.fecha_vencimiento) < new Date() ? 'error.main' : 'inherit' }}>
+                  {rem.fecha_vencimiento ? formatTimestamp(rem.fecha_vencimiento) : '—'}
+                </TableCell>
                 <TableCell>{rem.proyecto_nombre || rem.proyectoNombre || '—'}</TableCell>
                 <TableCell>{rem.categoria || '—'}</TableCell>
                 <TableCell>{renderEstadoChip(rem.estado)}</TableCell>
