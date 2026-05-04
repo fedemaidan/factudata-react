@@ -31,6 +31,8 @@ import {
   ArrowPathRoundedSquareIcon,
   CheckCircleIcon,
   DocumentMagnifyingGlassIcon,
+  ArchiveBoxIcon,
+  ArrowTopRightOnSquareIcon,
 } from '@heroicons/react/24/outline';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import movimientosService from 'src/services/movimientosService';
@@ -904,12 +906,21 @@ const createdAtStr = (() => {
 
   const handleStockComplete = (result) => {
     if (result.solicitud_stock_id) {
-      setMovimiento(prev => ({ ...prev, solicitud_stock_id: result.solicitud_stock_id }));
+      setMovimiento(prev => ({ ...prev, solicitud_stock_id: result.solicitud_stock_id, stock_procesado: true }));
+      setAlert({ open: true, message: 'Materiales procesados correctamente', severity: 'success' });
+      handleCloseStockPopup();
     } else if (result.acopio_id) {
-      setMovimiento(prev => ({ ...prev, acopio_id: result.acopio_id }));
+      setMovimiento(prev => ({ ...prev, acopio_id: result.acopio_id, stock_procesado: true }));
+      handleCloseStockPopup();
+      router.push(`/movimientosAcopio?acopioId=${result.acopio_id}`);
+    } else if (result.tipo === 'distribuido') {
+      setMovimiento(prev => ({ ...prev, stock_procesado: true }));
+      setAlert({ open: true, message: 'Materiales procesados correctamente', severity: 'success' });
+      handleCloseStockPopup();
+    } else {
+      setAlert({ open: true, message: 'Materiales procesados correctamente', severity: 'success' });
+      handleCloseStockPopup();
     }
-    setAlert({ open: true, message: 'Materiales procesados correctamente', severity: 'success' });
-    handleCloseStockPopup();
   };
 
   const handleStockDismiss = async () => {
@@ -1268,45 +1279,25 @@ const createdAtStr = (() => {
                       const stockRefId = movimiento?.acopio_id || movimiento?.solicitud_stock_id;
                       const stockRefTipo = movimiento?.acopio_id ? 'acopio' : (movimiento?.solicitud_stock_id ? 'solicitud' : null);
                       const showStockSection = isEditMode && formik.values.categoria === 'Materiales' && empresa?.stock_config?.caja_a_stock === true;
-                      const materialesList = showStockSection && (
+                      const materialesList = showStockSection && (stockRefId || movimiento?.stock_procesado) && (
       <div className="mt-2 border-t border-divider pt-2">
         <p className="text-[11px] font-bold text-neutral-800">Stock</p>
-                          {stockRefId ? (
+        {stockRefId ? (
           <div className="mt-1 space-y-1 pl-0.5">
             <div className="flex items-center gap-1 text-xs text-success-dark">
               <CheckCircleIcon className="h-3.5 w-3.5" aria-hidden />
-                                  {stockRefTipo === 'acopio' ? 'Acopio creado' : 'Solicitud de stock creada'}
+              {stockRefTipo === 'acopio' ? 'Acopio creado' : 'Solicitud de stock creada'}
             </div>
             <a
               className="block text-xs text-primary-dark hover:underline"
               href={stockRefTipo === 'acopio' ? `/movimientosAcopio?acopioId=${stockRefId}` : `/stockSolicitudes?solicitudId=${stockRefId}`}
-                              >
-                                {stockRefTipo === 'acopio' ? 'Ver acopio →' : 'Ver solicitud →'}
+            >
+              {stockRefTipo === 'acopio' ? 'Ver acopio →' : 'Ver solicitud →'}
             </a>
-            <button
-              type="button"
-              className="block text-left text-xs text-warning-dark hover:underline"
-                                onClick={() => setStockPopupOpen(true)}
-                              >
-                                Reprocesar materiales
-            </button>
           </div>
-                          ) : (
-          <div className="mt-1 space-y-1 pl-0.5">
-            <p className="text-[10px] text-neutral-500">
-                                {movimiento?.stock_procesado
-                                  ? 'Se eligió no procesar. Podés procesarlos cuando quieras.'
-                                  : 'Materiales pendientes de procesar.'}
-            </p>
-            <button
-              type="button"
-                                onClick={() => setStockPopupOpen(true)}
-              className="rounded border border-primary-main px-2 py-0.5 text-[11px] font-medium text-primary-dark"
-                              >
-                                Procesar materiales
-            </button>
-          </div>
-                          )}
+        ) : (
+          <p className="mt-1 pl-0.5 text-[10px] text-neutral-500">Procesado sin solicitud de stock.</p>
+        )}
       </div>
                       );
                       return (
@@ -1472,6 +1463,47 @@ const createdAtStr = (() => {
                         Completar pago
                       </button>
                     )}
+                    {isEditMode && formik.values.categoria === 'Materiales' && empresa?.stock_config?.caja_a_stock === true && (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => { setStockPopupOpen(true); setAccionesOpen(false); }}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-neutral-50"
+                      >
+                        <ArchiveBoxIcon className="h-4 w-4 text-neutral-600" />
+                        {(movimiento?.acopio_id || movimiento?.solicitud_stock_id) ? 'Reprocesar materiales' : 'Procesar materiales'}
+                      </button>
+                    )}
+                    {isEditMode && (movimiento?.solicitudes_stock_ids?.length > 0
+                      ? movimiento.solicitudes_stock_ids
+                      : movimiento?.solicitud_stock_id ? [movimiento.solicitud_stock_id] : []
+                    ).map((sid, idx) => (
+                      <a
+                        key={sid}
+                        role="menuitem"
+                        href={`/stockSolicitudes?solicitudId=${sid}`}
+                        onClick={() => setAccionesOpen(false)}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-primary-dark hover:bg-neutral-50"
+                      >
+                        <ArrowTopRightOnSquareIcon className="h-4 w-4 text-primary-main" />
+                        {movimiento.solicitudes_stock_ids?.length > 1 ? `Ver solicitud de stock ${idx + 1}` : 'Ver solicitud de stock'}
+                      </a>
+                    ))}
+                    {isEditMode && (movimiento?.acopios_ids?.length > 0
+                      ? movimiento.acopios_ids
+                      : movimiento?.acopio_id ? [movimiento.acopio_id] : []
+                    ).map((aid, idx) => (
+                      <a
+                        key={aid}
+                        role="menuitem"
+                        href={`/movimientosAcopio?acopioId=${aid}`}
+                        onClick={() => setAccionesOpen(false)}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-primary-dark hover:bg-neutral-50"
+                      >
+                        <ArrowTopRightOnSquareIcon className="h-4 w-4 text-primary-main" />
+                        {movimiento.acopios_ids?.length > 1 ? `Ver acopio ${idx + 1}` : 'Ver acopio'}
+                      </a>
+                    ))}
                   </div>
                 )}
               </div>
