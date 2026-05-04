@@ -34,16 +34,18 @@ const Chart = dynamic(() => import('react-apexcharts'), { ssr: false });
 // ─── Config ──────────────────────────────────────────────
 
 const METRICAS = [
-    { key: 'visitasLanding', label: 'Visitas', emoji: '👁️', color: '#6366f1', desc: 'Llegaron a la landing' },
-    { key: 'abrioModal',    label: 'Abrió modal',     emoji: '📆', color: '#0ea5e9', desc: 'Hicieron clic en "Agendar"' },
-    { key: 'eligioSlot',    label: 'Eligió horario',  emoji: '🕐', color: '#f59e0b', desc: 'Seleccionaron un slot' },
-    { key: 'agendaron',     label: 'Agendaron',       emoji: '✅', color: '#10b981', desc: 'Confirmaron la reunión' },
+    { key: 'visitasLanding',  label: 'Visitas',          emoji: '👁️', color: '#6366f1', desc: 'Llegaron a la landing' },
+    { key: 'abrioModal',      label: 'Abrió modal',      emoji: '📆', color: '#0ea5e9', desc: 'Hicieron clic en "Agendar"' },
+    { key: 'eligioCategoria', label: 'Eligió categoría', emoji: '🏷️', color: '#8b5cf6', desc: 'Seleccionaron su tipo de negocio' },
+    { key: 'eligioSlot',      label: 'Eligió horario',   emoji: '🕐', color: '#f59e0b', desc: 'Seleccionaron un slot' },
+    { key: 'agendaron',       label: 'Agendaron',        emoji: '✅', color: '#10b981', desc: 'Confirmaron la reunión' },
 ];
 
 // Totales históricos congelados del A/B test finalizado (para mostrar como contexto)
 const HISTORICO = {
     visitasLanding: 1819,
     abrioModal: 155,
+    eligioCategoria: null, // no trackeado en el A/B test
     eligioSlot: 45,
     agendaron: 24,
 };
@@ -94,8 +96,8 @@ function SummaryCards({ totales }) {
                                     {m.emoji} {m.label}
                                 </Typography>
                                 {m.key === 'visitasLanding' && val === 0 && (
-                                    <Typography variant="caption" color="warning.main" display="block" sx={{ mt: 0.5 }}>
-                                        ⚠️ Pendiente activar tracking en landing
+                                    <Typography variant="caption" color="text.disabled" display="block" sx={{ mt: 0.5 }}>
+                                        Sin visitas en el período
                                     </Typography>
                                 )}
                             </CardContent>
@@ -197,7 +199,7 @@ function FunnelVisual({ totales }) {
                         📌 Histórico A/B test (congelado, previo al nuevo tracking):
                     </Typography>
                     <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                        {METRICAS.map(m => (
+                        {METRICAS.filter(m => HISTORICO[m.key] !== null).map(m => (
                             <Chip
                                 key={m.key}
                                 size="small"
