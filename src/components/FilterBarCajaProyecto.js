@@ -631,10 +631,10 @@ export const FilterBarCajaProyecto = ({
           <Divider orientation="vertical" flexItem />
           {/* Buscar */}
           <TextField
-            value={searchRequiresSubmit ? searchDraft : filters.palabras}
+            value={searchRequiresSubmit ? textDrafts.palabras : filters.palabras}
             onChange={(e) => {
               if (searchRequiresSubmit) {
-                setSearchDraft(e.target.value);
+                setTextDrafts((prev) => ({ ...prev, palabras: e.target.value }));
                 return;
               }
               set('palabras', e.target.value);
@@ -656,7 +656,7 @@ export const FilterBarCajaProyecto = ({
               size="small"
               variant="contained"
               onClick={commitSearchDraft}
-              disabled={Boolean(searchDraft?.trim()) && searchDraft.trim().length < searchMinLength}
+              disabled={Boolean(textDrafts.palabras?.trim()) && textDrafts.palabras.trim().length < searchMinLength}
             >
               Buscar
             </Button>

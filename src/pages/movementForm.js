@@ -31,6 +31,7 @@ import {
   ArrowPathRoundedSquareIcon,
   CheckCircleIcon,
   DocumentMagnifyingGlassIcon,
+  ArrowTopRightOnSquareIcon,
 } from '@heroicons/react/24/outline';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import movimientosService from 'src/services/movimientosService';
@@ -1479,6 +1480,47 @@ const createdAtStr = (() => {
                         Completar pago
                       </button>
                     )}
+                    {isEditMode && empresa?.stock_config?.caja_a_stock === true && formik.values.categoria === 'Materiales' && (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => { setAccionesOpen(false); setStockPopupOpen(true); }}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-neutral-50"
+                      >
+                        <ArrowTopRightOnSquareIcon className="h-4 w-4 text-neutral-600" />
+                        {(movimiento?.solicitud_stock_id || movimiento?.acopio_id || movimiento?.solicitudes_stock_ids?.length > 0 || movimiento?.acopios_ids?.length > 0)
+                          ? 'Reprocesar materiales'
+                          : 'Procesar materiales'}
+                      </button>
+                    )}
+                    {isEditMode && (movimiento?.solicitudes_stock_ids?.length > 0
+                      ? movimiento.solicitudes_stock_ids
+                      : movimiento?.solicitud_stock_id ? [movimiento.solicitud_stock_id] : []
+                    ).map((sid, idx, arr) => (
+                      <a
+                        key={sid}
+                        href={`/stockSolicitudes?solicitudId=${sid}`}
+                        role="menuitem"
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-neutral-50"
+                      >
+                        <ArrowTopRightOnSquareIcon className="h-4 w-4 text-neutral-600" />
+                        {arr.length > 1 ? `Ver solicitud de stock ${idx + 1}` : 'Ver solicitud de stock'}
+                      </a>
+                    ))}
+                    {isEditMode && (movimiento?.acopios_ids?.length > 0
+                      ? movimiento.acopios_ids
+                      : movimiento?.acopio_id ? [movimiento.acopio_id] : []
+                    ).map((aid, idx, arr) => (
+                      <a
+                        key={aid}
+                        href={`/movimientosAcopio?acopioId=${aid}`}
+                        role="menuitem"
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-neutral-50"
+                      >
+                        <ArrowTopRightOnSquareIcon className="h-4 w-4 text-neutral-600" />
+                        {arr.length > 1 ? `Ver acopio ${idx + 1}` : 'Ver acopio'}
+                      </a>
+                    ))}
                   </div>
                 )}
               </div>
