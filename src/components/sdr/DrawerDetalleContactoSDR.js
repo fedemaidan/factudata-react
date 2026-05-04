@@ -73,6 +73,14 @@ import ContadoresActividad from './ContadoresActividad';
 import useGrabadorAudio from '../../hooks/useGrabadorAudio';
 
 // Opciones de tamaño de empresa
+const RUBRO_OPTIONS = [
+    { value: '', label: 'Sin especificar' },
+    { value: 'constructora', label: 'Constructora' },
+    { value: 'desarrolladora', label: 'Desarrolladora' },
+    { value: 'estudio de arquitectura', label: 'Estudio de arquitectura' },
+    { value: 'profesional independiente', label: 'Profesional independiente' },
+];
+
 const TAMANO_EMPRESA_OPTIONS = [
     { value: '', label: 'Sin especificar' },
     { value: '1-10', label: '1-10 empleados' },
@@ -2547,14 +2555,20 @@ export const ModalEditarContacto = ({ open, onClose, contacto, empresaId, onSucc
                         </Select>
                     </FormControl>
 
-                    <TextField
-                        fullWidth
-                        label="Tipo de negocio"
-                        value={formData.rubro}
-                        onChange={(e) => handleChange('rubro', e.target.value)}
-                        size="small"
-                        placeholder="Ej: Constructora, Desarrolladora..."
-                    />
+                    <FormControl fullWidth size="small">
+                        <InputLabel>Tipo de negocio</InputLabel>
+                        <Select
+                            value={RUBRO_OPTIONS.some(o => o.value === formData.rubro) ? formData.rubro : ''}
+                            label="Tipo de negocio"
+                            onChange={(e) => handleChange('rubro', e.target.value)}
+                        >
+                            {RUBRO_OPTIONS.map(opt => (
+                                <MenuItem key={opt.value} value={opt.value}>
+                                    {opt.label}
+                                </MenuItem>
+                            ))}
+                        </Select>
+                    </FormControl>
                     
                     {/* Teléfonos secundarios */}
                     <Divider sx={{ my: 1 }} />
