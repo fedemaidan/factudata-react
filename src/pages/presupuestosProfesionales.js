@@ -118,7 +118,7 @@ const emptyPresupuesto = {
 };
 
 const emptyRubro = { nombre: '', monto: 0, incidencia_objetivo_pct: null, tareas: [] };
-const emptyTarea = { descripcion: '', monto: null, incidencia_objetivo_pct: null };
+const emptyTarea = { descripcion: '', monto: null, cantidad: null, incidencia_objetivo_pct: null };
 
 const presupuestoConSuperficieParaPdf = (p) =>
   p && typeof p === 'object'
@@ -1068,9 +1068,36 @@ const PresupuestosProfesionales = () => {
         }
       }
       tareas[tareaIdx] = { ...tareas[tareaIdx], monto: montoVal };
-      const sumT = tareas.reduce((s, t) => s + (Number(t.monto) || 0), 0);
+      const sumT = tareas.reduce((s, t) => s + (Number(t.cantidad) || 1) * (Number(t.monto) || 0), 0);
       const tareasRecalc = tareas.map((t) => {
-        const tm = Number(t.monto) || 0;
+        const tm = (Number(t.cantidad) || 1) * (Number(t.monto) || 0);
+        const io = sumT > 0 ? (tm / sumT) * 100 : null;
+        return { ...t, incidencia_objetivo_pct: io };
+      });
+      rubros[rubroIdx] = { ...rubros[rubroIdx], monto: sumT, tareas: tareasRecalc };
+      const total = rubros.reduce((s, r) => s + (Number(r.monto) || 0), 0);
+      if (total > 0) {
+        rubros[rubroIdx] = {
+          ...rubros[rubroIdx],
+          incidencia_objetivo_pct: ((Number(rubros[rubroIdx].monto) || 0) / total) * 100,
+        };
+      }
+      return { ...f, rubros };
+    });
+  };
+
+  const ppUpdateTareaCantidad = (rubroIdx, tareaIdx, cantidadRaw) => {
+    setPpForm((f) => {
+      const rubros = [...f.rubros];
+      const tareas = [...(rubros[rubroIdx].tareas || [])];
+      const cantVal =
+        cantidadRaw === '' || cantidadRaw == null
+          ? null
+          : Math.max(0, Number(cantidadRaw) || 0) || null;
+      tareas[tareaIdx] = { ...tareas[tareaIdx], cantidad: cantVal };
+      const sumT = tareas.reduce((s, t) => s + (Number(t.cantidad) || 1) * (Number(t.monto) || 0), 0);
+      const tareasRecalc = tareas.map((t) => {
+        const tm = (Number(t.cantidad) || 1) * (Number(t.monto) || 0);
         const io = sumT > 0 ? (tm / sumT) * 100 : null;
         return { ...t, incidencia_objetivo_pct: io };
       });
@@ -1639,6 +1666,7 @@ const PresupuestosProfesionales = () => {
         removeTarea={ppRemoveTarea}
         updateTarea={ppUpdateTarea}
         onUpdateTareaMonto={ppUpdateTareaMonto}
+        onUpdateTareaCantidad={ppUpdateTareaCantidad}
         onUpdateTareaIncidenciaObjetivo={ppUpdateTareaIncidenciaObjetivo}
         moveTarea={ppMoveTarea}
         focusRef={ppFocusRef}

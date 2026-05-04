@@ -223,21 +223,27 @@ const renderRubros = (rubros = [], currency, totalNeto, costoM2Data, tieneAnexos
     const rubroNum = rubro.orden ?? idx + 1;
     (rubro.tareas || []).forEach((tarea, tareaIdx) => {
       const subItemLabel = `${rubroNum}.${tareaIdx + 1}`;
-      const tm = Number(tarea.monto) || 0;
+      const cantidadNum = Number(tarea.cantidad) || 1;
+      const valorUnitario = Number(tarea.monto) || 0;
+      const efectiveMonto = cantidadNum * valorUnitario;
       const incTarea = Number.isFinite(Number(tarea.incidencia_pct))
         ? Number(tarea.incidencia_pct)
         : monto > 0
-        ? (tm / monto) * 100
+        ? (efectiveMonto / monto) * 100
         : 0;
-      const mostrarDetalle = tm > 0 || (Number(tarea.incidencia_pct) || 0) > 0;
+      const mostrarDetalle = efectiveMonto > 0 || (Number(tarea.incidencia_pct) || 0) > 0;
+      const descripcionPdf =
+        cantidadNum > 1 && efectiveMonto > 0
+          ? `${capitalize(tarea.descripcion || 'Tarea')}  (${cantidadNum} × ${formatCurrency(valorUnitario, currency)})`
+          : capitalize(tarea.descripcion || 'Tarea');
       rows.push(
         <View style={[styles.tableRow, styles.taskRow]} key={`tarea-${idx}-${tareaIdx}`}>
           <View style={styles.tableCellItem}>
             <Text style={{ fontWeight: 'normal', fontSize: 8 }}>{subItemLabel}</Text>
           </View>
-          <Text style={styles.tableCellDesc}>{capitalize(tarea.descripcion || 'Tarea')}</Text>
+          <Text style={styles.tableCellDesc}>{descripcionPdf}</Text>
           <Text style={styles.tableCellRight}>
-            {mostrarDetalle ? formatCurrency(tm, currency) : ''}
+            {mostrarDetalle ? formatCurrency(efectiveMonto, currency) : ''}
           </Text>
           <Text style={[styles.tableCellRight, { flex: 0.6 }]}>
             {mostrarDetalle ? `${incTarea.toFixed(1)}%` : ''}

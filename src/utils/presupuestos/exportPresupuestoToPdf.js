@@ -67,17 +67,23 @@ const buildRubroRows = (rubros = [], totalNeto) => {
 
     (rubro.tareas || []).forEach((tarea, tareaIdx) => {
       const taskIndex = `${orden}.${tareaIdx + 1}`;
-      const tm = Number(tarea.monto) || 0;
+      const cantidadNum = Number(tarea.cantidad) || 1;
+      const valorUnitario = Number(tarea.monto) || 0;
+      const efectiveMonto = cantidadNum * valorUnitario;
       const incTarea = Number.isFinite(Number(tarea.incidencia_pct))
         ? Number(tarea.incidencia_pct)
         : monto > 0
-        ? (tm / monto) * 100
+        ? (efectiveMonto / monto) * 100
         : 0;
-      const mostrar = tm > 0 || (Number(tarea.incidencia_pct) || 0) > 0;
+      const mostrar = efectiveMonto > 0 || (Number(tarea.incidencia_pct) || 0) > 0;
+      const desc =
+        cantidadNum > 1 && efectiveMonto > 0
+          ? `  ${tarea.descripcion || 'Tarea sin descripción'}  (${cantidadNum} × ${formatCurrency(valorUnitario, rubro.moneda || 'ARS')})`
+          : `  ${tarea.descripcion || 'Tarea sin descripción'}`;
       body.push([
         taskIndex,
-        `  ${tarea.descripcion || 'Tarea sin descripción'}`,
-        mostrar ? formatCurrency(tm, rubro.moneda || 'ARS') : '-',
+        desc,
+        mostrar ? formatCurrency(efectiveMonto, rubro.moneda || 'ARS') : '-',
         mostrar ? `${incTarea.toFixed(1)}%` : '-',
       ]);
       metadata.push({ type: 'tarea' });

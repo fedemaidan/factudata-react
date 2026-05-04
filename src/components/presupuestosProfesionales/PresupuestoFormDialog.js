@@ -658,6 +658,7 @@ const PresupuestoFormDialog = ({
   removeTarea,
   updateTarea,
   onUpdateTareaMonto,
+  onUpdateTareaCantidad,
   onUpdateTareaIncidenciaObjetivo,
   moveTarea,
   focusRef,
@@ -1063,8 +1064,9 @@ const PresupuestoFormDialog = ({
                 )}
                 {(rubro.tareas || []).map((tarea, ti) => {
                   const montoRubro = Number(rubro.monto) || 0;
-                  const pctDelRubro =
-                    montoRubro > 0 ? ((Number(tarea.monto) || 0) / montoRubro) * 100 : 0;
+                  const cantidadNum = Number(tarea.cantidad) || 1;
+                  const efectiveMonto = cantidadNum * (Number(tarea.monto) || 0);
+                  const pctDelRubro = montoRubro > 0 ? (efectiveMonto / montoRubro) * 100 : 0;
                   return (
                     <Stack key={ti} spacing={0.5} mb={1}>
                       <Stack direction="row" spacing={1} alignItems="flex-start" flexWrap="wrap">
@@ -1073,7 +1075,7 @@ const PresupuestoFormDialog = ({
                         </Typography>
                         <TextField
                           size="small"
-                          sx={{ flex: '1 1 220px', minWidth: 160 }}
+                          sx={{ flex: '1 1 200px', minWidth: 140 }}
                           placeholder="Descripción (subrubro)"
                           value={tarea.descripcion}
                           onChange={(e) => updateTarea(ri, ti, e.target.value)}
@@ -1101,7 +1103,25 @@ const PresupuestoFormDialog = ({
                         />
                         <TextField
                           size="small"
-                          label="Monto"
+                          label="Cant."
+                          placeholder="1"
+                          value={tarea.cantidad != null ? formatNumberForInput(tarea.cantidad, 2) : ''}
+                          onChange={(e) => {
+                            const raw = e.target.value;
+                            if (raw === '') {
+                              onUpdateTareaCantidad?.(ri, ti, null);
+                              return;
+                            }
+                            const v = parseNumberInput(raw);
+                            if (v !== null) onUpdateTareaCantidad?.(ri, ti, v);
+                          }}
+                          onKeyDown={handleNumericKeyDown}
+                          sx={{ width: 72 }}
+                          inputProps={{ inputMode: 'decimal', autoComplete: 'off' }}
+                        />
+                        <TextField
+                          size="small"
+                          label={cantidadNum > 1 ? 'Val. unit.' : 'Monto'}
                           placeholder="Opcional"
                           value={
                             tarea.monto == null ? '' : formatNumberForInput(tarea.monto, 2)
@@ -1122,6 +1142,15 @@ const PresupuestoFormDialog = ({
                           }}
                           inputProps={{ inputMode: 'decimal', autoComplete: 'off' }}
                         />
+                        {cantidadNum > 1 && (Number(tarea.monto) || 0) > 0 && (
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            sx={{ pt: 1, minWidth: 80, fontWeight: 600 }}
+                          >
+                            = {formatCurrency(efectiveMonto, form.moneda)}
+                          </Typography>
+                        )}
                         {((modoDistribuir && puedeDistribuirPorIncidencias) ||
                           ((Number(rubro.monto) || 0) > 0 && (rubro.tareas || []).length > 0)) && (
                           <TextField
@@ -1164,7 +1193,7 @@ const PresupuestoFormDialog = ({
                             }
                           />
                         )}
-                        {!modoDistribuir && montoRubro > 0 && (Number(tarea.monto) || 0) > 0 && (
+                        {!modoDistribuir && montoRubro > 0 && efectiveMonto > 0 && (
                           <Typography variant="caption" color="text.secondary" sx={{ pt: 1, minWidth: 56 }}>
                             {formatPct(pctDelRubro)}
                           </Typography>

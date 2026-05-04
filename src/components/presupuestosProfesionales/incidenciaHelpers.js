@@ -23,6 +23,7 @@ export function plantillaRubrosToPresupuestoRubros(rubros = []) {
     tareas: (r.tareas || []).map((t) => ({
       descripcion: t.descripcion || '',
       monto: null,
+      cantidad: t.cantidad || null,
       incidencia_objetivo_pct: parseIncidenciaSugerida(t.incidencia_pct_sugerida),
     })),
   }));
@@ -51,23 +52,25 @@ export function distribuirMontosPorIncidenciaTareas(totalRubro, tareas) {
   });
   const sumaPct = tareasConPct.reduce((s, t) => s + t._pct, 0);
   if (sumaPct <= 0) {
-    const sumT = tareas.reduce((s, t) => s + (Number(t.monto) || 0), 0);
+    const sumT = tareas.reduce((s, t) => s + (Number(t.cantidad) || 1) * (Number(t.monto) || 0), 0);
     if (sumT > 0 && totalNum > 0) {
-      const scaled = tareas.map((t) => Math.round((((Number(t.monto) || 0) / sumT) * totalNum * 100)) / 100);
-      const diff = Math.round((totalNum - scaled.reduce((s, m) => s + m, 0)) * 100) / 100;
-      const last = scaled.length - 1;
-      if (last >= 0 && Math.abs(diff) > 0.001) scaled[last] = Math.round((scaled[last] + diff) * 100) / 100;
+      const effectiveTotals = tareas.map((t) =>
+        Math.round((((Number(t.cantidad) || 1) * (Number(t.monto) || 0)) / sumT) * totalNum * 100) / 100
+      );
+      const diff = Math.round((totalNum - effectiveTotals.reduce((s, m) => s + m, 0)) * 100) / 100;
+      const last = effectiveTotals.length - 1;
+      if (last >= 0 && Math.abs(diff) > 0.001) effectiveTotals[last] = Math.round((effectiveTotals[last] + diff) * 100) / 100;
       return tareas.map((t, j) => ({
         ...t,
-        monto: scaled[j],
-        incidencia_pct: totalNum > 0 ? (scaled[j] / totalNum) * 100 : 0,
+        monto: Math.round((effectiveTotals[j] / (Number(t.cantidad) || 1)) * 100) / 100,
+        incidencia_pct: totalNum > 0 ? (effectiveTotals[j] / totalNum) * 100 : 0,
         orden: j + 1,
       }));
     }
     return tareas.map((t, j) => {
-      const tm = Number(t.monto) || 0;
-      const incidencia_pct = totalNum > 0 ? (tm / totalNum) * 100 : 0;
-      return { ...t, monto: tm, incidencia_pct, orden: j + 1 };
+      const efectiveMonto = (Number(t.cantidad) || 1) * (Number(t.monto) || 0);
+      const incidencia_pct = totalNum > 0 ? (efectiveMonto / totalNum) * 100 : 0;
+      return { ...t, incidencia_pct, orden: j + 1 };
     });
   }
   const montos = tareasConPct.map((t) =>
@@ -90,8 +93,10 @@ export function distribuirMontosPorIncidenciaTareas(totalRubro, tareas) {
   }
   return tareasConPct.map((t, i) => {
     const { _pctValido, _pct, _pctParsed, ...resto } = t;
-    const monto = montos[i];
-    const incidencia_pct = totalNum > 0 ? (monto / totalNum) * 100 : 0;
+    const efectiveTotal = montos[i];
+    const cantidad = Number(t.cantidad) || 1;
+    const monto = Math.round((efectiveTotal / cantidad) * 100) / 100;
+    const incidencia_pct = totalNum > 0 ? (efectiveTotal / totalNum) * 100 : 0;
     const keepRawIncidencia =
       typeof t.incidencia_objetivo_pct === 'string' && /[.,]$/.test(t.incidencia_objetivo_pct);
     return {
