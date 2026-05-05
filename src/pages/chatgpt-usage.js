@@ -378,6 +378,21 @@ const ChatGptUsagePage = () => {
     valueFormatter: (value) => formatCurrency(value || 0)
   }));
 
+  const intervalLabel = { day: 'día', week: 'semana', month: 'mes' }[sourceInterval] || 'período';
+  const totalCostByPeriod = sourceCostSeries.labels.map((label, i) => ({
+    date: label,
+    totalCostUsd: sourceCostSeries.series.reduce((sum, s) => sum + (s.data[i] || 0), 0)
+  }));
+  const totalCostChartSeries = [{
+    id: 'total',
+    label: 'Costo total',
+    data: totalCostByPeriod.map((d) => d.totalCostUsd),
+    color: '#3b82f6',
+    curve: 'linear',
+    showMark: false,
+    valueFormatter: (value) => formatCurrency(value || 0)
+  }];
+
   return (
     <Box component="main" sx={{ flexGrow: 1, py: 4 }}>
       <Container maxWidth="xl">
@@ -726,6 +741,59 @@ const ChatGptUsagePage = () => {
           </Grid>
         ) : (
           <Grid container spacing={3}>
+            <Grid item xs={12}>
+              <Card>
+                <CardHeader
+                  title={`Costo Total por ${intervalLabel.charAt(0).toUpperCase() + intervalLabel.slice(1)}`}
+                  subheader={`Costo acumulado de todos los modelos agrupado por ${intervalLabel}. Usá el selector de intervalo para cambiar la agrupación.`}
+                  avatar={<AttachMoneyIcon color="success" />}
+                />
+                <CardContent>
+                  {totalCostByPeriod.length === 0 ? (
+                    <Typography color="text.secondary" align="center" sx={{ py: 4 }}>
+                      No hay datos disponibles para el período seleccionado
+                    </Typography>
+                  ) : (
+                    <Stack spacing={3}>
+                      <Box sx={{ overflowX: 'auto' }}>
+                        <LineChart
+                          height={300}
+                          grid={{ horizontal: true, vertical: false }}
+                          xAxis={[{ scaleType: 'point', data: sourceCostSeries.labels }]}
+                          yAxis={[{ min: 0, valueFormatter: (value) => formatCurrency(value || 0) }]}
+                          margin={{ top: 24, right: 24, bottom: 24, left: 60 }}
+                          series={totalCostChartSeries}
+                          slotProps={{ legend: { hidden: true } }}
+                        />
+                      </Box>
+                      <Box sx={{ overflowX: 'auto' }}>
+                        <Table size="small">
+                          <TableHead>
+                            <TableRow>
+                              <TableCell>Período</TableCell>
+                              <TableCell align="right">Costo Total</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {totalCostByPeriod.slice().reverse().map((row) => (
+                              <TableRow key={row.date}>
+                                <TableCell>{row.date}</TableCell>
+                                <TableCell align="right">
+                                  <Typography variant="body2" fontWeight="medium">
+                                    {formatCurrency(row.totalCostUsd)}
+                                  </Typography>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </Box>
+                    </Stack>
+                  )}
+                </CardContent>
+              </Card>
+            </Grid>
+
             <Grid item xs={12}>
               <Card>
                 <CardHeader
