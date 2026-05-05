@@ -50,9 +50,15 @@ import {
   PresupuestosFilters,
   PresupuestosTableRow,
   PlantillasTable,
-  distribuirMontosPorIncidencia,
-  distribuirMontosPorIncidenciaTareas,
   plantillaRubrosToPresupuestoRubros,
+  aplicarUpdateTareaMonto,
+  aplicarUpdateTareaCantidad,
+  aplicarUpdateTareaDescripcion,
+  aplicarRemoveTarea,
+  aplicarUpdateRubro,
+  aplicarUpdateIncidenciaObjetivoRubro,
+  aplicarUpdateIncidenciaObjetivoTarea,
+  aplicarDistribuirPorTotal,
   sumaIncidenciasObjetivoTareas,
   ESTADOS,
   ESTADO_LABEL,
@@ -63,7 +69,6 @@ import {
   TEXTO_NOTAS_DEFAULT,
   PLANTILLA_SORBYDATA_ID,
   PLANTILLA_SORBYDATA,
-  parseNumberInput,
   CAC_TIPOS,
   INDEXACION_VALUES,
   USD_FUENTES,
@@ -937,68 +942,31 @@ const PresupuestosProfesionales = () => {
     setPpForm((f) => ({ ...f, rubros: f.rubros.filter((_, i) => i !== idx) }));
   };
 
+  const ppModoDistribuirRef = useRef(ppModoDistribuir);
+  ppModoDistribuirRef.current = ppModoDistribuir;
+  const ppTotalObjetivoRef = useRef(ppTotalObjetivo);
+  ppTotalObjetivoRef.current = ppTotalObjetivo;
+
   const ppUpdateRubro = (idx, field, value) => {
-    setPpForm((f) => {
-      const rubros = [...f.rubros];
-      let rubro = { ...rubros[idx] };
-      if (field === 'monto') {
-        const raw = value === '' || value == null ? 0 : Number(value);
-        const newMonto = Number.isFinite(raw) ? Math.round(raw * 100) / 100 : 0;
-        const tareas = distribuirMontosPorIncidenciaTareas(newMonto, rubro.tareas || []);
-        rubro = { ...rubro, monto: newMonto, tareas };
-      } else {
-        rubro = { ...rubro, [field]: value };
-      }
-      rubros[idx] = rubro;
-      if (field === 'monto') {
-        const total = rubros.reduce((s, r) => s + (Number(r.monto) || 0), 0);
-        if (total > 0) {
-          rubros[idx] = {
-            ...rubros[idx],
-            incidencia_objetivo_pct: ((Number(rubros[idx].monto) || 0) / total) * 100,
-          };
-        }
-      }
-      return { ...f, rubros };
-    });
+    setPpForm((f) =>
+      aplicarUpdateRubro(f, idx, field, value, {
+        modoDistribuir: ppModoDistribuirRef.current,
+      })
+    );
   };
 
   const ppDistribuirPorTotal = (totalStr) => {
     setPpTotalObjetivo(totalStr);
-    const total = Number(totalStr) || 0;
-    setPpForm((f) => {
-      const rubrosDist = distribuirMontosPorIncidencia(total, f.rubros);
-      return { ...f, rubros: rubrosDist };
-    });
+    setPpForm((f) => aplicarDistribuirPorTotal(f, totalStr));
   };
 
-  const ppTotalObjetivoRef = useRef(ppTotalObjetivo);
-  ppTotalObjetivoRef.current = ppTotalObjetivo;
-
   const ppUpdateIncidenciaObjetivo = (idx, value) => {
-    setPpForm((f) => {
-      const rubros = [...f.rubros];
-      let stored;
-      if (value === '' || value == null) {
-        stored = null;
-      } else if (typeof value === 'string' && /[.,]$/.test(value)) {
-        stored = value;
-      } else {
-        const parsed = Number(value);
-        stored = parsed != null && !Number.isNaN(parsed) ? parsed : null;
-      }
-      rubros[idx] = {
-        ...rubros[idx],
-        incidencia_objetivo_pct: stored,
-      };
-      const totalObjetivo = ppTotalObjetivoRef.current;
-      const totalParaDistribuir =
-        totalObjetivo !== '' && Number(totalObjetivo) >= 0
-          ? Number(totalObjetivo) || 0
-          : f.rubros.reduce((s, r) => s + (Number(r.monto) || 0), 0);
-      const rubrosDist = distribuirMontosPorIncidencia(totalParaDistribuir, rubros);
-      return { ...f, rubros: rubrosDist };
-    });
+    setPpForm((f) =>
+      aplicarUpdateIncidenciaObjetivoRubro(f, idx, value, {
+        modoDistribuir: ppModoDistribuirRef.current,
+        totalObjetivo: ppTotalObjetivoRef.current,
+      })
+    );
   };
 
   const ppMoveRubro = (idx, dir) => {
@@ -1025,119 +993,27 @@ const PresupuestosProfesionales = () => {
   };
 
   const ppRemoveTarea = (rubroIdx, tareaIdx) => {
-    setPpForm((f) => {
-      const rubros = [...f.rubros];
-      const tareas = rubros[rubroIdx].tareas.filter((_, i) => i !== tareaIdx);
-      const sumT = tareas.reduce((s, t) => s + (Number(t.monto) || 0), 0);
-      const tareasRecalc = tareas.map((t) => {
-        const tm = Number(t.monto) || 0;
-        const io = sumT > 0 ? (tm / sumT) * 100 : null;
-        return { ...t, incidencia_objetivo_pct: io };
-      });
-      rubros[rubroIdx] = { ...rubros[rubroIdx], monto: sumT, tareas: tareasRecalc };
-      const total = rubros.reduce((s, r) => s + (Number(r.monto) || 0), 0);
-      if (total > 0) {
-        rubros[rubroIdx] = {
-          ...rubros[rubroIdx],
-          incidencia_objetivo_pct: ((Number(rubros[rubroIdx].monto) || 0) / total) * 100,
-        };
-      }
-      return { ...f, rubros };
-    });
+    setPpForm((f) => aplicarRemoveTarea(f, rubroIdx, tareaIdx));
   };
 
   const ppUpdateTarea = (rubroIdx, tareaIdx, value) => {
-    setPpForm((f) => {
-      const rubros = [...f.rubros];
-      const tareas = [...rubros[rubroIdx].tareas];
-      tareas[tareaIdx] = { ...tareas[tareaIdx], descripcion: value };
-      rubros[rubroIdx] = { ...rubros[rubroIdx], tareas };
-      return { ...f, rubros };
-    });
+    setPpForm((f) => aplicarUpdateTareaDescripcion(f, rubroIdx, tareaIdx, value));
   };
 
   const ppUpdateTareaMonto = (rubroIdx, tareaIdx, rawValue) => {
-    setPpForm((f) => {
-      const rubros = [...f.rubros];
-      const tareas = [...(rubros[rubroIdx].tareas || [])];
-      let montoVal;
-      if (rawValue === '' || rawValue == null) {
-        montoVal = null;
-      } else {
-        const v = parseNumberInput(String(rawValue));
-        if (v !== null) {
-          montoVal = Math.round(v * 100) / 100;
-          if (montoVal < 0) montoVal = 0;
-        } else {
-          const n = Number(rawValue);
-          montoVal = Number.isNaN(n) ? 0 : Math.max(0, Math.round(n * 100) / 100);
-        }
-      }
-      tareas[tareaIdx] = { ...tareas[tareaIdx], monto: montoVal };
-      const sumT = tareas.reduce((s, t) => s + (Number(t.cantidad) || 1) * (Number(t.monto) || 0), 0);
-      const tareasRecalc = tareas.map((t) => {
-        const tm = (Number(t.cantidad) || 1) * (Number(t.monto) || 0);
-        const io = sumT > 0 ? (tm / sumT) * 100 : null;
-        return { ...t, incidencia_objetivo_pct: io };
-      });
-      rubros[rubroIdx] = { ...rubros[rubroIdx], monto: sumT, tareas: tareasRecalc };
-      const total = rubros.reduce((s, r) => s + (Number(r.monto) || 0), 0);
-      if (total > 0) {
-        rubros[rubroIdx] = {
-          ...rubros[rubroIdx],
-          incidencia_objetivo_pct: ((Number(rubros[rubroIdx].monto) || 0) / total) * 100,
-        };
-      }
-      return { ...f, rubros };
-    });
+    setPpForm((f) => aplicarUpdateTareaMonto(f, rubroIdx, tareaIdx, rawValue));
   };
 
   const ppUpdateTareaCantidad = (rubroIdx, tareaIdx, cantidadRaw) => {
-    setPpForm((f) => {
-      const rubros = [...f.rubros];
-      const tareas = [...(rubros[rubroIdx].tareas || [])];
-      const cantVal =
-        cantidadRaw === '' || cantidadRaw == null
-          ? null
-          : Math.max(0, Number(cantidadRaw) || 0) || null;
-      tareas[tareaIdx] = { ...tareas[tareaIdx], cantidad: cantVal };
-      const sumT = tareas.reduce((s, t) => s + (Number(t.cantidad) || 1) * (Number(t.monto) || 0), 0);
-      const tareasRecalc = tareas.map((t) => {
-        const tm = (Number(t.cantidad) || 1) * (Number(t.monto) || 0);
-        const io = sumT > 0 ? (tm / sumT) * 100 : null;
-        return { ...t, incidencia_objetivo_pct: io };
-      });
-      rubros[rubroIdx] = { ...rubros[rubroIdx], monto: sumT, tareas: tareasRecalc };
-      const total = rubros.reduce((s, r) => s + (Number(r.monto) || 0), 0);
-      if (total > 0) {
-        rubros[rubroIdx] = {
-          ...rubros[rubroIdx],
-          incidencia_objetivo_pct: ((Number(rubros[rubroIdx].monto) || 0) / total) * 100,
-        };
-      }
-      return { ...f, rubros };
-    });
+    setPpForm((f) => aplicarUpdateTareaCantidad(f, rubroIdx, tareaIdx, cantidadRaw));
   };
 
   const ppUpdateTareaIncidenciaObjetivo = (rubroIdx, tareaIdx, value) => {
-    setPpForm((f) => {
-      const rubros = [...f.rubros];
-      const tareas = [...(rubros[rubroIdx].tareas || [])];
-      let stored;
-      if (value === '' || value == null) {
-        stored = null;
-      } else if (typeof value === 'string' && /[.,]$/.test(value)) {
-        stored = value;
-      } else {
-        const parsed = Number(value);
-        stored = parsed != null && !Number.isNaN(parsed) ? parsed : null;
-      }
-      tareas[tareaIdx] = { ...tareas[tareaIdx], incidencia_objetivo_pct: stored };
-      const rubroMonto = Number(rubros[rubroIdx].monto) || 0;
-      const tareasDist = distribuirMontosPorIncidenciaTareas(rubroMonto, tareas);
-      rubros[rubroIdx] = { ...rubros[rubroIdx], tareas: tareasDist };
-      return { ...f, rubros };
-    });
+    setPpForm((f) =>
+      aplicarUpdateIncidenciaObjetivoTarea(f, rubroIdx, tareaIdx, value, {
+        modoDistribuir: ppModoDistribuirRef.current,
+      })
+    );
   };
 
   const ppMoveTarea = (rubroIdx, tareaIdx, dir) => {

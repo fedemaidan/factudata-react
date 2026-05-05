@@ -51,6 +51,7 @@ import { calcularCostoM2DataForPdf } from 'src/utils/presupuestos/exportPresupue
 import { buildPresupuestoDraftForPdfPreview } from 'src/utils/presupuestos/buildPresupuestoDraftForPdfPreview';
 import PresupuestoPdfFullPreviewDialog from './PresupuestoPdfFullPreviewDialog';
 import { sumaIncidenciasObjetivo, sumaIncidenciasObjetivoTareas } from './incidenciaHelpers';
+import { sumaEfectivaTareas } from './presupuestosHandlers';
 import MonedasService from 'src/services/monedasService';
 import cacService from 'src/services/cacService';
 import {
@@ -675,6 +676,14 @@ const PresupuestoFormDialog = ({
   const sumaIncidencias = useMemo(() => sumaIncidenciasObjetivo(form.rubros), [form.rubros]);
   const sumaInvalida = sumaIncidencias > 100;
   const sumaBaja = sumaIncidencias < 100 && sumaIncidencias >= 0;
+  // En modo distribuir, detectar desfase entre el total objetivo y la suma real
+  // de rubros (que cambia si el usuario edita cantidad/monto de un subrubro).
+  const totalObjetivoNum = Number(totalObjetivo);
+  const totalObjetivoValido =
+    totalObjetivo !== '' && Number.isFinite(totalObjetivoNum) && totalObjetivoNum > 0;
+  const desfaseTotal = totalObjetivoValido ? totalVivo - totalObjetivoNum : 0;
+  const desfaseTotalSignificativo =
+    modoDistribuir && totalObjetivoValido && Math.abs(desfaseTotal) > 1;
   const logoInputRef = useRef(null);
   const logoPdfEscala = (() => {
     const n = Number(form.logo_pdf_escala);
@@ -862,40 +871,69 @@ const PresupuestoFormDialog = ({
         )}
 
         {modoDistribuir && puedeDistribuirPorIncidencias && (
-          <Stack direction="row" spacing={2} alignItems="center">
-            <TextField
-              size="small"
-              label="Total neto"
-              value={
-                totalObjetivo !== ''
-                  ? formatNumberForInput(totalObjetivo, 2)
-                  : formatNumberForInput(totalVivo, 2)
-              }
-              onChange={(e) => {
-                const raw = e.target.value;
-                if (raw === '') {
-                  onDistribuirPorTotal?.('');
-                  return;
+          <Stack spacing={1}>
+            <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap" useFlexGap>
+              <TextField
+                size="small"
+                label="Total neto"
+                value={
+                  totalObjetivo !== ''
+                    ? formatNumberForInput(totalObjetivo, 2)
+                    : formatNumberForInput(totalVivo, 2)
                 }
-                const v = parseNumberInput(raw);
-                if (v !== null) onDistribuirPorTotal?.(String(v));
-              }}
-              onKeyDown={handleNumericKeyDown}
-              InputProps={{
-                startAdornment: <InputAdornment position="start">$</InputAdornment>,
-              }}
-              inputProps={{ inputMode: 'decimal', autoComplete: 'off' }}
-              sx={{ width: 180 }}
-            />
-            {sumaInvalida && (
-              <Typography variant="body2" color="error">
-                La suma de incidencias supera 100%
-              </Typography>
-            )}
-            {sumaBaja && !sumaInvalida && (
-              <Typography variant="body2" color="warning.main">
-                Falta {(100 - sumaIncidencias).toFixed(1)}% sin asignar
-              </Typography>
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  if (raw === '') {
+                    onDistribuirPorTotal?.('');
+                    return;
+                  }
+                  const v = parseNumberInput(raw);
+                  if (v !== null) onDistribuirPorTotal?.(String(v));
+                }}
+                onKeyDown={handleNumericKeyDown}
+                InputProps={{
+                  startAdornment: <InputAdornment position="start">$</InputAdornment>,
+                }}
+                inputProps={{ inputMode: 'decimal', autoComplete: 'off' }}
+                sx={{ width: 180 }}
+              />
+              {sumaInvalida && (
+                <Typography variant="body2" color="error">
+                  La suma de incidencias supera 100%
+                </Typography>
+              )}
+              {sumaBaja && !sumaInvalida && (
+                <Typography variant="body2" color="warning.main">
+                  Falta {(100 - sumaIncidencias).toFixed(1)}% sin asignar
+                </Typography>
+              )}
+            </Stack>
+            {desfaseTotalSignificativo && (
+              <Box
+                sx={{
+                  px: 1.25,
+                  py: 0.75,
+                  borderRadius: 0.75,
+                  bgcolor: 'rgba(237,108,2,0.08)',
+                  border: '1px solid',
+                  borderColor: 'warning.light',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1,
+                }}
+              >
+                <Typography variant="caption" color="warning.dark" sx={{ lineHeight: 1.5 }}>
+                  <Box component="span" sx={{ fontWeight: 600 }}>
+                    Desfase con el total objetivo:
+                  </Box>{' '}
+                  el total real es {formatCurrency(totalVivo, form.moneda)} (
+                  {desfaseTotal > 0 ? '+' : '−'}
+                  {formatCurrency(Math.abs(desfaseTotal), form.moneda)} respecto al objetivo de{' '}
+                  {formatCurrency(totalObjetivoNum, form.moneda)}). Se produjo por editar{' '}
+                  cantidad o precio en algún subrubro. Volvé a escribir el total para redistribuir,
+                  o ajustá los subrubros.
+                </Typography>
+              </Box>
             )}
           </Stack>
         )}
@@ -981,28 +1019,56 @@ const PresupuestoFormDialog = ({
                     }
                   />
                 )}
-                <TextField
-                  size="small"
-                  label="Monto"
-                  value={formatNumberForInput(rubro.monto, 2)}
-                  onChange={(e) => {
-                    const raw = e.target.value;
-                    if (raw === '') {
-                      updateRubro(ri, 'monto', 0);
-                      return;
-                    }
-                    const v = parseNumberInput(raw);
-                    if (v !== null) updateRubro(ri, 'monto', Math.round(v * 100) / 100);
-                  }}
-                  onKeyDown={handleNumericKeyDown}
-                  sx={{ width: 150 }}
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">$</InputAdornment>
-                    ),
-                  }}
-                  inputProps={{ inputMode: 'decimal', autoComplete: 'off' }}
-                />
+                {(() => {
+                  // Decisión: TextField editable o Chip derivado.
+                  //  - Modo distribuir: TextField (el usuario fija un monto que se reparte).
+                  //  - Modo normal sin desglose (Σ tareas = 0): TextField (rubro suelto).
+                  //  - Modo normal con desglose: Chip derivado (= Σ tareas).
+                  const sumaSubrubros = sumaEfectivaTareas(rubro.tareas);
+                  const esDerivado = !modoDistribuir && sumaSubrubros > 0;
+                  if (esDerivado) {
+                    return (
+                      <Tooltip title="Calculado a partir de los subrubros" placement="top" arrow>
+                        <Chip
+                          label={formatCurrency(Number(rubro.monto) || 0, form.moneda)}
+                          size="small"
+                          sx={{
+                            minWidth: 130,
+                            height: 32,
+                            bgcolor: 'action.hover',
+                            color: 'text.primary',
+                            fontWeight: 600,
+                            '& .MuiChip-label': { px: 1.25 },
+                          }}
+                        />
+                      </Tooltip>
+                    );
+                  }
+                  return (
+                    <TextField
+                      size="small"
+                      label="Monto"
+                      value={formatNumberForInput(rubro.monto, 2)}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        if (raw === '') {
+                          updateRubro(ri, 'monto', 0);
+                          return;
+                        }
+                        const v = parseNumberInput(raw);
+                        if (v !== null) updateRubro(ri, 'monto', Math.round(v * 100) / 100);
+                      }}
+                      onKeyDown={handleNumericKeyDown}
+                      sx={{ width: 150 }}
+                      InputProps={{
+                        startAdornment: (
+                          <InputAdornment position="start">$</InputAdornment>
+                        ),
+                      }}
+                      inputProps={{ inputMode: 'decimal', autoComplete: 'off' }}
+                    />
+                  );
+                })()}
                 {totalVivo > 0 && (Number(rubro.monto) || 0) > 0 && (
                   <Chip
                     label={formatPct(((Number(rubro.monto) || 0) / totalVivo) * 100)}
@@ -1061,9 +1127,21 @@ const PresupuestoFormDialog = ({
                     }}
                   >
                     <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.5 }}>
-                      <Box component="span" sx={{ fontWeight: 600 }}>Descripción:</Box> obligatoria.{' '}
-                      <Box component="span" sx={{ fontWeight: 600 }}>Cantidad y precio:</Box>{' '}
-                      opcionales — para desglosar el importe del rubro.
+                      {modoDistribuir && puedeDistribuirPorIncidencias ? (
+                        <>
+                          <Box component="span" sx={{ fontWeight: 600 }}>Modo distribuir:</Box>{' '}
+                          el sistema reparte el monto del rubro entre los subrubros según el{' '}
+                          <Box component="span" sx={{ fontWeight: 600 }}>% del rubro</Box>{' '}
+                          que asignes. La cantidad y el precio son resultado del cálculo.
+                        </>
+                      ) : (
+                        <>
+                          <Box component="span" sx={{ fontWeight: 600 }}>Descripción:</Box>{' '}
+                          obligatoria.{' '}
+                          <Box component="span" sx={{ fontWeight: 600 }}>Cantidad y precio:</Box>{' '}
+                          opcionales. El total del rubro y del presupuesto se calculan solos.
+                        </>
+                      )}
                     </Typography>
                   </Box>
                 )}
@@ -1225,9 +1303,9 @@ const PresupuestoFormDialog = ({
                           )}
                         </Stack>
 
-                        {/* Campo % del rubro (modo distribuir o rubro con monto) */}
-                        {((modoDistribuir && puedeDistribuirPorIncidencias) ||
-                          ((Number(rubro.monto) || 0) > 0 && (rubro.tareas || []).length > 0)) && (
+                        {/* Campo % del rubro: input solo en modo distribuir.
+                            En modo normal, el % es derivado y se muestra como chip más abajo. */}
+                        {modoDistribuir && puedeDistribuirPorIncidencias && (
                           <TextField
                             size="small"
                             label="% del rubro"
