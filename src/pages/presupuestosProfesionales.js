@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Head from 'next/head';
+import { useRouter } from 'next/router';
 import {
   Alert,
   Box,
@@ -171,6 +172,8 @@ const emptyPlantilla = {
 
 const PresupuestosProfesionales = () => {
   const { user } = useAuthContext();
+  const router = useRouter();
+  const autoOpenedIdRef = useRef(null);
 
   // ── Datos globales ──
   const [empresaId, setEmpresaId] = useState(null);
@@ -498,6 +501,19 @@ const PresupuestosProfesionales = () => {
       showAlert('Error al cargar detalle del presupuesto', 'error');
     }
   };
+
+  // Auto-apertura del form cuando el agente conversacional redirige con ?openId=<id>.
+  // Ej: tras crear un presupuesto profesional desde el chat, abre directo el form en edición.
+  useEffect(() => {
+    if (!router.isReady) return;
+    const { openId } = router.query;
+    if (!openId || autoOpenedIdRef.current === openId) return;
+    if (!empresaId) return;
+    autoOpenedIdRef.current = openId;
+    setCurrentTab(0);
+    handleOpenPPEdit({ _id: openId });
+    router.replace('/presupuestosProfesionales', undefined, { shallow: true });
+  }, [router.isReady, router.query, empresaId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSavePP = async () => {
     if (!empresaId) {
