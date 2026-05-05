@@ -50,6 +50,8 @@ const STEP_DISCREPANCIAS = 3;
 const STEP_RESULTADO = 4;
 // Fase 3: paso de espera mientras DistribuirMaterialesDialog está abierto
 const STEP_DISTRIBUIR = 5;
+// Paso de confirmación antes de crear solicitud (depósito / directo a obra)
+const STEP_CONFIRMACION = 6;
 
 const DESTINOS = {
   ACOPIO: 'acopio',
@@ -189,19 +191,26 @@ const MaterialesFacturaActions = ({
         });
         resultData = { tipo: 'acopio', id: res.data?.acopio_id, data: res.data };
 
-        // Persistir acopio_id en Firestore (solo campos nuevos, no spread completo)
+        // Persistir acopio_id en MongoDB (acumular en array)
+        const acopioId = res.data?.acopio_id;
         await movimientosService.updateMovimiento(movimientoId, {
-          acopio_id: res.data?.acopio_id,
+          acopio_id: acopioId,
+          acopios_ids: [acopioId].filter(Boolean),
           stock_procesado: true,
         });
+
+        // Para acopio: redirigir directamente sin mostrar pantalla de resultado
+        setLoading(false);
+        onComplete?.({ tipo: 'acopio', acopio_id: res.data?.acopio_id });
+        return;
       } else {
         // Solicitud de stock (deposito, directo obra, o pendiente)
         // destino_stock: 'deposito' = reservado en deposito, 'obra' = consumido/entregado en obra
         // subtipo: COMPRA = compra normal, COMPRA_DIRECTA = directo a obra, PENDIENTE_ASIGNAR = sin obra
         let subtipo = 'COMPRA';
         let destinoStock = 'deposito';
-        let proyId = null;
-        let proyNombre = null;
+        let solicProyId = null;
+        let solicProyNombre = null;
 
         if (destino === DESTINOS.DEPOSITO && subOpcion === SUB_DEPOSITO.PENDIENTE) {
           subtipo = 'PENDIENTE_ASIGNAR';
@@ -209,33 +218,34 @@ const MaterialesFacturaActions = ({
         } else if (destino === DESTINOS.DEPOSITO && subOpcion === SUB_DEPOSITO.RESERVADO_OBRA) {
           subtipo = 'COMPRA';
           destinoStock = 'deposito';
-          proyId = proyectoSeleccionado?.id || proyectoSeleccionado?._id;
-          proyNombre = proyectoSeleccionado?.nombre;
+          solicProyId = proyectoSeleccionado?.id || proyectoSeleccionado?._id;
+          solicProyNombre = proyectoSeleccionado?.nombre;
         } else if (destino === DESTINOS.DIRECTO_OBRA) {
           subtipo = 'COMPRA_DIRECTA';
           destinoStock = 'obra';
-          proyId = proyectoSeleccionado?.id || proyectoSeleccionado?._id;
-          proyNombre = proyectoSeleccionado?.nombre;
+          solicProyId = proyectoSeleccionado?.id || proyectoSeleccionado?._id;
+          solicProyNombre = proyectoSeleccionado?.nombre;
         }
 
-        const res = await api.post('/solicitud-material/from-caja', {
+        const solRes = await api.post('/solicitud-material/from-caja', {
           empresa_id: empresaId,
           empresa_nombre: empresaNombre,
           movimiento_caja_id: movimientoId,
           materiales: materialesValidos,
-          proyecto_id: proyId,
-          proyecto_nombre: proyNombre,
+          proyecto_id: solicProyId,
+          proyecto_nombre: solicProyNombre,
           subtipo,
           destino: destinoStock,
           proveedor: nombreProveedor ? { nombre: nombreProveedor } : null,
           validacion_movimientos: stockConfig.validacion_movimientos || false,
         });
-        const data = res.data?.data || res.data;
+        const data = solRes.data?.data || solRes.data;
         resultData = { tipo: 'solicitud', id: data.solicitud_id, data };
 
-        // Persistir solicitud_stock_id en Firestore (solo campos nuevos, no spread completo)
+        // Persistir solicitud_stock_id en MongoDB (acumular en array)
         await movimientosService.updateMovimiento(movimientoId, {
           solicitud_stock_id: data.solicitud_id,
+          solicitudes_stock_ids: [data.solicitud_id].filter(Boolean),
           stock_procesado: true,
         });
       }
@@ -330,8 +340,10 @@ const MaterialesFacturaActions = ({
           } else if (destino === DESTINOS.DISTRIBUIR) {
             setStep(STEP_DISTRIBUIR);
             setOpenDistribuir(true);
-          } else {
+          } else if (destino === DESTINOS.ACOPIO) {
             await crearDestinoConMateriales(statusRes.materiales);
+          } else {
+            setStep(STEP_CONFIRMACION);
           }
           return;
         }
@@ -370,6 +382,12 @@ const MaterialesFacturaActions = ({
       setOpenDistribuir(true);
       return;
     }
+    if (destino === DESTINOS.DEPOSITO || destino === DESTINOS.DIRECTO_OBRA) {
+      setMaterialesExtraidos(materialesResueltos);
+      setStep(STEP_CONFIRMACION);
+      return;
+    }
+    // ACOPIO (y cualquier otro): crear directamente sin paso de confirmacion
     await crearDestinoConMateriales(materialesResueltos);
   }, [destino, materialesExtraidos, resoluciones, crearDestinoConMateriales]);
 
@@ -450,6 +468,7 @@ const MaterialesFacturaActions = ({
     if (step === STEP_DISCREPANCIAS) return 'Revisar datos dudosos';
     if (step === STEP_RESULTADO) return 'Resultado';
     if (step === STEP_DISTRIBUIR) return 'Distribuyendo materiales...';
+    if (step === STEP_CONFIRMACION) return 'Confirmar materiales';
     return '';
   }, [step, destino]);
 
@@ -804,7 +823,7 @@ const MaterialesFacturaActions = ({
             url_imagen_compra: urlImagen ? [urlImagen] : [],
           });
           if (!acopioPrincipal) acopioPrincipal = res.data?.acopio_id;
-          resultados.push({ tipo: 'acopio', id: res.data?.acopio_id, data: res.data });
+          resultados.push({ tipo: 'acopio', id: res.data?.acopio_id, data: res.data, proyecto_nombre, dest, items: materialesNorm.length });
         } else {
           let subtipo = 'COMPRA';
           let destinoStock = 'deposito';
@@ -829,13 +848,21 @@ const MaterialesFacturaActions = ({
           });
           const data = res.data?.data || res.data;
           if (!solicitudPrincipal) solicitudPrincipal = data.solicitud_id;
-          resultados.push({ tipo: 'solicitud', id: data.solicitud_id, data });
+          resultados.push({ tipo: 'solicitud', id: data.solicitud_id, data, proyecto_nombre, dest, items: materialesNorm.length });
         }
       }
 
+      const todasSolicitudes = resultados.filter(r => r.tipo === 'solicitud').map(r => r.id).filter(Boolean);
+      const todosAcopios = resultados.filter(r => r.tipo === 'acopio').map(r => r.id).filter(Boolean);
       const updateData = { stock_procesado: true };
-      if (solicitudPrincipal) updateData.solicitud_stock_id = solicitudPrincipal;
-      if (acopioPrincipal) updateData.acopio_id = acopioPrincipal;
+      if (todasSolicitudes.length) {
+        updateData.solicitud_stock_id = todasSolicitudes[0];
+        updateData.solicitudes_stock_ids = todasSolicitudes;
+      }
+      if (todosAcopios.length) {
+        updateData.acopio_id = todosAcopios[0];
+        updateData.acopios_ids = todosAcopios;
+      }
       await movimientosService.updateMovimiento(movimientoId, updateData);
 
       setResultado({ tipo: 'distribuido', resultados, total: resultados.length });
@@ -847,6 +874,126 @@ const MaterialesFacturaActions = ({
       onError?.(msg);
     }
   }, [empresaId, empresaNombre, movimientoId, urlImagen, nombreProveedor, stockConfig, onError]);
+
+  // --- Confirmar materiales antes de crear solicitud (STEP_CONFIRMACION) ---
+  const handleConfirmConfirmacion = useCallback(async () => {
+    await crearDestinoConMateriales(materialesExtraidos);
+  }, [crearDestinoConMateriales, materialesExtraidos]);
+
+  const patchMaterialExtraido = useCallback((idx, field, value) => {
+    setMaterialesExtraidos((prev) =>
+      prev.map((m, i) => (i === idx ? { ...m, [field]: value } : m))
+    );
+  }, []);
+
+  const removeMaterialExtraido = useCallback((idx) => {
+    setMaterialesExtraidos((prev) => prev.filter((_, i) => i !== idx));
+  }, []);
+
+  const renderStepConfirmacion = () => {
+    let resumenDestino = '';
+    if (destino === DESTINOS.DEPOSITO) {
+      resumenDestino = subOpcion === SUB_DEPOSITO.PENDIENTE
+        ? 'Depósito — Pendiente de asignar'
+        : `Depósito — Reservado para ${proyectoSeleccionado?.nombre || 'obra'}`;
+    } else if (destino === DESTINOS.DIRECTO_OBRA) {
+      resumenDestino = `Directo a obra — ${proyectoSeleccionado?.nombre || ''}`;
+    }
+
+    return (
+      <Stack spacing={2}>
+        <Alert severity="info" variant="outlined" sx={{ py: 0.75 }}>
+          <Typography variant="body2" fontWeight={600}>{resumenDestino}</Typography>
+          <Typography variant="caption" color="text.secondary">
+            Revisá y editá los materiales antes de confirmar
+          </Typography>
+        </Alert>
+
+        {urlImagen && (
+          <Box
+            component="img"
+            src={urlImagen}
+            alt="Factura"
+            sx={{
+              width: '100%',
+              maxHeight: 220,
+              objectFit: 'contain',
+              borderRadius: 1,
+              border: '1px solid',
+              borderColor: 'divider',
+              bgcolor: 'grey.50',
+              cursor: 'zoom-in',
+            }}
+            onClick={() => window.open(urlImagen, '_blank')}
+          />
+        )}
+
+        <Stack spacing={1}>
+          {materialesExtraidos.map((m, i) => {
+            const nombre = m.descripcion || m.nombre || m.Nombre || '';
+            return (
+              <Paper key={i} variant="outlined" sx={{ px: 1.5, py: 1 }}>
+                <Stack direction="row" alignItems="center" spacing={1}>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                      {nombre || `Línea ${i + 1}`}
+                      {(m.codigo || m.SKU) && (
+                        <Typography component="span" variant="caption" color="text.disabled" sx={{ ml: 0.75 }}>
+                          · {m.codigo || m.SKU}
+                        </Typography>
+                      )}
+                    </Typography>
+                    <Stack direction="row" spacing={1}>
+                      <TextField
+                        label="Cantidad"
+                        size="small"
+                        type="number"
+                        value={m.cantidad ?? ''}
+                        onChange={(e) => patchMaterialExtraido(i, 'cantidad', parseFloat(e.target.value) || '')}
+                        inputProps={{ min: 0, step: 'any' }}
+                        sx={{ width: 100 }}
+                      />
+                      <TextField
+                        label="Precio unit."
+                        size="small"
+                        type="number"
+                        value={m.valorUnitario ?? m.precio_unitario ?? ''}
+                        onChange={(e) => {
+                          const v = e.target.value === '' ? null : parseFloat(e.target.value);
+                          patchMaterialExtraido(i, 'valorUnitario', v);
+                        }}
+                        inputProps={{ min: 0, step: 'any' }}
+                        sx={{ width: 120 }}
+                      />
+                      {m.unidad && (
+                        <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center' }}>
+                          {m.unidad}
+                        </Typography>
+                      )}
+                    </Stack>
+                  </Box>
+                  <IconButton
+                    size="small"
+                    onClick={() => removeMaterialExtraido(i)}
+                    aria-label="Eliminar material"
+                    sx={{ color: 'text.disabled', '&:hover': { color: 'error.main' } }}
+                  >
+                    <CloseIcon fontSize="small" />
+                  </IconButton>
+                </Stack>
+              </Paper>
+            );
+          })}
+        </Stack>
+
+        {materialesExtraidos.length === 0 && (
+          <Alert severity="warning" variant="outlined">
+            No quedan materiales. Volvé para reintentar la extracción.
+          </Alert>
+        )}
+      </Stack>
+    );
+  };
 
   const renderStepResultado = () => {
     if (loading) {
@@ -867,6 +1014,16 @@ const MaterialesFacturaActions = ({
     if (!resultado) return null;
 
     // Resultado distribuido
+    const DEST_LABEL = {
+      acopio: 'Acopio',
+      deposito: 'Depósito',
+      obra: 'Directo a obra',
+      pendiente_asignar: 'Pendiente asignar',
+      directo_obra: 'Directo a obra',
+      para_obra: 'Para obra',
+    };
+    const destLabel = (r) => DEST_LABEL[r.dest] || r.dest || (r.tipo === 'acopio' ? 'Acopio' : 'Depósito');
+
     if (resultado.tipo === 'distribuido') {
       return (
         <Paper variant="outlined" sx={{ p: 2, bgcolor: 'success.50', borderColor: 'success.light' }}>
@@ -889,7 +1046,7 @@ const MaterialesFacturaActions = ({
                     : '/movimientosAcopio?acopioId=' + r.id
                 }
               >
-                {r.tipo === 'solicitud' ? `Ver solicitud ${String(r.id || '').slice(-6)}` : `Ver acopio ${String(r.id || '').slice(-6)}`}
+                {[r.proyecto_nombre, `${destLabel(r)} (${r.items ?? '?'} ítems)`].filter(Boolean).join(' · ')}
               </Button>
             ))}
           </Stack>
@@ -972,6 +1129,7 @@ const MaterialesFacturaActions = ({
         {step === STEP_SUBOPCIONES && renderStepSubOpciones()}
         {step === STEP_EXTRACCION && renderStepExtraccion()}
         {step === STEP_DISCREPANCIAS && renderStepDiscrepancias()}
+        {step === STEP_CONFIRMACION && renderStepConfirmacion()}
         {step === STEP_RESULTADO && renderStepResultado()}
       </DialogContent>
 
@@ -984,7 +1142,7 @@ const MaterialesFacturaActions = ({
             disabled={!canConfirmSub || loading}
             startIcon={loading ? <CircularProgress size={16} /> : null}
           >
-            Extraer materiales y crear
+            Extraer materiales
           </Button>
         </DialogActions>
       )}
@@ -996,6 +1154,26 @@ const MaterialesFacturaActions = ({
             onClick={handleConfirmDiscrepancias}
             variant="contained"
             disabled={loading}
+            startIcon={loading ? <CircularProgress size={16} /> : null}
+          >
+            Confirmar
+          </Button>
+        </DialogActions>
+      )}
+
+      {step === STEP_CONFIRMACION && (
+        <DialogActions>
+          <Button
+            onClick={() => setStep(tieneDiscrepancias ? STEP_DISCREPANCIAS : STEP_SUBOPCIONES)}
+            variant="outlined"
+            disabled={loading}
+          >
+            Volver
+          </Button>
+          <Button
+            onClick={handleConfirmConfirmacion}
+            variant="contained"
+            disabled={loading || materialesExtraidos.length === 0}
             startIcon={loading ? <CircularProgress size={16} /> : null}
           >
             Confirmar y crear

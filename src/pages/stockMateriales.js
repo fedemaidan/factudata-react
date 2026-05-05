@@ -197,6 +197,21 @@ const RowItem = memo(
               </Typography>
             );
           })()}
+          {/* Desglose depósito / obra — solo si hay algo en obra (mezcla o solo obra) */}
+          {(row.stock_obra > 0) && (
+            <Stack spacing={0} alignItems="flex-end" sx={{ mt: 0.25 }}>
+              {row.stock_deposito > 0 && (
+                <Typography variant="caption" sx={{ color: '#1565c0', lineHeight: 1.3 }}>
+                  🏪 {row.stock_deposito} dep.
+                </Typography>
+              )}
+              {row.stock_obra > 0 && (
+                <Typography variant="caption" sx={{ color: '#2e7d32', lineHeight: 1.3 }}>
+                  🏗️ {row.stock_obra} obra
+                </Typography>
+              )}
+            </Stack>
+          )}
           {row.tienePendientes && (
             <Tooltip title={`${row.cantidadPendienteEntrega || 0} pendientes de recibir`}>
               <Chip

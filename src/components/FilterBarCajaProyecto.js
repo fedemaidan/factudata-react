@@ -174,7 +174,7 @@ export const FilterBarCajaProyecto = ({
     { name: 'usuarios', label: 'Usuario', type: 'selectMultiple', optionsKey: 'usuarios', visibleIf: () => options?.usuarios?.length > 0 },
     { name: 'tipo', label: 'Tipo', type: 'selectMultiple', options: ['ingreso', 'egreso'], visibleIf: () => true },
     { name: 'moneda', label: 'Moneda', type: 'selectMultiple', optionsKey: 'monedas', visibleIf: () => true },
-    { name: 'proveedores', label: 'Proveedor', type: 'selectMultiple', optionsKey: 'proveedores', visibleIf: (emp) => emp?.proveedores?.length > 0 },
+    { name: 'proveedores', label: 'Proveedor', type: 'selectMultiple', optionsKey: 'proveedores', visibleIf: (emp) => emp?.comprobante_info?.proveedor || options?.proveedores?.length > 0 },
     { name: 'categorias', label: 'Categoría', type: 'selectMultiple', optionsKey: 'categorias', visibleIf: (emp) => (emp?.categorias?.length > 0) || (options?.categorias?.length > 0) },
     { name: 'subcategorias', label: 'Subcategoría', type: 'selectMultiple', optionsKey: 'subcategorias', visibleIf: (emp) => (emp?.comprobante_info?.subcategoria || options?.subcategorias?.length > 0) && (options?.subcategorias?.length > 0) },
     { name: 'medioPago', label: 'Medio de pago', type: 'selectMultiple', optionsKey: 'mediosPago', visibleIf: (emp) => emp?.comprobante_info?.medio_pago || options?.mediosPago?.length > 0 },
@@ -631,10 +631,10 @@ export const FilterBarCajaProyecto = ({
           <Divider orientation="vertical" flexItem />
           {/* Buscar */}
           <TextField
-            value={searchRequiresSubmit ? searchDraft : filters.palabras}
+            value={searchRequiresSubmit ? textDrafts.palabras : filters.palabras}
             onChange={(e) => {
               if (searchRequiresSubmit) {
-                setSearchDraft(e.target.value);
+                setTextDrafts((prev) => ({ ...prev, palabras: e.target.value }));
                 return;
               }
               set('palabras', e.target.value);
@@ -656,7 +656,7 @@ export const FilterBarCajaProyecto = ({
               size="small"
               variant="contained"
               onClick={commitSearchDraft}
-              disabled={Boolean(searchDraft?.trim()) && searchDraft.trim().length < searchMinLength}
+              disabled={Boolean(textDrafts.palabras?.trim()) && textDrafts.palabras.trim().length < searchMinLength}
             >
               Buscar
             </Button>

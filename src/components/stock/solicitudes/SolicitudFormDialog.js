@@ -82,6 +82,7 @@ export default function SolicitudFormDialog({
       proyecto_nombre: '',
       observacion: '',
       id_material: '',
+      precio_unitario: null,
     };
     setMovs((prev) => [...prev, newMov]);
   };
@@ -327,6 +328,8 @@ export default function SolicitudFormDialog({
                   {distribucionPorLinea && !editMode && (
                     <TableCell>DESTINO</TableCell>
                   )}
+                  {/* Precio unitario — siempre visible (opcional) */}
+                  <TableCell align="right">PRECIO ($)</TableCell>
                   <TableCell>OBSERVACIÓN</TableCell>
                   <TableCell align="right">ACCIONES</TableCell>
                 </TableRow>
@@ -346,6 +349,10 @@ export default function SolicitudFormDialog({
                         onMaterialSelect={(mat) => {
                           patchMov(idx, 'id_material', mat.id || null);
                           patchMov(idx, 'nombre_item', mat.label || mat.nombre || '');
+                          // Pre-popularizar precio actual del catálogo si no se cambió manualmente
+                          if (mat.precio_unitario != null) {
+                            patchMov(idx, 'precio_unitario', mat.precio_unitario);
+                          }
                         }}
                         onMaterialCreated={(materialCreado) => {
                           patchMov(idx, 'id_material', materialCreado.id);
@@ -430,6 +437,19 @@ export default function SolicitudFormDialog({
                       </TableCell>
                     )}
 
+                    {/* Precio unitario — siempre editable (opcional) */}
+                    <TableCell align="right" width={110}>
+                      <TextField
+                        type="number"
+                        value={m.precio_unitario ?? ''}
+                        onChange={(e) => patchMov(idx, 'precio_unitario', e.target.value === '' ? null : Number(e.target.value))}
+                        size="small"
+                        sx={{ maxWidth: 100 }}
+                        inputProps={{ min: 0, step: 0.01 }}
+                        placeholder="0"
+                      />
+                    </TableCell>
+
                     <TableCell width={200}>
                       <TextField
                         value={m.observacion || ''}
@@ -452,7 +472,7 @@ export default function SolicitudFormDialog({
                 ))}
                 {movs.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={distribucionPorLinea ? 6 : 5}>
+                    <TableCell colSpan={5 + (distribucionPorLinea && !editMode ? 1 : 0) + ((modalMode === 'ingreso' || form?.tipo === 'INGRESO') && editMode ? 1 : 0)}>
                       <em>Sin movimientos. Agregá al menos uno (opcional).</em>
                     </TableCell>
                   </TableRow>

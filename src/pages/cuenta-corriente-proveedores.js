@@ -4,6 +4,7 @@ import {
   Alert,
   Box,
   Button,
+  Checkbox,
   Chip,
   CircularProgress,
   Container,
@@ -213,21 +214,25 @@ function ListaProveedores({ resumen, loading, onSelect, filtroProveedor, onFiltr
 
 // ─── Nivel 2 — Operaciones del proveedor ────────────────────────────────────
 
-const COL_REMITOS_BASE = [
-  { key: 'fecha_factura', label: 'Fecha' },
-  { key: 'proyecto', label: 'Obra' },
-  { key: 'categoria', label: 'Categoría' },
-  { key: 'estado', label: 'Estado' },
-  { key: 'total', label: 'Saldo prov.', align: 'right' },
-  { key: 'monto_aprobado', label: 'Aprobado', align: 'right', soloAprobado: true },
-  { key: 'diferencia', label: 'Diferencia', align: 'right', soloAprobado: true },
-  { key: 'monto_pagado', label: 'Pagado', align: 'right' },
-];
+function DetalleProveedor({ proveedor, remitos, loading, savingById, draftsById, onChangeDraft, onSaveDraft, tieneMontoAprobado, onPagarUno, selectedForPago, onToggleForPago, onToggleAllForPago }) {
+  // Orden cronológico ascendente para el log
+  const sorted = useMemo(() => [
+    ...remitos].sort((a, b) => {
+    const da = a.fecha_factura ? new Date(a.fecha_factura) : new Date(0);
+    const db = b.fecha_factura ? new Date(b.fecha_factura) : new Date(0);
+    return da - db;
+  }), [remitos]);
 
-function DetalleProveedor({ proveedor, remitos, loading, savingById, draftsById, onChangeDraft, onSaveDraft, tieneMontoAprobado }) {
-  const COL_REMITOS = tieneMontoAprobado
-    ? COL_REMITOS_BASE
-    : COL_REMITOS_BASE.filter((c) => !c.soloAprobado);
+  // Saldo acumulado (running balance)
+  const withSaldo = useMemo(() => {
+    let saldo = 0;
+    return sorted.map((r) => {
+      const debe = normalizeAmount(r.total) || 0;
+      const haber = normalizeAmount(r.monto_pagado) || 0;
+      saldo += debe - haber;
+      return { ...r, _debe: debe, _haber: haber, _saldo: saldo };
+    });
+  }, [sorted]);
 
   const totales = useMemo(() => ({
     total: remitos.reduce((a, r) => a + (normalizeAmount(r.total) || 0), 0),
@@ -235,107 +240,172 @@ function DetalleProveedor({ proveedor, remitos, loading, savingById, draftsById,
     monto_pagado: remitos.reduce((a, r) => a + (normalizeAmount(r.monto_pagado) || 0), 0),
   }), [remitos]);
 
-  const deudaRestante = tieneMontoAprobado
+  const noPagados = useMemo(() => remitos.filter((r) => r.estado !== 'Pagado'), [remitos]);
+  const noPagadosIds = useMemo(() => noPagados.map((r) => r.id || r._id), [noPagados]);
+
+  const saldoFinal = tieneMontoAprobado
     ? totales.monto_aprobado - totales.monto_pagado
     : totales.total - totales.monto_pagado;
   const diferenciaTotalAprobado = totales.total - totales.monto_aprobado;
+  const colSpan = 9 + (tieneMontoAprobado ? 1 : 0);
 
   return (
     <Box>
       <TotalesBar items={[
         { label: 'Operaciones', value: remitos.length },
-        { label: 'Saldo proveedor', value: formatCurrencyWithCode(totales.total) },
+        { label: 'Total facturas', value: formatCurrencyWithCode(totales.total) },
         ...(tieneMontoAprobado ? [
           { label: 'Aprobado', value: formatCurrencyWithCode(totales.monto_aprobado) },
           { label: 'Dif. pedido vs aprobado', value: formatCurrencyWithCode(diferenciaTotalAprobado), color: diferenciaTotalAprobado > 0.005 ? 'warning.main' : 'text.primary' },
         ] : []),
-        { label: 'Pagado', value: formatCurrencyWithCode(totales.monto_pagado) },
-        { label: 'Deuda restante', value: formatCurrencyWithCode(deudaRestante), color: 'error.main' },
+        { label: 'Total pagado', value: formatCurrencyWithCode(totales.monto_pagado) },
+        { label: 'Saldo', value: formatCurrencyWithCode(saldoFinal), color: saldoFinal > 0.005 ? 'error.main' : 'success.main' },
       ]} />
 
       <TableContainer component={Paper} variant="outlined">
-      <Table size="small">
-        <TableHead>
-          <TableRow>
-            {COL_REMITOS.map((col) => (
-              <TableCell key={col.key} align={col.align || 'left'} sx={{ fontWeight: 600 }}>
-                {col.label}
-              </TableCell>
-            ))}
-            <TableCell />
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {loading && (
-            <TableRow>
-              <TableCell colSpan={COL_REMITOS.length + 1} align="center" sx={{ py: 4 }}>
-                <CircularProgress size={24} />
-              </TableCell>
-            </TableRow>
-          )}
-          {!loading && remitos.length === 0 && (
-            <TableRow>
-              <TableCell colSpan={COL_REMITOS.length + 1} align="center" sx={{ py: 4 }}>
-                <Typography variant="body2" color="text.secondary">
-                  No hay operaciones pendientes para este proveedor.
-                </Typography>
-              </TableCell>
-            </TableRow>
-          )}
-          {!loading && remitos.map((rem) => {
-            const id = rem.id || rem._id;
-            const draftAprobado = draftsById[id]?.monto_aprobado;
-            const aprobadoActual = normalizeAmount(rem.monto_aprobado) || 0;
-            const aprobadoDisplay = draftAprobado !== undefined ? draftAprobado : String(aprobadoActual || '');
-            const diferencia = (normalizeAmount(rem.total) || 0) - (normalizeAmount(aprobadoDisplay) || aprobadoActual);
-            const isDirty = draftAprobado !== undefined && normalizeAmount(draftAprobado) !== aprobadoActual;
-            const isSaving = !!savingById[id];
-
-            return (
-              <TableRow key={id}>
-                <TableCell>{formatTimestamp(rem.fecha_factura)}</TableCell>
-                <TableCell>{rem.proyecto_nombre || rem.proyectoNombre || '—'}</TableCell>
-                <TableCell>{rem.categoria || '—'}</TableCell>
-                <TableCell>{renderEstadoChip(rem.estado)}</TableCell>
-                <TableCell align="right">{formatCurrencyWithCode(rem.total)}</TableCell>
-                {tieneMontoAprobado && (
-                  <TableCell align="right">
-                    <TextField
+        <Table size="small">
+          <TableHead>
+            <TableRow sx={{ bgcolor: 'grey.50' }}>
+              <TableCell padding="checkbox">
+                <Tooltip title={selectedForPago?.size === noPagadosIds.length ? 'Deseleccionar todo' : 'Seleccionar todas las pendientes'}>
+                  <span>
+                    <Checkbox
                       size="small"
-                      type="number"
-                      value={aprobadoDisplay}
-                      onChange={(e) => onChangeDraft(id, e.target.value)}
-                      InputProps={{
-                        startAdornment: <InputAdornment position="start">$</InputAdornment>,
-                      }}
-                      sx={{ width: 130 }}
+                      checked={noPagadosIds.length > 0 && selectedForPago?.size === noPagadosIds.length}
+                      indeterminate={(selectedForPago?.size ?? 0) > 0 && selectedForPago.size < noPagadosIds.length}
+                      onChange={(e) => onToggleAllForPago?.(noPagadosIds, e.target.checked)}
+                      disabled={noPagadosIds.length === 0}
                     />
-                  </TableCell>
-                )}
-                {tieneMontoAprobado && (
-                  <TableCell align="right" sx={{ color: diferencia > 0.005 ? 'warning.main' : 'text.secondary' }}>
-                    {formatCurrencyWithCode(diferencia)}
-                  </TableCell>
-                )}
-                <TableCell align="right">{formatCurrencyWithCode(rem.monto_pagado)}</TableCell>
-                <TableCell align="right">
-                  {isDirty && (
-                    <Tooltip title="Guardar aprobado">
-                      <IconButton
-                        size="small"
-                        onClick={() => onSaveDraft(id, rem)}
-                        disabled={isSaving}
-                      >
-                        {isSaving ? <CircularProgress size={14} /> : <SaveOutlinedIcon fontSize="small" />}
-                      </IconButton>
-                    </Tooltip>
-                  )}
+                  </span>
+                </Tooltip>
+              </TableCell>
+              <TableCell sx={{ fontWeight: 600 }}>Fecha</TableCell>
+              <TableCell sx={{ fontWeight: 600 }}>Vencimiento</TableCell>
+              <TableCell sx={{ fontWeight: 600 }}>Código</TableCell>
+              <TableCell sx={{ fontWeight: 600 }}>Obra</TableCell>
+              <TableCell sx={{ fontWeight: 600 }}>Categoría</TableCell>
+              <TableCell sx={{ fontWeight: 600 }}>Estado</TableCell>
+              <TableCell align="right" sx={{ fontWeight: 600 }}>Debe</TableCell>
+              {tieneMontoAprobado && <TableCell align="right" sx={{ fontWeight: 600 }}>Aprobado</TableCell>}
+              <TableCell align="right" sx={{ fontWeight: 600 }}>Haber</TableCell>
+              <TableCell align="right" sx={{ fontWeight: 600, color: 'primary.main' }}>Saldo</TableCell>
+              <TableCell />
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {loading && (
+              <TableRow>
+                <TableCell colSpan={colSpan} align="center" sx={{ py: 4 }}>
+                  <CircularProgress size={24} />
                 </TableCell>
               </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
+            )}
+            {!loading && withSaldo.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={colSpan} align="center" sx={{ py: 4 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    No hay operaciones para este proveedor.
+                  </Typography>
+                </TableCell>
+              </TableRow>
+            )}
+            {!loading && withSaldo.map((rem) => {
+              const id = rem.id || rem._id;
+              const draftAprobado = draftsById[id]?.monto_aprobado;
+              const aprobadoActual = normalizeAmount(rem.monto_aprobado) || 0;
+              const aprobadoDisplay = draftAprobado !== undefined ? draftAprobado : String(aprobadoActual || '');
+              const isDirty = draftAprobado !== undefined && normalizeAmount(draftAprobado) !== aprobadoActual;
+              const isSaving = !!savingById[id];
+              const isPagado = rem.estado === 'Pagado';
+              const vencida = rem.fecha_vencimiento && !isPagado && new Date(rem.fecha_vencimiento) < new Date();
+              const isSelectedForPago = selectedForPago?.has(id);
+
+              return (
+                <TableRow key={id} sx={{ opacity: isPagado ? 0.65 : 1 }}>
+                  <TableCell padding="checkbox">
+                    {!isPagado && (
+                      <Checkbox
+                        size="small"
+                        checked={!!isSelectedForPago}
+                        onChange={() => onToggleForPago?.(id)}
+                      />
+                    )}
+                  </TableCell>
+                  <TableCell>{formatTimestamp(rem.fecha_factura)}</TableCell>
+                  <TableCell sx={{ color: vencida ? 'error.main' : 'inherit' }}>
+                    {rem.fecha_vencimiento ? formatTimestamp(rem.fecha_vencimiento) : '—'}
+                  </TableCell>
+                  <TableCell>
+                    {rem.codigo_operacion ? (
+                      <Typography
+                        component="a"
+                        href={`/movementForm?movimientoId=${id}&lastPageName=CuentaCorriente&lastPageUrl=/cuenta-corriente-proveedores`}
+                        target="_blank"
+                        rel="noopener"
+                        variant="body2"
+                        sx={{ color: 'primary.main', textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}
+                      >
+                        {rem.codigo_operacion}
+                      </Typography>
+                    ) : (
+                      <Typography
+                        component="a"
+                        href={`/movementForm?movimientoId=${id}&lastPageName=CuentaCorriente&lastPageUrl=/cuenta-corriente-proveedores`}
+                        target="_blank"
+                        rel="noopener"
+                        variant="body2"
+                        sx={{ color: 'text.disabled', textDecoration: 'none', '&:hover': { color: 'primary.main', textDecoration: 'underline' } }}
+                      >
+                        ver
+                      </Typography>
+                    )}
+                  </TableCell>
+                  <TableCell>{rem.proyecto_nombre || rem.proyectoNombre || '—'}</TableCell>
+                  <TableCell>{rem.categoria || '—'}</TableCell>
+                  <TableCell>{renderEstadoChip(rem.estado)}</TableCell>
+                  <TableCell align="right">{formatCurrencyWithCode(rem._debe)}</TableCell>
+                  {tieneMontoAprobado && (
+                    <TableCell align="right">
+                      <TextField
+                        size="small"
+                        type="number"
+                        value={aprobadoDisplay}
+                        onChange={(e) => onChangeDraft(id, e.target.value)}
+                        InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment> }}
+                        sx={{ width: 130 }}
+                      />
+                    </TableCell>
+                  )}
+                  <TableCell align="right">{formatCurrencyWithCode(rem._haber)}</TableCell>
+                  <TableCell
+                    align="right"
+                    sx={{ fontWeight: 700, color: rem._saldo > 0.005 ? 'error.main' : 'success.main' }}
+                  >
+                    {formatCurrencyWithCode(rem._saldo)}
+                  </TableCell>
+                  <TableCell align="right">
+                    <Stack direction="row" justifyContent="flex-end" spacing={0.5}>
+                      {isDirty && (
+                        <Tooltip title="Guardar aprobado">
+                          <IconButton size="small" onClick={() => onSaveDraft(id, rem)} disabled={isSaving}>
+                            {isSaving ? <CircularProgress size={14} /> : <SaveOutlinedIcon fontSize="small" />}
+                          </IconButton>
+                        </Tooltip>
+                      )}
+                      {!isDirty && !isPagado && (
+                        <Tooltip title="Registrar pago para esta factura">
+                          <IconButton size="small" onClick={() => onPagarUno?.(rem)} color="primary">
+                            <PaymentsIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      )}
+                    </Stack>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
       </TableContainer>
     </Box>
   );
@@ -377,6 +447,10 @@ export default function CuentaCorrienteProveedoresPage() {
 
   // ImputarPagoDialog
   const [imputarOpen, setImputarOpen] = useState(false);
+  const [remitoInicial, setRemitoInicial] = useState(null);
+
+  // Selección de filas para pago
+  const [selectedForPago, setSelectedForPago] = useState(() => new Set());
 
   // ── scope ──────────────────────────────────────────────────────────────────
   const fetchScopeData = useCallback(async () => {
@@ -430,9 +504,8 @@ export default function CuentaCorrienteProveedoresPage() {
       const params = {
         empresaId: empresa.id,
         tipo: 'egreso',
-        estados: 'Pendiente,Parcialmente Pagado',
         proveedores: proveedor,
-        limit: 200,
+        limit: 500,
         page: 1,
         includeOptions: 'false',
         includeTotals: 'false',
@@ -462,6 +535,11 @@ export default function CuentaCorrienteProveedoresPage() {
   useEffect(() => {
     if (selectedProveedor) fetchRemitos(selectedProveedor);
   }, [selectedProveedor, fetchRemitos]);
+
+  // Reset selección al cambiar proveedor
+  useEffect(() => {
+    setSelectedForPago(new Set());
+  }, [selectedProveedor]);
 
   // ── Handlers inline monto_aprobado ────────────────────────────────────────
   const handleChangeDraft = useCallback((id, value) => {
@@ -508,6 +586,29 @@ export default function CuentaCorrienteProveedoresPage() {
     fetchResumen();
   }, [selectedProveedor, fetchRemitos, fetchResumen]);
 
+  const handlePagarUno = useCallback((rem) => {
+    setRemitoInicial(rem);
+    setImputarOpen(true);
+  }, []);
+
+  const handleCloseImputar = useCallback(() => {
+    setImputarOpen(false);
+    setRemitoInicial(null);
+  }, []);
+
+  const handleToggleForPago = useCallback((id) => {
+    setSelectedForPago((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const handleToggleAllForPago = useCallback((ids, checked) => {
+    setSelectedForPago(checked ? new Set(ids) : new Set());
+  }, []);
+
   // ── Render ────────────────────────────────────────────────────────────────
   if (!tienePermiso) {
     return (
@@ -546,7 +647,7 @@ export default function CuentaCorrienteProveedoresPage() {
                   onClick={() => setImputarOpen(true)}
                   disabled={remitos.length === 0 || loadingRemitos}
                 >
-                  Registrar pago
+                  {selectedForPago.size > 0 ? `Pagar seleccionadas (${selectedForPago.size})` : 'Registrar pago'}
                 </Button>
               )}
               <IconButton
@@ -623,6 +724,10 @@ export default function CuentaCorrienteProveedoresPage() {
               onChangeDraft={handleChangeDraft}
               onSaveDraft={handleSaveDraft}
               tieneMontoAprobado={tieneMontoAprobado}
+              onPagarUno={handlePagarUno}
+              selectedForPago={selectedForPago}
+              onToggleForPago={handleToggleForPago}
+              onToggleAllForPago={handleToggleAllForPago}
             />
           )}
         </Container>
@@ -632,10 +737,12 @@ export default function CuentaCorrienteProveedoresPage() {
       {imputarOpen && (
         <ImputarPagoDialogLazy
           open={imputarOpen}
-          onClose={() => setImputarOpen(false)}
+          onClose={handleCloseImputar}
           onSuccess={handlePagoSuccess}
           proveedor={selectedProveedor}
           remitos={remitos.filter((r) => r.estado !== 'Pagado')}
+          remitoInicial={remitoInicial}
+          selectedIdsInicial={selectedForPago.size > 0 && !remitoInicial ? [...selectedForPago] : null}
         />
       )}
     </DashboardLayout>

@@ -13,6 +13,7 @@ function buildFilterParams(filters = {}) {
   if (filters?.showInsight) params.showInsight = filters.showInsight;
   if (filters?.insightCategory && filters.insightCategory !== 'todos') params.insightCategory = filters.insightCategory;
   if (filters?.insightTypes?.length) params.insightTypes = filters.insightTypes.join(',');
+  if (filters?.agentMode) params.agentMode = 'true';
   return params;
 }
 
@@ -30,28 +31,31 @@ export async function fetchConversations(filters = {}) {
 
 export async function fetchMessages(
   conversationId,
-  { limit = 20, offset = 0, sort = 'desc', sinceCreatedAt, sinceId } = {}
+  { limit = 20, offset = 0, sort = 'desc', sinceCreatedAt, sinceId, agentMode = false } = {}
 ) {
   const params = { limit, offset, sort };
   if (sinceCreatedAt) params.sinceCreatedAt = sinceCreatedAt;
   if (sinceId) params.sinceId = sinceId;
+  if (agentMode) params.agentMode = 'true';
   const { data } = await api.get(`/conversaciones/${conversationId}`, {
     params,
   });
   return data;
 }
 
-export async function fetchRecentMessages({ sinceUpdatedAt, limit = 1000 } = {}) {
+export async function fetchRecentMessages({ sinceUpdatedAt, limit = 1000, agentMode = false } = {}) {
   const params = { limit };
   if (sinceUpdatedAt) params.sinceUpdatedAt = sinceUpdatedAt;
+  if (agentMode) params.agentMode = 'true';
   const { data } = await api.get("/conversaciones/sync", { params });
   return data;
 }
 
-export async function fetchRecentConversations({ sinceUpdatedAt, limit = 0 } = {}) {
+export async function fetchRecentConversations({ sinceUpdatedAt, limit = 0, agentMode = false } = {}) {
   const params = {};
   if (sinceUpdatedAt) params.sinceUpdatedAt = sinceUpdatedAt;
   if (limit > 0) params.limit = limit;
+  if (agentMode) params.agentMode = 'true';
   const { data } = await api.get("/conversaciones/sync/conversations", { params });
   return data;
 }

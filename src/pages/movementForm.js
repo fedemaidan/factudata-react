@@ -31,6 +31,7 @@ import {
   ArrowPathRoundedSquareIcon,
   CheckCircleIcon,
   DocumentMagnifyingGlassIcon,
+  ArrowTopRightOnSquareIcon,
 } from '@heroicons/react/24/outline';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import movimientosService from 'src/services/movimientosService';
@@ -486,6 +487,7 @@ const MovementFormPage = () => {
         
         data.fecha_factura = formatTimestamp(data.fecha_factura);
         if (data.fecha_pago) data.fecha_pago = formatTimestamp(data.fecha_pago);
+        if (data.fecha_vencimiento) data.fecha_vencimiento = formatTimestamp(data.fecha_vencimiento);
         setMovimiento(data);
         
         // Cargar perfil del creador (no crítico si falla)
@@ -503,6 +505,7 @@ const MovementFormPage = () => {
           ...data,
           fecha_factura: data.fecha_factura,
           fecha_pago: data.fecha_pago || '',
+          fecha_vencimiento: data.fecha_vencimiento || '',
 
           tags_extra: data.tags_extra || [],
           caja_chica: data.caja_chica ?? false,
@@ -761,6 +764,7 @@ const createdAtStr = (() => {
       impuestos: [],
       empresa_facturacion: '',
       fecha_pago: '',
+      fecha_vencimiento: '',
       fecha_aprobacion: '',
       dolar_referencia: '',
       dolar_referencia_manual: false,
@@ -782,6 +786,7 @@ const createdAtStr = (() => {
         ...values,
         fecha_factura: dateToTimestamp(fechaFactura),
         fecha_pago: values.fecha_pago ? dateToTimestamp(values.fecha_pago) : null,
+        fecha_vencimiento: values.fecha_vencimiento ? dateToTimestamp(values.fecha_vencimiento) : null,
         fecha_aprobacion: values.fecha_aprobacion ? dateToTimestamp(values.fecha_aprobacion) : null,
         proyecto: effectiveProyectoName,
         proyecto_id: effectiveProyectoId,
@@ -1037,11 +1042,13 @@ const createdAtStr = (() => {
         const data = { ...updated };
         data.fecha_factura = formatTimestamp(data.fecha_factura);
         if (data.fecha_pago) data.fecha_pago = formatTimestamp(data.fecha_pago);
+        if (data.fecha_vencimiento) data.fecha_vencimiento = formatTimestamp(data.fecha_vencimiento);
         formik.setValues({
           ...formik.values,
           ...data,
           fecha_factura: data.fecha_factura,
           fecha_pago: data.fecha_pago || '',
+          fecha_vencimiento: data.fecha_vencimiento || '',
           tags_extra: data.tags_extra || [],
           caja_chica: data.caja_chica ?? false,
           impuestos: data.impuestos || [],
@@ -1168,7 +1175,7 @@ const createdAtStr = (() => {
                         tipo_factura: false, tags_extra: false, caja_chica: false,
                         impuestos: false, numero_factura: false, subtotal: false,
                         cuenta_interna: false, etapa: false, empresa_facturacion: false,
-                        fecha_pago: false, obra: false, cliente: false, factura_cliente: false,
+                        fecha_pago: false, fecha_vencimiento: false, obra: false, cliente: false, factura_cliente: false,
                         dolar_referencia: false, detalle: false, monto_aprobado: false,
                         fecha_aprobacion: false, usuario_aprobacion: false, obs_aprobacion: false,
                       };
@@ -1196,6 +1203,7 @@ const createdAtStr = (() => {
                         { key: 'empresa_facturacion', label: 'Empresa de facturación', configKey: 'empresa_facturacion' },
                         { key: 'factura_cliente', label: 'Factura de cliente', configKey: 'factura_cliente', format: yesNo },
       { key: 'fecha_pago', label: 'Fecha de pago', configKey: 'fecha_pago' },
+      { key: 'fecha_vencimiento', label: 'Fecha de vencimiento', configKey: 'fecha_vencimiento' },
       { key: 'monto_aprobado', label: 'Monto aprobado', configKey: null, format: (v) => formatCurrency(v, 2) },
       { key: 'fecha_aprobacion', label: 'Fecha de aprobación', configKey: null },
       { key: 'usuario_aprobacion', label: 'Aprobado por', configKey: null },
@@ -1472,6 +1480,47 @@ const createdAtStr = (() => {
                         Completar pago
                       </button>
                     )}
+                    {isEditMode && empresa?.stock_config?.caja_a_stock === true && formik.values.categoria === 'Materiales' && (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => { setAccionesOpen(false); setStockPopupOpen(true); }}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-neutral-50"
+                      >
+                        <ArrowTopRightOnSquareIcon className="h-4 w-4 text-neutral-600" />
+                        {(movimiento?.solicitud_stock_id || movimiento?.acopio_id || movimiento?.solicitudes_stock_ids?.length > 0 || movimiento?.acopios_ids?.length > 0)
+                          ? 'Reprocesar materiales'
+                          : 'Procesar materiales'}
+                      </button>
+                    )}
+                    {isEditMode && (movimiento?.solicitudes_stock_ids?.length > 0
+                      ? movimiento.solicitudes_stock_ids
+                      : movimiento?.solicitud_stock_id ? [movimiento.solicitud_stock_id] : []
+                    ).map((sid, idx, arr) => (
+                      <a
+                        key={sid}
+                        href={`/stockSolicitudes?solicitudId=${sid}`}
+                        role="menuitem"
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-neutral-50"
+                      >
+                        <ArrowTopRightOnSquareIcon className="h-4 w-4 text-neutral-600" />
+                        {arr.length > 1 ? `Ver solicitud de stock ${idx + 1}` : 'Ver solicitud de stock'}
+                      </a>
+                    ))}
+                    {isEditMode && (movimiento?.acopios_ids?.length > 0
+                      ? movimiento.acopios_ids
+                      : movimiento?.acopio_id ? [movimiento.acopio_id] : []
+                    ).map((aid, idx, arr) => (
+                      <a
+                        key={aid}
+                        href={`/movimientosAcopio?acopioId=${aid}`}
+                        role="menuitem"
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-neutral-50"
+                      >
+                        <ArrowTopRightOnSquareIcon className="h-4 w-4 text-neutral-600" />
+                        {arr.length > 1 ? `Ver acopio ${idx + 1}` : 'Ver acopio'}
+                      </a>
+                    ))}
                   </div>
                 )}
               </div>
