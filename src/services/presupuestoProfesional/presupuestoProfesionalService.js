@@ -159,21 +159,33 @@ const PresupuestoProfesionalService = {
   /** URL del proxy de imágenes (GCS/Firebase) para evitar CORS. Usar con api.get(proxyUrl, { responseType: 'blob' }) */
   getImageProxyUrl,
 
-  uploadPlantilla: async (files, empresaId, nombrePlantilla, tipoPlantilla) => {
+  uploadPlantilla: async (files, empresaId, nombrePlantilla, tipoPlantilla, sheet) => {
     const formData = new FormData();
-    if (Array.isArray(files)) {
-      files.forEach((file) => formData.append('archivos', file));
+    const list = Array.isArray(files) ? files : [files];
+    if (list.length === 1) {
+      formData.append('archivo', list[0]);
     } else {
-      formData.append('archivo', files);
+      list.forEach((file) => formData.append('archivos', file));
     }
     formData.append('empresa_id', empresaId);
     if (nombrePlantilla) formData.append('nombre_plantilla', nombrePlantilla.trim());
     if (tipoPlantilla) formData.append('tipo_plantilla', tipoPlantilla.trim());
+    if (sheet) formData.append('sheet', sheet);
     const res = await api.post(`${BASE}/plantillas/upload`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
     if (res.status === 200 || res.status === 201) return unwrap(res);
     throw new Error('Error al importar archivo de plantilla');
+  },
+
+  inspectPlantilla: async (file) => {
+    const formData = new FormData();
+    formData.append('archivo', file);
+    const res = await api.post(`${BASE}/plantillas/inspect`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    if (res.status === 200 || res.status === 201) return unwrap(res);
+    throw new Error('Error al inspeccionar archivo');
   },
 };
 

@@ -7,8 +7,12 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  FormControl,
   IconButton,
+  InputLabel,
   LinearProgress,
+  MenuItem,
+  Select,
   Stack,
   TextField,
   Typography,
@@ -47,6 +51,10 @@ const ImportarPlantillaDialog = ({
   onNombreChange,
   onTipoChange,
   status = 'idle',
+  availableSheets = [],
+  selectedSheet = '',
+  onSelectedSheetChange,
+  inspecting = false,
 }) => {
   const draggingIndex = useRef(null);
   const filePreviews = useMemo(
@@ -220,6 +228,33 @@ const ImportarPlantillaDialog = ({
                 páginas.
               </Typography>
             </Stack>
+          )}
+
+          {inspecting && (
+            <Stack direction="row" alignItems="center" spacing={1} sx={{ pl: 0.25 }}>
+              <CircularProgress size={14} thickness={5} />
+              <Typography variant="caption" color="text.secondary">
+                Detectando hojas…
+              </Typography>
+            </Stack>
+          )}
+
+          {!inspecting && availableSheets.length > 1 && (
+            <FormControl fullWidth>
+              <InputLabel id="import-plantilla-sheet-label">Hoja a importar</InputLabel>
+              <Select
+                labelId="import-plantilla-sheet-label"
+                value={selectedSheet}
+                label="Hoja a importar"
+                onChange={(e) => onSelectedSheetChange?.(e.target.value)}
+              >
+                {availableSheets.map((sheet) => (
+                  <MenuItem key={sheet} value={sheet}>
+                    {sheet}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
           )}
 
           <Typography
