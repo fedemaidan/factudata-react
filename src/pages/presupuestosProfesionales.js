@@ -448,6 +448,9 @@ const PresupuestosProfesionales = () => {
           tareas: (r.tareas || []).map((t) => ({
             descripcion: t.descripcion || '',
             monto: t.monto != null && !Number.isNaN(Number(t.monto)) ? Number(t.monto) : null,
+            cantidad: t.cantidad != null && !Number.isNaN(Number(t.cantidad)) && Number(t.cantidad) > 0
+              ? Number(t.cantidad)
+              : null,
             incidencia_objetivo_pct:
               t.incidencia_objetivo_pct != null && !Number.isNaN(Number(t.incidencia_objetivo_pct))
                 ? Number(t.incidencia_objetivo_pct)
@@ -563,6 +566,9 @@ const PresupuestosProfesionales = () => {
               .map((t) => ({
                 descripcion: t.descripcion.trim(),
                 monto: Number(t.monto) || 0,
+                cantidad: t.cantidad != null && !Number.isNaN(Number(t.cantidad)) && Number(t.cantidad) > 0
+                  ? Number(t.cantidad)
+                  : null,
                 incidencia_objetivo_pct:
                   t.incidencia_objetivo_pct != null && !Number.isNaN(Number(t.incidencia_objetivo_pct))
                     ? Number(t.incidencia_objetivo_pct)

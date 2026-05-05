@@ -3,6 +3,7 @@ import {
   Avatar,
   Box,
   Button,
+  Chip,
   CircularProgress,
   Dialog,
   DialogActions,
@@ -1002,10 +1003,20 @@ const PresupuestoFormDialog = ({
                   }}
                   inputProps={{ inputMode: 'decimal', autoComplete: 'off' }}
                 />
-                {totalVivo > 0 && (
-                  <Typography variant="caption" color="text.secondary" sx={{ minWidth: 50 }}>
-                    {formatPct(((Number(rubro.monto) || 0) / totalVivo) * 100)}
-                  </Typography>
+                {totalVivo > 0 && (Number(rubro.monto) || 0) > 0 && (
+                  <Chip
+                    label={formatPct(((Number(rubro.monto) || 0) / totalVivo) * 100)}
+                    size="small"
+                    variant="outlined"
+                    sx={{
+                      fontSize: '0.65rem',
+                      height: 22,
+                      color: 'text.secondary',
+                      borderColor: 'divider',
+                      flexShrink: 0,
+                      '& .MuiChip-label': { px: 0.75 },
+                    }}
+                  />
                 )}
                 <Tooltip title="Subir">
                   <span>
@@ -1032,51 +1043,86 @@ const PresupuestoFormDialog = ({
                 </Tooltip>
               </Stack>
 
-              <Box sx={{ ml: { xs: 0, sm: 4 } }}>
+              <Box sx={{ ml: { xs: 0, sm: 3 } }}>
+                {/* Hint visible siempre que haya subrubros */}
                 {(rubro.tareas || []).length > 0 && (
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1, maxWidth: 560 }}>
-                    Montos e incidencias por subrubro son opcionales: podés dejar solo la descripción y definir el importe
-                    únicamente en el rubro.
-                  </Typography>
-                )}
-                {(rubro.tareas || []).some((t) => (Number(t.monto) || 0) > 0 || t.incidencia_objetivo_pct != null) && (
-                  <Typography
-                    variant="caption"
-                    display="block"
+                  <Box
                     sx={{
-                      mb: 0.75,
-                      color:
-                        sumaIncidenciasObjetivoTareas(rubro.tareas) > 100
-                          ? 'error.main'
-                          : sumaIncidenciasObjetivoTareas(rubro.tareas) > 0 &&
-                              sumaIncidenciasObjetivoTareas(rubro.tareas) < 99.5
-                            ? 'warning.main'
-                            : 'text.secondary',
+                      mb: 1.25,
+                      px: 1.25,
+                      py: 0.6,
+                      bgcolor: 'grey.50',
+                      border: '1px solid',
+                      borderColor: 'divider',
+                      borderRadius: 1,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 0.75,
                     }}
                   >
-                    Subrubros: suma incidencias {sumaIncidenciasObjetivoTareas(rubro.tareas).toFixed(1)}% del rubro
-                    {sumaIncidenciasObjetivoTareas(rubro.tareas) > 100 && ' — no puede superar 100%'}
-                    {sumaIncidenciasObjetivoTareas(rubro.tareas) > 0 &&
-                      sumaIncidenciasObjetivoTareas(rubro.tareas) < 99.5 &&
-                      sumaIncidenciasObjetivoTareas(rubro.tareas) <= 100 &&
-                      ' — falta completar hasta 100% si usás distribución por %'}
-                  </Typography>
+                    <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.5 }}>
+                      <Box component="span" sx={{ fontWeight: 600 }}>Descripción:</Box> obligatoria.{' '}
+                      <Box component="span" sx={{ fontWeight: 600 }}>Cantidad y precio:</Box>{' '}
+                      opcionales — para desglosar el importe del rubro.
+                    </Typography>
+                  </Box>
                 )}
+
+                {/* Warning de incidencias */}
+                {(rubro.tareas || []).some((t) => (Number(t.monto) || 0) > 0 || t.incidencia_objetivo_pct != null) && (() => {
+                  const suma = sumaIncidenciasObjetivoTareas(rubro.tareas);
+                  const isError = suma > 100;
+                  const isWarn = suma > 0 && suma < 99.5;
+                  if (!isError && !isWarn) return null;
+                  return (
+                    <Box
+                      sx={{
+                        mb: 1,
+                        px: 1.25,
+                        py: 0.5,
+                        borderRadius: 0.75,
+                        bgcolor: isError ? 'rgba(211,47,47,0.07)' : 'rgba(237,108,2,0.07)',
+                        border: '1px solid',
+                        borderColor: isError ? 'error.main' : 'warning.main',
+                      }}
+                    >
+                      <Typography variant="caption" color={isError ? 'error.main' : 'warning.main'}>
+                        Subrubros: suma {suma.toFixed(1)}% del rubro
+                        {isError && ' — no puede superar 100%'}
+                        {isWarn && ' — falta completar hasta 100% si usás distribución por %'}
+                      </Typography>
+                    </Box>
+                  );
+                })()}
+
+                {/* Filas de subrubros */}
                 {(rubro.tareas || []).map((tarea, ti) => {
                   const montoRubro = Number(rubro.monto) || 0;
                   const cantidadNum = Number(tarea.cantidad) || 1;
                   const efectiveMonto = cantidadNum * (Number(tarea.monto) || 0);
                   const pctDelRubro = montoRubro > 0 ? (efectiveMonto / montoRubro) * 100 : 0;
+                  const tieneValor = (Number(tarea.monto) || 0) > 0 || tarea.cantidad != null;
                   return (
-                    <Stack key={ti} spacing={0.5} mb={1}>
-                      <Stack direction="row" spacing={1} alignItems="flex-start" flexWrap="wrap">
-                        <Typography variant="caption" color="text.secondary" sx={{ minWidth: 28, pt: 1 }}>
+                    <Box
+                      key={ti}
+                      sx={{
+                        mb: 0.75,
+                        pl: 1.25,
+                        borderLeft: '2px solid',
+                        borderColor: tieneValor ? 'primary.main' : 'divider',
+                        transition: 'border-color 0.15s',
+                      }}
+                    >
+                      <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap">
+                        <Typography variant="caption" color="text.disabled" sx={{ minWidth: 24, flexShrink: 0, lineHeight: '32px' }}>
                           {ri + 1}.{ti + 1}
                         </Typography>
+
+                        {/* Descripción */}
                         <TextField
                           size="small"
-                          sx={{ flex: '1 1 200px', minWidth: 140 }}
-                          placeholder="Descripción (subrubro)"
+                          sx={{ flex: '1 1 180px', minWidth: 130 }}
+                          placeholder="Descripción del subrubro"
                           value={tarea.descripcion}
                           onChange={(e) => updateTarea(ri, ti, e.target.value)}
                           onKeyDown={(e) => {
@@ -1101,56 +1147,85 @@ const PresupuestoFormDialog = ({
                             }
                           }}
                         />
-                        <TextField
-                          size="small"
-                          label="Cant."
-                          placeholder="1"
-                          value={tarea.cantidad != null ? formatNumberForInput(tarea.cantidad, 2) : ''}
-                          onChange={(e) => {
-                            const raw = e.target.value;
-                            if (raw === '') {
-                              onUpdateTareaCantidad?.(ri, ti, null);
-                              return;
-                            }
-                            const v = parseNumberInput(raw);
-                            if (v !== null) onUpdateTareaCantidad?.(ri, ti, v);
+
+                        {/* Bloque de precio: cant × unit = total */}
+                        <Stack
+                          direction="row"
+                          alignItems="center"
+                          spacing={0.5}
+                          sx={{
+                            border: '1px solid',
+                            borderStyle: tieneValor ? 'solid' : 'dashed',
+                            borderColor: tieneValor ? 'primary.main' : 'action.disabledBackground',
+                            borderRadius: 1,
+                            px: 0.75,
+                            py: 0.25,
+                            bgcolor: tieneValor ? 'action.hover' : 'transparent',
+                            transition: 'border-color 0.15s, background-color 0.15s',
                           }}
-                          onKeyDown={handleNumericKeyDown}
-                          sx={{ width: 72 }}
-                          inputProps={{ inputMode: 'decimal', autoComplete: 'off' }}
-                        />
-                        <TextField
-                          size="small"
-                          label={cantidadNum > 1 ? 'Val. unit.' : 'Monto'}
-                          placeholder="Opcional"
-                          value={
-                            tarea.monto == null ? '' : formatNumberForInput(tarea.monto, 2)
-                          }
-                          onChange={(e) => {
-                            const raw = e.target.value;
-                            if (raw === '') {
-                              onUpdateTareaMonto?.(ri, ti, '');
-                              return;
-                            }
-                            const v = parseNumberInput(raw);
-                            if (v !== null) onUpdateTareaMonto?.(ri, ti, String(v));
-                          }}
-                          onKeyDown={handleNumericKeyDown}
-                          sx={{ width: 130 }}
-                          InputProps={{
-                            startAdornment: <InputAdornment position="start">$</InputAdornment>,
-                          }}
-                          inputProps={{ inputMode: 'decimal', autoComplete: 'off' }}
-                        />
-                        {cantidadNum > 1 && (Number(tarea.monto) || 0) > 0 && (
-                          <Typography
-                            variant="caption"
-                            color="text.secondary"
-                            sx={{ pt: 1, minWidth: 80, fontWeight: 600 }}
-                          >
-                            = {formatCurrency(efectiveMonto, form.moneda)}
+                        >
+                          <TextField
+                            size="small"
+                            label="Cant."
+                            placeholder="1"
+                            value={tarea.cantidad != null ? formatNumberForInput(tarea.cantidad, 2) : ''}
+                            onChange={(e) => {
+                              const raw = e.target.value;
+                              if (raw === '') {
+                                onUpdateTareaCantidad?.(ri, ti, null);
+                                return;
+                              }
+                              const v = parseNumberInput(raw);
+                              if (v !== null) onUpdateTareaCantidad?.(ri, ti, v);
+                            }}
+                            onKeyDown={handleNumericKeyDown}
+                            sx={{ width: 62 }}
+                            inputProps={{ inputMode: 'decimal', autoComplete: 'off' }}
+                          />
+                          <Typography variant="caption" color="text.disabled" sx={{ userSelect: 'none', px: 0.25, lineHeight: 1 }}>
+                            ×
                           </Typography>
-                        )}
+                          <TextField
+                            size="small"
+                            label={cantidadNum > 1 ? 'Val. unit.' : 'Precio'}
+                            placeholder="opcional"
+                            value={tarea.monto == null ? '' : formatNumberForInput(tarea.monto, 2)}
+                            onChange={(e) => {
+                              const raw = e.target.value;
+                              if (raw === '') {
+                                onUpdateTareaMonto?.(ri, ti, '');
+                                return;
+                              }
+                              const v = parseNumberInput(raw);
+                              if (v !== null) onUpdateTareaMonto?.(ri, ti, String(v));
+                            }}
+                            onKeyDown={handleNumericKeyDown}
+                            sx={{ width: 118 }}
+                            InputProps={{
+                              startAdornment: <InputAdornment position="start">$</InputAdornment>,
+                            }}
+                            inputProps={{ inputMode: 'decimal', autoComplete: 'off' }}
+                          />
+                          {cantidadNum > 1 && efectiveMonto > 0 && (
+                            <Stack direction="row" alignItems="center" spacing={0.25}>
+                              <Typography variant="caption" color="text.secondary" sx={{ userSelect: 'none' }}>=</Typography>
+                              <Chip
+                                label={formatCurrency(efectiveMonto, form.moneda)}
+                                size="small"
+                                sx={{
+                                  fontWeight: 700,
+                                  fontSize: '0.68rem',
+                                  height: 22,
+                                  bgcolor: 'primary.main',
+                                  color: 'primary.contrastText',
+                                  '& .MuiChip-label': { px: 1 },
+                                }}
+                              />
+                            </Stack>
+                          )}
+                        </Stack>
+
+                        {/* Campo % del rubro (modo distribuir o rubro con monto) */}
                         {((modoDistribuir && puedeDistribuirPorIncidencias) ||
                           ((Number(rubro.monto) || 0) > 0 && (rubro.tareas || []).length > 0)) && (
                           <TextField
@@ -1183,8 +1258,8 @@ const PresupuestoFormDialog = ({
                               }
                             }}
                             onKeyDown={handleNumericKeyDown}
-                            placeholder="Opcional"
-                            sx={{ width: 118, minWidth: 118 }}
+                            placeholder="opcional"
+                            sx={{ width: 100, minWidth: 100 }}
                             inputProps={{ inputMode: 'decimal', autoComplete: 'off' }}
                             error={
                               tarea.incidencia_objetivo_pct != null &&
@@ -1193,46 +1268,62 @@ const PresupuestoFormDialog = ({
                             }
                           />
                         )}
+
+                        {/* % calculado como chip */}
                         {!modoDistribuir && montoRubro > 0 && efectiveMonto > 0 && (
-                          <Typography variant="caption" color="text.secondary" sx={{ pt: 1, minWidth: 56 }}>
-                            {formatPct(pctDelRubro)}
-                          </Typography>
+                          <Chip
+                            label={formatPct(pctDelRubro)}
+                            size="small"
+                            variant="outlined"
+                            sx={{
+                              fontSize: '0.65rem',
+                              height: 22,
+                              color: 'text.secondary',
+                              borderColor: 'divider',
+                              '& .MuiChip-label': { px: 0.75 },
+                            }}
+                          />
                         )}
-                        <Tooltip title="Subir">
-                          <span>
-                            <IconButton size="small" disabled={ti === 0} onClick={() => moveTarea?.(ri, ti, -1)}>
-                              <ArrowUpwardIcon fontSize="small" />
-                            </IconButton>
-                          </span>
-                        </Tooltip>
-                        <Tooltip title="Bajar">
-                          <span>
-                            <IconButton
-                              size="small"
-                              disabled={ti === (rubro.tareas || []).length - 1}
-                              onClick={() => moveTarea?.(ri, ti, 1)}
-                            >
-                              <ArrowDownwardIcon fontSize="small" />
-                            </IconButton>
-                          </span>
-                        </Tooltip>
-                        <IconButton size="small" color="error" onClick={() => removeTarea(ri, ti)}>
-                          <DeleteIcon fontSize="inherit" />
-                        </IconButton>
+
+                        {/* Acciones */}
+                        <Stack direction="row" spacing={0} flexShrink={0}>
+                          <Tooltip title="Subir">
+                            <span>
+                              <IconButton size="small" disabled={ti === 0} onClick={() => moveTarea?.(ri, ti, -1)}>
+                                <ArrowUpwardIcon sx={{ fontSize: 14 }} />
+                              </IconButton>
+                            </span>
+                          </Tooltip>
+                          <Tooltip title="Bajar">
+                            <span>
+                              <IconButton
+                                size="small"
+                                disabled={ti === (rubro.tareas || []).length - 1}
+                                onClick={() => moveTarea?.(ri, ti, 1)}
+                              >
+                                <ArrowDownwardIcon sx={{ fontSize: 14 }} />
+                              </IconButton>
+                            </span>
+                          </Tooltip>
+                          <IconButton size="small" color="error" onClick={() => removeTarea(ri, ti)}>
+                            <DeleteIcon sx={{ fontSize: 14 }} />
+                          </IconButton>
+                        </Stack>
                       </Stack>
-                    </Stack>
+                    </Box>
                   );
                 })}
-                <Tooltip
-                  title="Podés agregar líneas solo con texto, o cargar monto y % del rubro cuando quieras desglosar el importe."
-                  placement="top"
-                >
-                  <span>
-                    <Button size="small" onClick={() => addTarea(ri)} sx={{ mt: 0.5 }}>
-                      + Subrubro
-                    </Button>
-                  </span>
-                </Tooltip>
+
+                <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mt: 0.75 }}>
+                  <Button size="small" onClick={() => addTarea(ri)}>
+                    + Subrubro
+                  </Button>
+                  {(rubro.tareas || []).length === 0 && (
+                    <Typography variant="caption" color="text.disabled" sx={{ fontStyle: 'italic' }}>
+                      opcional — para listar ítems del rubro
+                    </Typography>
+                  )}
+                </Stack>
               </Box>
             </Paper>
           ))}
