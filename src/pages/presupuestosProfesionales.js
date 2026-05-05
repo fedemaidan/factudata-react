@@ -299,8 +299,12 @@ const PresupuestosProfesionales = () => {
     importTipo,
     importPhase,
     fileGroupError,
+    availableSheets,
+    selectedSheet,
+    inspecting,
     setImportName,
     setImportTipo,
+    setSelectedSheet,
     handleOpenImportDialog,
     handleCloseImportDialog,
     handleAddImportFiles,
@@ -1685,6 +1689,10 @@ const PresupuestosProfesionales = () => {
         onNombreChange={setImportName}
         onTipoChange={setImportTipo}
         status={importPhase}
+        availableSheets={availableSheets}
+        selectedSheet={selectedSheet}
+        onSelectedSheetChange={setSelectedSheet}
+        inspecting={inspecting}
       />
 
       {/* ── Snackbar global ── */}
