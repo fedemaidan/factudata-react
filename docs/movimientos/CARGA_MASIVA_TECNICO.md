@@ -88,3 +88,4 @@ archivos → upload a storage → extraerData (categorías/proveedores)
 - Categorías de la empresa (excluyendo "Ingreso dinero" y "Ajuste")
 - Medios de pago
 - Etapas, obras, clientes
+ 
