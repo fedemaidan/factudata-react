@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   Box,
   Button,
@@ -72,9 +72,9 @@ import Paper from '@mui/material/Paper';
 import Menu from '@mui/material/Menu';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
-import { useCallback } from 'react';
 import { getProyectosFromUser } from 'src/services/proyectosService';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
+import AcopioService from 'src/services/acopioService';
 import { formatTimestamp } from 'src/utils/formatters';
 import { Timestamp } from 'firebase/firestore';
 import { Router } from 'react-router-dom';
@@ -82,8 +82,11 @@ import { useRouter } from 'next/router';
 import { NotaPedidoAddDialog } from 'src/components/NotaPedidoAddDialog';
 import NotaPedidoPdfTemplateDialog, { NotaPedidoLogoRequeridoDialog } from 'src/components/NotaPedidoPdfDialogs';
 import { useBreadcrumbs } from 'src/contexts/breadcrumbs-context';
+import StockMaterialesService from 'src/services/stock/stockMaterialesService';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import SettingsIcon from '@mui/icons-material/Settings';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import { downloadNotaPedidoPdf } from 'src/utils/notaPedido/exportNotaPedidoToPdf';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
@@ -104,6 +107,96 @@ const C = {
 };
 
 const font = "'Plus Jakarta Sans', system-ui, sans-serif";
+
+const normalizeComparableText = (value) =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
+
+const getComparableMaterialKeys = (item) => {
+  const keys = new Set();
+  const materialId = item?.material_id ? normalizeComparableText(item.material_id) : '';
+  const materialNombre = normalizeComparableText(item?.material_nombre);
+
+  if (materialId) keys.add(materialId);
+  if (materialNombre) keys.add(materialNombre);
+
+  return keys;
+};
+
+const findStockMatchForItem = (item, stockItems) => {
+  const materialId = item?.material_id ? String(item.material_id) : '';
+  const materialNombre = normalizeComparableText(item?.material_nombre);
+
+  return (stockItems || []).find((stockItem) => {
+    const stockIds = [stockItem?._id, stockItem?.id, stockItem?.id_material]
+      .filter(Boolean)
+      .map((value) => String(value));
+    const stockNames = [stockItem?.nombre, stockItem?.descripcion, stockItem?.desc_material]
+      .filter(Boolean)
+      .map((value) => normalizeComparableText(value));
+
+    return (materialId && stockIds.includes(materialId)) || (materialNombre && stockNames.includes(materialNombre));
+  });
+};
+
+const findAcopioMaterialMatch = (item, materialesAcopiados) => {
+  const comparableKeys = getComparableMaterialKeys(item);
+
+  return (materialesAcopiados || []).find((material) => {
+    const materialKeys = [material?.material_id, material?.id_material, material?.id, material?.codigo, material?.descripcion]
+      .filter(Boolean)
+      .map((value) => normalizeComparableText(value));
+
+    return materialKeys.some((key) => comparableKeys.has(key));
+  });
+};
+
+const formatEstadoDocumento = (estado) => {
+  const raw = String(estado || '').trim();
+  if (!raw) return 'Sin estado';
+  return raw
+    .toLowerCase()
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+};
+
+const getDocumentoEstadoColor = (estado) => {
+  const normalized = normalizeComparableText(estado);
+  if (!normalized) return 'default';
+  if (normalized.includes('entregado') || normalized.includes('confirmado') || normalized.includes('pagado')) return 'success';
+  if (normalized.includes('parcial')) return 'warning';
+  if (normalized.includes('pendiente')) return 'warning';
+  if (normalized.includes('eliminado') || normalized.includes('anulado') || normalized.includes('cancel')) return 'default';
+  return 'info';
+};
+
+const getSeguimientoMaterialColor = (estado) => {
+  if (estado === 'conciliado') return 'success';
+  if (estado === 'parcialmente_conciliado') return 'warning';
+  if (estado === 'no_conciliado') return 'default';
+  return 'default';
+};
+
+const getSeguimientoMaterialLabel = (seguimiento) => {
+  if (!seguimiento) return null;
+  if (seguimiento.conciliado_posteriormente) return 'Conciliado después';
+  if (seguimiento.material_actualizado) return 'Material actualizado';
+  if (seguimiento.estado === 'conciliado') return 'Conciliado';
+  if (seguimiento.estado === 'parcialmente_conciliado') return 'Conciliación parcial';
+  if (seguimiento.estado === 'no_conciliado') return 'Sin conciliar';
+  return null;
+};
+
+const getResolucionTipoLabel = (tipo) => {
+  if (tipo === 'compra') return 'Compra';
+  if (tipo === 'retiro_deposito') return 'Depósito';
+  if (tipo === 'retiro_acopio') return 'Acopio';
+  if (tipo === 'cancelacion') return 'Cancelación';
+  return 'Resolución';
+};
 
 const NotaPedidoPage = () => {
   const router = useRouter();
@@ -133,7 +226,20 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
   const [comentariosCargando, setComentariosCargando] = useState(false);
   const [comentarioEditandoIdx, setComentarioEditandoIdx] = useState(null);
   const [comentarioEditadoTexto, setComentarioEditadoTexto] = useState('');
-  const [drawerTab, setDrawerTab] = useState(0); // 0: Detalles, 1: Comentarios, 2: Historial
+  const [drawerTab, setDrawerTab] = useState(0); // si la nota tiene ítems: 0=Ítems, 1=Detalles, 2=Comentarios, 3=Historial; si no: 0=Detalles, 1=Comentarios, 2=Historial
+  const [empresaData, setEmpresaData] = useState(null);
+  const [acopios, setAcopios] = useState([]);
+  // TAR-324: resolución de ítems
+  const [resolverItemOpen, setResolverItemOpen] = useState(false);
+  const [resolverItemItem, setResolverItemItem] = useState(null);
+  const [resolverItemItems, setResolverItemItems] = useState([]);
+  const [resolverItemTipo, setResolverItemTipo] = useState('compra');
+  const [resolverItemData, setResolverItemData] = useState({});
+  const [resolverItemLoading, setResolverItemLoading] = useState(false);
+  const [resolverConfigTouched, setResolverConfigTouched] = useState(false);
+  const [resolverSuggestion, setResolverSuggestion] = useState(null);
+  const [resolverSuggestionLoading, setResolverSuggestionLoading] = useState(false);
+  const [selectedItemIds, setSelectedItemIds] = useState(new Set());
   const [hoveredComentario, setHoveredComentario] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
   const [mobileMenuAnchor, setMobileMenuAnchor] = useState(null);
@@ -169,12 +275,10 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
     fechaEstimadaFin: 'Finalización estimada',
   };
 
-  const [formData, setFormData] = useState({
-    descripcion: '', proyecto_id: '', estado: '', owner: '', creador: '', proveedor: '', fechaEstimadaFin: ''
-  });
   const [filters, setFilters] = useState({ text: '', estado: '', proyecto_id: '', proveedor: '', misNotas: false });
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
+  const acopioMaterialesCacheRef = useRef({});
   const isMobile = useMediaQuery((theme) => theme.breakpoints.down('sm'), { noSsr: true });
   
   const sortedNotas = useMemo(() => {
@@ -323,6 +427,42 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
 
   const getEmpresaId = () => user?.empresa?.id || user?.empresaData?.id || user?.empresa_id;
 
+  const resolverActions = useMemo(() => {
+    const accionesPerfil = Array.isArray(user?.acciones) ? user.acciones : [];
+    const accionesEmpresa = Array.isArray(user?.empresa?.acciones) ? user.empresa.acciones : [];
+    const accionesEmpresaData = Array.isArray(user?.empresaData?.acciones) ? user.empresaData.acciones : [];
+    return [...new Set([...accionesPerfil, ...accionesEmpresa, ...accionesEmpresaData])];
+  }, [user]);
+
+  const canResolveNotaPedido = resolverActions.includes('RESOLVER_NOTA_PEDIDO');
+
+  const getCantidadPendienteItem = useCallback((item) => {
+    if (!item) return 0;
+
+    const cantidadPedida = Number(item.cantidad || 0);
+    const cantidadResuelta = (item.resoluciones || [])
+      .filter((resolucion) => !resolucion.revertida)
+      .reduce((acc, resolucion) => acc + Number(resolucion.cantidad || 0), 0);
+
+    return Math.max(cantidadPedida - cantidadResuelta, 0);
+  }, []);
+
+  const isItemPendingResolution = useCallback((item) => {
+    if (!item) return false;
+    if (item.estado === 'resuelto' || item.estado === 'cancelado') return false;
+    return getCantidadPendienteItem(item) > 0;
+  }, [getCantidadPendienteItem]);
+
+  const resolverItemsSeleccionados = useMemo(() => {
+    if (!comentariosDialogNota?.items?.length) return [];
+
+    return comentariosDialogNota.items.filter(
+      (item) => selectedItemIds.has(item._id) && isItemPendingResolution(item)
+    );
+  }, [comentariosDialogNota, selectedItemIds, isItemPendingResolution]);
+
+  const isBulkResolution = resolverItemItems.length > 1;
+
   const loadPdfBaseForDrawer = useCallback(async () => {
     const eid = getEmpresaId();
     if (!eid) return;
@@ -337,6 +477,124 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
   useEffect(() => {
     if (comentariosDialogNota) loadPdfBaseForDrawer();
   }, [comentariosDialogNota, loadPdfBaseForDrawer]);
+
+  useEffect(() => {
+    setSelectedItemIds(new Set());
+  }, [comentariosDialogNota?.id]);
+
+  useEffect(() => {
+    if (!resolverItemOpen || resolverItemItems.length === 0) return;
+
+    let cancelled = false;
+
+    const loadSuggestion = async () => {
+      const empresaId = getEmpresaId();
+      if (!empresaId) {
+        if (!cancelled) setResolverSuggestion(null);
+        return;
+      }
+
+      setResolverSuggestionLoading(true);
+
+      try {
+        const analisis = await Promise.all(
+          resolverItemItems.map(async (item) => {
+            const cantidadPendiente = getCantidadPendienteItem(item);
+            let depositoDisponible = false;
+
+            try {
+              const stockResponse = await StockMaterialesService.listarMateriales({
+                empresa_id: empresaId,
+                text: item.material_nombre,
+                limit: 20,
+              });
+              const stockMatch = findStockMatchForItem(item, stockResponse?.items || []);
+              depositoDisponible = Number(stockMatch?.stock || 0) >= cantidadPendiente;
+            } catch (error) {
+              console.error('Error al consultar stock del material:', error);
+            }
+
+            const acopiosDisponibles = [];
+            for (const acopio of acopios) {
+              const materialesAcopiados = await getAcopioMateriales(acopio.id);
+              const matchAcopio = findAcopioMaterialMatch(item, materialesAcopiados);
+              const cantidadDisponible = Number(matchAcopio?.cantidad || 0);
+              if (matchAcopio && cantidadDisponible >= cantidadPendiente) {
+                acopiosDisponibles.push(acopio);
+              }
+            }
+
+            return {
+              item,
+              cantidadPendiente,
+              depositoDisponible,
+              acopiosDisponibles,
+            };
+          })
+        );
+
+        if (cancelled) return;
+
+        const allDeposito = analisis.length > 0 && analisis.every((entry) => entry.depositoDisponible);
+        const commonAcopios = acopios.filter((acopio) =>
+          analisis.every((entry) => entry.acopiosDisponibles.some((candidate) => candidate.id === acopio.id))
+        );
+
+        let nextSuggestion = {
+          tipo: 'compra',
+          mensaje: isBulkResolution
+            ? 'No hay una fuente común con stock suficiente para todos los ítems. Compra es la opción más directa.'
+            : 'No hay stock suficiente detectado en depósito ni en acopio. Compra es la opción sugerida.',
+        };
+
+        if (allDeposito) {
+          nextSuggestion = {
+            tipo: 'retiro_deposito',
+            mensaje: isBulkResolution
+              ? 'Todos los ítems seleccionados tienen stock suficiente en depósito. Se sugiere retiro de depósito.'
+              : 'Hay stock suficiente en depósito para este ítem. Se sugiere retiro de depósito.',
+          };
+        } else if (commonAcopios.length > 0) {
+          nextSuggestion = {
+            tipo: 'retiro_acopio',
+            acopio_id: commonAcopios[0].id,
+            mensaje: isBulkResolution
+              ? `Todos los ítems seleccionados están disponibles en el acopio ${commonAcopios[0].codigo || commonAcopios[0].id}.`
+              : `El ítem está disponible en el acopio ${commonAcopios[0].codigo || commonAcopios[0].id}.`,
+          };
+        }
+
+        setResolverSuggestion(nextSuggestion);
+
+        if (!resolverConfigTouched) {
+          setResolverItemTipo(nextSuggestion.tipo);
+          setResolverItemData((current) => {
+            const nextData = { ...current };
+            if (!isBulkResolution && resolverItemItems[0]) {
+              nextData.cantidad = getCantidadPendienteItem(resolverItemItems[0]);
+            }
+            if (nextSuggestion.tipo === 'retiro_acopio' && nextSuggestion.acopio_id) {
+              nextData.acopio_id = nextSuggestion.acopio_id;
+            } else {
+              delete nextData.acopio_id;
+            }
+            return nextData;
+          });
+        }
+      } catch (error) {
+        console.error('Error al sugerir resolución:', error);
+        if (!cancelled) setResolverSuggestion(null);
+      } finally {
+        if (!cancelled) setResolverSuggestionLoading(false);
+      }
+    };
+
+    loadSuggestion();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [resolverItemOpen, resolverItemItems, acopios, getCantidadPendienteItem, getAcopioMateriales, resolverConfigTouched, isBulkResolution, user]);
 
   const handleDownloadPdfNota = async () => {
     if (!comentariosDialogNota) return;
@@ -383,6 +641,73 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
       else next.add(id);
       return next;
     });
+  }, []);
+
+  const closeResolverDialog = useCallback(() => {
+    setResolverItemOpen(false);
+    setResolverItemItem(null);
+    setResolverItemItems([]);
+    setResolverItemTipo('compra');
+    setResolverItemData({});
+    setResolverConfigTouched(false);
+    setResolverSuggestion(null);
+    setResolverSuggestionLoading(false);
+  }, []);
+
+  const openResolverDialog = useCallback((items) => {
+    const validItems = (Array.isArray(items) ? items : []).filter(Boolean);
+    if (!validItems.length) return;
+
+    const firstItem = validItems[0];
+    const bulk = validItems.length > 1;
+
+    setResolverItemItem(bulk ? null : firstItem);
+    setResolverItemItems(validItems);
+    setResolverItemTipo('compra');
+    setResolverItemData(bulk ? {} : { cantidad: getCantidadPendienteItem(firstItem) });
+    setResolverConfigTouched(false);
+    setResolverSuggestion(null);
+    setResolverItemOpen(true);
+  }, [getCantidadPendienteItem]);
+
+  const updateResolverData = useCallback((updater) => {
+    setResolverConfigTouched(true);
+    setResolverItemData((current) => (typeof updater === 'function' ? updater(current) : updater));
+  }, []);
+
+  const handleToggleSelectedItem = useCallback((itemId) => {
+    setSelectedItemIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(itemId)) next.delete(itemId);
+      else next.add(itemId);
+      return next;
+    });
+  }, []);
+
+  const handleToggleSelectAllPendingItems = useCallback(() => {
+    if (!comentariosDialogNota?.items?.length) return;
+
+    const pendingIds = comentariosDialogNota.items
+      .filter((item) => isItemPendingResolution(item))
+      .map((item) => item._id);
+
+    setSelectedItemIds((prev) => {
+      const allSelected = pendingIds.length > 0 && pendingIds.every((itemId) => prev.has(itemId));
+      if (allSelected) return new Set();
+      return new Set(pendingIds);
+    });
+  }, [comentariosDialogNota, isItemPendingResolution]);
+
+  const getAcopioMateriales = useCallback(async (acopioId) => {
+    if (!acopioId) return [];
+    if (acopioMaterialesCacheRef.current[acopioId]) {
+      return acopioMaterialesCacheRef.current[acopioId];
+    }
+
+    const materiales = await AcopioService.getMaterialesAcopiados(acopioId);
+    const normalized = Array.isArray(materiales) ? materiales : [];
+    acopioMaterialesCacheRef.current[acopioId] = normalized;
+    return normalized;
   }, []);
 
   const toggleSelectAll = useCallback(() => {
@@ -494,12 +819,29 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
       console.error('Error al obtener proyectos:', error);
     }
   }, [user]);
+
+  const fetchAcopios = useCallback(async () => {
+    const empresaId = getEmpresaId();
+    if (!empresaId) {
+      setAcopios([]);
+      return;
+    }
+
+    try {
+      const acopiosData = await AcopioService.listarAcopios(empresaId);
+      setAcopios(Array.isArray(acopiosData) ? acopiosData : []);
+    } catch (error) {
+      console.error('Error al obtener acopios:', error);
+      setAcopios([]);
+    }
+  }, [user]);
   
   
   useEffect(() => {
     const fetchEmpresa = async () => {
       try {
         const empresa = await getEmpresaDetailsFromUser(user);
+        setEmpresaData(empresa);
         const notasEstados = empresa.notas_estados || ["Pendiente", "En proceso", "Completa"]
         setNotasEstados(notasEstados);
       } catch (error) {
@@ -553,8 +895,9 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
     if (user) {
       fetchProfiles();
       fetchProyectos();
+      fetchAcopios();
     }
-  }, [user]);
+  }, [user, fetchProyectos, fetchAcopios]);
   
   const handleAgregarComentario = async () => {
     const texto = nuevoComentarioRef.current.value.trim();
@@ -653,8 +996,120 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
 
   const handleEdit = (nota) => {
     setCurrentNota(nota);
-    setFormData({ descripcion: nota.descripcion, estado: nota.estado, owner: nota.owner, creador: nota.creador, proyecto_id: nota.proyecto_id, proveedor: nota.proveedor, fechaEstimadaFin: nota.fechaEstimadaFin ? new Date(nota.fechaEstimadaFin instanceof Object && nota.fechaEstimadaFin.seconds ? nota.fechaEstimadaFin.seconds * 1000 : nota.fechaEstimadaFin).toISOString().split('T')[0] : '' });
     setIsEditing(true);
+  };
+
+  // TAR-324: resolver ítem de nota de pedido
+  const handleResolverItem = async () => {
+    if (!comentariosDialogNota || resolverItemItems.length === 0) return;
+    setResolverItemLoading(true);
+    try {
+      let latestNota = null;
+      let processed = 0;
+      const errores = [];
+
+      for (const item of resolverItemItems) {
+        try {
+          const idempotency_key = typeof crypto !== 'undefined' && crypto.randomUUID
+            ? crypto.randomUUID()
+            : `${Date.now()}-${Math.random()}`;
+          const cantidadPendiente = getCantidadPendienteItem(item);
+          const proyectoIdFallback = (resolverItemTipo !== 'compra' && !resolverItemData.proyecto_id)
+            ? { proyecto_id: comentariosDialogNota?.proyecto_id }
+            : {};
+          const cantidad = isBulkResolution
+            ? cantidadPendiente
+            : (resolverItemData.cantidad || cantidadPendiente);
+          const requestBody = {
+            idempotency_key,
+            tipo: resolverItemTipo,
+            ...proyectoIdFallback,
+            ...resolverItemData,
+            cantidad,
+          };
+
+          if (isBulkResolution && resolverItemTipo === 'compra') {
+            delete requestBody.total;
+          }
+
+          const result = await notaPedidoService.resolverItem(
+            comentariosDialogNota.id,
+            item._id,
+            requestBody
+          );
+
+          if (result?.nota) {
+            latestNota = result.nota;
+          }
+          processed += 1;
+        } catch (error) {
+          errores.push({ item, error });
+        }
+      }
+
+      if (latestNota) {
+        setComentariosDialogNota(latestNota);
+        setNotas((prev) => prev.map((n) => n.id === latestNota.id ? latestNota : n));
+        setFilteredNotas((prev) => prev.map((n) => n.id === latestNota.id ? latestNota : n));
+      }
+
+      const resolvedIds = new Set(resolverItemItems.map((item) => item._id));
+      setSelectedItemIds((prev) => new Set([...prev].filter((itemId) => !resolvedIds.has(itemId))));
+      closeResolverDialog();
+
+      if (errores.length > 0) {
+        const firstError = errores[0]?.error?.response?.data?.error || 'Error al resolver algunos ítems';
+        setAlert({
+          open: true,
+          message: processed > 0 ? `Se resolvieron ${processed} de ${resolverItemItems.length} ítems. ${firstError}` : firstError,
+          severity: processed > 0 ? 'warning' : 'error',
+        });
+        return;
+      }
+
+      setAlert({
+        open: true,
+        message: isBulkResolution ? `${processed} ítems resueltos con éxito` : 'Ítem resuelto con éxito',
+        severity: 'success',
+      });
+    } catch (err) {
+      const msg = err?.response?.data?.error || 'Error al resolver el ítem';
+      setAlert({ open: true, message: msg, severity: 'error' });
+    } finally {
+      setResolverItemLoading(false);
+    }
+  };
+
+  const handleCancelarItem = async (itemId) => {
+    if (!comentariosDialogNota) return;
+    try {
+      const result = await notaPedidoService.cancelarItem(comentariosDialogNota.id, itemId);
+      if (result?.nota) {
+        setComentariosDialogNota(result.nota);
+        setNotas((prev) => prev.map((n) => n.id === result.nota.id ? result.nota : n));
+        setFilteredNotas((prev) => prev.map((n) => n.id === result.nota.id ? result.nota : n));
+      }
+      setAlert({ open: true, message: 'Ítem cancelado', severity: 'success' });
+    } catch (err) {
+      const msg = err?.response?.data?.error || 'Error al cancelar el ítem';
+      setAlert({ open: true, message: msg, severity: 'error' });
+    }
+  };
+
+  const handleConfirmarEntrega = async (itemId, resolucionId) => {
+    if (!comentariosDialogNota) return;
+    try {
+      const result = await notaPedidoService.confirmarEntrega(comentariosDialogNota.id, itemId, resolucionId);
+      if (result?.nota) {
+        setComentariosDialogNota(result.nota);
+        setNotas((prev) => prev.map((n) => n.id === result.nota.id ? result.nota : n));
+        setFilteredNotas((prev) => prev.map((n) => n.id === result.nota.id ? result.nota : n));
+      }
+      setAlert({ open: true, message: 'Entrega confirmada', severity: 'success' });
+    } catch (err) {
+      const msg = err?.response?.data?.error || 'Error al confirmar la entrega';
+      setAlert({ open: true, message: msg, severity: 'error' });
+    }
   };
 
   const handleSaveNewNote = async (data) => {
@@ -677,6 +1132,7 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
       
       const savedNote = await notaPedidoService.createNota(newNote);
       setNotas([savedNote, ...notas]);
+      setFilteredNotas([savedNote, ...filteredNotas]);
       setAlert({ open: true, message: 'Nota añadida con éxito', severity: 'success' });
       setOpenAddDialog(false);
     } catch (error) {
@@ -696,27 +1152,28 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
   };
   
 
-  const handleSaveEdit = async () => {
+  const handleSaveEdit = async (data) => {
     try {
-      console.log("currentNota", currentNota)
-      console.log("formData", formData)
-      if (formData?.owner) {
-        const ownerObj = profiles.filter( (p) => p.id === formData.owner)[0]
-        formData.owner_name = ownerObj.firstName + " " + ownerObj.lastName
+      if (!currentNota) return;
+
+      const payload = { ...data };
+
+      if (payload?.owner) {
+        const ownerObj = profiles.find((p) => p.id === payload.owner);
+        payload.owner_name = ownerObj ? `${ownerObj.firstName} ${ownerObj.lastName}` : currentNota.owner_name;
       }
 
-      if (formData?.proyecto_id) {
-        const proyectoObj = proyectos.filter( (p) => p.id === formData.proyecto_id)[0]
-        formData.proyecto_nombre = proyectoObj.nombre
+      if (payload?.proyecto_id) {
+        const proyectoObj = proyectos.find((p) => p.id === payload.proyecto_id);
+        payload.proyecto_nombre = proyectoObj ? proyectoObj.nombre : null;
       }
 
-      if (formData?.proyecto_id === '') {
-        formData.proyecto_nombre = null;
-        formData.proyecto_id = null;
+      if (payload?.proyecto_id === '') {
+        payload.proyecto_nombre = null;
+        payload.proyecto_id = null;
       }
 
-      const updatedNota = { ...currentNota, ...formData };
-      console.log("updatedNota", updatedNota)
+      const updatedNota = { ...currentNota, ...payload };
       
       const notaServidor = await notaPedidoService.updateNota(currentNota.id, {
         ...updatedNota,
@@ -1164,7 +1621,7 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
               {paginatedNotas.map((nota) => (
                 <Card
                   key={nota.id}
-                  onClick={() => setComentariosDialogNota(nota)}
+                  onClick={() => { setDrawerTab(0); setComentariosDialogNota(nota); }}
                   sx={{
                     cursor: 'pointer',
                     '&:active': { transform: 'scale(0.98)' },
@@ -1288,6 +1745,7 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
               anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
             >
               <MenuItem onClick={() => {
+                setDrawerTab(0);
                 setComentariosDialogNota(mobileMenuNota);
                 setMobileMenuAnchor(null);
                 setMobileMenuNota(null);
@@ -1407,7 +1865,7 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
               {paginatedNotas.map((nota) => (
                 <TableRow
                   key={nota.id}
-                  onClick={() => setComentariosDialogNota(nota)}
+                  onClick={() => { setDrawerTab(0); setComentariosDialogNota(nota); }}
                   sx={{
                     '&:hover': {
                       backgroundColor: selectedNotaIds.has(nota.id) ? alpha(C.indigo100, 0.7) : 'action.hover',
@@ -1517,6 +1975,7 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
                           variant="outlined"
                           onClick={(e) => {
                             e.stopPropagation();
+                            setDrawerTab(0);
                             setComentariosDialogNota(nota);
                           }}
                           sx={{ cursor: 'pointer' }}
@@ -1585,84 +2044,22 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
     </Paper>
   )}
 
-        {/* Dialog para editar nota */}
-        <Dialog open={isEditing} onClose={() => setIsEditing(false)} maxWidth="sm" fullWidth>
-  <DialogTitle>Editar Nota</DialogTitle>
-  <DialogContent>
-    <Stack spacing={2}>
-      <TextField
-        label="Descripción"
-        value={formData.descripcion}
-        onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })}
-        multiline
-        rows={3}
-        fullWidth
-      />
-      <TextField
-        label="Proveedor"
-        value={formData.proveedor}
-        onChange={(e) => setFormData({ ...formData, proveedor: e.target.value })}
-        fullWidth
-      />
-      <FormControl fullWidth>
-        <InputLabel>Estado</InputLabel>
-        <Select
-          value={formData.estado}
-          onChange={(e) => setFormData({ ...formData, estado: e.target.value })}
-        >
-          {notasEstados.map((estado) => (
-            <MenuItem key={estado} value={estado}>
-              {estado}
-            </MenuItem>
-          ))}
-        </Select>
-      </FormControl>
-      <FormControl fullWidth>
-  <InputLabel>Asignar a</InputLabel>
-  <Select
-    value={formData.owner || ''}
-    onChange={(e) => setFormData({ ...formData, owner: e.target.value })}
-  >
-    {profiles.map((profile) => (
-      <MenuItem key={profile.id} value={profile.id}>
-        {profile.firstName + " "+ profile.lastName}
-      </MenuItem>
-    ))}
-  </Select>
-</FormControl>
-<FormControl fullWidth>
-  <InputLabel>Proyecto</InputLabel>
-  <Select
-    value={formData.proyecto_id || ''}
-    onChange={(e) => setFormData({ ...formData, proyecto_id: e.target.value })}
-  >
-    {proyectos.map((proyecto) => (
-      <MenuItem key={proyecto.id} value={proyecto.id}>
-        {proyecto.nombre}
-      </MenuItem>
-    ))}
-    <MenuItem key='no-definido' value=''>
-        No definido
-      </MenuItem>
-  </Select>
-</FormControl>
-<TextField
-  label="Fecha estimada de finalización"
-  type="date"
-  value={formData.fechaEstimadaFin || ''}
-  onChange={(e) => setFormData({ ...formData, fechaEstimadaFin: e.target.value || null })}
-  fullWidth
-  InputLabelProps={{ shrink: true }}
-/>
-    </Stack>
-  </DialogContent>
-  <DialogActions>
-    <Button onClick={() => setIsEditing(false)}>Cancelar</Button>
-    <Button onClick={handleSaveEdit} variant="contained">
-      Guardar Cambios
-    </Button>
-  </DialogActions>
-</Dialog>
+        <NotaPedidoAddDialog
+          open={isEditing}
+          onClose={() => {
+            setIsEditing(false);
+            setCurrentNota(null);
+          }}
+          onSave={handleSaveEdit}
+          profiles={profiles}
+          proyectos={proyectos}
+          empresa={empresaData}
+          initialData={currentNota}
+          title="Editar Nota"
+          submitLabel="Guardar cambios"
+          showEstado
+          estados={notasEstados}
+        />
 
         <NotaPedidoAddDialog
           open={openAddDialog}
@@ -1670,6 +2067,7 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
           onSave={handleSaveNewNote}
           profiles={profiles}
           proyectos={proyectos}
+          empresa={empresaData}
         />
 
 <Dialog open={openDeleteDialog} onClose={closeDeleteConfirmation}>
@@ -1737,7 +2135,7 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
     setDrawerTab(0);
   }}
   PaperProps={{
-    sx: { width: { xs: '100%', sm: 500 }, p: 0 }
+    sx: { width: { xs: '100%', sm: 680 }, p: 0 }
   }}
 >
   {comentariosDialogNota && (
@@ -1875,7 +2273,8 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
         </Stack>
       </Box>
 
-      {/* Tabs de navegación */}
+      {/* Tabs de navegación — TAR-324: tab Ítems aparece primero cuando la nota tiene ítems estructurados */}
+      {(() => { const _hi = comentariosDialogNota.modo === 'items_estructurados' && (comentariosDialogNota.items?.length || 0) > 0; return null; })()}
       <Tabs 
         value={drawerTab} 
         onChange={(e, v) => setDrawerTab(v)}
@@ -1886,6 +2285,18 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
           '& .MuiTab-root': { minHeight: 48, textTransform: 'none', fontWeight: 500, px: 2 }
         }}
       >
+        {(comentariosDialogNota.modo === 'items_estructurados' && (comentariosDialogNota.items?.length || 0) > 0) && (
+          <Tab
+            label={
+              <Stack direction="row" spacing={1} alignItems="center">
+                <span>Ítems</span>
+                <Chip label={comentariosDialogNota.items.length} size="small" variant="outlined" sx={{ height: 20, fontSize: '0.7rem' }} />
+              </Stack>
+            }
+            icon={<AssignmentIcon sx={{ fontSize: 18 }} />}
+            iconPosition="start"
+          />
+        )}
         <Tab 
           label="Detalles" 
           icon={<DescriptionIcon sx={{ fontSize: 18 }} />} 
@@ -1919,9 +2330,294 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
 
       {/* Contenido por Tab */}
       <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
-        
-        {/* TAB 0: Detalles */}
-        {drawerTab === 0 && (
+
+        {/* TAB Ítems (TAR-324): solo cuando modo items_estructurados — siempre en posición 0 */}
+        {comentariosDialogNota.modo === 'items_estructurados' && (comentariosDialogNota.items?.length || 0) > 0 && drawerTab === 0 && (
+          <Box>
+            {/* ── Batch actions bar ── */}
+            {canResolveNotaPedido && (
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  px: 2,
+                  py: 1.25,
+                  mb: 2,
+                  bgcolor: resolverItemsSeleccionados.length > 0 ? alpha(C.indigo600, 0.06) : alpha(C.slate100, 0.7),
+                  border: '1px solid',
+                  borderColor: resolverItemsSeleccionados.length > 0 ? alpha(C.indigo600, 0.2) : C.slate200,
+                  borderRadius: 2,
+                  transition: 'background-color 0.15s ease, border-color 0.15s ease',
+                }}
+              >
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <Typography
+                    variant="body2"
+                    fontWeight={600}
+                    color={resolverItemsSeleccionados.length > 0 ? 'primary.main' : 'text.secondary'}
+                  >
+                    {resolverItemsSeleccionados.length > 0
+                      ? `${resolverItemsSeleccionados.length} seleccionado${resolverItemsSeleccionados.length !== 1 ? 's' : ''}`
+                      : 'Resolución por lote'}
+                  </Typography>
+                  {resolverItemsSeleccionados.length === 0 && (
+                    <Typography variant="caption" color="text.disabled">
+                      — seleccioná ítems para resolver juntos
+                    </Typography>
+                  )}
+                </Stack>
+                <Stack direction="row" spacing={0.75} alignItems="center">
+                  <Button
+                    size="small"
+                    variant="text"
+                    sx={{
+                      textTransform: 'none',
+                      fontSize: '0.75rem',
+                      color: resolverItemsSeleccionados.length > 0 ? 'error.main' : 'text.secondary',
+                    }}
+                    onClick={handleToggleSelectAllPendingItems}
+                  >
+                    {resolverItemsSeleccionados.length > 0 ? 'Limpiar' : 'Seleccionar pendientes'}
+                  </Button>
+                  {resolverItemsSeleccionados.length > 0 && (
+                    <Button
+                      size="small"
+                      variant="contained"
+                      disableElevation
+                      sx={{ textTransform: 'none', fontSize: '0.75rem', borderRadius: 1.5 }}
+                      onClick={() => openResolverDialog(resolverItemsSeleccionados)}
+                    >
+                      Resolver {resolverItemsSeleccionados.length}
+                    </Button>
+                  )}
+                </Stack>
+              </Box>
+            )}
+
+            {/* ── Items list ── */}
+            <Stack spacing={1.5}>
+              {(comentariosDialogNota.items || []).map((item) => {
+                const estadoColor = { pendiente: 'default', parcial: 'warning', resuelto: 'success', cancelado: 'default' }[item.estado] || 'default';
+                const estadoLabel = { pendiente: 'Pendiente', en_gestion: 'En gestión', parcial: 'Parcial', resuelto: 'Resuelto', cancelado: 'Cancelado' };
+                const estadoBorderColor = { pendiente: C.slate200, parcial: '#fb923c', resuelto: '#22c55e', cancelado: C.slate200 }[item.estado] || C.slate200;
+                const canResolve = canResolveNotaPedido;
+                const canSelect = canResolve && isItemPendingResolution(item);
+                const resoluciones = Array.isArray(item.resoluciones) ? item.resoluciones : [];
+                const tipoBgColor = { compra: '#4f46e5', retiro_deposito: '#7c3aed', retiro_acopio: '#0891b2', cancelacion: '#64748b' };
+
+                return (
+                  <Box
+                    key={item._id}
+                    sx={{
+                      bgcolor: 'background.paper',
+                      borderRadius: 2.5,
+                      border: '1px solid',
+                      borderColor: 'grey.200',
+                      borderLeft: `3px solid ${estadoBorderColor}`,
+                      overflow: 'hidden',
+                      opacity: item.estado === 'cancelado' ? 0.6 : 1,
+                      transition: 'box-shadow 0.15s',
+                      '&:hover': { boxShadow: '0 2px 12px rgba(0,0,0,0.07)' },
+                    }}
+                  >
+                    {/* Item header */}
+                    <Box sx={{ px: 2, py: 1.5, display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+                      {canResolve && (
+                        <Checkbox
+                          size="small"
+                          checked={selectedItemIds.has(item._id)}
+                          disabled={!canSelect}
+                          onChange={() => handleToggleSelectedItem(item._id)}
+                          sx={{ mt: '-2px', ml: '-6px', p: 0.5, flexShrink: 0 }}
+                          inputProps={{ 'aria-label': `Seleccionar ${item.material_nombre}` }}
+                        />
+                      )}
+                      <Box sx={{ flex: 1, minWidth: 0 }}>
+                        <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1}>
+                          <Typography
+                            variant="body2"
+                            fontWeight={700}
+                            sx={{
+                              textDecoration: item.estado === 'cancelado' ? 'line-through' : 'none',
+                              lineHeight: 1.35,
+                              color: item.estado === 'cancelado' ? 'text.disabled' : 'text.primary',
+                            }}
+                          >
+                            {item.material_nombre}
+                          </Typography>
+                          <Chip
+                            label={estadoLabel[item.estado] || item.estado}
+                            size="small"
+                            color={estadoColor}
+                            variant={item.estado === 'resuelto' ? 'filled' : 'outlined'}
+                            sx={{ flexShrink: 0, fontWeight: 600, fontSize: '0.68rem' }}
+                          />
+                        </Stack>
+                        <Typography variant="caption" color="text.disabled" sx={{ mt: 0.25, display: 'block' }}>
+                          {item.cantidad}{item.unidad ? ` ${item.unidad}` : ''}
+                          {item.precio_estimado ? ` · $${item.precio_estimado.toLocaleString('es-AR')}` : ''}
+                          {item.proveedor_override ? ` · ${item.proveedor_override}` : ''}
+                        </Typography>
+                      </Box>
+                    </Box>
+
+                    {/* Resoluciones */}
+                    {resoluciones.length > 0 && (
+                      <Box sx={{ borderTop: '1px solid', borderColor: 'grey.100' }}>
+                        {resoluciones.map((resolucion, idx) => {
+                          const documento = resolucion.documento_relacionado;
+                          const seguimiento = resolucion.seguimiento_material;
+                          const seguimientoLabel = getSeguimientoMaterialLabel(seguimiento);
+                          const tipoBg = tipoBgColor[resolucion.tipo] || '#64748b';
+                          const isLast = idx === resoluciones.length - 1;
+                          return (
+                            <Box
+                              key={resolucion._id || resolucion.idempotency_key}
+                              sx={{
+                                px: 2,
+                                py: 1.25,
+                                display: 'flex',
+                                alignItems: 'flex-start',
+                                gap: 1.5,
+                                borderBottom: isLast ? 'none' : '1px solid',
+                                borderColor: 'grey.100',
+                                bgcolor: resolucion.revertida ? 'grey.50' : alpha(C.slate50, 0.6),
+                                opacity: resolucion.revertida ? 0.55 : 1,
+                              }}
+                            >
+                              {/* Tipo badge */}
+                              <Box sx={{ px: 0.75, py: 0.3, bgcolor: tipoBg, borderRadius: 1, flexShrink: 0, mt: 0.15 }}>
+                                <Typography
+                                  variant="caption"
+                                  fontWeight={700}
+                                  sx={{ color: 'white', whiteSpace: 'nowrap', fontSize: '0.62rem', lineHeight: 1 }}
+                                >
+                                  {getResolucionTipoLabel(resolucion.tipo)}
+                                </Typography>
+                              </Box>
+
+                              {/* Document info */}
+                              <Box sx={{ flex: 1, minWidth: 0 }}>
+                                <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap alignItems="center" sx={{ mb: 0.25 }}>
+                                  {documento?.etiqueta && (
+                                    documento?.href ? (
+                                      <Typography
+                                        component="span"
+                                        variant="caption"
+                                        fontWeight={700}
+                                        sx={{ color: 'primary.main', cursor: 'pointer', '&:hover': { textDecoration: 'underline' }, lineHeight: 1.4 }}
+                                        onClick={() => router.push(documento.href)}
+                                      >
+                                        {documento.etiqueta}
+                                      </Typography>
+                                    ) : (
+                                      <Typography variant="caption" fontWeight={700} color="text.primary">
+                                        {documento.etiqueta}
+                                      </Typography>
+                                    )
+                                  )}
+                                  {documento?.estado && (
+                                    <Chip
+                                      size="small"
+                                      color={getDocumentoEstadoColor(documento.estado)}
+                                      label={formatEstadoDocumento(documento.estado)}
+                                      sx={{ height: 19, fontSize: '0.65rem', fontWeight: 600 }}
+                                    />
+                                  )}
+                                  {seguimientoLabel && (
+                                    <Chip
+                                      size="small"
+                                      color={getSeguimientoMaterialColor(seguimiento?.estado)}
+                                      variant={seguimiento?.estado === 'no_conciliado' ? 'outlined' : 'filled'}
+                                      label={seguimientoLabel}
+                                      sx={{ height: 19, fontSize: '0.65rem', fontWeight: 600 }}
+                                    />
+                                  )}
+                                  {resolucion.revertida && (
+                                    <Chip size="small" variant="outlined" label="Revertida" sx={{ height: 19, fontSize: '0.65rem' }} />
+                                  )}
+                                  {!resolucion.revertida && (resolucion.estado_entrega || 'entregado') === 'en_gestion' && (
+                                    <Chip size="small" color="warning" variant="outlined" label="En gestión" sx={{ height: 19, fontSize: '0.65rem', fontWeight: 600 }} />
+                                  )}
+                                </Stack>
+                                {seguimiento?.descripcion && (
+                                  <Typography variant="caption" color="text.disabled" sx={{ display: 'block', lineHeight: 1.4 }}>
+                                    {seguimiento.descripcion}
+                                  </Typography>
+                                )}
+                              </Box>
+
+                              {/* Marcar entregado button */}
+                              {!resolucion.revertida && (resolucion.estado_entrega || 'entregado') === 'en_gestion' && canResolveNotaPedido && (
+                                <Tooltip title="Marcar entregado">
+                                  <IconButton
+                                    size="small"
+                                    onClick={() => handleConfirmarEntrega(item._id, resolucion._id)}
+                                    sx={{ color: 'success.main', flexShrink: 0, mt: '-2px' }}
+                                  >
+                                    <CheckCircleOutlineIcon sx={{ fontSize: 16 }} />
+                                  </IconButton>
+                                </Tooltip>
+                              )}
+                              {/* Open button */}
+                              {documento?.href && (
+                                <Tooltip title="Abrir documento">
+                                  <IconButton
+                                    size="small"
+                                    onClick={() => router.push(documento.href)}
+                                    sx={{ color: 'primary.main', flexShrink: 0, mt: '-2px' }}
+                                  >
+                                    <OpenInNewIcon sx={{ fontSize: 16 }} />
+                                  </IconButton>
+                                </Tooltip>
+                              )}
+                            </Box>
+                          );
+                        })}
+                      </Box>
+                    )}
+
+                    {/* Actions footer */}
+                    {canResolve && item.estado !== 'resuelto' && item.estado !== 'cancelado' && (
+                      <Box
+                        sx={{
+                          px: 2,
+                          py: 1,
+                          borderTop: '1px solid',
+                          borderColor: 'grey.100',
+                          bgcolor: 'grey.50',
+                          display: 'flex',
+                          justifyContent: 'flex-end',
+                          gap: 0.75,
+                          alignItems: 'center',
+                        }}
+                      >
+                        <Tooltip title="Cancelar ítem">
+                          <IconButton size="small" color="error" onClick={() => handleCancelarItem(item._id)} sx={{ opacity: 0.7, '&:hover': { opacity: 1 } }}>
+                            <DeleteIcon sx={{ fontSize: 17 }} />
+                          </IconButton>
+                        </Tooltip>
+                        <Button
+                          size="small"
+                          variant="contained"
+                          disableElevation
+                          sx={{ textTransform: 'none', fontSize: '0.75rem', px: 1.5, borderRadius: 1.5 }}
+                          onClick={() => openResolverDialog([item])}
+                        >
+                          Resolver
+                        </Button>
+                      </Box>
+                    )}
+                  </Box>
+                );
+              })}
+            </Stack>
+          </Box>
+        )}
+
+        {/* TAB Detalles: índice 0 si no hay ítems, 1 si hay ítems */}
+        {drawerTab === ((comentariosDialogNota.modo === 'items_estructurados' && (comentariosDialogNota.items?.length || 0) > 0) ? 1 : 0) && (
           <Stack spacing={2.5}>
             {/* Descripción */}
             <Box sx={{ p: 2, bgcolor: 'grey.50', borderRadius: 2 }}>
@@ -2003,8 +2699,8 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
           </Stack>
         )}
 
-        {/* TAB 1: Comentarios */}
-        {drawerTab === 1 && (
+        {/* TAB Comentarios */}
+        {drawerTab === ((comentariosDialogNota.modo === 'items_estructurados' && (comentariosDialogNota.items?.length || 0) > 0) ? 2 : 1) && (
           <Stack spacing={2}>
             {/* Input de comentario o archivo */}
             <Box sx={{ 
@@ -2233,7 +2929,7 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
         )}
 
         {/* TAB 2: Historial */}
-        {drawerTab === 2 && (
+        {drawerTab === ((comentariosDialogNota.modo === 'items_estructurados' && (comentariosDialogNota.items?.length || 0) > 0) ? 3 : 2) && (
           <>
             {comentariosDialogNota?.historial?.length > 0 ? (
               <Box sx={{ position: 'relative', pl: 3 }}>
@@ -2349,6 +3045,180 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
     </Box>
   )}
 </Drawer>
+
+{/* TAR-324: Dialog de resolución de ítem */}
+<Dialog
+  open={resolverItemOpen}
+  onClose={closeResolverDialog}
+  maxWidth="xs"
+  fullWidth
+>
+  <DialogTitle>
+    {isBulkResolution
+      ? `Resolver ${resolverItemItems.length} ítems`
+      : `Resolver ítem${resolverItemItem ? `: ${resolverItemItem.material_nombre}` : ''}`}
+  </DialogTitle>
+  <DialogContent>
+    <Stack spacing={2} sx={{ mt: 1 }}>
+      {resolverSuggestionLoading && <LinearProgress />}
+      {resolverSuggestion?.mensaje && <Alert severity="info">{resolverSuggestion.mensaje}</Alert>}
+
+      {isBulkResolution && (
+        <Box sx={{ p: 1.5, bgcolor: 'grey.50', borderRadius: 2, border: '1px solid', borderColor: 'grey.200' }}>
+          <Typography variant="body2" fontWeight={600} sx={{ mb: 0.5 }}>
+            Ítems seleccionados
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            Se va a resolver la cantidad pendiente de cada ítem con los mismos datos de esta operación.
+          </Typography>
+          {resolverItemTipo === 'compra' && (
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+              En compra por lote se reutilizan proveedor, categoría y fecha. El total no se replica para evitar egresos duplicados.
+            </Typography>
+          )}
+          <Stack spacing={0.5} sx={{ mt: 1 }}>
+            {resolverItemItems.map((item) => (
+              <Typography key={item._id} variant="caption" color="text.secondary">
+                {item.material_nombre} · {getCantidadPendienteItem(item)} {item.unidad || ''}
+              </Typography>
+            ))}
+          </Stack>
+        </Box>
+      )}
+
+      <FormControl fullWidth size="small">
+        <InputLabel>Tipo de resolución</InputLabel>
+        <Select
+          value={resolverItemTipo}
+          label="Tipo de resolución"
+          onChange={(e) => {
+            setResolverConfigTouched(true);
+            setResolverItemTipo(e.target.value);
+            setResolverItemData((current) => {
+              const next = {};
+              if (!isBulkResolution && resolverItemItems[0]) {
+                next.cantidad = getCantidadPendienteItem(resolverItemItems[0]);
+              }
+              if (e.target.value === 'retiro_acopio' && current.acopio_id) {
+                next.acopio_id = current.acopio_id;
+              }
+              return next;
+            });
+          }}
+        >
+          <MenuItem value="compra">Compra</MenuItem>
+          <MenuItem value="retiro_deposito">Retiro de depósito</MenuItem>
+          <MenuItem value="retiro_acopio">Retiro de acopio</MenuItem>
+        </Select>
+      </FormControl>
+
+      {resolverItemTipo === 'compra' && (
+        <>
+          {!isBulkResolution && (
+            <TextField
+              label="Cantidad"
+              type="number"
+              size="small"
+              fullWidth
+              inputProps={{ min: 0, step: 'any' }}
+              value={resolverItemData.cantidad || ''}
+              onChange={(e) => updateResolverData((d) => ({ ...d, cantidad: parseFloat(e.target.value) || undefined }))}
+              helperText={resolverItemItem ? `Pendiente: ${getCantidadPendienteItem(resolverItemItem)} ${resolverItemItem.unidad || ''}`.trim() : ''}
+            />
+          )}
+          {!isBulkResolution && (
+            <TextField
+              label="Total"
+              type="number"
+              size="small"
+              fullWidth
+              value={resolverItemData.total || ''}
+              onChange={(e) => updateResolverData((d) => ({ ...d, total: parseFloat(e.target.value) || undefined }))}
+            />
+          )}
+          <TextField
+            select
+            label="Moneda"
+            size="small"
+            fullWidth
+            value={resolverItemData.moneda || 'ARS'}
+            onChange={(e) => updateResolverData((d) => ({ ...d, moneda: e.target.value }))}
+          >
+            <MenuItem value="ARS">ARS</MenuItem>
+            <MenuItem value="USD">USD</MenuItem>
+          </TextField>
+          <TextField
+            label="Proveedor"
+            size="small"
+            fullWidth
+            value={resolverItemData.proveedor || ''}
+            onChange={(e) => updateResolverData((d) => ({ ...d, proveedor: e.target.value }))}
+          />
+          <TextField
+            label="Categoría"
+            size="small"
+            fullWidth
+            value={resolverItemData.categoria || 'Materiales'}
+            onChange={(e) => updateResolverData((d) => ({ ...d, categoria: e.target.value }))}
+          />
+          <TextField
+            label="Fecha de factura"
+            type="date"
+            size="small"
+            fullWidth
+            InputLabelProps={{ shrink: true }}
+            value={resolverItemData.fecha_factura || ''}
+            onChange={(e) => updateResolverData((d) => ({ ...d, fecha_factura: e.target.value }))}
+          />
+        </>
+      )}
+
+      {(resolverItemTipo === 'retiro_deposito' || resolverItemTipo === 'retiro_acopio') && (
+        <>
+          {!isBulkResolution && (
+            <TextField
+              label="Cantidad"
+              type="number"
+              size="small"
+              fullWidth
+              inputProps={{ min: 0, step: 'any' }}
+              value={resolverItemData.cantidad || ''}
+              onChange={(e) => updateResolverData((d) => ({ ...d, cantidad: parseFloat(e.target.value) || undefined }))}
+              helperText={resolverItemItem ? `Pendiente: ${getCantidadPendienteItem(resolverItemItem)} ${resolverItemItem.unidad || ''}`.trim() : ''}
+            />
+          )}
+          {resolverItemTipo === 'retiro_acopio' && (
+            <TextField
+              select
+              label="Acopio"
+              size="small"
+              fullWidth
+              value={resolverItemData.acopio_id || ''}
+              onChange={(e) => updateResolverData((d) => ({ ...d, acopio_id: e.target.value }))}
+              helperText={acopios.length === 0 ? 'No hay acopios disponibles para esta empresa.' : ''}
+            >
+              {acopios.map((acopio) => (
+                <MenuItem key={acopio.id} value={acopio.id}>
+                  {acopio.codigo || acopio.id}{acopio.proveedor ? ` · ${acopio.proveedor}` : ''}
+                </MenuItem>
+              ))}
+            </TextField>
+          )}
+        </>
+      )}
+    </Stack>
+  </DialogContent>
+  <DialogActions>
+    <Button onClick={closeResolverDialog}>Cancelar</Button>
+    <Button
+      onClick={handleResolverItem}
+      variant="contained"
+      disabled={resolverItemLoading || (resolverItemTipo === 'retiro_acopio' && !resolverItemData.acopio_id)}
+    >
+      {resolverItemLoading ? <CircularProgress size={18} color="inherit" /> : 'Confirmar'}
+    </Button>
+  </DialogActions>
+</Dialog>
 
         <Dialog open={openFilters} onClose={() => setOpenFilters(false)} maxWidth="sm" fullWidth>
           <DialogTitle>Filtros</DialogTitle>

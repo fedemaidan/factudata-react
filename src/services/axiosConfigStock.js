@@ -7,7 +7,7 @@ const isProduction = process.env.NODE_ENV === 'production';
 const apiUrl = 'https://api.sorbydata.com/materiales'
 // Crea una instancia de axios
 const api = axios.create({
-    baseURL: apiUrl,
+    baseURL: config.apiUrl,
     headers: {
         'Content-Type': 'application/json'
     }
@@ -21,7 +21,7 @@ const waitForUser = () =>
             else reject(new Error("No hay usuario autenticado"));
         });
     });
-
+ese 
 const waitForAuthReady = async () => {
     if (typeof auth.authStateReady === 'function') {
         await auth.authStateReady();
