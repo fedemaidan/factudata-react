@@ -55,6 +55,7 @@ const emptyIaData = () => ({
   total: '',
   moneda: 'ARS',
   estado: 'Pendiente',
+  monto_pagado: null,
   proyecto_id: '',
   proyecto_nombre: '',
   nombre_proveedor: '',
@@ -62,17 +63,22 @@ const emptyIaData = () => ({
   subcategoria: '',
   observacion: '',
   medio_pago: 'Efectivo',
+  user_phone: '',
 });
 
-function mapPreviewToRows(movimientosPreview) {
-  return (movimientosPreview || []).map((m) => ({
-    clientId: makeClientId(),
-    fila: m.fila,
-    datos_fila: m.datos_fila || {},
-    ia_data: m.ia_data ? { ...m.ia_data } : { ...emptyIaData() },
-    error_extraccion: m.error_extraccion || null,
-    omitido: false,
-  }));
+function mapPreviewToRows(movimientosPreview, defaultUserPhone) {
+  return (movimientosPreview || []).map((m) => {
+    const ia = m.ia_data ? { ...m.ia_data } : { ...emptyIaData() };
+    if (!ia.user_phone && defaultUserPhone) ia.user_phone = defaultUserPhone;
+    return {
+      clientId: makeClientId(),
+      fila: m.fila,
+      datos_fila: m.datos_fila || {},
+      ia_data: ia,
+      error_extraccion: m.error_extraccion || null,
+      omitido: false,
+    };
+  });
 }
 
 function rowIsValid(row, requiereProyecto) {
@@ -86,11 +92,17 @@ function rowIsValid(row, requiereProyecto) {
   if (!d.fecha_factura || String(d.fecha_factura).trim() === '') return false;
   if (d.total === undefined || d.total === null || String(d.total).trim() === '') return false;
   if (requiereProyecto && (!d.proyecto_id || String(d.proyecto_id).trim() === '')) return false;
+  if (d.estado === 'Parcialmente Pagado' && d.accion === 'CREAR_EGRESO') {
+    const mp = Number(d.monto_pagado);
+    const tot = Number(d.total);
+    if (!Number.isFinite(mp) || mp <= 0) return false;
+    if (Number.isFinite(tot) && mp >= tot) return false;
+  }
   return true;
 }
 
 const PasoValidarMovimientosImport = forwardRef(
-  ({ empresa, wizardData, updateWizardData, setLoading: _setLoading, setError, hideNavigation, onNext, onBack }, ref) => {
+  ({ empresa, wizardData, updateWizardData, perfiles = [], setLoading: _setLoading, setError, hideNavigation, onNext, onBack }, ref) => {
     const { user } = useAuthContext();
     const [filas, setFilas] = useState([]);
     const [cargando, setCargando] = useState(true);
@@ -129,7 +141,14 @@ const PasoValidarMovimientosImport = forwardRef(
       }
 
       if (wizardData.previewRowsForValidation?.length > 0) {
-        setFilas(wizardData.previewRowsForValidation);
+        const def = wizardData.creadorDefaultPhone || user?.phone || '';
+        const filasCache = wizardData.previewRowsForValidation.map((r) => ({
+          ...r,
+          ia_data: r.ia_data?.user_phone
+            ? r.ia_data
+            : { ...(r.ia_data || {}), user_phone: def },
+        }));
+        setFilas(filasCache);
         setCargando(false);
         iniciadoRef.current = true;
         return undefined;
@@ -183,7 +202,10 @@ const PasoValidarMovimientosImport = forwardRef(
                   setCargando(false);
                   return true;
                 }
-                const rows = mapPreviewToRows(res.movimientos_preview);
+                const rows = mapPreviewToRows(
+                  res.movimientos_preview,
+                  wizardData.creadorDefaultPhone || user?.phone || '',
+                );
                 setFilas(rows);
                 updateWizardData({
                   movimientosPreviewBruto: res.movimientos_preview,
@@ -384,6 +406,8 @@ const PasoValidarMovimientosImport = forwardRef(
                 <TableCell>Proyecto</TableCell>
                 <TableCell>Proveedor</TableCell>
                 <TableCell>Categoría</TableCell>
+                <TableCell>Estado</TableCell>
+                <TableCell>Creador</TableCell>
                 <TableCell>Validación</TableCell>
                 <TableCell align="right" width={120}>
                   Acciones
@@ -426,6 +450,37 @@ const PasoValidarMovimientosImport = forwardRef(
                     <TableCell>
                       <Typography variant="body2" noWrap sx={{ maxWidth: 100 }}>
                         {d.categoria || '—'}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      {d.estado ? (
+                        <Chip
+                          size="small"
+                          label={
+                            d.estado === 'Parcialmente Pagado' && d.accion === 'CREAR_EGRESO' && d.monto_pagado
+                              ? `Parcial · ${d.monto_pagado}`
+                              : d.estado
+                          }
+                          variant="outlined"
+                          color={
+                            d.estado === 'Pagado'
+                              ? 'success'
+                              : d.estado === 'Parcialmente Pagado'
+                                ? 'warning'
+                                : 'default'
+                          }
+                        />
+                      ) : (
+                        '—'
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2" noWrap sx={{ maxWidth: 120 }}>
+                        {(() => {
+                          const p = perfiles.find((pp) => pp.phone === d.user_phone);
+                          if (p) return `${p.firstName || ''} ${p.lastName || ''}`.trim() || p.phone;
+                          return d.user_phone || '—';
+                        })()}
                       </Typography>
                     </TableCell>
                     <TableCell>
@@ -561,9 +616,15 @@ const PasoValidarMovimientosImport = forwardRef(
                   <Select
                     label="Estado"
                     value={formEdicion.estado || 'Pendiente'}
-                    onChange={(e) =>
-                      setFormEdicion((prev) => ({ ...prev, estado: e.target.value }))
-                    }
+                    onChange={(e) => {
+                      const nuevoEstado = e.target.value;
+                      setFormEdicion((prev) => ({
+                        ...prev,
+                        estado: nuevoEstado,
+                        monto_pagado:
+                          nuevoEstado === 'Parcialmente Pagado' ? prev.monto_pagado : null,
+                      }));
+                    }}
                   >
                     {ESTADO_OPTIONS.map((option) => (
                       <MenuItem key={option} value={option}>
@@ -572,6 +633,40 @@ const PasoValidarMovimientosImport = forwardRef(
                     ))}
                   </Select>
                 </FormControl>
+                {formEdicion.estado === 'Parcialmente Pagado' &&
+                  formEdicion.accion === 'CREAR_EGRESO' && (
+                    <TextField
+                      size="small"
+                      type="number"
+                      label="Monto pagado"
+                      value={formEdicion.monto_pagado ?? ''}
+                      onChange={(e) =>
+                        setFormEdicion((prev) => ({ ...prev, monto_pagado: e.target.value }))
+                      }
+                      fullWidth
+                      required
+                      helperText="Debe ser mayor a 0 y menor al total."
+                    />
+                  )}
+                {perfiles.length > 0 && (
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Creador</InputLabel>
+                    <Select
+                      label="Creador"
+                      value={formEdicion.user_phone || ''}
+                      onChange={(e) =>
+                        setFormEdicion((prev) => ({ ...prev, user_phone: e.target.value }))
+                      }
+                    >
+                      {perfiles.map((p) => (
+                        <MenuItem key={p.id || p.phone} value={p.phone}>
+                          {`${p.firstName || ''} ${p.lastName || ''}`.trim() || p.phone}
+                          {p.phone ? ` (${p.phone})` : ''}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                )}
                 {proyectos.length > 0 && (
                   <FormControl fullWidth size="small">
                     <InputLabel>Proyecto</InputLabel>

@@ -32,8 +32,8 @@ La carga masiva permite al usuario crear múltiples movimientos en una sola sesi
 | 2 | **Planilla:** sube hasta 10 archivos (`.csv`, `.xlsx`, `.xls`; ~10 MB c/u). Para Excel multi-hoja, selecciona hojas. |
 | 3 | **Categorías:** revisión y mapeo de categorías detectadas. |
 | 4 | **Proveedores:** revisión y mapeo de proveedores detectados. |
-| 5 | **Aclaraciones:** instrucciones adicionales para la IA. |
-| 6 | **Validación:** tabla con filas procesadas por IA. Se puede editar, omitir o aprobar cada fila. |
+| 5 | **Aclaraciones:** instrucciones adicionales para la IA + selector "Creador del lote" (default = usuario logueado). Aplica a todas las filas; se puede sobrescribir por fila en el paso siguiente. |
+| 6 | **Validación:** tabla con filas procesadas por IA. Se puede editar, omitir o aprobar cada fila. La tabla muestra columnas adicionales **Estado** y **Creador**. En el modal de edición se puede modificar estado (`Pendiente / Parcialmente Pagado / Pagado`), `monto_pagado` (solo si Parcialmente Pagado + egreso) y creador. |
 | 7 | **Resumen:** confirmación final y creación de movimientos. |
 
 ## Límites y constantes
@@ -56,3 +56,5 @@ La carga masiva permite al usuario crear múltiples movimientos en una sola sesi
 - Archivos que no se puedan analizar se marcan con error y formulario manual.
 - Alertas con reintento para fallas de red o análisis.
 - Validación de campos obligatorios antes de confirmar (proyecto si aplica, total, fecha).
+- Si el estado es `Parcialmente Pagado` en un egreso, `monto_pagado` debe ser `> 0` y `< total`.
+- El creador override por fila se valida en backend contra los perfiles de la empresa; si el `user_phone` no pertenece, se ignora silenciosamente y se usa el del usuario que importa.
