@@ -29,6 +29,7 @@ import {
   Delete as DeleteIcon
 } from '@mui/icons-material';
 import importMovimientosService from 'src/services/importMovimientosService';
+import { buscarCanonicoEnLista } from 'src/utils/normalizarNombre';
 
 const PasoRevisarCategorias = forwardRef(({
   empresa,
@@ -174,62 +175,51 @@ const PasoRevisarCategorias = forwardRef(({
       
       // Crear el mapeo correcto usando la relación del backend
       const categoriasConSubcategorias = categorias_detectadas.map(nombreCategoria => {
+        // Match contra empresa.categorias: detecta exacto y variantes (case/acentos/espacios)
+        const matchCat = buscarCanonicoEnLista(nombreCategoria, empresa.categorias || []);
+        const categoriaExistente = matchCat.canonico
+          ? (empresa.categorias || []).find((c) => c?.name === matchCat.canonico)
+          : null;
+
         const subcategoriasDeEstaCategoria = (relacion_categoria_subcategoria[nombreCategoria] || []).map(subNombre => {
           // Validar que subNombre existe y no es undefined
           if (!subNombre || typeof subNombre !== 'string') {
             console.warn(`[PasoRevisarCategorias] subNombre inválido:`, subNombre);
             return null;
           }
-          
-          // Buscar si existe como subcategoría independiente
-          const subcategoriaIndependiente = empresa.subcategorias?.find(sub => 
-            sub?.name && sub.name.toLowerCase() === subNombre.toLowerCase()
-          );
-          
-          // Buscar si existe como subcategoría anidada en alguna categoría
-          let subcategoriaAnidada = null;
-          if (!subcategoriaIndependiente && empresa.categorias) {
-            for (const categoria of empresa.categorias) {
-              if (categoria.subcategorias) {
-                subcategoriaAnidada = categoria.subcategorias.find(sub => {
-                  // Manejar tanto strings como objetos
-                  const subName = typeof sub === 'string' ? sub : sub?.name;
-                  return subName && subName.toLowerCase() === subNombre.toLowerCase();
-                });
-                if (subcategoriaAnidada) break;
-              }
-            }
+
+          // Si la categoría padre existe (exacta o variante), buscar la sub dentro de su lista
+          let matchSub = { estado: 'nueva', canonico: null };
+          if (categoriaExistente?.subcategorias) {
+            const subsPadre = categoriaExistente.subcategorias.map((s) =>
+              typeof s === 'string' ? { name: s } : s
+            );
+            matchSub = buscarCanonicoEnLista(subNombre, subsPadre);
           }
-          
-          const subcategoriaExistente = subcategoriaIndependiente || subcategoriaAnidada;
-          
-          // Obtener el nombre de la subcategoría existente (puede ser string u objeto)
-          const nombreExistente = subcategoriaExistente 
-            ? (typeof subcategoriaExistente === 'string' ? subcategoriaExistente : subcategoriaExistente.name)
-            : subNombre;
-          
+          // Fallback: si la categoría es nueva o no matcheó arriba, probar subcategorías independientes
+          if (matchSub.estado === 'nueva' && empresa.subcategorias) {
+            const matchInd = buscarCanonicoEnLista(subNombre, empresa.subcategorias);
+            if (matchInd.estado !== 'nueva') matchSub = matchInd;
+          }
+
           return {
             nombre: subNombre,
-            estado: subcategoriaExistente ? 'existe' : 'nueva',
-            accion: subcategoriaExistente ? 'usar_existente' : 'crear_nueva', 
-            mapeoA: nombreExistente,
-            categoria_padre: nombreCategoria
+            estado: matchSub.estado, // 'existe' | 'variante' | 'nueva'
+            accion: matchSub.estado === 'nueva' ? 'crear_nueva' : 'usar_existente',
+            mapeoA: matchSub.canonico || subNombre,
+            categoria_padre: nombreCategoria,
           };
-        }).filter(sub => sub !== null); // Filtrar elementos inválidos
-        
+        }).filter(sub => sub !== null);
+
         console.log(`[PasoRevisarCategorias] DEBUG - Categoria "${nombreCategoria}" tiene ${subcategoriasDeEstaCategoria.length} subcategorías:`, subcategoriasDeEstaCategoria);
-        
-        // Buscar si la categoría existe en la empresa
-        const categoriaExistente = empresa.categorias?.find(cat => 
-          cat?.name && nombreCategoria && cat.name.toLowerCase() === nombreCategoria.toLowerCase()
-        );
-        
+
         return {
           nombre: nombreCategoria,
-          estado: categoriaExistente ? 'existe' : 'nueva',
-          accion: categoriaExistente ? 'usar_existente' : 'crear_nueva',
-          mapeoA: categoriaExistente ? categoriaExistente.name : nombreCategoria,
-          subcategorias: subcategoriasDeEstaCategoria
+          estado: matchCat.estado, // 'existe' | 'variante' | 'nueva'
+          accion: matchCat.estado === 'nueva' ? 'crear_nueva' : 'usar_existente',
+          coincidencia: matchCat.canonico,
+          mapeoA: matchCat.canonico || nombreCategoria,
+          subcategorias: subcategoriasDeEstaCategoria,
         };
       });
       
@@ -269,7 +259,7 @@ const PasoRevisarCategorias = forwardRef(({
   const handleCambioAccion = (index, nuevaAccion) => {
     const nuevosMapeos = [...mapeosCategorias];
     nuevosMapeos[index].accion = nuevaAccion;
-    
+
     if (nuevaAccion === 'crear_nueva') {
       nuevosMapeos[index].mapeoA = nuevosMapeos[index].nombre;
       nuevosMapeos[index].categoriaDestino = null;
@@ -277,8 +267,12 @@ const PasoRevisarCategorias = forwardRef(({
       // Limpiar mapeoA y preparar para seleccionar categoría destino
       nuevosMapeos[index].mapeoA = null;
       nuevosMapeos[index].categoriaDestino = null;
+    } else if (nuevaAccion === 'usar_existente') {
+      // Restaurar al canónico detectado por la comparación normalizada
+      nuevosMapeos[index].mapeoA = nuevosMapeos[index].coincidencia || nuevosMapeos[index].nombre;
+      nuevosMapeos[index].categoriaDestino = null;
     }
-    
+
     setMapeosCategorias(nuevosMapeos);
   };
 
@@ -455,7 +449,8 @@ const PasoRevisarCategorias = forwardRef(({
   const getEstadoColor = (estado) => {
     switch (estado) {
       case 'nueva': return 'warning';
-      default: return 'success'; // Para 'existe' o cualquier otro estado
+      case 'variante': return 'info';
+      default: return 'success'; // 'existe'
     }
   };
 
@@ -661,30 +656,37 @@ const PasoRevisarCategorias = forwardRef(({
                       <TableCell>
                         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                           <Chip
-                            icon={categoria.estado !== 'nueva' ? <CheckCircleIcon /> : <WarningIcon />}
+                            icon={categoria.estado === 'nueva' ? <WarningIcon /> : <CheckCircleIcon />}
                             label={
-                              categoria.accion === 'mapear_a_existente' 
-                                ? 'Mapear a existente' 
-                                : (categoria.estado !== 'nueva' ? 'Existe en Sorby' : 'Nueva - Se creará')
+                              categoria.accion === 'mapear_a_existente'
+                                ? 'Mapear a existente'
+                                : categoria.estado === 'variante'
+                                  ? `Variante de "${categoria.mapeoA}"`
+                                  : categoria.estado === 'nueva'
+                                    ? 'Nueva - Se creará'
+                                    : 'Existe en Sorby'
                             }
                             color={
-                              categoria.accion === 'mapear_a_existente' 
-                                ? 'secondary' 
+                              categoria.accion === 'mapear_a_existente'
+                                ? 'secondary'
                                 : getEstadoColor(categoria.estado)
                             }
                             size="small"
                           />
-                          
-                          {/* Selector para categorías nuevas: crear o mapear */}
-                          {categoria.estado === 'nueva' && (
-                            <FormControl size="small" sx={{ minWidth: 150 }}>
+
+                          {/* Selector para categorías nuevas o variantes: crear o usar existente/mapear */}
+                          {(categoria.estado === 'nueva' || categoria.estado === 'variante') && (
+                            <FormControl size="small" sx={{ minWidth: 180 }}>
                               <Select
                                 value={categoria.accion || 'crear_nueva'}
                                 onChange={(e) => handleCambioAccion(categoriaIndex, e.target.value)}
                                 size="small"
                               >
+                                {categoria.estado === 'variante' && (
+                                  <MenuItem value="usar_existente">✓ Usar "{categoria.mapeoA}"</MenuItem>
+                                )}
                                 <MenuItem value="crear_nueva">✨ Crear nueva</MenuItem>
-                                <MenuItem value="mapear_a_existente">🔄 Mapear a existente</MenuItem>
+                                <MenuItem value="mapear_a_existente">🔄 Mapear a otra existente</MenuItem>
                               </Select>
                             </FormControl>
                           )}
