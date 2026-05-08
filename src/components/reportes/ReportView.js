@@ -4,18 +4,20 @@ import MetricCardsBlock from './blocks/MetricCardsBlock';
 import SummaryTableBlock from './blocks/SummaryTableBlock';
 import MovementsTableBlock from './blocks/MovementsTableBlock';
 import BudgetVsActualBlock from './blocks/BudgetVsActualBlock';
+import MonthlyBudgetControlBlock from './blocks/MonthlyBudgetControlBlock';
 import ChartBlock from './blocks/ChartBlock';
 import GroupedDetailBlock from './blocks/GroupedDetailBlock';
 import CategoryBudgetMatrixBlock from './blocks/CategoryBudgetMatrixBlock';
 import BalanceBetweenPartnersBlock from './blocks/BalanceBetweenPartnersBlock';
 import DrillDownDialog from './DrillDownDialog';
-import { executeReport } from 'src/tools/reportEngine';
+import { executeReport, filterMovimientos } from 'src/tools/reportEngine';
 
 const BLOCK_COMPONENTS = {
   metric_cards: MetricCardsBlock,
   summary_table: SummaryTableBlock,
   movements_table: MovementsTableBlock,
   budget_vs_actual: BudgetVsActualBlock,
+  monthly_budget_control: MonthlyBudgetControlBlock,
   category_budget_matrix: CategoryBudgetMatrixBlock,
   chart: ChartBlock,
   grouped_detail: GroupedDetailBlock,
@@ -42,10 +44,14 @@ const ReportView = ({ reportConfig, movimientos = [], presupuestos = [], display
 
   const handleDrillDown = useCallback((movsArray, titulo) => {
     if (!movsArray || movsArray.length === 0) return;
-    setDrillDownMovs(movsArray);
+    const scopedMovs = reportContext?.filters
+      ? filterMovimientos(movsArray, reportContext.filters, reportContext)
+      : movsArray;
+    if (scopedMovs.length === 0) return;
+    setDrillDownMovs(scopedMovs);
     setDrillDownTitulo(titulo || 'Detalle de movimientos');
     setDrillDownOpen(true);
-  }, []);
+  }, [reportContext]);
 
   const results = useMemo(() => {
     if (!reportConfig?.layout?.length) return [];
