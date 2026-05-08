@@ -211,12 +211,17 @@ const ClienteCelulandiaCCPage = () => {
   );
 
   const handleEdit = useCallback((item) => {
-    const dataParaEditar =
-      item?.itemType === "cuentaPendiente"
-        ? normalizarCuentaPendienteParaEditar(item)
-        : item?.originalData
-        ? parseMovimiento(item.originalData)
-        : null;
+    let dataParaEditar = null;
+    if (item?.itemType === "cuentaPendiente") {
+      dataParaEditar = normalizarCuentaPendienteParaEditar(item);
+    } else if (item?.originalData) {
+      const original = item.originalData;
+      const cajaPoblada =
+        original?.caja && typeof original.caja === "object"
+          ? original.caja
+          : cajas.find((c) => c?._id === original?.caja) || null;
+      dataParaEditar = parseMovimiento({ ...original, caja: cajaPoblada });
+    }
 
     setSelectedData(dataParaEditar);
     setSelectedItemType(item.itemType);
@@ -225,7 +230,7 @@ const ClienteCelulandiaCCPage = () => {
     } else {
       setEditarEntregaModalOpen(true);
     }
-  }, [normalizarCuentaPendienteParaEditar]);
+  }, [normalizarCuentaPendienteParaEditar, cajas]);
 
   const handleViewHistory = useCallback(
     (item) => {
