@@ -58,6 +58,7 @@ import { getEmpresaById, getEmpresaDetailsFromUser } from 'src/services/empresaS
 import proveedorService from 'src/services/proveedorService';
 import { getProyectosFromUser } from 'src/services/proyectosService';
 import { formatCurrency, formatTimestamp } from 'src/utils/formatters';
+import { getClasificacionesEfectivas } from 'src/utils/presupuestoLegacy';
 import dayjs from 'dayjs';
 import PresupuestoDrawer from 'src/components/PresupuestoDrawer';
 import Tooltip from '@mui/material/Tooltip';
@@ -732,6 +733,7 @@ const ControlPresupuestosPage = () => {
       fecha_presupuesto: item.fecha_presupuesto || null,
       tipo: item.tipo || 'egreso',
       proveedor: item.proveedor || null,
+      clasificaciones: getClasificacionesEfectivas(item),
       categoria: item.categoria || null,
       subcategoria: item.subcategoria || null,
       etapa: item.etapa || null,
@@ -798,6 +800,7 @@ const ControlPresupuestosPage = () => {
         cac_tipo: item.cac_tipo || null,
         fecha_presupuesto: item.fecha_presupuesto || null,
         proveedor: item.proveedor || null,
+        clasificaciones: getClasificacionesEfectivas(item),
         categoria: item.categoria || null,
         subcategoria: item.subcategoria || null,
         etapa: item.etapa || null,
@@ -825,6 +828,7 @@ const ControlPresupuestosPage = () => {
     cac_tipo: item.cac_tipo || null,
     fecha_presupuesto: item.fecha_presupuesto || null,
     proveedor: item.proveedor || null,
+    clasificaciones: getClasificacionesEfectivas(item),
     categoria: item.categoria || null,
     subcategoria: item.subcategoria || null,
     etapa: item.etapa || null,

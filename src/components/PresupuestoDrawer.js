@@ -34,6 +34,8 @@ import {
   List,
   ListItem,
   ListItemText,
+  Checkbox,
+  FormHelperText,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -66,6 +68,11 @@ import {
   uploadPresupuestoAdjunto,
   deletePresupuestoAdjuntoStorage,
 } from 'src/utils/presupuestos/presupuestoAdjuntosFirebase';
+import {
+  getClasificacionesEfectivas,
+  normalizarClasificacionesUI,
+  coincideMovimientoConClasificaciones,
+} from 'src/utils/presupuestoLegacy';
 
 // Helper: calcular la fecha YYYY-MM del CAC aplicado (regla -2 meses)
 const calcularFechaCACAplicada = (fechaStr) => {
@@ -139,8 +146,10 @@ const PresupuestoDrawer = ({
 
   // === Estado: Formulario completo ===
   const [proyectoSel, setProyectoSel] = useState(proyectoId || '');
-  const [categoriaSel, setCategoriaSel] = useState('');
-  const [subcategoriaSel, setSubcategoriaSel] = useState('');
+  // clasificacionesSel: array de { categoria, subcategorias: [] }
+  // - subcategorias vacío => "toda la categoría"
+  // - array vacío => "todo el proyecto" (sin filtro)
+  const [clasificacionesSel, setClasificacionesSel] = useState([]);
   const [etapaSel, setEtapaSel] = useState('');
 
   // === Estado: Editar ===
@@ -349,8 +358,7 @@ const PresupuestoDrawer = ({
         setBaseCalculo('total');
         setProveedorInput('');
         setProyectoSel(proyectoId || '');
-        setCategoriaSel('');
-        setSubcategoriaSel('');
+        setClasificacionesSel([]);
         setEtapaSel('');
         setFechaPresupuesto(hoyStr);
         setCacFechaAplicada(calcularFechaCACAplicada(hoyStr));
@@ -362,6 +370,9 @@ const PresupuestoDrawer = ({
         setNuevaIndexacion(presupuesto.indexacion || null);
         setNuevoCacTipo(presupuesto.cac_tipo || 'general');
         setNuevaBaseCalculo(presupuesto.base_calculo || 'total');
+        setClasificacionesSel(getClasificacionesEfectivas(presupuesto));
+        setEtapaSel(presupuesto.etapa || '');
+        setProveedorInput(presupuesto.proveedor || '');
         setMotivo('');
         setMostrarHistorial(drawerView === 'historial' || presupuesto.historial?.length > 0);
         // Fecha del presupuesto: usar la guardada o hoy
@@ -417,8 +428,7 @@ const PresupuestoDrawer = ({
       if (m.es_conversion_moneda) return false;
       if (presupuesto.proveedor && m.nombre_proveedor !== presupuesto.proveedor) return false;
       if (presupuesto.etapa && m.etapa !== presupuesto.etapa) return false;
-      if (presupuesto.categoria && m.categoria !== presupuesto.categoria) return false;
-      if (presupuesto.subcategoria && m.subcategoria !== presupuesto.subcategoria) return false;
+      if (!coincideMovimientoConClasificaciones(presupuesto, { categoria: m.categoria, subcategoria: m.subcategoria })) return false;
       // Filtro por fechaInicio
       if (presupuesto.fechaInicio && m.fecha_factura) {
         const fechaIni = presupuesto.fechaInicio?._seconds
@@ -583,8 +593,7 @@ const PresupuestoDrawer = ({
         // Formulario completo: asignar campos opcionales
         if (proveedorInput) data.proveedor = proveedorInput;
         if (etapaSel) data.etapa = etapaSel;
-        if (categoriaSel) data.categoria = categoriaSel;
-        if (subcategoriaSel) data.subcategoria = subcategoriaSel;
+        if (clasificacionesSel.length > 0) data.clasificaciones = normalizarClasificacionesUI(clasificacionesSel);
       } else {
         // Formulario simplificado (control-presupuestos)
         if (tipoAgrupacion === 'categoria') data.categoria = valorAgrupacion;
@@ -844,7 +853,7 @@ const PresupuestoDrawer = ({
         indexacion !== null ||
         proveedorInput !== '' ||
         pendingAdjuntosFiles.length > 0 ||
-        (showFullForm && (proyectoSel !== (proyectoId || '') || categoriaSel !== '' || etapaSel !== ''))
+        (showFullForm && (proyectoSel !== (proyectoId || '') || clasificacionesSel.length > 0 || etapaSel !== ''))
       );
     }
     const originalMonto = String(presupuesto?.monto_ingresado || presupuesto?.monto || '');
@@ -1270,19 +1279,110 @@ const PresupuestoDrawer = ({
                         Asociá categoría, proveedor o etapa para un control más preciso
                       </Typography>
 
-                      <FormControl fullWidth size="small">
-                        <InputLabel>Categoría</InputLabel>
-                        <Select
-                          value={categoriaSel}
-                          onChange={(e) => { setCategoriaSel(e.target.value); setSubcategoriaSel(''); }}
-                          label="Categoría"
-                        >
-                          <MenuItem value=""><em>Sin categoría</em></MenuItem>
-                          {categorias.map((cat, idx) => (
-                            <MenuItem key={idx} value={cat.name}>{cat.name}</MenuItem>
-                          ))}
-                        </Select>
-                      </FormControl>
+                      <Box>
+                        {(() => {
+                          // Opciones planas: por cada categoría una opción "(toda)" + una por subcategoría
+                          const opciones = categorias.flatMap((cat) => [
+                            { categoria: cat.name, sub: null, label: `${cat.name} — toda la categoría` },
+                            ...(cat.subcategorias || []).map((s) => ({
+                              categoria: cat.name,
+                              sub: s,
+                              label: `${cat.name} › ${s}`,
+                            })),
+                          ]);
+                          // Valor seleccionado del Autocomplete derivado de clasificacionesSel
+                          const valor = clasificacionesSel.flatMap((c) =>
+                            c.subcategorias.length === 0
+                              ? [{ categoria: c.categoria, sub: null, label: `${c.categoria} — toda la categoría` }]
+                              : c.subcategorias.map((s) => ({
+                                  categoria: c.categoria,
+                                  sub: s,
+                                  label: `${c.categoria} › ${s}`,
+                                }))
+                          );
+                          const handleClasifChange = (_e, nuevoValor) => {
+                            // Reconstruir clasificacionesSel agrupando por categoría con exclusión mutua "(toda)" vs subs.
+                            const map = new Map();
+                            for (const opt of nuevoValor) {
+                              if (!opt) continue;
+                              const cat = opt.categoria;
+                              const prev = map.get(cat);
+                              if (opt.sub === null) {
+                                // Selección "(toda)": descarta cualquier sub previa
+                                map.set(cat, { todas: true, subs: new Set() });
+                              } else if (prev?.todas) {
+                                // Hay "(toda)" previo: si llega una sub puntual, "(toda)" gana — ignorar la sub.
+                                // Pero si "(toda)" se acaba de tildar, ya está manejado arriba.
+                                // Si la sub se tildó después, pasamos a "solo subs sueltas".
+                                map.set(cat, { todas: false, subs: new Set([opt.sub]) });
+                              } else if (prev) {
+                                prev.subs.add(opt.sub);
+                                map.set(cat, prev);
+                              } else {
+                                map.set(cat, { todas: false, subs: new Set([opt.sub]) });
+                              }
+                            }
+                            const next = Array.from(map.entries()).map(([cat, v]) => ({
+                              categoria: cat,
+                              subcategorias: v.todas ? [] : Array.from(v.subs),
+                            }));
+                            setClasificacionesSel(next);
+                          };
+                          return (
+                            <>
+                              <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
+                                Categorías y subcategorías
+                              </Typography>
+                              <Autocomplete
+                                multiple
+                                size="small"
+                                disableCloseOnSelect
+                                options={opciones}
+                                value={valor}
+                                onChange={handleClasifChange}
+                                groupBy={(o) => o.categoria}
+                                getOptionLabel={(o) => o.label || ''}
+                                isOptionEqualToValue={(a, b) => a.categoria === b.categoria && a.sub === b.sub}
+                                renderOption={(props, option, { selected }) => (
+                                  <li {...props} style={{ paddingTop: 2, paddingBottom: 2 }}>
+                                    <Checkbox size="small" checked={selected} sx={{ p: 0.5, mr: 1 }} />
+                                    <Typography
+                                      variant="body2"
+                                      sx={{ fontWeight: option.sub === null ? 600 : 400 }}
+                                    >
+                                      {option.sub === null ? 'Toda la categoría' : option.sub}
+                                    </Typography>
+                                  </li>
+                                )}
+                                renderTags={(value, getTagProps) =>
+                                  value.map((option, idx) => (
+                                    <Chip
+                                      size="small"
+                                      variant="outlined"
+                                      label={option.sub === null ? `${option.categoria} (todas)` : option.label}
+                                      {...getTagProps({ index: idx })}
+                                      key={`${option.categoria}::${option.sub || '__todas__'}`}
+                                    />
+                                  ))
+                                }
+                                renderInput={(params) => (
+                                  <TextField
+                                    {...params}
+                                    placeholder={
+                                      clasificacionesSel.length === 0
+                                        ? 'Sin filtro (todo el proyecto)'
+                                        : 'Agregar más...'
+                                    }
+                                  />
+                                )}
+                              />
+                              <FormHelperText sx={{ ml: 0 }}>
+                                Vacío = todo el proyecto. Tildá &quot;Toda la categoría&quot; o subcategorías sueltas.
+                              </FormHelperText>
+                            </>
+                          );
+                        })()}
+                      </Box>
 
                       <Box>
                         <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
@@ -1324,19 +1424,6 @@ const PresupuestoDrawer = ({
                         </Select>
                       </FormControl>
 
-                      <FormControl fullWidth size="small" disabled={!categoriaSel}>
-                        <InputLabel>Subcategoría</InputLabel>
-                        <Select
-                          value={subcategoriaSel}
-                          onChange={(e) => setSubcategoriaSel(e.target.value)}
-                          label="Subcategoría"
-                        >
-                          <MenuItem value=""><em>Sin subcategoría</em></MenuItem>
-                          {(categorias.find(c => c.name === categoriaSel)?.subcategorias || []).map((sub, idx) => (
-                            <MenuItem key={idx} value={sub}>{sub}</MenuItem>
-                          ))}
-                        </Select>
-                      </FormControl>
                     </>
                   )}
                 </>
@@ -1412,8 +1499,15 @@ const PresupuestoDrawer = ({
                     {!showFullForm && label && <> para <strong>{label}</strong></>}
                     {proveedorInput && <> · proveedor: <strong>{proveedorInput}</strong></>}
                     {etapaSel && <> · etapa: <strong>{etapaSel}</strong></>}
-                    {categoriaSel && <> · categoría: <strong>{categoriaSel}</strong></>}
-                    {subcategoriaSel && <> / <strong>{subcategoriaSel}</strong></>}
+                    {clasificacionesSel.length === 1 && (
+                      <> · {clasificacionesSel[0].subcategorias.length === 0
+                        ? <>categoría completa: <strong>{clasificacionesSel[0].categoria}</strong></>
+                        : <>categoría: <strong>{clasificacionesSel[0].categoria}</strong> / <strong>{clasificacionesSel[0].subcategorias.join(', ')}</strong></>}
+                      </>
+                    )}
+                    {clasificacionesSel.length > 1 && (
+                      <> · <strong>{clasificacionesSel.length} clasificaciones</strong></>
+                    )}
                   </Typography>
                 </Alert>
               )}
@@ -1499,9 +1593,19 @@ const PresupuestoDrawer = ({
                         params.set('proyectoId', proyectoId || presupuesto.proyecto_id);
                         if (presupuesto.tipo) params.set('tipo', presupuesto.tipo);
                         if (presupuesto.proveedor) params.set('proveedores', presupuesto.proveedor);
-                        if (presupuesto.categoria) params.set('categorias', presupuesto.categoria);
-                        if (presupuesto.subcategoria) params.set('subcategorias', presupuesto.subcategoria);
                         if (presupuesto.etapa) params.set('etapa', presupuesto.etapa);
+                        const clasif = getClasificacionesEfectivas(presupuesto);
+                        // Pasamos los filtros a cajaProyecto solo cuando hay 1 sola entrada
+                        // (una sola categoría con 0 o más subs). Con múltiples categorías
+                        // el filtro no se puede expresar en un único par categoria/subcategoria.
+                        if (clasif.length === 1) {
+                          params.set('categorias', clasif[0].categoria);
+                          if (clasif[0].subcategorias.length === 1) {
+                            params.set('subcategorias', clasif[0].subcategorias[0]);
+                          } else if (clasif[0].subcategorias.length > 1) {
+                            params.set('subcategorias', clasif[0].subcategorias.join(','));
+                          }
+                        }
                         return `/cajaProyecto?${params.toString()}`;
                       })()}
                       passHref

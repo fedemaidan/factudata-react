@@ -48,6 +48,7 @@ import { getEmpresaById, getEmpresaDetailsFromUser } from 'src/services/empresaS
 import proveedorService from 'src/services/proveedorService';
 import { getProyectosFromUser } from 'src/services/proyectosService';
 import { formatCurrency, formatTimestamp } from 'src/utils/formatters';
+import { getClasificacionesEfectivas, formatClasificacionesText } from 'src/utils/presupuestoLegacy';
 import * as XLSX from 'xlsx';
 
 const formatFechaInput = (fecha) => {
@@ -318,6 +319,7 @@ const PresupuestosPage = () => {
         adjuntos: p.adjuntos || [],
         proyecto_id: p.proyecto_id || null,
         proveedor: p.proveedor || null,
+        clasificaciones: getClasificacionesEfectivas(p),
         categoria: p.categoria || null,
         subcategoria: p.subcategoria || null,
         etapa: p.etapa || null,
@@ -361,6 +363,7 @@ const PresupuestosPage = () => {
                     Monto: p.monto,
                     Proveedor: p.proveedor,
                     Etapa: p.etapa,
+                    Clasificaciones: formatClasificacionesText(getClasificacionesEfectivas(p)),
                     Proyecto: proyectos.find((pr) => pr.id === p.proyecto_id)?.nombre || '',
                     Gastado: p.ejecutado,
                     '% Ejecutado': `${((p.ejecutado / p.monto) * 100).toFixed(1)}%`,
@@ -585,24 +588,38 @@ const PresupuestosPage = () => {
                           </TableCell>
                         )}
 
-                        {columnasVisibles.detalle && (
-                          <TableCell>
-                            <Stack spacing={0}>
-                              {p.proveedor && (
-                                <Typography variant="caption" color="text.secondary">Proveedor: <Box component="span" sx={{ color: 'text.primary' }}>{p.proveedor}</Box></Typography>
-                              )}
-                              {p.categoria && (
-                                <Typography variant="caption" color="text.secondary">Categoría: <Box component="span" sx={{ color: 'text.primary' }}>{p.subcategoria ? `${p.categoria} › ${p.subcategoria}` : p.categoria}</Box></Typography>
-                              )}
-                              {p.etapa && (
-                                <Typography variant="caption" color="text.secondary">Etapa: <Box component="span" sx={{ color: 'text.primary' }}>{p.etapa}</Box></Typography>
-                              )}
-                              {!p.proveedor && !p.categoria && !p.etapa && (
-                                <Typography variant="caption" color="text.disabled">-</Typography>
-                              )}
-                            </Stack>
-                          </TableCell>
-                        )}
+                        {columnasVisibles.detalle && (() => {
+                          const clasif = getClasificacionesEfectivas(p);
+                          return (
+                            <TableCell>
+                              <Stack spacing={0.25}>
+                                {p.proveedor && (
+                                  <Typography variant="caption" color="text.secondary">Proveedor: <Box component="span" sx={{ color: 'text.primary' }}>{p.proveedor}</Box></Typography>
+                                )}
+                                {clasif.map((c, i) => (
+                                  <Stack key={`${c.categoria}-${i}`} direction="row" spacing={0.5} alignItems="center" flexWrap="wrap">
+                                    <Typography variant="caption" color="text.secondary">
+                                      {c.categoria}:
+                                    </Typography>
+                                    {c.subcategorias.length === 0 ? (
+                                      <Chip size="small" label="todas" variant="outlined" sx={{ height: 18, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }} />
+                                    ) : (
+                                      c.subcategorias.map((s) => (
+                                        <Chip key={s} size="small" label={s} variant="outlined" sx={{ height: 18, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }} />
+                                      ))
+                                    )}
+                                  </Stack>
+                                ))}
+                                {p.etapa && (
+                                  <Typography variant="caption" color="text.secondary">Etapa: <Box component="span" sx={{ color: 'text.primary' }}>{p.etapa}</Box></Typography>
+                                )}
+                                {!p.proveedor && clasif.length === 0 && !p.etapa && (
+                                  <Typography variant="caption" color="text.disabled">-</Typography>
+                                )}
+                              </Stack>
+                            </TableCell>
+                          );
+                        })()}
 
                         {columnasVisibles.proyecto && (
                           <TableCell>{proyectos.find(pr => pr.id === p.proyecto_id)?.nombre || '-'}</TableCell>
