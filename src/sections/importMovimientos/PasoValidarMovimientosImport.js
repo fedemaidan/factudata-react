@@ -66,10 +66,9 @@ const emptyIaData = () => ({
   user_phone: '',
 });
 
-function mapPreviewToRows(movimientosPreview, defaultUserPhone) {
+function mapPreviewToRows(movimientosPreview) {
   return (movimientosPreview || []).map((m) => {
     const ia = m.ia_data ? { ...m.ia_data } : { ...emptyIaData() };
-    if (!ia.user_phone && defaultUserPhone) ia.user_phone = defaultUserPhone;
     return {
       clientId: makeClientId(),
       fila: m.fila,
@@ -141,14 +140,7 @@ const PasoValidarMovimientosImport = forwardRef(
       }
 
       if (wizardData.previewRowsForValidation?.length > 0) {
-        const def = wizardData.creadorDefaultPhone || user?.phone || '';
-        const filasCache = wizardData.previewRowsForValidation.map((r) => ({
-          ...r,
-          ia_data: r.ia_data?.user_phone
-            ? r.ia_data
-            : { ...(r.ia_data || {}), user_phone: def },
-        }));
-        setFilas(filasCache);
+        setFilas(wizardData.previewRowsForValidation);
         setCargando(false);
         iniciadoRef.current = true;
         return undefined;
@@ -202,10 +194,7 @@ const PasoValidarMovimientosImport = forwardRef(
                   setCargando(false);
                   return true;
                 }
-                const rows = mapPreviewToRows(
-                  res.movimientos_preview,
-                  wizardData.creadorDefaultPhone || user?.phone || '',
-                );
+                const rows = mapPreviewToRows(res.movimientos_preview);
                 setFilas(rows);
                 updateWizardData({
                   movimientosPreviewBruto: res.movimientos_preview,
