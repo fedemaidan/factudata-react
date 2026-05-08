@@ -247,7 +247,7 @@ function DetalleProveedor({ proveedor, remitos, loading, savingById, draftsById,
     ? totales.monto_aprobado - totales.monto_pagado
     : totales.total - totales.monto_pagado;
   const diferenciaTotalAprobado = totales.total - totales.monto_aprobado;
-  const colSpan = 9 + (tieneMontoAprobado ? 1 : 0);
+  const colSpan = 10 + (tieneMontoAprobado ? 1 : 0);
 
   return (
     <Box>
@@ -285,10 +285,11 @@ function DetalleProveedor({ proveedor, remitos, loading, savingById, draftsById,
               <TableCell sx={{ fontWeight: 600 }}>Obra</TableCell>
               <TableCell sx={{ fontWeight: 600 }}>Categoría</TableCell>
               <TableCell sx={{ fontWeight: 600 }}>Estado</TableCell>
-              <TableCell align="right" sx={{ fontWeight: 600 }}>Debe</TableCell>
+              <TableCell align="right" sx={{ fontWeight: 600 }}>Importe</TableCell>
               {tieneMontoAprobado && <TableCell align="right" sx={{ fontWeight: 600 }}>Aprobado</TableCell>}
-              <TableCell align="right" sx={{ fontWeight: 600 }}>Haber</TableCell>
-              <TableCell align="right" sx={{ fontWeight: 600, color: 'primary.main' }}>Saldo</TableCell>
+              <TableCell align="right" sx={{ fontWeight: 600 }}>Pagado</TableCell>
+              <TableCell align="right" sx={{ fontWeight: 600 }}>Pendiente</TableCell>
+              <TableCell align="right" sx={{ fontWeight: 600, color: 'primary.main' }}>Saldo acumulado</TableCell>
               <TableCell />
             </TableRow>
           </TableHead>
@@ -319,6 +320,7 @@ function DetalleProveedor({ proveedor, remitos, loading, savingById, draftsById,
               const isPagado = rem.estado === 'Pagado';
               const vencida = rem.fecha_vencimiento && !isPagado && new Date(rem.fecha_vencimiento) < new Date();
               const isSelectedForPago = selectedForPago?.has(id);
+              const pendiente = (tieneMontoAprobado ? (normalizeAmount(rem.monto_aprobado) || 0) : rem._debe) - rem._haber;
 
               return (
                 <TableRow key={id} sx={{ opacity: isPagado ? 0.65 : 1 }}>
@@ -377,6 +379,9 @@ function DetalleProveedor({ proveedor, remitos, loading, savingById, draftsById,
                     </TableCell>
                   )}
                   <TableCell align="right">{formatCurrencyWithCode(rem._haber)}</TableCell>
+                  <TableCell align="right" sx={{ color: pendiente > 0.005 ? 'warning.main' : 'success.main' }}>
+                    {formatCurrencyWithCode(pendiente)}
+                  </TableCell>
                   <TableCell
                     align="right"
                     sx={{ fontWeight: 700, color: rem._saldo > 0.005 ? 'error.main' : 'success.main' }}
