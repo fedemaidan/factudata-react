@@ -38,6 +38,7 @@ import {
   Tab,
   LinearProgress,
   alpha,
+  Autocomplete,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import CommentIcon from '@mui/icons-material/Comment';
@@ -83,11 +84,13 @@ import { NotaPedidoAddDialog } from 'src/components/NotaPedidoAddDialog';
 import NotaPedidoPdfTemplateDialog, { NotaPedidoLogoRequeridoDialog } from 'src/components/NotaPedidoPdfDialogs';
 import { useBreadcrumbs } from 'src/contexts/breadcrumbs-context';
 import StockMaterialesService from 'src/services/stock/stockMaterialesService';
+import proveedorService from 'src/services/proveedorService';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import SettingsIcon from '@mui/icons-material/Settings';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import { downloadNotaPedidoPdf } from 'src/utils/notaPedido/exportNotaPedidoToPdf';
+import BatchValidationForm from 'src/components/movimientos/cargaMasiva/BatchValidationForm';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const C = {
@@ -115,16 +118,6 @@ const normalizeComparableText = (value) =>
     .trim()
     .toLowerCase();
 
-const getComparableMaterialKeys = (item) => {
-  const keys = new Set();
-  const materialId = item?.material_id ? normalizeComparableText(item.material_id) : '';
-  const materialNombre = normalizeComparableText(item?.material_nombre);
-
-  if (materialId) keys.add(materialId);
-  if (materialNombre) keys.add(materialNombre);
-
-  return keys;
-};
 
 const findStockMatchForItem = (item, stockItems) => {
   const materialId = item?.material_id ? String(item.material_id) : '';
@@ -142,17 +135,6 @@ const findStockMatchForItem = (item, stockItems) => {
   });
 };
 
-const findAcopioMaterialMatch = (item, materialesAcopiados) => {
-  const comparableKeys = getComparableMaterialKeys(item);
-
-  return (materialesAcopiados || []).find((material) => {
-    const materialKeys = [material?.material_id, material?.id_material, material?.id, material?.codigo, material?.descripcion]
-      .filter(Boolean)
-      .map((value) => normalizeComparableText(value));
-
-    return materialKeys.some((key) => comparableKeys.has(key));
-  });
-};
 
 const formatEstadoDocumento = (estado) => {
   const raw = String(estado || '').trim();
@@ -228,18 +210,25 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
   const [comentarioEditadoTexto, setComentarioEditadoTexto] = useState('');
   const [drawerTab, setDrawerTab] = useState(0); // si la nota tiene ítems: 0=Ítems, 1=Detalles, 2=Comentarios, 3=Historial; si no: 0=Detalles, 1=Comentarios, 2=Historial
   const [empresaData, setEmpresaData] = useState(null);
+  const [proveedores, setProveedores] = useState([]);
   const [acopios, setAcopios] = useState([]);
   // TAR-324: resolución de ítems
-  const [resolverItemOpen, setResolverItemOpen] = useState(false);
+  const [resolverStep, setResolverStep] = useState(null); // null | 'configure'
+  const [itemSearch, setItemSearch] = useState('');
+  const [itemFilter, setItemFilter] = useState('all'); // 'all' | 'pendiente' | 'resuelto'
   const [resolverItemItem, setResolverItemItem] = useState(null);
   const [resolverItemItems, setResolverItemItems] = useState([]);
   const [resolverItemTipo, setResolverItemTipo] = useState('compra');
   const [resolverItemData, setResolverItemData] = useState({});
   const [resolverItemLoading, setResolverItemLoading] = useState(false);
+  const [resolverFacturaFile, setResolverFacturaFile] = useState(null);
+  const [resolverBulkCantidades, setResolverBulkCantidades] = useState({});
   const [resolverConfigTouched, setResolverConfigTouched] = useState(false);
   const [resolverSuggestion, setResolverSuggestion] = useState(null);
   const [resolverSuggestionLoading, setResolverSuggestionLoading] = useState(false);
   const [selectedItemIds, setSelectedItemIds] = useState(new Set());
+  const [itemPage, setItemPage] = useState(0);
+  const ITEMS_PER_PAGE = 20;
   const [hoveredComentario, setHoveredComentario] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
   const [mobileMenuAnchor, setMobileMenuAnchor] = useState(null);
@@ -278,7 +267,6 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
   const [filters, setFilters] = useState({ text: '', estado: '', proyecto_id: '', proveedor: '', misNotas: false });
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
-  const acopioMaterialesCacheRef = useRef({});
   const isMobile = useMediaQuery((theme) => theme.breakpoints.down('sm'), { noSsr: true });
   
   const sortedNotas = useMemo(() => {
@@ -462,6 +450,42 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
   }, [comentariosDialogNota, selectedItemIds, isItemPendingResolution]);
 
   const isBulkResolution = resolverItemItems.length > 1;
+  const resolverItemOpen = resolverStep !== null; // la sugerencia carga desde step 1
+
+  const filteredItems = useMemo(() => {
+    let items = comentariosDialogNota?.items || [];
+    if (itemSearch) {
+      const q = itemSearch.toLowerCase();
+      items = items.filter((item) => item.material_nombre?.toLowerCase().includes(q));
+    }
+    if (itemFilter === 'pendiente') {
+      items = items.filter((item) => item.estado !== 'resuelto' && item.estado !== 'cancelado');
+    } else if (itemFilter === 'resuelto') {
+      items = items.filter((item) => item.estado === 'resuelto' || item.estado === 'cancelado');
+    }
+    return items;
+  }, [comentariosDialogNota?.items, itemSearch, itemFilter]);
+
+  const paginatedFilteredItems = useMemo(
+    () => filteredItems.slice(itemPage * ITEMS_PER_PAGE, (itemPage + 1) * ITEMS_PER_PAGE),
+    [filteredItems, itemPage],
+  );
+
+  // Datos derivados de empresaData para el formulario de compra (BatchValidationForm)
+  const resolverCompraCtx = useMemo(() => {
+    const obras = Array.isArray(empresaData?.obras) ? empresaData.obras : [];
+    const DEFAULT_MEDIOS = ['Efectivo', 'Transferencia', 'Tarjeta', 'Mercado Pago', 'Cheque'];
+    return {
+      comprobanteInfo: empresaData?.comprobante_info || {},
+      ingresoInfo:     empresaData?.ingreso_info || {},
+      categorias:      [...(empresaData?.categorias || []), { name: 'Ingreso dinero', subcategorias: [] }, { name: 'Ajuste', subcategorias: ['Ajuste'] }],
+      tagsExtra:       empresaData?.tags_extra || [],
+      mediosPago:      empresaData?.medios_pago?.length ? empresaData.medios_pago : DEFAULT_MEDIOS,
+      etapas:          empresaData?.etapas || [],
+      obrasOptions:    obras.map((o) => o.nombre || o).filter(Boolean),
+      clientesOptions: [...new Set(obras.map((o) => o.cliente).filter(Boolean))],
+    };
+  }, [empresaData]);
 
   const loadPdfBaseForDrawer = useCallback(async () => {
     const eid = getEmpresaId();
@@ -480,6 +504,10 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
 
   useEffect(() => {
     setSelectedItemIds(new Set());
+    setItemSearch('');
+    setItemFilter('all');
+    setItemPage(0);
+    setResolverStep(null);
   }, [comentariosDialogNota?.id]);
 
   useEffect(() => {
@@ -497,11 +525,11 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
       setResolverSuggestionLoading(true);
 
       try {
+        // Verificar stock en depósito por ítem
         const analisis = await Promise.all(
           resolverItemItems.map(async (item) => {
             const cantidadPendiente = getCantidadPendienteItem(item);
             let depositoDisponible = false;
-
             try {
               const stockResponse = await StockMaterialesService.listarMateriales({
                 empresa_id: empresaId,
@@ -513,54 +541,43 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
             } catch (error) {
               console.error('Error al consultar stock del material:', error);
             }
-
-            const acopiosDisponibles = [];
-            for (const acopio of acopios) {
-              const materialesAcopiados = await getAcopioMateriales(acopio.id);
-              const matchAcopio = findAcopioMaterialMatch(item, materialesAcopiados);
-              const cantidadDisponible = Number(matchAcopio?.cantidad || 0);
-              if (matchAcopio && cantidadDisponible >= cantidadPendiente) {
-                acopiosDisponibles.push(acopio);
-              }
-            }
-
-            return {
-              item,
-              cantidadPendiente,
-              depositoDisponible,
-              acopiosDisponibles,
-            };
+            return { depositoDisponible };
           })
         );
 
         if (cancelled) return;
 
         const allDeposito = analisis.length > 0 && analisis.every((entry) => entry.depositoDisponible);
-        const commonAcopios = acopios.filter((acopio) =>
-          analisis.every((entry) => entry.acopiosDisponibles.some((candidate) => candidate.id === acopio.id))
-        );
+
+        // Acopios con saldo disponible (totalValor > 0)
+        const acopiosConSaldo = acopios.filter((a) => Number(a.totalValor || 0) > 0);
+        const acopiosDisponiblesIds = new Set(acopiosConSaldo.map((a) => a.id));
+        const mejorAcopio = acopiosConSaldo.sort((a, b) => Number(b.totalValor || 0) - Number(a.totalValor || 0))[0];
 
         let nextSuggestion = {
           tipo: 'compra',
+          acopiosDisponiblesIds,
           mensaje: isBulkResolution
-            ? 'No hay una fuente común con stock suficiente para todos los ítems. Compra es la opción más directa.'
-            : 'No hay stock suficiente detectado en depósito ni en acopio. Compra es la opción sugerida.',
+            ? 'No hay acopios con saldo disponible. Compra es la opción más directa.'
+            : 'No hay acopios con saldo disponible. Compra es la opción sugerida.',
         };
 
         if (allDeposito) {
           nextSuggestion = {
             tipo: 'retiro_deposito',
+            acopiosDisponiblesIds,
             mensaje: isBulkResolution
-              ? 'Todos los ítems seleccionados tienen stock suficiente en depósito. Se sugiere retiro de depósito.'
+              ? 'Todos los ítems tienen stock suficiente en depósito. Se sugiere retiro de depósito.'
               : 'Hay stock suficiente en depósito para este ítem. Se sugiere retiro de depósito.',
           };
-        } else if (commonAcopios.length > 0) {
+        } else if (mejorAcopio) {
           nextSuggestion = {
             tipo: 'retiro_acopio',
-            acopio_id: commonAcopios[0].id,
+            acopio_id: mejorAcopio.id,
+            acopiosDisponiblesIds,
             mensaje: isBulkResolution
-              ? `Todos los ítems seleccionados están disponibles en el acopio ${commonAcopios[0].codigo || commonAcopios[0].id}.`
-              : `El ítem está disponible en el acopio ${commonAcopios[0].codigo || commonAcopios[0].id}.`,
+              ? `Hay acopios con saldo disponible. Se sugiere retiro del acopio ${mejorAcopio.codigo || mejorAcopio.id}.`
+              : `Hay saldo disponible en el acopio ${mejorAcopio.codigo || mejorAcopio.id}. Se sugiere retiro de acopio.`,
           };
         }
 
@@ -594,7 +611,7 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
     return () => {
       cancelled = true;
     };
-  }, [resolverItemOpen, resolverItemItems, acopios, getCantidadPendienteItem, getAcopioMateriales, resolverConfigTouched, isBulkResolution, user]);
+  }, [resolverItemOpen, resolverItemItems, acopios, getCantidadPendienteItem, resolverConfigTouched, isBulkResolution, user]);
 
   const handleDownloadPdfNota = async () => {
     if (!comentariosDialogNota) return;
@@ -644,14 +661,16 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
   }, []);
 
   const closeResolverDialog = useCallback(() => {
-    setResolverItemOpen(false);
+    setResolverStep(null);
     setResolverItemItem(null);
     setResolverItemItems([]);
     setResolverItemTipo('compra');
     setResolverItemData({});
+    setResolverBulkCantidades({});
     setResolverConfigTouched(false);
     setResolverSuggestion(null);
     setResolverSuggestionLoading(false);
+    setResolverFacturaFile(null);
   }, []);
 
   const openResolverDialog = useCallback((items) => {
@@ -661,19 +680,52 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
     const firstItem = validItems[0];
     const bulk = validItems.length > 1;
 
+    const compraDefaults = {
+      nombre_proveedor: comentariosDialogNota?.proveedor || '',
+      proyecto_id: comentariosDialogNota?.proyecto_id || '',
+    };
+
     setResolverItemItem(bulk ? null : firstItem);
     setResolverItemItems(validItems);
     setResolverItemTipo('compra');
-    setResolverItemData(bulk ? {} : { cantidad: getCantidadPendienteItem(firstItem) });
+    setResolverItemData(bulk
+      ? compraDefaults
+      : { ...compraDefaults, cantidad: getCantidadPendienteItem(firstItem) }
+    );
+    if (bulk) {
+      const cantidades = {};
+      validItems.forEach((item) => { cantidades[item._id] = getCantidadPendienteItem(item); });
+      setResolverBulkCantidades(cantidades);
+    } else {
+      setResolverBulkCantidades({});
+    }
     setResolverConfigTouched(false);
     setResolverSuggestion(null);
-    setResolverItemOpen(true);
-  }, [getCantidadPendienteItem]);
+    setResolverStep('select');
+  }, [getCantidadPendienteItem, comentariosDialogNota]);
 
   const updateResolverData = useCallback((updater) => {
     setResolverConfigTouched(true);
     setResolverItemData((current) => (typeof updater === 'function' ? updater(current) : updater));
   }, []);
+
+  const handleTipoChange = useCallback((tipo) => {
+    setResolverConfigTouched(true);
+    setResolverItemTipo(tipo);
+    setResolverItemData((current) => {
+      const next = tipo === 'compra' ? {
+        nombre_proveedor: current.nombre_proveedor || comentariosDialogNota?.proveedor || '',
+        proyecto_id:      current.proyecto_id      || comentariosDialogNota?.proyecto_id || '',
+      } : {};
+      if (!isBulkResolution && resolverItemItems[0]) {
+        next.cantidad = getCantidadPendienteItem(resolverItemItems[0]);
+      }
+      if (tipo === 'retiro_acopio' && current.acopio_id) {
+        next.acopio_id = current.acopio_id;
+      }
+      return next;
+    });
+  }, [isBulkResolution, resolverItemItems, getCantidadPendienteItem, comentariosDialogNota]);
 
   const handleToggleSelectedItem = useCallback((itemId) => {
     setSelectedItemIds((prev) => {
@@ -697,18 +749,6 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
       return new Set(pendingIds);
     });
   }, [comentariosDialogNota, isItemPendingResolution]);
-
-  const getAcopioMateriales = useCallback(async (acopioId) => {
-    if (!acopioId) return [];
-    if (acopioMaterialesCacheRef.current[acopioId]) {
-      return acopioMaterialesCacheRef.current[acopioId];
-    }
-
-    const materiales = await AcopioService.getMaterialesAcopiados(acopioId);
-    const normalized = Array.isArray(materiales) ? materiales : [];
-    acopioMaterialesCacheRef.current[acopioId] = normalized;
-    return normalized;
-  }, []);
 
   const toggleSelectAll = useCallback(() => {
     if (selectedNotaIds.size === paginatedNotas.length && paginatedNotas.length > 0) {
@@ -844,6 +884,8 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
         setEmpresaData(empresa);
         const notasEstados = empresa.notas_estados || ["Pendiente", "En proceso", "Completa"]
         setNotasEstados(notasEstados);
+        const provs = await proveedorService.getNombres(empresa.id);
+        setProveedores(provs || []);
       } catch (error) {
         console.error('Error al obtener los estados de nota de pedido:', error);
       }
@@ -1007,6 +1049,8 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
       let latestNota = null;
       let processed = 0;
       const errores = [];
+      // Para bulk compra: el primer ítem crea el movimiento; los siguientes lo reusan
+      let bulkCompraMovimientoId = null;
 
       for (const item of resolverItemItems) {
         try {
@@ -1018,7 +1062,7 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
             ? { proyecto_id: comentariosDialogNota?.proyecto_id }
             : {};
           const cantidad = isBulkResolution
-            ? cantidadPendiente
+            ? (resolverBulkCantidades[item._id] ?? cantidadPendiente)
             : (resolverItemData.cantidad || cantidadPendiente);
           const requestBody = {
             idempotency_key,
@@ -1028,7 +1072,15 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
             cantidad,
           };
 
-          if (isBulkResolution && resolverItemTipo === 'compra') {
+          // BatchValidationForm usa nombre_proveedor; el backend espera proveedor
+          if (resolverItemTipo === 'compra' && requestBody.nombre_proveedor !== undefined) {
+            requestBody.proveedor = requestBody.nombre_proveedor;
+            delete requestBody.nombre_proveedor;
+          }
+
+          // Bulk compra: ítems 2+ reusan el movimiento del primer ítem
+          if (isBulkResolution && resolverItemTipo === 'compra' && bulkCompraMovimientoId) {
+            requestBody.documento_id_existente = bulkCompraMovimientoId;
             delete requestBody.total;
           }
 
@@ -1041,6 +1093,10 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
           if (result?.nota) {
             latestNota = result.nota;
           }
+          // Guardar el movimiento_id del primer ítem para los siguientes
+          if (isBulkResolution && resolverItemTipo === 'compra' && processed === 0 && result?.movimiento_id) {
+            bulkCompraMovimientoId = result.movimiento_id;
+          }
           processed += 1;
         } catch (error) {
           errores.push({ item, error });
@@ -1051,6 +1107,20 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
         setComentariosDialogNota(latestNota);
         setNotas((prev) => prev.map((n) => n.id === latestNota.id ? latestNota : n));
         setFilteredNotas((prev) => prev.map((n) => n.id === latestNota.id ? latestNota : n));
+      }
+
+      // Adjuntar factura a la nota si el usuario seleccionó un archivo
+      if (resolverFacturaFile && latestNota) {
+        try {
+          const notaConArchivo = await notaPedidoService.subirArchivo(latestNota.id, resolverFacturaFile);
+          if (notaConArchivo) {
+            setComentariosDialogNota(notaConArchivo);
+            setNotas((prev) => prev.map((n) => n.id === notaConArchivo.id ? notaConArchivo : n));
+            setFilteredNotas((prev) => prev.map((n) => n.id === notaConArchivo.id ? notaConArchivo : n));
+          }
+        } catch (_) {
+          // No bloquea el flujo si falla la subida del archivo
+        }
       }
 
       const resolvedIds = new Set(resolverItemItems.map((item) => item._id));
@@ -2054,6 +2124,7 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
           profiles={profiles}
           proyectos={proyectos}
           empresa={empresaData}
+          proveedores={proveedores}
           initialData={currentNota}
           title="Editar Nota"
           submitLabel="Guardar cambios"
@@ -2068,6 +2139,7 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
           profiles={profiles}
           proyectos={proyectos}
           empresa={empresaData}
+          proveedores={proveedores}
         />
 
 <Dialog open={openDeleteDialog} onClose={closeDeleteConfirmation}>
@@ -2133,9 +2205,10 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
   onClose={() => {
     setComentariosDialogNota(null);
     setDrawerTab(0);
+    setResolverStep(null);
   }}
   PaperProps={{
-    sx: { width: { xs: '100%', sm: 680 }, p: 0 }
+    sx: { width: { xs: '100%', sm: 720, md: 960 }, p: 0 }
   }}
 >
   {comentariosDialogNota && (
@@ -2329,7 +2402,7 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
       </Tabs>
 
       {/* Contenido por Tab */}
-      <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
+      {resolverStep === null && <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
 
         {/* TAB Ítems (TAR-324): solo cuando modo items_estructurados — siempre en posición 0 */}
         {comentariosDialogNota.modo === 'items_estructurados' && (comentariosDialogNota.items?.length || 0) > 0 && drawerTab === 0 && (
@@ -2395,9 +2468,42 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
               </Box>
             )}
 
+            {/* ── Buscador + filtro ── */}
+            <Box sx={{ display: 'flex', gap: 1, mb: 1.5, flexWrap: 'wrap' }}>
+              <TextField
+                size="small"
+                placeholder="Buscar ítem..."
+                value={itemSearch}
+                onChange={(e) => { setItemSearch(e.target.value); setItemPage(0); }}
+                sx={{ flex: 1, minWidth: 140 }}
+                InputProps={{ startAdornment: <SearchIcon sx={{ fontSize: 18, color: 'text.secondary', mr: 0.5 }} /> }}
+              />
+              <ButtonGroup size="small" disableElevation>
+                {[
+                  { value: 'all', label: 'Todos' },
+                  { value: 'pendiente', label: 'Pendientes' },
+                  { value: 'resuelto', label: 'Resueltos' },
+                ].map(({ value, label }) => (
+                  <Button
+                    key={value}
+                    variant={itemFilter === value ? 'contained' : 'outlined'}
+                    onClick={() => { setItemFilter(value); setItemPage(0); }}
+                    sx={{ textTransform: 'none', fontSize: '0.75rem' }}
+                  >
+                    {label}
+                  </Button>
+                ))}
+              </ButtonGroup>
+            </Box>
+
             {/* ── Items list ── */}
             <Stack spacing={1.5}>
-              {(comentariosDialogNota.items || []).map((item) => {
+              {filteredItems.length === 0 && (
+                <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 3 }}>
+                  {itemSearch ? `Sin resultados para "${itemSearch}"` : 'No hay ítems en esta categoría'}
+                </Typography>
+              )}
+              {paginatedFilteredItems.map((item) => {
                 const estadoColor = { pendiente: 'default', parcial: 'warning', resuelto: 'success', cancelado: 'default' }[item.estado] || 'default';
                 const estadoLabel = { pendiente: 'Pendiente', en_gestion: 'En gestión', parcial: 'Parcial', resuelto: 'Resuelto', cancelado: 'Cancelado' };
                 const estadoBorderColor = { pendiente: C.slate200, parcial: '#fb923c', resuelto: '#22c55e', cancelado: C.slate200 }[item.estado] || C.slate200;
@@ -2613,6 +2719,34 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
                 );
               })}
             </Stack>
+
+            {/* ── Paginación de ítems ── */}
+            {filteredItems.length > ITEMS_PER_PAGE && (
+              <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 1, mt: 2, pt: 1, borderTop: '1px solid', borderColor: 'divider' }}>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  disabled={itemPage === 0}
+                  onClick={() => setItemPage((p) => p - 1)}
+                  sx={{ textTransform: 'none', minWidth: 80 }}
+                >
+                  Anterior
+                </Button>
+                <Typography variant="caption" color="text.secondary">
+                  {itemPage + 1} / {Math.ceil(filteredItems.length / ITEMS_PER_PAGE)}
+                  {' '}({filteredItems.length} ítems)
+                </Typography>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  disabled={(itemPage + 1) * ITEMS_PER_PAGE >= filteredItems.length}
+                  onClick={() => setItemPage((p) => p + 1)}
+                  sx={{ textTransform: 'none', minWidth: 80 }}
+                >
+                  Siguiente
+                </Button>
+              </Box>
+            )}
           </Box>
         )}
 
@@ -3041,184 +3175,372 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
             )}
           </>
         )}
-      </Box>
+      </Box>}
+
+      {/* ── Panel de resolución (step: configure) ── */}
+      {/* ── STEP 1: selección de método ── */}
+      {resolverStep === 'select' && (
+        <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <Box sx={{ px: 2.5, py: 2, borderBottom: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            <Button size="small" onClick={closeResolverDialog} sx={{ textTransform: 'none', color: 'text.secondary', minWidth: 0 }}>← Cancelar</Button>
+            <Divider orientation="vertical" flexItem />
+            <Typography variant="subtitle1" fontWeight={600}>
+              {isBulkResolution ? `Resolver ${resolverItemItems.length} ítems` : `Resolver: ${resolverItemItem?.material_nombre || ''}`}
+            </Typography>
+            {resolverSuggestionLoading && <CircularProgress size={14} sx={{ ml: 'auto' }} />}
+          </Box>
+
+          <Box sx={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: { xs: 'column', md: 'row' } }}>
+            {/* Izquierda: contexto de ítems */}
+            <Box sx={{ width: { md: 380 }, flexShrink: 0, borderRight: { md: '1px solid' }, borderColor: { md: 'divider' }, borderBottom: { xs: '1px solid', md: 'none' }, borderBottomColor: { xs: 'divider' }, p: 2.5, overflow: 'auto' }}>
+              {isBulkResolution ? (
+                <Box sx={{ borderRadius: 2, border: '1px solid', borderColor: 'grey.200', overflow: 'hidden' }}>
+                  <Box sx={{ px: 1.5, py: 1, bgcolor: 'grey.50', borderBottom: '1px solid', borderColor: 'grey.200' }}>
+                    <Typography variant="body2" fontWeight={600}>Ítems seleccionados</Typography>
+                    <Typography variant="caption" color="text.secondary">Ajustá las cantidades si es necesario.</Typography>
+                  </Box>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell sx={{ py: 0.75, fontWeight: 600, fontSize: 12, color: 'text.secondary' }}>Material</TableCell>
+                        <TableCell align="right" sx={{ py: 0.75, fontWeight: 600, fontSize: 12, color: 'text.secondary', width: 130 }}>Cantidad</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {resolverItemItems.map((item) => {
+                        const pendiente = getCantidadPendienteItem(item);
+                        const cantidad = resolverBulkCantidades[item._id] ?? pendiente;
+                        return (
+                          <TableRow key={item._id}>
+                            <TableCell sx={{ py: 0.75 }}>
+                              <Typography variant="body2">{item.material_nombre}</Typography>
+                              <Typography variant="caption" color="text.secondary">Pendiente: {pendiente} {item.unidad || ''}</Typography>
+                            </TableCell>
+                            <TableCell align="right" sx={{ py: 0.75 }}>
+                              <TextField
+                                type="number"
+                                size="small"
+                                value={cantidad}
+                                inputProps={{ min: 0, step: 'any', style: { textAlign: 'right', width: 80 } }}
+                                onChange={(e) => {
+                                  const val = parseFloat(e.target.value);
+                                  setResolverBulkCantidades((prev) => ({ ...prev, [item._id]: isNaN(val) ? 0 : val }));
+                                }}
+                                sx={{ '& .MuiOutlinedInput-root': { fontSize: 13 } }}
+                              />
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </Box>
+              ) : resolverItemItem ? (
+                <Box sx={{ p: 2.5, bgcolor: 'grey.50', borderRadius: 2, border: '1px solid', borderColor: 'grey.200' }}>
+                  <Typography variant="body2" fontWeight={600} sx={{ mb: 0.5 }}>{resolverItemItem.material_nombre}</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Pendiente: <strong>{getCantidadPendienteItem(resolverItemItem)} {resolverItemItem.unidad || ''}</strong>
+                  </Typography>
+                </Box>
+              ) : null}
+            </Box>
+
+            {/* Derecha: selección de método */}
+            <Box sx={{ flex: 1, p: 2.5 }}>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>¿Cómo se resuelve?</Typography>
+              <Stack spacing={1.5}>
+                {[
+                  { value: 'compra', label: 'Compra', desc: 'Registrar una factura o pago', icon: <AssignmentIcon sx={{ fontSize: 22 }} /> },
+                  { value: 'retiro_deposito', label: 'Retiro de depósito', desc: 'Retirar del stock propio de la empresa', icon: <HomeIcon sx={{ fontSize: 22 }} /> },
+                  { value: 'retiro_acopio', label: 'Retiro de acopio', desc: 'Retirar de un acopio existente', icon: <InboxIcon sx={{ fontSize: 22 }} /> },
+                ].map(({ value, label, desc, icon }) => {
+                  const isSelected = resolverItemTipo === value;
+                  const isSuggested = !resolverSuggestionLoading && !resolverConfigTouched && resolverSuggestion?.tipo === value;
+                  return (
+                    <Paper
+                      key={value}
+                      variant="outlined"
+                      onClick={() => handleTipoChange(value)}
+                      sx={{
+                        p: 2,
+                        cursor: 'pointer',
+                        borderColor: isSelected ? 'primary.main' : 'grey.200',
+                        borderWidth: isSelected ? 2 : 1,
+                        bgcolor: isSelected ? alpha(C.indigo600, 0.04) : 'background.paper',
+                        transition: 'all 0.15s ease',
+                        '&:hover': { borderColor: isSelected ? 'primary.main' : 'grey.400', bgcolor: isSelected ? alpha(C.indigo600, 0.06) : 'grey.50' },
+                      }}
+                    >
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                        <Box sx={{ color: isSelected ? 'primary.main' : 'text.secondary', flexShrink: 0 }}>{icon}</Box>
+                        <Box sx={{ flex: 1 }}>
+                          <Typography variant="body2" fontWeight={600} color={isSelected ? 'primary.main' : 'text.primary'}>{label}</Typography>
+                          <Typography variant="caption" color="text.secondary">{desc}</Typography>
+                        </Box>
+                        {isSuggested && <Chip label="Sugerido" size="small" color="success" sx={{ height: 20, fontSize: 11, fontWeight: 600 }} />}
+                      </Box>
+                    </Paper>
+                  );
+                })}
+              </Stack>
+              {resolverSuggestion?.mensaje && !resolverConfigTouched && (
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2 }}>{resolverSuggestion.mensaje}</Typography>
+              )}
+            </Box>
+          </Box>
+
+          <Box sx={{ px: 2.5, py: 2, borderTop: '1px solid', borderColor: 'divider', display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+            <Button onClick={closeResolverDialog} sx={{ textTransform: 'none' }}>Cancelar</Button>
+            <Button variant="contained" disableElevation onClick={() => setResolverStep('configure')} sx={{ textTransform: 'none' }}>
+              Siguiente →
+            </Button>
+          </Box>
+        </Box>
+      )}
+
+      {/* ── STEP 2: completar método ── */}
+      {resolverStep === 'configure' && (
+        <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <Box sx={{ px: 2.5, py: 2, borderBottom: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            <Button size="small" onClick={() => setResolverStep('select')} sx={{ textTransform: 'none', color: 'text.secondary', minWidth: 0 }}>← Volver</Button>
+            <Divider orientation="vertical" flexItem />
+            <Typography variant="subtitle1" fontWeight={600}>
+              {{ compra: 'Compra', retiro_deposito: 'Retiro de depósito', retiro_acopio: 'Retiro de acopio' }[resolverItemTipo]}
+              {!isBulkResolution && resolverItemItem ? ` — ${resolverItemItem.material_nombre}` : isBulkResolution ? ` — ${resolverItemItems.length} ítems` : ''}
+            </Typography>
+          </Box>
+
+          <Box sx={{ flex: 1, overflow: 'auto', p: 3 }}>
+
+            {/* ── COMPRA ── */}
+            {resolverItemTipo === 'compra' && (
+              <Stack spacing={2}>
+                {isBulkResolution && (
+                  <Alert severity="info" sx={{ fontSize: 13 }}>
+                    Proveedor, categoría, fecha y total se comparten. El egreso se registra una sola vez.
+                  </Alert>
+                )}
+
+                {/* Cantidad (solo resolución individual) */}
+                {!isBulkResolution && (
+                  <TextField
+                    label="Cantidad"
+                    type="number"
+                    size="small"
+                    inputProps={{ min: 0, step: 'any' }}
+                    sx={{ maxWidth: 220 }}
+                    value={resolverItemData.cantidad || ''}
+                    onChange={(e) => updateResolverData((d) => ({ ...d, cantidad: parseFloat(e.target.value) || undefined }))}
+                    helperText={resolverItemItem ? `Pendiente: ${getCantidadPendienteItem(resolverItemItem)} ${resolverItemItem.unidad || ''}`.trim() : ''}
+                  />
+                )}
+
+                {/* Todos los campos del movimiento de caja */}
+                <BatchValidationForm
+                  form={resolverItemData}
+                  onFormChange={(newForm) => updateResolverData(() => ({
+                    ...newForm,
+                    // Preservar campos propios de la resolución que no son del movimiento
+                    cantidad: resolverItemData.cantidad,
+                    acopio_id: resolverItemData.acopio_id,
+                  }))}
+                  proyectos={proyectos}
+                  empresa={empresaData}
+                  comprobanteInfo={resolverCompraCtx.comprobanteInfo}
+                  ingresoInfo={resolverCompraCtx.ingresoInfo}
+                  proveedores={proveedores}
+                  categorias={resolverCompraCtx.categorias}
+                  tagsExtra={resolverCompraCtx.tagsExtra}
+                  mediosPago={resolverCompraCtx.mediosPago}
+                  etapas={resolverCompraCtx.etapas}
+                  obrasOptions={resolverCompraCtx.obrasOptions}
+                  clientesOptions={resolverCompraCtx.clientesOptions}
+                  tipoMov="egreso"
+                />
+
+                {/* Resumen de impacto financiero */}
+                {(() => {
+                  const total = resolverItemData.total;
+                  const moneda = resolverItemData.moneda || 'ARS';
+                  const proyecto = comentariosDialogNota?.proyecto_nombre;
+                  if (!total) return null;
+                  return (
+                    <Box sx={{ p: 2, bgcolor: alpha(C.indigo600, 0.04), borderRadius: 2, border: '1px solid', borderColor: alpha(C.indigo600, 0.15) }}>
+                      <Typography variant="body2" color="text.secondary">
+                        Se va a registrar un egreso de{' '}
+                        <strong style={{ color: C.indigo600 }}>
+                          {moneda === 'USD' ? 'USD ' : '$'}{Number(total).toLocaleString('es-AR', { maximumFractionDigits: 2 })}
+                        </strong>
+                        {proyecto ? <> en la caja de <strong>{proyecto}</strong></> : ' en la caja del proyecto'}.
+                      </Typography>
+                    </Box>
+                  );
+                })()}
+
+                {/* Adjuntar factura */}
+                <Box>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                    Factura (opcional)
+                  </Typography>
+                  {resolverFacturaFile ? (
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, p: 1.5, border: '1px solid', borderColor: 'success.light', borderRadius: 1.5, bgcolor: 'success.50' }}>
+                      <AttachFileIcon sx={{ fontSize: 18, color: 'success.main' }} />
+                      <Typography variant="body2" sx={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {resolverFacturaFile.name}
+                      </Typography>
+                      <IconButton size="small" onClick={() => setResolverFacturaFile(null)}>
+                        <CloseIcon sx={{ fontSize: 16 }} />
+                      </IconButton>
+                    </Box>
+                  ) : (
+                    <Button
+                      component="label"
+                      variant="outlined"
+                      size="small"
+                      startIcon={<AttachFileIcon />}
+                      sx={{ textTransform: 'none' }}
+                    >
+                      Adjuntar factura
+                      <input
+                        type="file"
+                        hidden
+                        accept=".pdf,.jpg,.jpeg,.png,.webp"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) setResolverFacturaFile(file);
+                          e.target.value = '';
+                        }}
+                      />
+                    </Button>
+                  )}
+                </Box>
+              </Stack>
+            )}
+
+            {/* ── RETIRO DEPÓSITO ── */}
+            {resolverItemTipo === 'retiro_deposito' && (
+              <Stack spacing={3}>
+                <Alert severity="success" sx={{ fontSize: 13 }}>
+                  Se va a registrar el retiro del stock del depósito de la empresa.
+                </Alert>
+                {!isBulkResolution && (
+                  <TextField
+                    label="Cantidad a retirar"
+                    type="number"
+                    size="small"
+                    inputProps={{ min: 0, step: 'any' }}
+                    value={resolverItemData.cantidad || ''}
+                    onChange={(e) => updateResolverData((d) => ({ ...d, cantidad: parseFloat(e.target.value) || undefined }))}
+                    helperText={resolverItemItem ? `Pendiente: ${getCantidadPendienteItem(resolverItemItem)} ${resolverItemItem.unidad || ''}`.trim() : ''}
+                    sx={{ maxWidth: 260 }}
+                  />
+                )}
+                <Box>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                    ¿Necesitás generar una solicitud formal de retiro?
+                  </Typography>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    endIcon={<OpenInNewIcon sx={{ fontSize: 16 }} />}
+                    onClick={() => window.open('/tickets', '_blank')}
+                    sx={{ textTransform: 'none' }}
+                  >
+                    Ver solicitudes de retiro
+                  </Button>
+                </Box>
+              </Stack>
+            )}
+
+            {/* ── RETIRO ACOPIO ── */}
+            {resolverItemTipo === 'retiro_acopio' && (() => {
+              const disponiblesIds = resolverSuggestion?.acopiosDisponiblesIds;
+              const sorted = disponiblesIds != null
+                ? [...acopios].sort((a, b) => {
+                    const aD = disponiblesIds.has(a.id);
+                    const bD = disponiblesIds.has(b.id);
+                    if (aD && !bD) return -1;
+                    if (!aD && bD) return 1;
+                    return Number(b.totalValor || 0) - Number(a.totalValor || 0);
+                  })
+                : acopios;
+              return (
+                <Stack spacing={2}>
+                  {!isBulkResolution && (
+                    <TextField
+                      label="Cantidad a retirar"
+                      type="number"
+                      size="small"
+                      inputProps={{ min: 0, step: 'any' }}
+                      value={resolverItemData.cantidad || ''}
+                      onChange={(e) => updateResolverData((d) => ({ ...d, cantidad: parseFloat(e.target.value) || undefined }))}
+                      helperText={resolverItemItem ? `Pendiente: ${getCantidadPendienteItem(resolverItemItem)} ${resolverItemItem.unidad || ''}`.trim() : ''}
+                      sx={{ maxWidth: 260 }}
+                    />
+                  )}
+                  <Typography variant="body2" color="text.secondary">Seleccioná el acopio:</Typography>
+                  {acopios.length === 0 ? (
+                    <Typography variant="body2" color="text.secondary">No hay acopios disponibles para esta empresa.</Typography>
+                  ) : (
+                    <Stack spacing={1}>
+                      {sorted.map((acopio) => {
+                        const saldo = Number(acopio.totalValor || 0);
+                        const tieneSaldo = saldo > 0;
+                        const isSelected = resolverItemData.acopio_id === acopio.id;
+                        return (
+                          <Paper
+                            key={acopio.id}
+                            variant="outlined"
+                            onClick={() => updateResolverData((d) => ({ ...d, acopio_id: acopio.id }))}
+                            sx={{
+                              p: 2,
+                              cursor: 'pointer',
+                              opacity: tieneSaldo ? 1 : 0.45,
+                              borderColor: isSelected ? 'primary.main' : 'grey.200',
+                              borderWidth: isSelected ? 2 : 1,
+                              bgcolor: isSelected ? alpha(C.indigo600, 0.04) : 'background.paper',
+                              transition: 'all 0.15s ease',
+                              '&:hover': { borderColor: tieneSaldo ? (isSelected ? 'primary.main' : 'grey.400') : 'grey.200' },
+                            }}
+                          >
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <Box sx={{ flex: 1 }}>
+                                <Typography variant="body2" fontWeight={600}>{acopio.codigo || acopio.id}</Typography>
+                                {acopio.proveedor && <Typography variant="caption" color="text.secondary">{acopio.proveedor}</Typography>}
+                              </Box>
+                              <Typography variant="body2" fontWeight={700} color={tieneSaldo ? 'success.main' : 'text.disabled'}>
+                                {tieneSaldo ? `$${saldo.toLocaleString('es-AR', { maximumFractionDigits: 0 })}` : 'sin saldo'}
+                              </Typography>
+                            </Box>
+                          </Paper>
+                        );
+                      })}
+                    </Stack>
+                  )}
+                </Stack>
+              );
+            })()}
+          </Box>
+
+          <Box sx={{ px: 2.5, py: 2, borderTop: '1px solid', borderColor: 'divider', display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+            <Button onClick={() => setResolverStep('select')} sx={{ textTransform: 'none' }}>← Volver</Button>
+            <Button
+              variant="contained"
+              disableElevation
+              onClick={handleResolverItem}
+              disabled={resolverItemLoading || (resolverItemTipo === 'retiro_acopio' && !resolverItemData.acopio_id)}
+              sx={{ textTransform: 'none' }}
+            >
+              {resolverItemLoading ? <CircularProgress size={18} color="inherit" /> : 'Confirmar'}
+            </Button>
+          </Box>
+        </Box>
+      )}
     </Box>
   )}
 </Drawer>
 
-{/* TAR-324: Dialog de resolución de ítem */}
-<Dialog
-  open={resolverItemOpen}
-  onClose={closeResolverDialog}
-  maxWidth="xs"
-  fullWidth
->
-  <DialogTitle>
-    {isBulkResolution
-      ? `Resolver ${resolverItemItems.length} ítems`
-      : `Resolver ítem${resolverItemItem ? `: ${resolverItemItem.material_nombre}` : ''}`}
-  </DialogTitle>
-  <DialogContent>
-    <Stack spacing={2} sx={{ mt: 1 }}>
-      {resolverSuggestionLoading && <LinearProgress />}
-      {resolverSuggestion?.mensaje && <Alert severity="info">{resolverSuggestion.mensaje}</Alert>}
 
-      {isBulkResolution && (
-        <Box sx={{ p: 1.5, bgcolor: 'grey.50', borderRadius: 2, border: '1px solid', borderColor: 'grey.200' }}>
-          <Typography variant="body2" fontWeight={600} sx={{ mb: 0.5 }}>
-            Ítems seleccionados
-          </Typography>
-          <Typography variant="caption" color="text.secondary">
-            Se va a resolver la cantidad pendiente de cada ítem con los mismos datos de esta operación.
-          </Typography>
-          {resolverItemTipo === 'compra' && (
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-              En compra por lote se reutilizan proveedor, categoría y fecha. El total no se replica para evitar egresos duplicados.
-            </Typography>
-          )}
-          <Stack spacing={0.5} sx={{ mt: 1 }}>
-            {resolverItemItems.map((item) => (
-              <Typography key={item._id} variant="caption" color="text.secondary">
-                {item.material_nombre} · {getCantidadPendienteItem(item)} {item.unidad || ''}
-              </Typography>
-            ))}
-          </Stack>
-        </Box>
-      )}
-
-      <FormControl fullWidth size="small">
-        <InputLabel>Tipo de resolución</InputLabel>
-        <Select
-          value={resolverItemTipo}
-          label="Tipo de resolución"
-          onChange={(e) => {
-            setResolverConfigTouched(true);
-            setResolverItemTipo(e.target.value);
-            setResolverItemData((current) => {
-              const next = {};
-              if (!isBulkResolution && resolverItemItems[0]) {
-                next.cantidad = getCantidadPendienteItem(resolverItemItems[0]);
-              }
-              if (e.target.value === 'retiro_acopio' && current.acopio_id) {
-                next.acopio_id = current.acopio_id;
-              }
-              return next;
-            });
-          }}
-        >
-          <MenuItem value="compra">Compra</MenuItem>
-          <MenuItem value="retiro_deposito">Retiro de depósito</MenuItem>
-          <MenuItem value="retiro_acopio">Retiro de acopio</MenuItem>
-        </Select>
-      </FormControl>
-
-      {resolverItemTipo === 'compra' && (
-        <>
-          {!isBulkResolution && (
-            <TextField
-              label="Cantidad"
-              type="number"
-              size="small"
-              fullWidth
-              inputProps={{ min: 0, step: 'any' }}
-              value={resolverItemData.cantidad || ''}
-              onChange={(e) => updateResolverData((d) => ({ ...d, cantidad: parseFloat(e.target.value) || undefined }))}
-              helperText={resolverItemItem ? `Pendiente: ${getCantidadPendienteItem(resolverItemItem)} ${resolverItemItem.unidad || ''}`.trim() : ''}
-            />
-          )}
-          {!isBulkResolution && (
-            <TextField
-              label="Total"
-              type="number"
-              size="small"
-              fullWidth
-              value={resolverItemData.total || ''}
-              onChange={(e) => updateResolverData((d) => ({ ...d, total: parseFloat(e.target.value) || undefined }))}
-            />
-          )}
-          <TextField
-            select
-            label="Moneda"
-            size="small"
-            fullWidth
-            value={resolverItemData.moneda || 'ARS'}
-            onChange={(e) => updateResolverData((d) => ({ ...d, moneda: e.target.value }))}
-          >
-            <MenuItem value="ARS">ARS</MenuItem>
-            <MenuItem value="USD">USD</MenuItem>
-          </TextField>
-          <TextField
-            label="Proveedor"
-            size="small"
-            fullWidth
-            value={resolverItemData.proveedor || ''}
-            onChange={(e) => updateResolverData((d) => ({ ...d, proveedor: e.target.value }))}
-          />
-          <TextField
-            label="Categoría"
-            size="small"
-            fullWidth
-            value={resolverItemData.categoria || 'Materiales'}
-            onChange={(e) => updateResolverData((d) => ({ ...d, categoria: e.target.value }))}
-          />
-          <TextField
-            label="Fecha de factura"
-            type="date"
-            size="small"
-            fullWidth
-            InputLabelProps={{ shrink: true }}
-            value={resolverItemData.fecha_factura || ''}
-            onChange={(e) => updateResolverData((d) => ({ ...d, fecha_factura: e.target.value }))}
-          />
-        </>
-      )}
-
-      {(resolverItemTipo === 'retiro_deposito' || resolverItemTipo === 'retiro_acopio') && (
-        <>
-          {!isBulkResolution && (
-            <TextField
-              label="Cantidad"
-              type="number"
-              size="small"
-              fullWidth
-              inputProps={{ min: 0, step: 'any' }}
-              value={resolverItemData.cantidad || ''}
-              onChange={(e) => updateResolverData((d) => ({ ...d, cantidad: parseFloat(e.target.value) || undefined }))}
-              helperText={resolverItemItem ? `Pendiente: ${getCantidadPendienteItem(resolverItemItem)} ${resolverItemItem.unidad || ''}`.trim() : ''}
-            />
-          )}
-          {resolverItemTipo === 'retiro_acopio' && (
-            <TextField
-              select
-              label="Acopio"
-              size="small"
-              fullWidth
-              value={resolverItemData.acopio_id || ''}
-              onChange={(e) => updateResolverData((d) => ({ ...d, acopio_id: e.target.value }))}
-              helperText={acopios.length === 0 ? 'No hay acopios disponibles para esta empresa.' : ''}
-            >
-              {acopios.map((acopio) => (
-                <MenuItem key={acopio.id} value={acopio.id}>
-                  {acopio.codigo || acopio.id}{acopio.proveedor ? ` · ${acopio.proveedor}` : ''}
-                </MenuItem>
-              ))}
-            </TextField>
-          )}
-        </>
-      )}
-    </Stack>
-  </DialogContent>
-  <DialogActions>
-    <Button onClick={closeResolverDialog}>Cancelar</Button>
-    <Button
-      onClick={handleResolverItem}
-      variant="contained"
-      disabled={resolverItemLoading || (resolverItemTipo === 'retiro_acopio' && !resolverItemData.acopio_id)}
-    >
-      {resolverItemLoading ? <CircularProgress size={18} color="inherit" /> : 'Confirmar'}
-    </Button>
-  </DialogActions>
-</Dialog>
 
         <Dialog open={openFilters} onClose={() => setOpenFilters(false)} maxWidth="sm" fullWidth>
           <DialogTitle>Filtros</DialogTitle>

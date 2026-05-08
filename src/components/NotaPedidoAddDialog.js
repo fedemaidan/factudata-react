@@ -21,6 +21,7 @@ import {
   TableCell,
   IconButton,
   Box,
+  Autocomplete,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
@@ -61,6 +62,7 @@ export const NotaPedidoAddDialog = ({
   profiles,
   proyectos,
   empresa,
+  proveedores = [],
   initialData = null,
   title = 'Añadir Nota',
   submitLabel = 'Guardar',
@@ -167,11 +169,17 @@ export const NotaPedidoAddDialog = ({
             fullWidth
           />
 
-          <TextField
-            label="Proveedor"
+          <Autocomplete
+            freeSolo
+            options={proveedores}
             value={newNoteData.proveedor}
-            onChange={(e) => setNewNoteData({ ...newNoteData, proveedor: e.target.value })}
-            fullWidth
+            onChange={(_, val) => setNewNoteData({ ...newNoteData, proveedor: val || '' })}
+            onInputChange={(_, val, reason) => {
+              if (reason === 'input') setNewNoteData({ ...newNoteData, proveedor: val || '' });
+            }}
+            renderInput={(params) => (
+              <TextField {...params} label="Proveedor" fullWidth />
+            )}
           />
           {showEstado && (
             <FormControl fullWidth>
