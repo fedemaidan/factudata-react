@@ -19,6 +19,7 @@ import {
   getCuentaPendienteHistorialConfig,
 } from "src/utils/celulandia/historial";
 import { parseCuentaPendiente } from "src/utils/celulandia/cuentasPendientes/parseCuentasPendientes";
+import { parseMovimiento } from "src/utils/celulandia/movimientos/parseMovimientos";
 import { getUser } from "src/utils/celulandia/currentUser";
 import EditarEntregaModal from "src/components/celulandia/EditarEntregaModal";
 
@@ -213,7 +214,9 @@ const ClienteCelulandiaCCPage = () => {
     const dataParaEditar =
       item?.itemType === "cuentaPendiente"
         ? normalizarCuentaPendienteParaEditar(item)
-        : item?.originalData;
+        : item?.originalData
+        ? parseMovimiento(item.originalData)
+        : null;
 
     setSelectedData(dataParaEditar);
     setSelectedItemType(item.itemType);
