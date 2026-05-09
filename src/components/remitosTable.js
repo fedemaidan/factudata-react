@@ -1,231 +1,375 @@
-// Este componente mejora la vista de remitos
-// ✅ Acciones contextualizadas
-// ✅ Indicador de duplicado más limpio
-// ✅ Mejor estructura y responsividad
-// ✅ Filtros por estado y fecha
-// ✅ Exportación a Excel
-
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
-  Box,
-  Button,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
-  IconButton,
-  Chip,
-  Collapse,
-  Tooltip,
-  Menu,
-  MenuItem,
-  TextField,
-  Stack,
-  Typography,
-  MenuItem as MuiMenuItem,
-  Select,
-  InputLabel,
-  FormControl
+  Box, Button, Table, TableBody, TableCell, TableHead, TableRow, TableFooter,
+  IconButton, Chip, Collapse, Tooltip, Menu, MenuItem,
+  TextField, Stack, Typography, Select, InputLabel, FormControl,
 } from '@mui/material';
-import MoreVertIcon from '@mui/icons-material/MoreVert';
+import AddIcon from '@mui/icons-material/Add';
+import EditIcon from '@mui/icons-material/Edit';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import FilterListIcon from '@mui/icons-material/FilterList';
+import DownloadIcon from '@mui/icons-material/Download';
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
+import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import { saveAs } from 'file-saver';
 import * as XLSX from 'xlsx';
 import AcopioService from 'src/services/acopioService';
-import { useRouter } from 'next/router';
 
-const RemitosTable = ({ remitos, remitoMovimientos, setRemitoMovimientos, expanded, setExpanded, router, acopioId, remitosDuplicados, setDialogoEliminarAbierto, setRemitoAEliminar }) => {
-  const [anchorEl, setAnchorEl] = useState(null);
-  const [selectedRemito, setSelectedRemito] = useState(null);
-  const [selectedUrl, setSelectedUrl] = useState("");
-  const [filtroEstado, setFiltroEstado] = useState('');
-  const [filtroFechaDesde, setFiltroFechaDesde] = useState('');
-  const [filtroFechaHasta, setFiltroFechaHasta] = useState('');
-  const [filtroNumeroRemito, setFiltroNumeroRemito] = useState('');
-  const openMenu = Boolean(anchorEl);
+const fmtCurrency = (v) =>
+  v != null
+    ? Number(v).toLocaleString('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0, maximumFractionDigits: 0 })
+    : '—';
 
-  const handleMenuClick = (event, remito) => {
-    setAnchorEl(event.currentTarget);
-    setSelectedRemito(remito.id);
-    const urlRemito = remito.url_remito;
-    setSelectedUrl(Array.isArray(urlRemito) ? urlRemito[0] : (urlRemito || ''));
-  };
+const fmtFecha = (raw) => {
+  if (!raw) return '—';
+  return new Date(raw).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' });
+};
 
-  const handleCloseMenu = () => {
-    setAnchorEl(null);
-  };
+const ESTADO_COLOR = {
+  confirmado:  'success',
+  pendiente:   'warning',
+  rechazado:   'error',
+  cancelado:   'error',
+  en_revision: 'info',
+};
+
+const RemitosTable = ({
+  remitos,
+  remitoMovimientos,
+  setRemitoMovimientos,
+  expanded,
+  setExpanded,
+  router,
+  acopioId,
+  remitosDuplicados,
+  setDialogoEliminarAbierto,
+  setRemitoAEliminar,
+  onExportarInforme,
+  onNuevoRemito,
+}) => {
+  const [filtroEstado, setFiltroEstado]           = useState('');
+  const [filtroFechaDesde, setFiltroFechaDesde]   = useState('');
+  const [filtroFechaHasta, setFiltroFechaHasta]   = useState('');
+  const [filtroNumero, setFiltroNumero]           = useState('');
+  const [filtrosAbiertos, setFiltrosAbiertos]     = useState(false);
+  const [exportMenuAnchor, setExportMenuAnchor]   = useState(null);
+
+  const remitosFiltrados = remitos.filter((r) => {
+    const fecha = new Date(r.fecha);
+    const desde = filtroFechaDesde ? new Date(filtroFechaDesde) : null;
+    const hasta = filtroFechaHasta ? new Date(filtroFechaHasta) : null;
+    return (
+      (!filtroEstado   || r.estado === filtroEstado) &&
+      (!desde          || fecha >= desde) &&
+      (!hasta          || fecha <= hasta) &&
+      (!filtroNumero   || r.numero_remito?.toLowerCase().includes(filtroNumero.toLowerCase()))
+    );
+  });
+
+  const totalFiltrado = remitosFiltrados.reduce((s, r) => s + (Number(r.valorOperacion) || 0), 0);
+
+  const filtrosActivos = filtroEstado || filtroFechaDesde || filtroFechaHasta;
 
   const exportarExcel = () => {
-    const data = remitosFiltrados.map(r => ({
-      Numero: r.numero_remito,
-      Fecha: new Date(r.fecha).toLocaleDateString(),
-      Estado: r.estado,
-      ValorOperacion: r.valorOperacion,
-      Link: r.url_remito
+    const data = remitosFiltrados.map((r) => ({
+      Número:          r.numero_remito || '—',
+      Fecha:           fmtFecha(r.fecha),
+      Estado:          r.estado || '—',
+      'Valor Operación': Number(r.valorOperacion) || 0,
     }));
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Remitos');
-  
-    const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-    const blob = new Blob([excelBuffer], { type: 'application/octet-stream' });
-    saveAs(blob, 'remitos.xlsx');
+    const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    saveAs(new Blob([buf], { type: 'application/octet-stream' }), 'remitos.xlsx');
+    setExportMenuAnchor(null);
   };
-  
 
-  const remitosFiltrados = remitos.filter(r => {
-    const fecha = new Date(r.fecha);
-    const desde = filtroFechaDesde ? new Date(filtroFechaDesde) : null;
-    const hasta = filtroFechaHasta ? new Date(filtroFechaHasta) : null;
-    const coincideEstado = filtroEstado ? r.estado === filtroEstado : true;
-    const coincideDesde = desde ? fecha >= desde : true;
-    const coincideHasta = hasta ? fecha <= hasta : true;
-    const coincideNumero = filtroNumeroRemito
-      ? r.numero_remito?.toLowerCase().includes(filtroNumeroRemito.toLowerCase())
-      : true;
-    return coincideEstado && coincideDesde && coincideHasta && coincideNumero;
-  });
+  const handleExportarInforme = () => {
+    setExportMenuAnchor(null);
+    onExportarInforme?.();
+  };
 
   return (
     <Box>
-      <Stack direction="row" spacing={2} sx={{ my: 2, flexWrap: 'wrap' }}>
-        <FormControl sx={{ minWidth: 120 }}>
-          <InputLabel>Estado</InputLabel>
-          <Select
-            label="Estado"
-            value={filtroEstado}
-            onChange={(e) => setFiltroEstado(e.target.value)}
-          >
-            <MuiMenuItem value="">Todos</MuiMenuItem>
-            <MuiMenuItem value="pendiente">Pendiente</MuiMenuItem>
-            <MuiMenuItem value="confirmado">Confirmado</MuiMenuItem>
-          </Select>
-        </FormControl>
+      {/* Barra de herramientas */}
+      <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5, flexWrap: 'wrap' }}>
+        {/* Búsqueda siempre visible */}
         <TextField
-          label="Desde"
-          type="date"
-          value={filtroFechaDesde}
-          onChange={(e) => setFiltroFechaDesde(e.target.value)}
-          InputLabelProps={{ shrink: true }}
-        />
-        <TextField
-          label="Hasta"
-          type="date"
-          value={filtroFechaHasta}
-          onChange={(e) => setFiltroFechaHasta(e.target.value)}
-          InputLabelProps={{ shrink: true }}
-        />
-        <TextField
-          label="Buscar número"
-          value={filtroNumeroRemito}
-          onChange={(e) => setFiltroNumeroRemito(e.target.value)}
-        />
-        <Button variant="outlined" onClick={exportarExcel}>Exportar Excel</Button>
-        <Button
-          variant="contained"
           size="small"
-          onClick={() => router.push(`/gestionRemito?acopioId=${acopioId}`)}
-          sx={{ minWidth: 'auto', px: 2 }}
+          placeholder="Buscar por número..."
+          value={filtroNumero}
+          onChange={(e) => setFiltroNumero(e.target.value)}
+          sx={{ minWidth: 200 }}
+        />
+
+        {/* Toggle filtros avanzados */}
+        <Button
+          size="small"
+          variant={filtrosActivos ? 'contained' : 'outlined'}
+          startIcon={<FilterListIcon />}
+          onClick={() => setFiltrosAbiertos((v) => !v)}
+          color={filtrosActivos ? 'primary' : 'inherit'}
         >
-          Agregar
+          Filtros{filtrosActivos ? ' ·' : ''}
         </Button>
+
+        <Box sx={{ flex: 1 }} />
+
+        {onNuevoRemito && (
+          <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={onNuevoRemito}>
+            Cargar remito
+          </Button>
+        )}
+
+        {/* Exportar — dropdown unificado */}
+        <Button
+          size="small"
+          variant="outlined"
+          startIcon={<DownloadIcon />}
+          endIcon={<ExpandMoreIcon fontSize="small" />}
+          onClick={(e) => setExportMenuAnchor(e.currentTarget)}
+          disabled={remitos.length === 0}
+        >
+          Exportar
+        </Button>
+        <Menu
+          anchorEl={exportMenuAnchor}
+          open={Boolean(exportMenuAnchor)}
+          onClose={() => setExportMenuAnchor(null)}
+        >
+          <MenuItem onClick={exportarExcel}>Excel (.xlsx)</MenuItem>
+          <MenuItem onClick={handleExportarInforme} disabled={!onExportarInforme}>Informe detallado</MenuItem>
+        </Menu>
       </Stack>
 
-      <Table size="small" sx={{ overflowX: 'auto' }}>
+      {/* Filtros avanzados colapsables */}
+      <Collapse in={filtrosAbiertos}>
+        <Stack direction="row" spacing={2} sx={{ mb: 1.5, flexWrap: 'wrap' }}>
+          <FormControl size="small" sx={{ minWidth: 140 }}>
+            <InputLabel>Estado</InputLabel>
+            <Select
+              label="Estado"
+              value={filtroEstado}
+              onChange={(e) => setFiltroEstado(e.target.value)}
+            >
+              <MenuItem value="">Todos</MenuItem>
+              <MenuItem value="pendiente">Pendiente</MenuItem>
+              <MenuItem value="confirmado">Confirmado</MenuItem>
+              <MenuItem value="rechazado">Rechazado</MenuItem>
+            </Select>
+          </FormControl>
+          <TextField
+            size="small"
+            label="Desde"
+            type="date"
+            value={filtroFechaDesde}
+            onChange={(e) => setFiltroFechaDesde(e.target.value)}
+            InputLabelProps={{ shrink: true }}
+          />
+          <TextField
+            size="small"
+            label="Hasta"
+            type="date"
+            value={filtroFechaHasta}
+            onChange={(e) => setFiltroFechaHasta(e.target.value)}
+            InputLabelProps={{ shrink: true }}
+          />
+          {filtrosActivos && (
+            <Button size="small" variant="text" onClick={() => { setFiltroEstado(''); setFiltroFechaDesde(''); setFiltroFechaHasta(''); }}>
+              Limpiar
+            </Button>
+          )}
+        </Stack>
+      </Collapse>
+
+      {/* Hint de navegación */}
+      {remitos.length > 0 && (
+        <Typography variant="caption" color="text.disabled" sx={{ display: 'block', mb: 1 }}>
+          Clic en una fila para ver los materiales · usa ✏ para editar el remito · 🔗 para abrir el comprobante adjunto
+        </Typography>
+      )}
+
+      {/* Tabla */}
+      <Table size="small">
         <TableHead>
           <TableRow>
-            <TableCell>Número remito</TableCell>
+            <TableCell width={32} />
+            <TableCell>Número</TableCell>
             <TableCell>Fecha</TableCell>
             <TableCell>Estado</TableCell>
-            <TableCell>Valor Operación</TableCell>
-            <TableCell align="center">Acciones</TableCell>
+            <TableCell align="right">Valor</TableCell>
+            <TableCell align="right">Acumulado</TableCell>
+            <TableCell align="right" width={120}>Acciones</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
-          {remitosFiltrados.map((remito) => (
-            <React.Fragment key={remito.id}>
-              <TableRow
-                sx={{ cursor: 'pointer', '&:hover': { backgroundColor: '#f5f5f5' } }}
-                onClick={async () => {
-                  if (expanded === remito.id) {
-                    setExpanded(null);
-                  } else {
-                    setExpanded(remito.id);
-                    if (!remitoMovimientos[remito.id]) {
-                      const movimientos = await AcopioService.obtenerMovimientosDeRemito(acopioId, remito.id);
-                      setRemitoMovimientos(prev => ({ ...prev, [remito.id]: movimientos }));
+          {remitosFiltrados.length === 0 && (
+            <TableRow>
+              <TableCell colSpan={7} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                {remitos.length === 0 ? 'No hay remitos cargados' : 'Ningún remito coincide con los filtros'}
+              </TableCell>
+            </TableRow>
+          )}
+          {(() => {
+            let acumulado = 0;
+            return remitosFiltrados.map((remito) => {
+            acumulado += Number(remito.valorOperacion) || 0;
+            const acumuladoFila = acumulado;
+            const isExpanded = expanded === remito.id;
+            const url = Array.isArray(remito.url_remito) ? remito.url_remito[0] : remito.url_remito;
+            return (
+              <React.Fragment key={remito.id}>
+                <TableRow
+                  hover
+                  sx={{ cursor: 'pointer' }}
+                  onClick={async () => {
+                    if (isExpanded) {
+                      setExpanded(null);
+                    } else {
+                      setExpanded(remito.id);
+                      if (!remitoMovimientos[remito.id]) {
+                        const movs = await AcopioService.obtenerMovimientosDeRemito(acopioId, remito.id);
+                        setRemitoMovimientos((prev) => ({ ...prev, [remito.id]: movs }));
+                      }
                     }
-                  }
-                }}
-              >
-                <TableCell>
-                  {remito.numero_remito}
-                  {remitosDuplicados.has(remito.id) && (
-                    <Tooltip title="Posible duplicado">
-                      <Chip label="Duplicado" color="warning" size="small" sx={{ ml: 1 }} />
-                    </Tooltip>
-                  )}
-                </TableCell>
-                <TableCell>{new Date(remito.fecha).toLocaleDateString()}</TableCell>
-                <TableCell>
-                  <Chip label={remito.estado} color="default" size="small" />
-                </TableCell>
-                <TableCell>{remito.valorOperacion?.toLocaleString('es-AR', { style: 'currency', currency: 'ARS' })}</TableCell>
-                <TableCell align="center">
-                  <IconButton onClick={(e) => handleMenuClick(e, remito)}>
-                    <MoreVertIcon />
-                  </IconButton>
-                  <Menu anchorEl={anchorEl} open={openMenu} onClose={handleCloseMenu}>
-                    <MenuItem onClick={() => {
-                      router.push(`/gestionRemito?acopioId=${acopioId}&remitoId=${selectedRemito}`);
-                      handleCloseMenu();
-                    }}>Editar</MenuItem>
-                    <MenuItem onClick={() => {
-                      setRemitoAEliminar(selectedRemito);
-                      setDialogoEliminarAbierto(true);
-                      handleCloseMenu();
-                    }}>Eliminar</MenuItem>
-                    <MenuItem onClick={() => {window.open(selectedUrl, '_blank');}
-                    }>Ver</MenuItem>
-                  </Menu>
-                </TableCell>
-              </TableRow>
-              <TableRow>
-                <TableCell colSpan={5} sx={{ p: 0 }}>
-                  <Collapse in={expanded === remito.id} timeout="auto" unmountOnExit>
-                    <Box sx={{ p: 2 }}>
-                      <Typography variant="subtitle1">Movimientos del Remito</Typography>
-                      <Table size="small">
-                        <TableHead>
-                          <TableRow>
-                            <TableCell>Fecha</TableCell>
-                            <TableCell>Código</TableCell>
-                            <TableCell>Descripción</TableCell>
-                            <TableCell>Cantidad</TableCell>
-                            <TableCell>Valor Unitario</TableCell>
-                            <TableCell>Valor Total</TableCell>
-                          </TableRow>
-                        </TableHead>
-                        <TableBody>
-                          {(remitoMovimientos[remito.id] || []).map((mov) => (
-                            <TableRow key={mov.id}>
-                              <TableCell>{new Date(mov.fecha).toLocaleDateString()}</TableCell>
-                              <TableCell>{mov.codigo}</TableCell>
-                              <TableCell>{mov.descripcion}</TableCell>
-                              <TableCell>{mov.cantidad}</TableCell>
-                              <TableCell>{mov.valorUnitario?.toLocaleString('es-AR', { style: 'currency', currency: 'ARS' })}</TableCell>
-                              <TableCell>{mov.valorOperacion?.toLocaleString('es-AR', { style: 'currency', currency: 'ARS' })}</TableCell>
+                  }}
+                >
+                  {/* Expand icon */}
+                  <TableCell sx={{ p: 0.5 }}>
+                    <IconButton size="small" tabIndex={-1}>
+                      {isExpanded ? <KeyboardArrowUpIcon fontSize="small" /> : <KeyboardArrowDownIcon fontSize="small" />}
+                    </IconButton>
+                  </TableCell>
+
+                  <TableCell>
+                    <Stack direction="row" spacing={0.75} alignItems="center">
+                      <span>{remito.numero_remito || <Typography variant="caption" color="text.disabled">Sin número</Typography>}</span>
+                      {remitosDuplicados.has(remito.id) && (
+                        <Tooltip title="Posible duplicado">
+                          <Chip label="Duplicado" color="warning" size="small" sx={{ fontSize: 10, height: 18 }} />
+                        </Tooltip>
+                      )}
+                    </Stack>
+                  </TableCell>
+
+                  <TableCell sx={{ color: 'text.secondary', fontSize: 13 }}>
+                    {fmtFecha(remito.fecha)}
+                  </TableCell>
+
+                  <TableCell>
+                    <Chip
+                      label={remito.estado || '—'}
+                      color={ESTADO_COLOR[remito.estado] || 'default'}
+                      size="small"
+                      sx={{ textTransform: 'capitalize' }}
+                    />
+                  </TableCell>
+
+                  <TableCell align="right" sx={{ fontWeight: 600 }}>
+                    {fmtCurrency(remito.valorOperacion)}
+                  </TableCell>
+
+                  <TableCell align="right" sx={{ color: 'text.secondary', fontSize: 12 }}>
+                    {fmtCurrency(acumuladoFila)}
+                  </TableCell>
+
+                  {/* Acciones inline */}
+                  <TableCell align="right" onClick={(e) => e.stopPropagation()}>
+                    <Stack direction="row" spacing={0} justifyContent="flex-end">
+                      <Tooltip title="Editar">
+                        <IconButton
+                          size="small"
+                          onClick={() => router.push(`/gestionRemito?acopioId=${acopioId}&remitoId=${remito.id}`)}
+                        >
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      {url && (
+                        <Tooltip title="Ver comprobante">
+                          <IconButton size="small" onClick={() => window.open(url, '_blank')}>
+                            <OpenInNewIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      )}
+                      <Tooltip title="Eliminar">
+                        <IconButton
+                          size="small"
+                          color="error"
+                          onClick={() => {
+                            setRemitoAEliminar(remito);
+                            setDialogoEliminarAbierto(true);
+                          }}
+                        >
+                          <DeleteOutlineIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </Stack>
+                  </TableCell>
+                </TableRow>
+
+                {/* Fila expandida con movimientos */}
+                <TableRow>
+                  <TableCell colSpan={7} sx={{ p: 0, borderBottom: isExpanded ? undefined : 'none' }}>
+                    <Collapse in={isExpanded} timeout="auto" unmountOnExit>
+                      <Box sx={{ p: 2, bgcolor: 'grey.50' }}>
+                        <Typography variant="subtitle2" sx={{ mb: 1 }}>Materiales del remito</Typography>
+                        <Table size="small">
+                          <TableHead>
+                            <TableRow>
+                              <TableCell>Código</TableCell>
+                              <TableCell>Descripción</TableCell>
+                              <TableCell align="right">Cantidad</TableCell>
+                              <TableCell align="right">V. Unitario</TableCell>
+                              <TableCell align="right">Total</TableCell>
                             </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </Box>
-                  </Collapse>
-                </TableCell>
-              </TableRow>
-            </React.Fragment>
-          ))}
+                          </TableHead>
+                          <TableBody>
+                            {(remitoMovimientos[remito.id] || []).map((mov) => (
+                              <TableRow key={mov.id}>
+                                <TableCell sx={{ color: 'text.secondary', fontSize: 12 }}>{mov.codigo || '—'}</TableCell>
+                                <TableCell>{mov.descripcion}</TableCell>
+                                <TableCell align="right">{mov.cantidad}</TableCell>
+                                <TableCell align="right">{fmtCurrency(mov.valorUnitario)}</TableCell>
+                                <TableCell align="right" sx={{ fontWeight: 600 }}>{fmtCurrency(mov.valorOperacion)}</TableCell>
+                              </TableRow>
+                            ))}
+                            {!remitoMovimientos[remito.id] && (
+                              <TableRow>
+                                <TableCell colSpan={5} align="center" sx={{ color: 'text.secondary', fontSize: 12 }}>
+                                  Cargando...
+                                </TableCell>
+                              </TableRow>
+                            )}
+                          </TableBody>
+                        </Table>
+                      </Box>
+                    </Collapse>
+                  </TableCell>
+                </TableRow>
+              </React.Fragment>
+            );
+          });
+        })()}
         </TableBody>
+
+        {/* Total footer */}
+        {remitosFiltrados.length > 0 && (
+          <TableFooter>
+            <TableRow>
+              <TableCell colSpan={4} align="right" sx={{ fontWeight: 600, color: 'text.primary' }}>
+                Total{filtroEstado || filtroFechaDesde || filtroFechaHasta || filtroNumero ? ' (filtrado)' : ''}
+              </TableCell>
+              <TableCell align="right" sx={{ fontWeight: 700, fontSize: 15, color: 'text.primary' }}>
+                {fmtCurrency(totalFiltrado)}
+              </TableCell>
+              <TableCell />
+              <TableCell />
+            </TableRow>
+          </TableFooter>
+        )}
       </Table>
     </Box>
   );

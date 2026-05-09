@@ -2,25 +2,22 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   Box, Button, Container, Stack, Typography, Tabs, Tab, Paper, Grid, Snackbar, Alert,
-  Dialog, DialogContent, TextField, Divider, LinearProgress, IconButton, Tooltip,
-  List, ListItem, ListItemIcon, ListItemText, ListItemSecondaryAction, Skeleton, Chip, ButtonGroup
+  Dialog, DialogContent, DialogTitle, DialogActions, TextField, Divider, LinearProgress, IconButton, Tooltip,
+  List, ListItem, ListItemIcon, ListItemText, Skeleton, Chip
 } from '@mui/material';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import SendIcon from '@mui/icons-material/Send';
 import CommentIcon from '@mui/icons-material/Comment';
 import CircularProgress from '@mui/material/CircularProgress';
-import RefreshIcon from '@mui/icons-material/Refresh';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
-import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos';
-import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import ImageIcon from '@mui/icons-material/Image';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import EditIcon from '@mui/icons-material/Edit';
 import SaveIcon from '@mui/icons-material/Save';
+import AddIcon from '@mui/icons-material/Add';
 import Switch from '@mui/material/Switch';
-import FormControlLabel from '@mui/material/FormControlLabel';
 
 import { useRouter } from 'next/router';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
@@ -31,7 +28,6 @@ import AcopioService from 'src/services/acopioService';
 import HomeIcon from '@mui/icons-material/Home';
 import InventoryIcon from '@mui/icons-material/Inventory';
 import VisibilityIcon from '@mui/icons-material/Visibility';
-import AttachFileIcon from '@mui/icons-material/AttachFile';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import DescriptionIcon from '@mui/icons-material/Description';
 import DownloadIcon from '@mui/icons-material/Download';
@@ -42,7 +38,6 @@ import { formatCurrency } from 'src/utils/formatters';
 // Nuevos componentes:
 import HeaderAcopioSummary from 'src/components/headerAcopioSummary';
 import MaterialesTableV2 from 'src/components/materialesTableV2';
-import AcopioVisor from 'src/components/acopioVisor';
 
 // Tu tabla actual de Remitos:
 import RemitosTable from 'src/components/remitosTable';
@@ -58,14 +53,78 @@ import { TOOLTIP_MOVIMIENTOS } from 'src/constant/tooltipTexts';
 const ENABLE_HOJA_UPLOAD = false;  // activar cuando backend listo
 const ENABLE_HOJA_DELETE = false;  // activar cuando backend listo
 
+function DonutChart({ va, vd, pct, codigo }) {
+  const r = 52;
+  const cx = 70;
+  const cy = 70;
+  const circumference = 2 * Math.PI * r;
+  const desacLen = (vd / va) * circumference;
+  const dispLen = circumference - desacLen;
+  const GAP = 2;
+
+  const handleDownload = () => {
+    const svgEl = document.getElementById(`donut-${codigo}`);
+    const data = new XMLSerializer().serializeToString(svgEl);
+    const blob = new Blob([data], { type: 'image/svg+xml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `acopio-${codigo || 'financiero'}.svg`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <Box sx={{ maxWidth: 200 }}>
+      <svg id={`donut-${codigo}`} width="140" height="140" viewBox="0 0 140 140">
+        <g transform="rotate(-90, 70, 70)">
+          <circle cx={cx} cy={cy} r={r} fill="none" stroke="#ef5350" strokeWidth="16"
+            strokeDasharray={`${Math.max(0, desacLen - GAP)} ${circumference}`}
+            strokeDashoffset="0"
+          />
+          <circle cx={cx} cy={cy} r={r} fill="none" stroke="#4caf50" strokeWidth="16"
+            strokeDasharray={`${Math.max(0, dispLen - GAP)} ${circumference}`}
+            strokeDashoffset={-desacLen}
+          />
+        </g>
+        <text x="70" y="64" textAnchor="middle" fontSize="10" fill="#999" fontFamily="inherit">Disponible</text>
+        <text x="70" y="83" textAnchor="middle" fontSize="19" fontWeight="bold" fill="#333" fontFamily="inherit">
+          {pct.toFixed(1)}%
+        </text>
+      </svg>
+      <Stack direction="row" spacing={2} justifyContent="center" sx={{ mt: 0.25 }}>
+        <Stack direction="row" spacing={0.5} alignItems="center">
+          <Box sx={{ width: 9, height: 9, borderRadius: '50%', bgcolor: '#ef5350' }} />
+          <Typography variant="caption" color="text.secondary">Desacopiado</Typography>
+        </Stack>
+        <Stack direction="row" spacing={0.5} alignItems="center">
+          <Box sx={{ width: 9, height: 9, borderRadius: '50%', bgcolor: '#4caf50' }} />
+          <Typography variant="caption" color="text.secondary">Disponible</Typography>
+        </Stack>
+      </Stack>
+      <Box sx={{ textAlign: 'center', mt: 0.5 }}>
+        <Button size="small" variant="text" onClick={handleDownload}
+          startIcon={<DownloadIcon fontSize="small" />}
+          sx={{ fontSize: 11, color: 'text.disabled', textTransform: 'none' }}
+        >
+          Descargar
+        </Button>
+      </Box>
+    </Box>
+  );
+}
+
 const MovimientosAcopioPage = () => {
   const router = useRouter();
-  const { acopioId } = router.query;
+  const { acopioId, tab: tabQuery } = router.query;
   const { user } = useAuthContext();
   const { setBreadcrumbs } = useBreadcrumbs();
 
   // Estado principal
-  const [tabActiva, setTabActiva] = useState('acopio');
+  const TABS_VALIDOS = ['acopio', 'remitos', 'materiales', 'archivos', 'actividad'];
+  const [tabActiva, setTabActiva] = useState(() =>
+    TABS_VALIDOS.includes(tabQuery) ? tabQuery : 'acopio'
+  );
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true); // Para skeleton loaders
   const [alert, setAlert] = useState({ open: false, message: '', severity: 'info' });
@@ -82,11 +141,18 @@ const MovimientosAcopioPage = () => {
   const [remitosCount, setRemitosCount] = useState(null); // null = no cargado, 0+ = cargado
   const [materialesCount, setMaterialesCount] = useState(null);
   const [documentosCount, setDocumentosCount] = useState(null);
-  const [countsLoading, setCountsLoading] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null); // Timestamp de última actualización
   const [eventos, setEventos] = useState([]); // Historial de eventos
   const [nuevoComentario, setNuevoComentario] = useState(''); // Input de comentario
   const [enviandoComentario, setEnviandoComentario] = useState(false);
+
+  // Sincronizar tab con URL (router.query llega vacío en el primer render en Next.js)
+  useEffect(() => {
+    if (tabQuery && TABS_VALIDOS.includes(tabQuery) && tabQuery !== tabActiva) {
+      setTabActiva(tabQuery);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabQuery]);
 
   // Setear breadcrumbs
   useEffect(() => {
@@ -107,14 +173,16 @@ const MovimientosAcopioPage = () => {
 
   // Documentos complementarios
   const [documentosComplementarios, setDocumentosComplementarios] = useState([]);
-  const [docPageIdx, setDocPageIdx] = useState(0);
   const [editandoDescripcionIdx, setEditandoDescripcionIdx] = useState(null);
   const [descripcionEditando, setDescripcionEditando] = useState('');
+  const [docAEliminarIdx, setDocAEliminarIdx] = useState(null);
+  const [actividadExpandida, setActividadExpandida] = useState(false);
+  const [manualRefresh, setManualRefresh] = useState(false);
+  const tabLoadedAt = useRef({});
 
   // Editor ya no se necesita - la edición se hace en página separada
 
   // Visor
-  const [pageIdx, setPageIdx] = useState(0);
   const acopioFileInputRef = useRef(null);
 
   // Remitos: expand + eliminar
@@ -127,9 +195,6 @@ const MovimientosAcopioPage = () => {
     () => (Array.isArray(acopio?.url_image) ? acopio.url_image.filter(Boolean) : []),
     [acopio]
   );
-  const totalPages = pages.length;
-  const hasAcopioPages = totalPages > 0;
-  const nextUrl = hasAcopioPages ? pages[(pageIdx + 1) % totalPages] : null;
 
   const va = Number(acopio?.valor_acopio) || 0;
   const vd = Number(acopio?.valor_desacopio) || 0;
@@ -166,17 +231,19 @@ const MovimientosAcopioPage = () => {
       }
 
       setAcopio(acopioData);
-      setLastUpdated(new Date()); // Marcar momento de actualización
-      
+
       // Cargar eventos del historial
       setEventos(acopioData.eventos || []);
 
+      if (acopioData.codigo) {
+        document.title = `${acopioData.codigo} · Acopio`;
+      }
+
       const comprasData = await AcopioService.obtenerCompras(acopioId);
       setCompras(comprasData || []);
-      setPageIdx(0);
-      
-      // Cargar conteos en background para los badges
-      loadCountsInBackground();
+
+      // Cargar conteos en background; pasamos las compras ya cargadas para evitar doble fetch
+      loadCountsInBackground(comprasData);
     } catch (err) {
       console.error(err);
       setAlert({ open: true, message: 'Error al obtener información del acopio', severity: 'error' });
@@ -187,35 +254,29 @@ const MovimientosAcopioPage = () => {
   }, [acopioId]);
 
   // Cargar conteos en background para badges (sin bloquear UI)
-  const loadCountsInBackground = useCallback(async () => {
+  const loadCountsInBackground = useCallback(async (comprasYaCargadas = null) => {
     if (!acopioId) return;
-    
+
     try {
-      // Cargar todos los conteos en paralelo
       const [remitosResp, movimientosResp, docsResp] = await Promise.allSettled([
         AcopioService.obtenerRemitos(acopioId),
         AcopioService.obtenerMovimientos(acopioId),
         AcopioService.obtenerDocumentosComplementarios(acopioId)
       ]);
-      
-      // Actualizar conteos
+
       if (remitosResp.status === 'fulfilled') {
         setRemitosCount((remitosResp.value || []).length);
       }
-      
+
       if (movimientosResp.status === 'fulfilled') {
         const { movimientos: movs } = movimientosResp.value || {};
-        // Contar materiales únicos
-        const comprasData = await AcopioService.obtenerCompras(acopioId);
+        // Reusar las compras ya cargadas si las tenemos; evita un fetch extra
+        const comprasData = comprasYaCargadas ?? await AcopioService.obtenerCompras(acopioId);
         const union = [...(movs || []), ...(comprasData || [])];
-        const uniqueKeys = new Set();
-        union.forEach(mov => {
-          const key = (mov.codigo || '—') + "_" + (mov.descripcion || '');
-          uniqueKeys.add(key);
-        });
+        const uniqueKeys = new Set(union.map(m => `${m.codigo || '—'}_${m.descripcion || ''}`));
         setMaterialesCount(uniqueKeys.size);
       }
-      
+
       if (docsResp.status === 'fulfilled') {
         setDocumentosCount((docsResp.value?.documentos || []).length);
       }
@@ -605,7 +666,6 @@ const MovimientosAcopioPage = () => {
       const resp = await AcopioService.obtenerDocumentosComplementarios(acopioId);
       setDocumentosComplementarios(resp?.documentos || []);
       setDocumentosCount((resp?.documentos || []).length);
-      setDocPageIdx(0);
     } catch (err) {
       console.error(err);
       setAlert({ open: true, message: 'Error al obtener documentos complementarios', severity: 'error' });
@@ -653,8 +713,9 @@ const MovimientosAcopioPage = () => {
 
   // Eliminar remito
   const eliminarRemito = async () => {
+    const remitoId = remitoAEliminar?.id || remitoAEliminar;
     try {
-      const exito = await AcopioService.eliminarRemito(acopioId, remitoAEliminar);
+      const exito = await AcopioService.eliminarRemito(acopioId, remitoId);
       if (exito) {
         setAlert({ open: true, message: 'Remito eliminado con éxito', severity: 'success' });
         await fetchRemitos();
@@ -723,9 +784,7 @@ const MovimientosAcopioPage = () => {
       const exito = await AcopioService.eliminarDocumentoComplementario(acopioId, index);
       if (exito) {
         setAlert({ open: true, message: 'Documento eliminado correctamente', severity: 'success' });
-        const wasLast = index === (documentosComplementarios.length - 1);
         await fetchDocumentosComplementarios();
-        if (wasLast) setDocPageIdx((p) => Math.max(0, p - 1));
       } else {
         setAlert({ open: true, message: 'No se pudo eliminar el documento', severity: 'error' });
       }
@@ -763,26 +822,33 @@ const MovimientosAcopioPage = () => {
     }
   };
 
-  // Tabs: lazy fetch
+  // Tabs: lazy fetch con cache de 60 s por tab
   useEffect(() => {
     if (!acopioId) return;
-    if (tabActiva === 'acopio') fetchAcopio();
-    if (tabActiva === 'remitos') fetchRemitos();
-    if (tabActiva === 'materiales') fetchMovimientos();
-    if (tabActiva === 'documentos') fetchDocumentosComplementarios();
-  }, [tabActiva, acopioId, fetchAcopio, fetchRemitos, fetchMovimientos, fetchDocumentosComplementarios]);
+    const STALE_MS = 60_000;
+    const now = Date.now();
+    const stale = (tab) => !tabLoadedAt.current[tab] || now - tabLoadedAt.current[tab] > STALE_MS;
+    const mark  = (tab) => { tabLoadedAt.current[tab] = Date.now(); };
+
+    if (tabActiva === 'acopio'     && stale('acopio'))     { fetchAcopio();                    mark('acopio'); }
+    if (tabActiva === 'remitos'    && stale('remitos'))    { fetchRemitos();                   mark('remitos'); }
+    if (tabActiva === 'materiales' && stale('materiales')) { fetchMovimientos();               mark('materiales'); }
+    if (tabActiva === 'archivos'   && stale('archivos'))   { fetchDocumentosComplementarios(); mark('archivos'); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabActiva, acopioId]);
 
   const handleChangeTab = (_e, v) => setTabActiva(v);
+
+  const handleNuevoRemito = () => {
+    router.push(`/gestionRemito?acopioId=${acopioId}`);
+  };
 
   const handleEditAcopio = () => {
     // Redirigir a la página de editar acopio
     router.push(`/editarAcopio?empresaId=${acopio?.empresaId}&acopioId=${acopioId}`);
   };
 
-  const handleUploadFromHeader = () => {
-    // Lleva a HOJAS; la subida se hace dentro del visor
-    setTabActiva('hojas');
-  };
+  const handleUploadFromHeader = () => setTabActiva('archivos');
 
   const handleAcopioFilesSelected = async (e) => {
     const files = e.target?.files;
@@ -806,9 +872,7 @@ const MovimientosAcopioPage = () => {
       setLoading(true);
       await AcopioService.eliminarHojaAcopio(acopioId, index);
       setAlert({ open: true, message: 'Página eliminada', severity: 'success' });
-      const wasLast = index === (pages.length - 1);
       await fetchAcopio();
-      if (wasLast) setPageIdx((p) => Math.max(0, p - 1));
     } catch (err) {
       console.error(err);
       setAlert({ open: true, message: 'No se pudo eliminar la página', severity: 'error' });
@@ -818,23 +882,16 @@ const MovimientosAcopioPage = () => {
   };
 
   const fetchActualTab = async () => {
+    // Invalidar cache del tab actual para forzar refetch
+    tabLoadedAt.current[tabActiva] = 0;
+    setManualRefresh(true);
+    setLastUpdated(new Date());
     if (tabActiva === 'remitos') fetchRemitos();
     else if (tabActiva === 'materiales') fetchMovimientos();
     else if (tabActiva === 'acopio') fetchAcopio();
-    else if (tabActiva === 'documentos') fetchDocumentosComplementarios();
+    else if (tabActiva === 'archivos') fetchDocumentosComplementarios();
   };
 
-  // Navegación con teclado en HOJAS
-  useEffect(() => {
-    if (tabActiva !== 'hojas') return;
-    const onKey = (e) => {
-      if (!hasAcopioPages) return;
-      if (e.key === 'ArrowRight') setPageIdx((i) => (i + 1) % totalPages);
-      if (e.key === 'ArrowLeft') setPageIdx((i) => (i - 1 + totalPages) % totalPages);
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [tabActiva, hasAcopioPages, totalPages]);
 
   // Render
   return (
@@ -846,65 +903,54 @@ const MovimientosAcopioPage = () => {
           porcentajeDisponible={porcentajeDisponible}
           onVolver={() => router.push(`/acopios?empresaId=${acopio?.empresaId || ''}`)}
           onEditar={handleEditAcopio}
-          onUploadClick={handleUploadFromHeader}
           onRecalibrarImagenes={() => AcopioService.recalibrarImagenes(acopioId)}
-          onRefrescar={() => { fetchActualTab(); setLastUpdated(new Date()); }}
+          onRefrescar={fetchActualTab}
           isAdmin={Boolean(user?.admin)}
         />
 
-        {/* Indicador de última sincronización */}
-        {lastUpdated && (
+        {/* Indicador de última sincronización — solo tras refresh manual */}
+        {manualRefresh && lastUpdated && (
           <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mb: 1, color: 'text.secondary' }}>
             <AccessTimeIcon sx={{ fontSize: 14 }} />
-            <Typography variant="caption">{formatTimeAgo(lastUpdated)}</Typography>
+            <Typography variant="caption">Actualizado {formatTimeAgo(lastUpdated)}</Typography>
           </Stack>
         )}
 
-        {/* NAVEGACIÓN - Botones con contadores */}
-        <ButtonGroup variant="outlined" sx={{ flexWrap: 'wrap', gap: 1, mb: 2 }}>
-          <Button
-            variant={tabActiva === 'acopio' ? 'contained' : 'outlined'}
-            onClick={() => handleChangeTab(null, 'acopio')}
-          >
-            Info Acopio
-          </Button>
-          <Button
-            variant={tabActiva === 'remitos' ? 'contained' : 'outlined'}
-            onClick={() => handleChangeTab(null, 'remitos')}
-          >
-            Remitos{remitosCount > 0 ? ` (${remitosCount})` : ''}
-          </Button>
-          <Button
-            variant={tabActiva === 'materiales' ? 'contained' : 'outlined'}
-            onClick={() => handleChangeTab(null, 'materiales')}
-          >
-            Materiales{materialesCount > 0 ? ` (${materialesCount})` : ''}
-          </Button>
-          {hasAcopioPages && (
-            <Button
-              variant={tabActiva === 'hojas' ? 'contained' : 'outlined'}
-              onClick={() => handleChangeTab(null, 'hojas')}
-            >
-              {acopio?.tipo === 'lista_precios' ? 'Lista original' : 'Comprobante'}
-            </Button>
-          )}
-          <Button
-            variant={tabActiva === 'documentos' ? 'contained' : 'outlined'}
-            onClick={() => handleChangeTab(null, 'documentos')}
-            startIcon={<AttachFileIcon fontSize="small" />}
-          >
-            Docs{documentosCount > 0 ? ` (${documentosCount})` : ''}
-          </Button>
-        </ButtonGroup>
+        {/* NAVEGACIÓN */}
+        <Tabs
+          value={tabActiva}
+          onChange={handleChangeTab}
+          variant="scrollable"
+          scrollButtons="auto"
+          sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}
+        >
+          <Tab label="Resumen" value="acopio" />
+          <Tab value="remitos"    label={remitosCount   > 0 ? `Remitos · ${remitosCount}`    : 'Remitos'} />
+          <Tab value="materiales" label={materialesCount > 0 ? `Materiales · ${materialesCount}` : 'Materiales'} />
+          <Tab value="archivos"   label={
+            (() => {
+              const total = (pages?.length || 0) + (documentosComplementarios?.length || 0);
+              return total > 0 ? `Archivos · ${total}` : 'Archivos';
+            })()
+          } />
+          <Tab value="actividad" label={eventos.length > 0 ? `Actividad · ${eventos.length}` : 'Actividad'} />
+        </Tabs>
 
-        {/* Alerta de acopio bajo */}
-        {acopio && porcentajeDisponible < 10 && porcentajeDisponible >= 0 && (
-          <Alert 
-            severity="warning" 
-            icon={<WarningAmberIcon />}
-            sx={{ my: 2 }}
-          >
-            <strong>⚠️ Acopio casi agotado:</strong> Solo queda el {porcentajeDisponible.toFixed(1)}% disponible 
+        {/* Alertas de saldo */}
+        {acopio && va > 0 && vd > va && (
+          <Alert severity="error" icon={<WarningAmberIcon />} sx={{ my: 2 }}>
+            <strong>Saldo negativo:</strong> El total desacopiado ({formatCurrency(vd)}) supera el valor acopiado ({formatCurrency(va)}).
+          </Alert>
+        )}
+        {acopio && porcentajeDisponible >= 0 && porcentajeDisponible < 10 && vd <= va && (
+          <Alert severity="warning" icon={<WarningAmberIcon />} sx={{ my: 2 }}>
+            <strong>Acopio casi agotado:</strong> Solo queda el {porcentajeDisponible.toFixed(1)}% disponible
+            ({formatCurrency(va - vd)} de {formatCurrency(va)})
+          </Alert>
+        )}
+        {acopio && porcentajeDisponible >= 10 && porcentajeDisponible < 20 && vd <= va && (
+          <Alert severity="info" icon={<WarningAmberIcon />} sx={{ my: 2 }}>
+            <strong>Acopio bajo:</strong> Queda el {porcentajeDisponible.toFixed(1)}% disponible
             ({formatCurrency(va - vd)} de {formatCurrency(va)})
           </Alert>
         )}
@@ -939,20 +985,6 @@ const MovimientosAcopioPage = () => {
         {/* REMITOS */}
         {tabActiva === 'remitos' && !initialLoading && (
           <Box sx={{ mt: 2 }}>
-            <Stack direction="row" justifyContent="flex-end" sx={{ mb: 2 }}>
-              <TooltipHelp {...TOOLTIP_MOVIMIENTOS.exportarInforme}>
-                <span>
-                  <Button
-                    variant="outlined"
-                    startIcon={<DownloadIcon />}
-                    onClick={exportarInformeRemitos}
-                    disabled={loading || remitos.length === 0}
-                  >
-                    Exportar Informe
-                  </Button>
-                </span>
-              </TooltipHelp>
-            </Stack>
             <RemitosTable
               remitos={remitos}
               remitoMovimientos={remitoMovimientos}
@@ -964,6 +996,8 @@ const MovimientosAcopioPage = () => {
               remitosDuplicados={remitosDuplicados}
               setDialogoEliminarAbierto={setDialogoEliminarAbierto}
               setRemitoAEliminar={setRemitoAEliminar}
+              onExportarInforme={exportarInformeRemitos}
+              onNuevoRemito={handleNuevoRemito}
             />
           </Box>
         )}
@@ -974,25 +1008,19 @@ const MovimientosAcopioPage = () => {
           <Box sx={{ mt: 2 }}>
             {acopio && (
               <Paper elevation={2} sx={{ p: 3 }}>
-                {/* Estado + toggle + edición */}
-                <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 3 }}>
-                  <Chip
-                    size="small"
-                    label={acopio?.activo === false ? 'Inactivo' : 'Activo'}
-                    color={acopio?.activo === false ? 'default' : 'success'}
-                    variant="outlined"
-                  />
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={acopio?.activo !== false}
-                        onChange={handleToggleActivo}
-                        disabled={estadoLoading}
-                      />
-                    }
-                    label={acopio?.activo !== false ? 'Desactivar' : 'Activar'}
-                  />
-                  <Button variant="outlined" onClick={handleEditAcopio}>Editar Acopio</Button>
+                {/* Toggle activo/inactivo */}
+                <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 3 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    {acopio?.activo !== false ? 'Activo' : 'Inactivo'}
+                  </Typography>
+                  <Tooltip title={acopio?.activo !== false ? 'Desactivar acopio' : 'Activar acopio'}>
+                    <Switch
+                      checked={acopio?.activo !== false}
+                      onChange={handleToggleActivo}
+                      disabled={estadoLoading}
+                      size="small"
+                    />
+                  </Tooltip>
                 </Stack>
 
                 {/* Descripción destacada / edición rápida */}
@@ -1077,145 +1105,132 @@ const MovimientosAcopioPage = () => {
                   </Grid>
                 </Grid>
 
-                {/* KPIs en cards */}
-                <Typography variant="h6" gutterBottom>Resumen Financiero</Typography>
-                <Grid container spacing={2}>
-                  <Grid item xs={12} sm={4}>
-                    <Box sx={{ p: 2, bgcolor: 'success.lighter', borderRadius: 1, textAlign: 'center' }}>
-                      <Typography variant="caption" color="text.secondary">Valor Acopiado</Typography>
-                      <Typography variant="h5" color="success.main" fontWeight="bold">
-                        {formatCurrency(acopio?.valor_acopio)}
-                      </Typography>
-                    </Box>
-                  </Grid>
-                  <Grid item xs={12} sm={4}>
-                    <Box sx={{ p: 2, bgcolor: 'error.lighter', borderRadius: 1, textAlign: 'center' }}>
-                      <Typography variant="caption" color="text.secondary">Valor Desacopiado</Typography>
-                      <Typography variant="h5" color="error.main" fontWeight="bold">
-                        {formatCurrency(acopio?.valor_desacopio)}
-                      </Typography>
-                    </Box>
-                  </Grid>
-                  <Grid item xs={12} sm={4}>
-                    <Box sx={{ p: 2, bgcolor: porcentajeDisponible < 20 ? 'warning.lighter' : 'info.lighter', borderRadius: 1, textAlign: 'center' }}>
-                      <Typography variant="caption" color="text.secondary">Disponible</Typography>
-                      <Typography variant="h5" color={porcentajeDisponible < 20 ? 'warning.main' : 'info.main'} fontWeight="bold">
-                        {porcentajeDisponible.toFixed(1)}%
-                      </Typography>
-                      <LinearProgress 
-                        variant="determinate" 
-                        value={Math.max(0, Math.min(100, porcentajeDisponible))} 
-                        sx={{ mt: 1, height: 6, borderRadius: 3 }}
-                        color={porcentajeDisponible < 20 ? 'warning' : 'info'}
-                      />
-                    </Box>
-                  </Grid>
-                </Grid>
-
-                {/* Historial de eventos */}
-                <>
-                  <Divider sx={{ my: 3 }} />
-                  <Typography variant="h6" gutterBottom>
-                    <AccessTimeIcon sx={{ mr: 1, verticalAlign: 'middle', fontSize: 20 }} />
-                    Actividad Reciente
-                  </Typography>
-                  
-                  {/* Input para agregar comentario */}
-                  <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
-                    <TextField
-                      fullWidth
-                      size="small"
-                      placeholder="Agregar una nota o comentario..."
-                      value={nuevoComentario}
-                      onChange={(e) => setNuevoComentario(e.target.value)}
-                      onKeyPress={(e) => {
-                        if (e.key === 'Enter' && !e.shiftKey) {
-                          e.preventDefault();
-                          handleEnviarComentario();
-                        }
-                      }}
-                      disabled={enviandoComentario}
-                      InputProps={{
-                        startAdornment: <CommentIcon sx={{ mr: 1, color: 'text.secondary', fontSize: 18 }} />
-                      }}
-                    />
-                    <IconButton 
-                      color="primary" 
-                      onClick={handleEnviarComentario}
-                      disabled={!nuevoComentario.trim() || enviandoComentario}
-                    >
-                      {enviandoComentario ? <CircularProgress size={20} /> : <SendIcon />}
-                    </IconButton>
-                  </Stack>
-
-                  {eventos.length > 0 ? (
-                    <List dense sx={{ bgcolor: '#fafafa', borderRadius: 1 }}>
-                      {[...eventos].sort((a, b) => new Date(b.fecha) - new Date(a.fecha)).slice(0, 5).map((evento, idx) => (
-                        <ListItem key={idx} sx={{ py: 0.5 }}>
-                          <ListItemIcon sx={{ minWidth: 36 }}>
-                            {evento.tipo === 'creacion' && <Chip size="small" label="Creado" color="success" sx={{ fontSize: 10 }} />}
-                            {evento.tipo === 'edicion' && <Chip size="small" label="Editado" color="info" sx={{ fontSize: 10 }} />}
-                            {evento.tipo === 'remito_creado' && <Chip size="small" label="Remito+" color="primary" sx={{ fontSize: 10 }} />}
-                            {evento.tipo === 'remito_editado' && <Chip size="small" label="Remito" color="warning" sx={{ fontSize: 10 }} />}
-                            {evento.tipo === 'remito_eliminado' && <Chip size="small" label="Remito-" color="error" sx={{ fontSize: 10 }} />}
-                            {evento.tipo === 'estado_cambio' && <Chip size="small" label="Estado" color="default" sx={{ fontSize: 10 }} />}
-                            {evento.tipo === 'comentario' && <Chip size="small" label="Nota" color="secondary" sx={{ fontSize: 10 }} />}
-                          </ListItemIcon>
-                          <ListItemText
-                            primary={evento.texto}
-                            secondary={`${evento.usuario ? evento.usuario + ' · ' : ''}${evento.fecha ? new Date(evento.fecha).toLocaleString('es-AR', {
-                              day: '2-digit',
-                              month: '2-digit',
-                              year: '2-digit',
-                              hour: '2-digit',
-                              minute: '2-digit'
-                            }) : ''}`}
-                            primaryTypographyProps={{ variant: 'body2' }}
-                            secondaryTypographyProps={{ variant: 'caption' }}
-                          />
-                        </ListItem>
-                      ))}
-                    </List>
-                  ) : (
-                    <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
-                      No hay actividad registrada aún.
+                {/* Resumen Financiero con gráfico */}
+                {va > 0 && (
+                  <Box sx={{ mt: 1, mb: 3 }}>
+                    <Divider sx={{ mb: 2.5 }} />
+                    <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                      Resumen Financiero
                     </Typography>
-                  )}
-                  {eventos.length > 5 && (
-                    <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                      ... y {eventos.length - 5} eventos más
-                    </Typography>
-                  )}
-                </>
+                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={4} alignItems={{ sm: 'center' }}>
+                      <Grid container spacing={2} sx={{ maxWidth: { sm: 380 } }}>
+                        <Grid item xs={6}>
+                          <Typography variant="caption" color="text.secondary">Acopiado</Typography>
+                          <Typography variant="subtitle1" fontWeight={700}>{formatCurrency(va)}</Typography>
+                        </Grid>
+                        <Grid item xs={6}>
+                          <Typography variant="caption" color="text.secondary">Desacopiado</Typography>
+                          <Typography variant="subtitle1" fontWeight={700} color="error.main">
+                            {formatCurrency(vd)}
+                          </Typography>
+                        </Grid>
+                        <Grid item xs={6}>
+                          <Typography variant="caption" color="text.secondary">Disponible</Typography>
+                          <Typography variant="subtitle1" fontWeight={700} color={vd > va ? 'error.main' : 'success.main'}>
+                            {formatCurrency(Math.max(0, va - vd))}
+                          </Typography>
+                        </Grid>
+                        <Grid item xs={6}>
+                          <Typography variant="caption" color="text.secondary">% Disponible</Typography>
+                          <Typography variant="subtitle1" fontWeight={700} color={vd > va ? 'error.main' : 'success.main'}>
+                            {porcentajeDisponible.toFixed(1)}%
+                          </Typography>
+                        </Grid>
+                      </Grid>
+                      {vd > 0 && vd < va && (
+                        <DonutChart va={va} vd={vd} pct={porcentajeDisponible} codigo={acopio?.codigo} />
+                      )}
+                    </Stack>
+                  </Box>
+                )}
+
               </Paper>
             )}
           </Box>
         )}
 
-        {/* VISOR */}
-        {tabActiva === 'hojas' && hasAcopioPages && !initialLoading && (
-          <Box sx={{ mt: 2 }}>
-            <AcopioVisor
-              pages={pages}
-              pageIdx={pageIdx}
-              setPageIdx={setPageIdx}
-              onUploadFiles={handleAcopioFilesSelected}
-              onDeletePage={handleEliminarPaginaAcopio}
-              enableUpload={ENABLE_HOJA_UPLOAD}
-              enableDelete={ENABLE_HOJA_DELETE}
-              nextPreviewUrl={nextUrl}
-            />
-          </Box>
-        )}
-
-        {/* DOCUMENTOS COMPLEMENTARIOS */}
-        {tabActiva === 'documentos' && !initialLoading && (
+        {/* ARCHIVOS — hojas del acopio + documentos complementarios */}
+        {tabActiva === 'archivos' && !initialLoading && (
           <Box sx={{ mt: 2 }}>
             <Paper elevation={2} sx={{ p: 3 }}>
-              <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
-                <Typography variant="h6">
-                  <DescriptionIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
-                  Documentos Complementarios ({documentosComplementarios.length})
+
+              {/* ── Hojas del acopio ── */}
+              <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                  Hojas del acopio
+                </Typography>
+                {ENABLE_HOJA_UPLOAD && (
+                  <>
+                    <input
+                      id="input-hojas-acopio"
+                      type="file"
+                      multiple
+                      accept="image/*,application/pdf"
+                      style={{ display: 'none' }}
+                      onChange={handleAcopioFilesSelected}
+                    />
+                    <label htmlFor="input-hojas-acopio">
+                      <Button variant="outlined" size="small" component="span" startIcon={<UploadFileIcon />} disabled={loading}>
+                        Subir
+                      </Button>
+                    </label>
+                  </>
+                )}
+              </Stack>
+
+              {pages.length === 0 ? (
+                <Box sx={{ py: 3, textAlign: 'center' }}>
+                  <Typography variant="body2" color="text.secondary">No hay hojas cargadas</Typography>
+                </Box>
+              ) : (
+                <List disablePadding>
+                  {pages.map((page, idx) => {
+                    const url = typeof page === 'string' ? page : page.url;
+                    const name = typeof page === 'object' && page.nombre ? page.nombre : `Hoja ${idx + 1}`;
+                    const isPdf = url?.toLowerCase().includes('.pdf');
+                    return (
+                      <ListItem
+                        key={idx}
+                        secondaryAction={
+                          <Stack direction="row" spacing={0.5}>
+                            <Tooltip title="Abrir en nueva pestaña">
+                              <IconButton size="small" onClick={() => window.open(url, '_blank')}>
+                                <OpenInNewIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                            {ENABLE_HOJA_DELETE && (
+                              <Tooltip title="Eliminar">
+                                <IconButton size="small" color="error" onClick={() => handleEliminarPaginaAcopio(idx)}>
+                                  <DeleteOutlineIcon fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                            )}
+                          </Stack>
+                        }
+                        sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, mb: 0.75, cursor: 'pointer', '&:hover': { bgcolor: 'action.hover' } }}
+                        onClick={() => window.open(url, '_blank')}
+                      >
+                        <ListItemIcon sx={{ minWidth: 36 }}>
+                          {isPdf ? <PictureAsPdfIcon color="error" fontSize="small" /> : <ImageIcon color="primary" fontSize="small" />}
+                        </ListItemIcon>
+                        <ListItemText
+                          primary={name}
+                          primaryTypographyProps={{ variant: 'body2', fontWeight: 600 }}
+                          secondary={isPdf ? 'PDF' : 'Imagen'}
+                          secondaryTypographyProps={{ variant: 'caption' }}
+                        />
+                      </ListItem>
+                    );
+                  })}
+                </List>
+              )}
+
+              <Divider sx={{ my: 2.5 }} />
+
+              {/* ── Documentos complementarios ── */}
+              <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                  Documentos complementarios
                 </Typography>
                 <Box>
                   <input
@@ -1227,72 +1242,59 @@ const MovimientosAcopioPage = () => {
                     onChange={handleSubirDocumentosComplementarios}
                   />
                   <label htmlFor="input-docs-complementarios">
-                    <Button 
-                      variant="contained" 
-                      component="span" 
-                      startIcon={<UploadFileIcon />}
-                      disabled={loading}
-                    >
-                      Subir documentos
+                    <Button variant="outlined" size="small" component="span" startIcon={<UploadFileIcon />} disabled={loading}>
+                      Subir
                     </Button>
                   </label>
                 </Box>
               </Stack>
 
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Agregá documentos adicionales como vencimientos, direcciones, condiciones comerciales u otros datos relevantes.
-              </Typography>
-
-              <Divider sx={{ mb: 2 }} />
-
               {documentosComplementarios.length === 0 ? (
-                <Box sx={{ textAlign: 'center', py: 4 }}>
-                  <AttachFileIcon sx={{ fontSize: 48, color: 'text.disabled', mb: 1 }} />
-                  <Typography color="text.secondary">
-                    No hay documentos complementarios cargados
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Subí imágenes o PDFs con información adicional del acopio
-                  </Typography>
+                <Box sx={{ py: 3, textAlign: 'center' }}>
+                  <Typography variant="body2" color="text.secondary">No hay documentos complementarios</Typography>
                 </Box>
               ) : (
-                <List sx={{ bgcolor: 'background.paper' }}>
+                <List disablePadding>
                   {documentosComplementarios.map((doc, index) => {
                     const isPdf = doc.tipo === 'pdf' || doc.url?.toLowerCase().includes('.pdf');
                     return (
                       <ListItem
                         key={index}
-                        sx={{
-                          border: '1px solid',
-                          borderColor: 'divider',
-                          borderRadius: 1,
-                          mb: 1,
-                          '&:hover': { bgcolor: 'action.hover' }
-                        }}
+                        secondaryAction={
+                          <Stack direction="row" spacing={0.5}>
+                            <Tooltip title="Abrir en nueva pestaña">
+                              <IconButton size="small" onClick={() => window.open(doc.url, '_blank')}>
+                                <OpenInNewIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Eliminar">
+                              <IconButton size="small" color="error" onClick={() => setDocAEliminarIdx(index)}>
+                                <DeleteOutlineIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          </Stack>
+                        }
+                        sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, mb: 0.75, '&:hover': { bgcolor: 'action.hover' } }}
                       >
-                        <ListItemIcon>
-                          {isPdf ? (
-                            <PictureAsPdfIcon color="error" />
-                          ) : (
-                            <ImageIcon color="primary" />
-                          )}
+                        <ListItemIcon sx={{ minWidth: 36 }}>
+                          {isPdf ? <PictureAsPdfIcon color="error" fontSize="small" /> : <ImageIcon color="primary" fontSize="small" />}
                         </ListItemIcon>
                         <ListItemText
                           primary={
                             <Stack direction="row" alignItems="center" spacing={1}>
-                              <Typography variant="subtitle2">
+                              <Typography
+                                variant="body2"
+                                fontWeight={600}
+                                sx={{ cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}
+                                onClick={() => window.open(doc.url, '_blank')}
+                              >
                                 {doc.nombre || `Documento ${index + 1}`}
                               </Typography>
-                              <Chip 
-                                size="small" 
-                                label={isPdf ? 'PDF' : 'Imagen'} 
-                                variant="outlined"
-                                sx={{ fontSize: 10 }}
-                              />
+                              <Chip size="small" label={isPdf ? 'PDF' : 'Imagen'} variant="outlined" sx={{ fontSize: 10, height: 18 }} />
                             </Stack>
                           }
                           secondary={
-                            <Stack spacing={0.5} sx={{ mt: 0.5 }}>
+                            <Stack spacing={0.5} sx={{ mt: 0.25 }}>
                               {editandoDescripcionIdx === index ? (
                                 <Stack direction="row" spacing={1} alignItems="center">
                                   <TextField
@@ -1307,61 +1309,28 @@ const MovimientosAcopioPage = () => {
                                       if (e.key === 'Escape') setEditandoDescripcionIdx(null);
                                     }}
                                   />
-                                  <IconButton 
-                                    size="small" 
-                                    color="primary"
-                                    onClick={() => handleGuardarDescripcion(index)}
-                                  >
+                                  <IconButton size="small" color="primary" onClick={() => handleGuardarDescripcion(index)}>
                                     <SaveIcon fontSize="small" />
                                   </IconButton>
                                 </Stack>
                               ) : (
-                                <Stack direction="row" alignItems="center" spacing={1}>
-                                  <Typography variant="body2" color="text.secondary">
+                                <Stack direction="row" alignItems="center" spacing={0.5}>
+                                  <Typography variant="caption" color="text.secondary">
                                     {doc.descripcion || 'Sin descripción'}
                                   </Typography>
-                                  <IconButton 
-                                    size="small" 
-                                    onClick={() => {
-                                      setEditandoDescripcionIdx(index);
-                                      setDescripcionEditando(doc.descripcion || '');
-                                    }}
-                                  >
-                                    <EditIcon fontSize="small" />
+                                  <IconButton size="small" onClick={() => { setEditandoDescripcionIdx(index); setDescripcionEditando(doc.descripcion || ''); }}>
+                                    <EditIcon sx={{ fontSize: 14 }} />
                                   </IconButton>
                                 </Stack>
                               )}
-                              <Typography variant="caption" color="text.disabled">
-                                {doc.fecha 
-                                  ? new Date(doc.fecha).toLocaleDateString('es-AR', { 
-                                      day: '2-digit', month: 'short', year: 'numeric' 
-                                    })
-                                  : ''}
-                              </Typography>
+                              {doc.fecha && (
+                                <Typography variant="caption" color="text.disabled">
+                                  {new Date(doc.fecha).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                </Typography>
+                              )}
                             </Stack>
                           }
                         />
-                        <ListItemSecondaryAction>
-                          <Stack direction="row" spacing={1}>
-                            <Tooltip title="Abrir documento">
-                              <IconButton 
-                                edge="end" 
-                                onClick={() => window.open(doc.url, '_blank')}
-                              >
-                                <OpenInNewIcon />
-                              </IconButton>
-                            </Tooltip>
-                            <Tooltip title="Eliminar">
-                              <IconButton 
-                                edge="end" 
-                                color="error"
-                                onClick={() => handleEliminarDocumentoComplementario(index)}
-                              >
-                                <DeleteOutlineIcon />
-                              </IconButton>
-                            </Tooltip>
-                          </Stack>
-                        </ListItemSecondaryAction>
                       </ListItem>
                     );
                   })}
@@ -1371,28 +1340,121 @@ const MovimientosAcopioPage = () => {
           </Box>
         )}
 
-        {/* Confirmación eliminar remito */}
-        {dialogoEliminarAbierto && (
-          <Dialog open={dialogoEliminarAbierto} onClose={() => setDialogoEliminarAbierto(false)}>
-            <DialogContent>
-              <Typography variant="h6" gutterBottom>
-                ¿Estás seguro de que querés eliminar este remito?
+        {/* ACTIVIDAD */}
+        {tabActiva === 'actividad' && !initialLoading && (
+          <Box sx={{ mt: 2 }}>
+            <Paper elevation={2} sx={{ p: 3 }}>
+              {/* Agregar nota */}
+              <Box sx={{ mb: 3 }}>
+                <Typography variant="subtitle1" fontWeight={700} gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <CommentIcon fontSize="small" /> Nueva nota
+                </Typography>
+                <Stack direction="row" spacing={1}>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    placeholder="Escribí una nota sobre este acopio... (Enter para enviar)"
+                    value={nuevoComentario}
+                    onChange={(e) => setNuevoComentario(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        handleEnviarComentario();
+                      }
+                    }}
+                    disabled={enviandoComentario}
+                  />
+                  <Button
+                    variant="contained"
+                    size="small"
+                    endIcon={enviandoComentario ? <CircularProgress size={14} color="inherit" /> : <SendIcon />}
+                    onClick={handleEnviarComentario}
+                    disabled={!nuevoComentario.trim() || enviandoComentario}
+                  >
+                    Enviar
+                  </Button>
+                </Stack>
+              </Box>
+
+              <Divider sx={{ mb: 2 }} />
+
+              <Typography variant="subtitle1" fontWeight={700} gutterBottom>
+                <AccessTimeIcon sx={{ mr: 1, verticalAlign: 'middle', fontSize: 18 }} />
+                Historial
               </Typography>
-              <Stack direction="row" spacing={2} mt={2}>
-                <Button variant="outlined" onClick={() => setDialogoEliminarAbierto(false)}>Cancelar</Button>
-                <Button variant="contained" color="error" startIcon={<DeleteOutlineIcon />} onClick={eliminarRemito}>
-                  Eliminar
+
+              {eventos.length > 0 ? (
+                <List dense sx={{ bgcolor: '#fafafa', borderRadius: 1 }}>
+                  {[...eventos].sort((a, b) => new Date(b.fecha) - new Date(a.fecha))
+                    .slice(0, actividadExpandida ? undefined : 10).map((evento, idx) => (
+                    <ListItem key={idx} sx={{ py: 0.5 }}>
+                      <ListItemIcon sx={{ minWidth: 36 }}>
+                        {evento.tipo === 'creacion'        && <Chip size="small" label="Creado"   color="success"   sx={{ fontSize: 10 }} />}
+                        {evento.tipo === 'edicion'         && <Chip size="small" label="Editado"  color="info"      sx={{ fontSize: 10 }} />}
+                        {evento.tipo === 'remito_creado'   && <Chip size="small" label="Remito+"  color="primary"   sx={{ fontSize: 10 }} />}
+                        {evento.tipo === 'remito_editado'  && <Chip size="small" label="Remito"   color="warning"   sx={{ fontSize: 10 }} />}
+                        {evento.tipo === 'remito_eliminado'&& <Chip size="small" label="Remito-"  color="error"     sx={{ fontSize: 10 }} />}
+                        {evento.tipo === 'estado_cambio'   && <Chip size="small" label="Estado"   color="default"   sx={{ fontSize: 10 }} />}
+                        {evento.tipo === 'comentario'      && <Chip size="small" label="Nota"     color="secondary" sx={{ fontSize: 10 }} />}
+                      </ListItemIcon>
+                      <ListItemText
+                        primary={evento.texto}
+                        secondary={`${evento.usuario ? evento.usuario + ' · ' : ''}${evento.fecha ? new Date(evento.fecha).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''}`}
+                        primaryTypographyProps={{ variant: 'body2' }}
+                        secondaryTypographyProps={{ variant: 'caption' }}
+                      />
+                    </ListItem>
+                  ))}
+                </List>
+              ) : (
+                <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                  No hay actividad registrada aún.
+                </Typography>
+              )}
+              {eventos.length > 10 && (
+                <Button size="small" variant="text" onClick={() => setActividadExpandida(v => !v)} sx={{ mt: 0.5, textTransform: 'none' }}>
+                  {actividadExpandida ? 'Ver menos' : `Ver ${eventos.length - 10} más`}
                 </Button>
-              </Stack>
-            </DialogContent>
-          </Dialog>
+              )}
+            </Paper>
+          </Box>
         )}
 
-        <Dialog open={descripcionDialogOpen} onClose={closeDescripcionDialog}>
+        {/* Confirmación eliminar remito */}
+        <Dialog open={dialogoEliminarAbierto} onClose={() => setDialogoEliminarAbierto(false)}>
+          <DialogTitle>Eliminar remito</DialogTitle>
           <DialogContent>
-            <Typography variant="h6" gutterBottom>
-              Descripción del acopio
+            <Typography variant="body1">
+              ¿Estás seguro de que querés eliminar este remito?
             </Typography>
+            {remitoAEliminar && (
+              <Box sx={{ mt: 1.5, p: 1.5, bgcolor: 'grey.100', borderRadius: 1 }}>
+                {remitoAEliminar.numero_remito && (
+                  <Typography variant="body2"><strong>Número:</strong> {remitoAEliminar.numero_remito}</Typography>
+                )}
+                {remitoAEliminar.fecha && (
+                  <Typography variant="body2"><strong>Fecha:</strong> {new Date(remitoAEliminar.fecha).toLocaleDateString('es-AR')}</Typography>
+                )}
+                {remitoAEliminar.valorOperacion != null && (
+                  <Typography variant="body2"><strong>Valor:</strong> {formatCurrency(remitoAEliminar.valorOperacion)}</Typography>
+                )}
+              </Box>
+            )}
+            <Typography variant="body2" color="error" sx={{ mt: 1.5 }}>
+              Esta acción no se puede deshacer.
+            </Typography>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setDialogoEliminarAbierto(false)}>Cancelar</Button>
+            <Button variant="contained" color="error" startIcon={<DeleteOutlineIcon />} onClick={eliminarRemito}>
+              Eliminar
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        <Dialog open={descripcionDialogOpen} onClose={closeDescripcionDialog} maxWidth="sm" fullWidth>
+          <DialogTitle>Descripción del acopio</DialogTitle>
+          <DialogContent>
             <TextField
               value={descripcionEdit}
               onChange={(e) => setDescripcionEdit(e.target.value)}
@@ -1400,26 +1462,22 @@ const MovimientosAcopioPage = () => {
               fullWidth
               multiline
               minRows={3}
-              sx={{ mb: 2 }}
+              sx={{ mt: 1 }}
             />
-            <Stack direction="row" spacing={2} justifyContent="flex-end">
-              <Button onClick={closeDescripcionDialog} variant="outlined">
-                Cancelar
-              </Button>
-              <Button onClick={handleGuardarDescripcionAcopio} variant="contained" disabled={guardandoDescripcion}>
-                {guardandoDescripcion ? 'Guardando...' : 'Guardar'}
-              </Button>
-            </Stack>
           </DialogContent>
+          <DialogActions>
+            <Button onClick={closeDescripcionDialog}>Cancelar</Button>
+            <Button onClick={handleGuardarDescripcionAcopio} variant="contained" disabled={guardandoDescripcion}>
+              {guardandoDescripcion ? 'Guardando...' : 'Guardar'}
+            </Button>
+          </DialogActions>
         </Dialog>
 
         <Dialog open={instruccionesDialogOpen} onClose={closeInstruccionesDialog} maxWidth="sm" fullWidth>
+          <DialogTitle>Aclaraciones para el análisis de documentos</DialogTitle>
           <DialogContent>
-            <Typography variant="h6" gutterBottom>
-              Aclaraciones para el análisis de documentos
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              Estas indicaciones se envían al bot cada vez que analiza remitos, facturas u otros documentos de este acopio. 
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1, mb: 2 }}>
+              Estas indicaciones se envían al bot cada vez que analiza remitos, facturas u otros documentos de este acopio.
               Usalo para aclarar particularidades del proveedor (formato de números, unidades, etc.)
             </Typography>
             <TextField
@@ -1430,17 +1488,54 @@ const MovimientosAcopioPage = () => {
               multiline
               minRows={4}
               maxRows={8}
-              sx={{ mb: 2 }}
             />
-            <Stack direction="row" spacing={2} justifyContent="flex-end">
-              <Button onClick={closeInstruccionesDialog} variant="outlined">
-                Cancelar
-              </Button>
-              <Button onClick={handleGuardarInstrucciones} variant="contained" disabled={guardandoInstrucciones}>
-                {guardandoInstrucciones ? 'Guardando...' : 'Guardar'}
-              </Button>
-            </Stack>
           </DialogContent>
+          <DialogActions>
+            <Button onClick={closeInstruccionesDialog}>Cancelar</Button>
+            <Button onClick={handleGuardarInstrucciones} variant="contained" disabled={guardandoInstrucciones}>
+              {guardandoInstrucciones ? 'Guardando...' : 'Guardar'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Confirmación eliminar documento complementario */}
+        <Dialog open={docAEliminarIdx !== null} onClose={() => setDocAEliminarIdx(null)}>
+          <DialogTitle>Eliminar documento</DialogTitle>
+          <DialogContent>
+            <Typography variant="body1">
+              ¿Estás seguro de que querés eliminar este documento?
+            </Typography>
+            {docAEliminarIdx !== null && documentosComplementarios[docAEliminarIdx] && (
+              <Box sx={{ mt: 1.5, p: 1.5, bgcolor: 'grey.100', borderRadius: 1 }}>
+                <Typography variant="body2">
+                  <strong>{documentosComplementarios[docAEliminarIdx].nombre || `Documento ${docAEliminarIdx + 1}`}</strong>
+                </Typography>
+                {documentosComplementarios[docAEliminarIdx].descripcion && (
+                  <Typography variant="body2" color="text.secondary">
+                    {documentosComplementarios[docAEliminarIdx].descripcion}
+                  </Typography>
+                )}
+              </Box>
+            )}
+            <Typography variant="body2" color="error" sx={{ mt: 1.5 }}>
+              Esta acción no se puede deshacer.
+            </Typography>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setDocAEliminarIdx(null)}>Cancelar</Button>
+            <Button
+              variant="contained"
+              color="error"
+              startIcon={<DeleteOutlineIcon />}
+              onClick={() => {
+                const idx = docAEliminarIdx;
+                setDocAEliminarIdx(null);
+                handleEliminarDocumentoComplementario(idx);
+              }}
+            >
+              Eliminar
+            </Button>
+          </DialogActions>
         </Dialog>
 
         {/* Snackbar */}
@@ -1454,28 +1549,6 @@ const MovimientosAcopioPage = () => {
           </Alert>
         </Snackbar>
 
-        {/* Botón actualizar flotante */}
-        <Box
-          sx={{
-            position: 'fixed',
-            bottom: 16,
-            right: 16,
-            zIndex: 10,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 1
-          }}
-        >
-          <Button
-            variant="outlined"
-            size="small"
-            startIcon={<RefreshIcon />}
-            onClick={fetchActualTab}
-            sx={{ minWidth: 'auto', px: 2 }}
-          >
-            Actualizar
-          </Button>
-        </Box>
       </Container>
     </Box>
   );

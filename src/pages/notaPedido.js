@@ -89,6 +89,7 @@ import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import SettingsIcon from '@mui/icons-material/Settings';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
+import BlockIcon from '@mui/icons-material/Block';
 import { downloadNotaPedidoPdf } from 'src/utils/notaPedido/exportNotaPedidoToPdf';
 import BatchValidationForm from 'src/components/movimientos/cargaMasiva/BatchValidationForm';
 
@@ -215,7 +216,7 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
   // TAR-324: resolución de ítems
   const [resolverStep, setResolverStep] = useState(null); // null | 'configure'
   const [itemSearch, setItemSearch] = useState('');
-  const [itemFilter, setItemFilter] = useState('all'); // 'all' | 'pendiente' | 'resuelto'
+  const [itemFilter, setItemFilter] = useState('all'); // 'all' | 'pendiente' | 'en_gestion' | 'resuelto'
   const [resolverItemItem, setResolverItemItem] = useState(null);
   const [resolverItemItems, setResolverItemItems] = useState([]);
   const [resolverItemTipo, setResolverItemTipo] = useState('compra');
@@ -226,6 +227,10 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
   const [resolverConfigTouched, setResolverConfigTouched] = useState(false);
   const [resolverSuggestion, setResolverSuggestion] = useState(null);
   const [resolverSuggestionLoading, setResolverSuggestionLoading] = useState(false);
+  const [retiroAcopioAccion, setRetiroAcopioAccion] = useState(null); // null | 'asociar' | 'registrar'
+  const [retiroAcopioRemitos, setRetiroAcopioRemitos] = useState([]);
+  const [retiroAcopioLoadingRemitos, setRetiroAcopioLoadingRemitos] = useState(false);
+  const [retiroAcopioSelectedRemitoId, setRetiroAcopioSelectedRemitoId] = useState(null);
   const [selectedItemIds, setSelectedItemIds] = useState(new Set());
   const [itemPage, setItemPage] = useState(0);
   const ITEMS_PER_PAGE = 20;
@@ -441,13 +446,26 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
     return getCantidadPendienteItem(item) > 0;
   }, [getCantidadPendienteItem]);
 
+  const isItemEnGestion = useCallback((item) => {
+    if (!item) return false;
+    return (item.resoluciones || []).some(
+      (r) => !r.revertida && (r.estado_entrega || 'entregado') === 'en_gestion'
+    );
+  }, []);
+
   const resolverItemsSeleccionados = useMemo(() => {
     if (!comentariosDialogNota?.items?.length) return [];
-
     return comentariosDialogNota.items.filter(
       (item) => selectedItemIds.has(item._id) && isItemPendingResolution(item)
     );
   }, [comentariosDialogNota, selectedItemIds, isItemPendingResolution]);
+
+  const confirmarEntregaItemsSeleccionados = useMemo(() => {
+    if (!comentariosDialogNota?.items?.length) return [];
+    return comentariosDialogNota.items.filter(
+      (item) => selectedItemIds.has(item._id) && isItemEnGestion(item)
+    );
+  }, [comentariosDialogNota, selectedItemIds, isItemEnGestion]);
 
   const isBulkResolution = resolverItemItems.length > 1;
   const resolverItemOpen = resolverStep !== null; // la sugerencia carga desde step 1
@@ -459,7 +477,9 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
       items = items.filter((item) => item.material_nombre?.toLowerCase().includes(q));
     }
     if (itemFilter === 'pendiente') {
-      items = items.filter((item) => item.estado !== 'resuelto' && item.estado !== 'cancelado');
+      items = items.filter((item) => item.estado !== 'resuelto' && item.estado !== 'cancelado' && item.estado !== 'en_gestion');
+    } else if (itemFilter === 'en_gestion') {
+      items = items.filter((item) => item.estado === 'en_gestion' || item.estado === 'parcial');
     } else if (itemFilter === 'resuelto') {
       items = items.filter((item) => item.estado === 'resuelto' || item.estado === 'cancelado');
     }
@@ -671,6 +691,10 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
     setResolverSuggestion(null);
     setResolverSuggestionLoading(false);
     setResolverFacturaFile(null);
+    setRetiroAcopioAccion(null);
+    setRetiroAcopioRemitos([]);
+    setRetiroAcopioLoadingRemitos(false);
+    setRetiroAcopioSelectedRemitoId(null);
   }, []);
 
   const openResolverDialog = useCallback((items) => {
@@ -725,7 +749,44 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
       }
       return next;
     });
+    setRetiroAcopioAccion(null);
+    setRetiroAcopioRemitos([]);
+    setRetiroAcopioSelectedRemitoId(null);
   }, [isBulkResolution, resolverItemItems, getCantidadPendienteItem, comentariosDialogNota]);
+
+  const handleRetiroAcopioAsociar = useCallback(async () => {
+    setRetiroAcopioAccion('asociar');
+    setRetiroAcopioSelectedRemitoId(null);
+    const acopioId = resolverItemData.acopio_id;
+    if (!acopioId) return;
+    setRetiroAcopioLoadingRemitos(true);
+    try {
+      const remitos = await AcopioService.obtenerRemitos(acopioId);
+      setRetiroAcopioRemitos(remitos || []);
+    } catch (_) {
+      setRetiroAcopioRemitos([]);
+    } finally {
+      setRetiroAcopioLoadingRemitos(false);
+    }
+  }, [resolverItemData.acopio_id]);
+
+  const handleRegistrarRemitoEnAcopio = useCallback(() => {
+    if (!comentariosDialogNota || !resolverItemData.acopio_id) return;
+    const ctxItems = resolverItemItems.map((item) => ({
+      itemId: item._id,
+      material_nombre: item.material_nombre,
+      material_id: item.material_id || null,
+      cantidad: getCantidadPendienteItem(item),
+      unidad: item.unidad || null,
+    }));
+    sessionStorage.setItem('np_remito_context', JSON.stringify({
+      notaId: comentariosDialogNota.id,
+      acopioId: resolverItemData.acopio_id,
+      items: ctxItems,
+    }));
+    closeResolverDialog();
+    router.push(`/gestionRemito?acopioId=${resolverItemData.acopio_id}&from=nota_pedido`);
+  }, [comentariosDialogNota, resolverItemData.acopio_id, resolverItemItems, getCantidadPendienteItem, closeResolverDialog, router]);
 
   const handleToggleSelectedItem = useCallback((itemId) => {
     setSelectedItemIds((prev) => {
@@ -749,6 +810,20 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
       return new Set(pendingIds);
     });
   }, [comentariosDialogNota, isItemPendingResolution]);
+
+  const handleToggleSelectAllEnGestionItems = useCallback(() => {
+    if (!comentariosDialogNota?.items?.length) return;
+
+    const enGestionIds = comentariosDialogNota.items
+      .filter((item) => isItemEnGestion(item))
+      .map((item) => item._id);
+
+    setSelectedItemIds((prev) => {
+      const allSelected = enGestionIds.length > 0 && enGestionIds.every((id) => prev.has(id));
+      if (allSelected) return new Set();
+      return new Set(enGestionIds);
+    });
+  }, [comentariosDialogNota, isItemEnGestion]);
 
   const toggleSelectAll = useCallback(() => {
     if (selectedNotaIds.size === paginatedNotas.length && paginatedNotas.length > 0) {
@@ -1049,8 +1124,9 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
       let latestNota = null;
       let processed = 0;
       const errores = [];
-      // Para bulk compra: el primer ítem crea el movimiento; los siguientes lo reusan
+      // Bulk: el primer ítem crea el documento; los siguientes lo reusan
       let bulkCompraMovimientoId = null;
+      let bulkRetiroDepositoSolicitudId = null;
 
       for (const item of resolverItemItems) {
         try {
@@ -1084,6 +1160,16 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
             delete requestBody.total;
           }
 
+          // Retiro acopio con remito ya cargado: marcar como entregado directamente
+          if (resolverItemTipo === 'retiro_acopio' && retiroAcopioAccion === 'asociar' && retiroAcopioSelectedRemitoId) {
+            requestBody.remito_id_existente = retiroAcopioSelectedRemitoId;
+          }
+
+          // Bulk retiro depósito: ítems 2+ agregan movimiento a la solicitud del primer ítem
+          if (isBulkResolution && resolverItemTipo === 'retiro_deposito' && bulkRetiroDepositoSolicitudId) {
+            requestBody.solicitud_id_existente = bulkRetiroDepositoSolicitudId;
+          }
+
           const result = await notaPedidoService.resolverItem(
             comentariosDialogNota.id,
             item._id,
@@ -1093,9 +1179,13 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
           if (result?.nota) {
             latestNota = result.nota;
           }
-          // Guardar el movimiento_id del primer ítem para los siguientes
-          if (isBulkResolution && resolverItemTipo === 'compra' && processed === 0 && result?.movimiento_id) {
-            bulkCompraMovimientoId = result.movimiento_id;
+          // Guardar el id del documento del primer ítem para los siguientes
+          if (isBulkResolution && processed === 0) {
+            if (resolverItemTipo === 'compra' && result?.movimiento_id) {
+              bulkCompraMovimientoId = result.movimiento_id;
+            } else if (resolverItemTipo === 'retiro_deposito' && result?.solicitud_id) {
+              bulkRetiroDepositoSolicitudId = result.solicitud_id;
+            }
           }
           processed += 1;
         } catch (error) {
@@ -1166,7 +1256,7 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
     }
   };
 
-  const handleConfirmarEntrega = async (itemId, resolucionId) => {
+  const handleConfirmarEntrega = useCallback(async (itemId, resolucionId) => {
     if (!comentariosDialogNota) return;
     try {
       const result = await notaPedidoService.confirmarEntrega(comentariosDialogNota.id, itemId, resolucionId);
@@ -1180,7 +1270,23 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
       const msg = err?.response?.data?.error || 'Error al confirmar la entrega';
       setAlert({ open: true, message: msg, severity: 'error' });
     }
-  };
+  }, [comentariosDialogNota]);
+
+  const handleConfirmarEntregaMasiva = useCallback(async () => {
+    for (const item of confirmarEntregaItemsSeleccionados) {
+      const enGestionResols = (item.resoluciones || []).filter(
+        (r) => !r.revertida && (r.estado_entrega || 'entregado') === 'en_gestion'
+      );
+      for (const r of enGestionResols) {
+        // eslint-disable-next-line no-await-in-loop
+        await handleConfirmarEntrega(
+          item._id?.toString() || item.id,
+          r._id?.toString() || r.id
+        );
+      }
+    }
+    setSelectedItemIds(new Set());
+  }, [confirmarEntregaItemsSeleccionados, handleConfirmarEntrega]);
 
   const handleSaveNewNote = async (data) => {
     try {
@@ -2407,52 +2513,52 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
         {/* TAB Ítems (TAR-324): solo cuando modo items_estructurados — siempre en posición 0 */}
         {comentariosDialogNota.modo === 'items_estructurados' && (comentariosDialogNota.items?.length || 0) > 0 && drawerTab === 0 && (
           <Box>
-            {/* ── Batch actions bar ── */}
-            {canResolveNotaPedido && (
-              <Box
-                sx={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  px: 2,
-                  py: 1.25,
-                  mb: 2,
-                  bgcolor: resolverItemsSeleccionados.length > 0 ? alpha(C.indigo600, 0.06) : alpha(C.slate100, 0.7),
-                  border: '1px solid',
-                  borderColor: resolverItemsSeleccionados.length > 0 ? alpha(C.indigo600, 0.2) : C.slate200,
-                  borderRadius: 2,
-                  transition: 'background-color 0.15s ease, border-color 0.15s ease',
-                }}
-              >
-                <Stack direction="row" spacing={1} alignItems="center">
-                  <Typography
-                    variant="body2"
-                    fontWeight={600}
-                    color={resolverItemsSeleccionados.length > 0 ? 'primary.main' : 'text.secondary'}
-                  >
-                    {resolverItemsSeleccionados.length > 0
-                      ? `${resolverItemsSeleccionados.length} seleccionado${resolverItemsSeleccionados.length !== 1 ? 's' : ''}`
-                      : 'Resolución por lote'}
-                  </Typography>
-                  {resolverItemsSeleccionados.length === 0 && (
-                    <Typography variant="caption" color="text.disabled">
-                      — seleccioná ítems para resolver juntos
-                    </Typography>
-                  )}
-                </Stack>
-                <Stack direction="row" spacing={0.75} alignItems="center">
-                  <Button
+            {/* ── Buscador + filtro ── */}
+            <Box sx={{ display: 'flex', gap: 1, mb: 1.5, flexWrap: 'wrap', alignItems: 'center' }}>
+              {canResolveNotaPedido && (() => {
+                const selectableItems = filteredItems.filter(i => isItemPendingResolution(i) || isItemEnGestion(i));
+                const allSelected = selectableItems.length > 0 && selectableItems.every(i => selectedItemIds.has(i._id));
+                const someSelected = selectableItems.some(i => selectedItemIds.has(i._id));
+                return (
+                  <Checkbox
                     size="small"
-                    variant="text"
-                    sx={{
-                      textTransform: 'none',
-                      fontSize: '0.75rem',
-                      color: resolverItemsSeleccionados.length > 0 ? 'error.main' : 'text.secondary',
+                    checked={allSelected}
+                    indeterminate={someSelected && !allSelected}
+                    onChange={() => {
+                      if (allSelected) {
+                        setSelectedItemIds(new Set());
+                      } else {
+                        setSelectedItemIds(new Set(selectableItems.map(i => i._id)));
+                      }
                     }}
-                    onClick={handleToggleSelectAllPendingItems}
-                  >
-                    {resolverItemsSeleccionados.length > 0 ? 'Limpiar' : 'Seleccionar pendientes'}
-                  </Button>
+                    disabled={selectableItems.length === 0}
+                    sx={{ p: 0.5 }}
+                  />
+                );
+              })()}
+              <TextField
+                size="small"
+                placeholder="Buscar ítem..."
+                value={itemSearch}
+                onChange={(e) => { setItemSearch(e.target.value); setItemPage(0); }}
+                sx={{ flex: 1, minWidth: 140 }}
+                InputProps={{ startAdornment: <SearchIcon sx={{ fontSize: 18, color: 'text.secondary', mr: 0.5 }} /> }}
+              />
+              {canResolveNotaPedido && selectedItemIds.size > 0 && (
+                <Stack direction="row" spacing={0.75} alignItems="center">
+                  {confirmarEntregaItemsSeleccionados.length > 0 && (
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      color="success"
+                      disableElevation
+                      startIcon={<CheckCircleOutlineIcon sx={{ fontSize: 15 }} />}
+                      sx={{ textTransform: 'none', fontSize: '0.75rem', borderRadius: 1.5 }}
+                      onClick={handleConfirmarEntregaMasiva}
+                    >
+                      Confirmar entrega ({confirmarEntregaItemsSeleccionados.length})
+                    </Button>
+                  )}
                   {resolverItemsSeleccionados.length > 0 && (
                     <Button
                       size="small"
@@ -2465,23 +2571,12 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
                     </Button>
                   )}
                 </Stack>
-              </Box>
-            )}
-
-            {/* ── Buscador + filtro ── */}
-            <Box sx={{ display: 'flex', gap: 1, mb: 1.5, flexWrap: 'wrap' }}>
-              <TextField
-                size="small"
-                placeholder="Buscar ítem..."
-                value={itemSearch}
-                onChange={(e) => { setItemSearch(e.target.value); setItemPage(0); }}
-                sx={{ flex: 1, minWidth: 140 }}
-                InputProps={{ startAdornment: <SearchIcon sx={{ fontSize: 18, color: 'text.secondary', mr: 0.5 }} /> }}
-              />
+              )}
               <ButtonGroup size="small" disableElevation>
                 {[
                   { value: 'all', label: 'Todos' },
                   { value: 'pendiente', label: 'Pendientes' },
+                  { value: 'en_gestion', label: 'En gestión' },
                   { value: 'resuelto', label: 'Resueltos' },
                 ].map(({ value, label }) => (
                   <Button
@@ -2497,228 +2592,208 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
             </Box>
 
             {/* ── Items list ── */}
-            <Stack spacing={1.5}>
+            <Box
+              sx={{
+                border: '1px solid',
+                borderColor: 'grey.200',
+                borderRadius: 2,
+                overflow: 'hidden',
+              }}
+            >
               {filteredItems.length === 0 && (
                 <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 3 }}>
                   {itemSearch ? `Sin resultados para "${itemSearch}"` : 'No hay ítems en esta categoría'}
                 </Typography>
               )}
-              {paginatedFilteredItems.map((item) => {
+              {paginatedFilteredItems.map((item, rowIdx) => {
                 const estadoColor = { pendiente: 'default', parcial: 'warning', resuelto: 'success', cancelado: 'default' }[item.estado] || 'default';
                 const estadoLabel = { pendiente: 'Pendiente', en_gestion: 'En gestión', parcial: 'Parcial', resuelto: 'Resuelto', cancelado: 'Cancelado' };
-                const estadoBorderColor = { pendiente: C.slate200, parcial: '#fb923c', resuelto: '#22c55e', cancelado: C.slate200 }[item.estado] || C.slate200;
+                const estadoBorderColor = { pendiente: C.slate200, en_gestion: '#f59e0b', parcial: '#fb923c', resuelto: '#22c55e', cancelado: C.slate200 }[item.estado] || C.slate200;
                 const canResolve = canResolveNotaPedido;
-                const canSelect = canResolve && isItemPendingResolution(item);
+                const canSelect = canResolve && (isItemPendingResolution(item) || isItemEnGestion(item));
                 const resoluciones = Array.isArray(item.resoluciones) ? item.resoluciones : [];
                 const tipoBgColor = { compra: '#4f46e5', retiro_deposito: '#7c3aed', retiro_acopio: '#0891b2', cancelacion: '#64748b' };
+                const hasPending = canResolve && isItemPendingResolution(item);
+                const enGestionResols = canResolve ? resoluciones.filter(r => !r.revertida && (r.estado_entrega || 'entregado') === 'en_gestion') : [];
+                const isLast = rowIdx === paginatedFilteredItems.length - 1;
 
                 return (
                   <Box
                     key={item._id}
                     sx={{
-                      bgcolor: 'background.paper',
-                      borderRadius: 2.5,
-                      border: '1px solid',
-                      borderColor: 'grey.200',
+                      borderBottom: isLast ? 'none' : '1px solid',
+                      borderColor: 'grey.100',
                       borderLeft: `3px solid ${estadoBorderColor}`,
-                      overflow: 'hidden',
-                      opacity: item.estado === 'cancelado' ? 0.6 : 1,
-                      transition: 'box-shadow 0.15s',
-                      '&:hover': { boxShadow: '0 2px 12px rgba(0,0,0,0.07)' },
+                      opacity: item.estado === 'cancelado' ? 0.55 : 1,
+                      bgcolor: selectedItemIds.has(item._id) ? alpha(C.indigo600, 0.04) : 'background.paper',
+                      transition: 'background-color 0.1s',
+                      '&:hover': { bgcolor: selectedItemIds.has(item._id) ? alpha(C.indigo600, 0.06) : alpha(C.slate50, 0.8) },
                     }}
                   >
-                    {/* Item header */}
-                    <Box sx={{ px: 2, py: 1.5, display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+                    {/* ── Fila principal ── */}
+                    <Box sx={{ px: 1.5, py: 1, display: 'flex', alignItems: 'center', gap: 1, minHeight: 44 }}>
                       {canResolve && (
                         <Checkbox
                           size="small"
                           checked={selectedItemIds.has(item._id)}
                           disabled={!canSelect}
                           onChange={() => handleToggleSelectedItem(item._id)}
-                          sx={{ mt: '-2px', ml: '-6px', p: 0.5, flexShrink: 0 }}
+                          sx={{ p: 0.25, flexShrink: 0 }}
                           inputProps={{ 'aria-label': `Seleccionar ${item.material_nombre}` }}
                         />
                       )}
-                      <Box sx={{ flex: 1, minWidth: 0 }}>
-                        <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1}>
-                          <Typography
-                            variant="body2"
-                            fontWeight={700}
-                            sx={{
-                              textDecoration: item.estado === 'cancelado' ? 'line-through' : 'none',
-                              lineHeight: 1.35,
-                              color: item.estado === 'cancelado' ? 'text.disabled' : 'text.primary',
-                            }}
-                          >
-                            {item.material_nombre}
-                          </Typography>
-                          <Chip
-                            label={estadoLabel[item.estado] || item.estado}
-                            size="small"
-                            color={estadoColor}
-                            variant={item.estado === 'resuelto' ? 'filled' : 'outlined'}
-                            sx={{ flexShrink: 0, fontWeight: 600, fontSize: '0.68rem' }}
-                          />
+
+                      {/* Nombre */}
+                      <Typography
+                        variant="body2"
+                        fontWeight={600}
+                        sx={{
+                          flex: 1,
+                          minWidth: 0,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                          textDecoration: item.estado === 'cancelado' ? 'line-through' : 'none',
+                          color: item.estado === 'cancelado' ? 'text.disabled' : 'text.primary',
+                          fontSize: '0.82rem',
+                        }}
+                      >
+                        {item.material_nombre}
+                      </Typography>
+
+                      {/* Cantidad */}
+                      <Typography variant="caption" color="text.disabled" sx={{ flexShrink: 0, fontSize: '0.75rem' }}>
+                        {item.cantidad}{item.unidad ? ` ${item.unidad}` : ''}
+                        {item.precio_estimado ? ` · $${item.precio_estimado.toLocaleString('es-AR')}` : ''}
+                      </Typography>
+
+                      {/* Estado */}
+                      <Chip
+                        label={estadoLabel[item.estado] || item.estado}
+                        size="small"
+                        color={estadoColor}
+                        variant={item.estado === 'resuelto' ? 'filled' : 'outlined'}
+                        sx={{ flexShrink: 0, fontWeight: 600, fontSize: '0.65rem', height: 20 }}
+                      />
+
+                      {/* Acciones inline */}
+                      {(hasPending || enGestionResols.length > 0) && (
+                        <Stack direction="row" spacing={0.5} alignItems="center" sx={{ flexShrink: 0 }}>
+                          {hasPending && (
+                            <Tooltip title="Cancelar ítem">
+                              <IconButton
+                                size="small"
+                                color="error"
+                                onClick={() => handleCancelarItem(item._id?.toString() || item.id)}
+                                sx={{ p: 0.4, opacity: 0.6, '&:hover': { opacity: 1 } }}
+                              >
+                                <DeleteIcon sx={{ fontSize: 15 }} />
+                              </IconButton>
+                            </Tooltip>
+                          )}
+                          {enGestionResols.length > 0 && (
+                            <Tooltip title="Confirmar entrega">
+                              <IconButton
+                                size="small"
+                                color="success"
+                                onClick={() => enGestionResols.forEach(r => handleConfirmarEntrega(item._id?.toString() || item.id, r._id?.toString() || r.id))}
+                                sx={{ p: 0.4 }}
+                              >
+                                <CheckCircleOutlineIcon sx={{ fontSize: 16 }} />
+                              </IconButton>
+                            </Tooltip>
+                          )}
+                          {hasPending && (
+                            <Button
+                              size="small"
+                              variant="contained"
+                              disableElevation
+                              onClick={() => openResolverDialog([item])}
+                              sx={{ textTransform: 'none', fontSize: '0.7rem', px: 1.25, py: 0.4, borderRadius: 1.5, minWidth: 0, lineHeight: 1.4 }}
+                            >
+                              Resolver
+                            </Button>
+                          )}
                         </Stack>
-                        <Typography variant="caption" color="text.disabled" sx={{ mt: 0.25, display: 'block' }}>
-                          {item.cantidad}{item.unidad ? ` ${item.unidad}` : ''}
-                          {item.precio_estimado ? ` · $${item.precio_estimado.toLocaleString('es-AR')}` : ''}
-                          {item.proveedor_override ? ` · ${item.proveedor_override}` : ''}
-                        </Typography>
-                      </Box>
+                      )}
                     </Box>
 
-                    {/* Resoluciones */}
+                    {/* ── Resoluciones (sub-filas compactas) ── */}
                     {resoluciones.length > 0 && (
-                      <Box sx={{ borderTop: '1px solid', borderColor: 'grey.100' }}>
-                        {resoluciones.map((resolucion, idx) => {
-                          const documento = resolucion.documento_relacionado;
-                          const seguimiento = resolucion.seguimiento_material;
-                          const seguimientoLabel = getSeguimientoMaterialLabel(seguimiento);
-                          const tipoBg = tipoBgColor[resolucion.tipo] || '#64748b';
-                          const isLast = idx === resoluciones.length - 1;
-                          return (
-                            <Box
-                              key={resolucion._id || resolucion.idempotency_key}
-                              sx={{
-                                px: 2,
-                                py: 1.25,
-                                display: 'flex',
-                                alignItems: 'flex-start',
-                                gap: 1.5,
-                                borderBottom: isLast ? 'none' : '1px solid',
-                                borderColor: 'grey.100',
-                                bgcolor: resolucion.revertida ? 'grey.50' : alpha(C.slate50, 0.6),
-                                opacity: resolucion.revertida ? 0.55 : 1,
-                              }}
-                            >
-                              {/* Tipo badge */}
-                              <Box sx={{ px: 0.75, py: 0.3, bgcolor: tipoBg, borderRadius: 1, flexShrink: 0, mt: 0.15 }}>
-                                <Typography
-                                  variant="caption"
-                                  fontWeight={700}
-                                  sx={{ color: 'white', whiteSpace: 'nowrap', fontSize: '0.62rem', lineHeight: 1 }}
-                                >
-                                  {getResolucionTipoLabel(resolucion.tipo)}
-                                </Typography>
-                              </Box>
-
-                              {/* Document info */}
-                              <Box sx={{ flex: 1, minWidth: 0 }}>
-                                <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap alignItems="center" sx={{ mb: 0.25 }}>
-                                  {documento?.etiqueta && (
-                                    documento?.href ? (
-                                      <Typography
-                                        component="span"
-                                        variant="caption"
-                                        fontWeight={700}
-                                        sx={{ color: 'primary.main', cursor: 'pointer', '&:hover': { textDecoration: 'underline' }, lineHeight: 1.4 }}
-                                        onClick={() => router.push(documento.href)}
-                                      >
-                                        {documento.etiqueta}
-                                      </Typography>
-                                    ) : (
-                                      <Typography variant="caption" fontWeight={700} color="text.primary">
-                                        {documento.etiqueta}
-                                      </Typography>
-                                    )
-                                  )}
-                                  {documento?.estado && (
-                                    <Chip
-                                      size="small"
-                                      color={getDocumentoEstadoColor(documento.estado)}
-                                      label={formatEstadoDocumento(documento.estado)}
-                                      sx={{ height: 19, fontSize: '0.65rem', fontWeight: 600 }}
-                                    />
-                                  )}
-                                  {seguimientoLabel && (
-                                    <Chip
-                                      size="small"
-                                      color={getSeguimientoMaterialColor(seguimiento?.estado)}
-                                      variant={seguimiento?.estado === 'no_conciliado' ? 'outlined' : 'filled'}
-                                      label={seguimientoLabel}
-                                      sx={{ height: 19, fontSize: '0.65rem', fontWeight: 600 }}
-                                    />
-                                  )}
-                                  {resolucion.revertida && (
-                                    <Chip size="small" variant="outlined" label="Revertida" sx={{ height: 19, fontSize: '0.65rem' }} />
-                                  )}
-                                  {!resolucion.revertida && (resolucion.estado_entrega || 'entregado') === 'en_gestion' && (
-                                    <Chip size="small" color="warning" variant="outlined" label="En gestión" sx={{ height: 19, fontSize: '0.65rem', fontWeight: 600 }} />
-                                  )}
-                                </Stack>
+                      <Box sx={{ pl: canResolve ? 5.5 : 1.5, pr: 1.5, pb: 0.75 }}>
+                        <Stack spacing={0.5}>
+                          {resoluciones.map((resolucion) => {
+                            const documento = resolucion.documento_relacionado;
+                            const seguimiento = resolucion.seguimiento_material;
+                            const seguimientoLabel = getSeguimientoMaterialLabel(seguimiento);
+                            const tipoBg = tipoBgColor[resolucion.tipo] || '#64748b';
+                            return (
+                              <Box
+                                key={resolucion._id || resolucion.idempotency_key}
+                                sx={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 0.75,
+                                  opacity: resolucion.revertida ? 0.5 : 1,
+                                  flexWrap: 'wrap',
+                                }}
+                              >
+                                <Box sx={{ px: 0.6, py: 0.15, bgcolor: tipoBg, borderRadius: 0.75, flexShrink: 0 }}>
+                                  <Typography sx={{ color: 'white', fontSize: '0.6rem', fontWeight: 700, lineHeight: 1.4, whiteSpace: 'nowrap' }}>
+                                    {getResolucionTipoLabel(resolucion.tipo)}
+                                  </Typography>
+                                </Box>
+                                {documento?.etiqueta && (
+                                  documento?.href ? (
+                                    <Typography
+                                      component="span"
+                                      variant="caption"
+                                      fontWeight={700}
+                                      sx={{ color: 'primary.main', cursor: 'pointer', fontSize: '0.7rem', '&:hover': { textDecoration: 'underline' } }}
+                                      onClick={() => router.push(documento.href)}
+                                    >
+                                      {documento.etiqueta}
+                                    </Typography>
+                                  ) : (
+                                    <Typography variant="caption" fontWeight={700} color="text.primary" sx={{ fontSize: '0.7rem' }}>
+                                      {documento.etiqueta}
+                                    </Typography>
+                                  )
+                                )}
+                                {documento?.estado && (
+                                  <Chip size="small" color={getDocumentoEstadoColor(documento.estado)} label={formatEstadoDocumento(documento.estado)} sx={{ height: 17, fontSize: '0.6rem', fontWeight: 600 }} />
+                                )}
+                                {seguimientoLabel && (
+                                  <Chip size="small" color={getSeguimientoMaterialColor(seguimiento?.estado)} variant={seguimiento?.estado === 'no_conciliado' ? 'outlined' : 'filled'} label={seguimientoLabel} sx={{ height: 17, fontSize: '0.6rem', fontWeight: 600 }} />
+                                )}
+                                {!resolucion.revertida && (resolucion.estado_entrega || 'entregado') === 'en_gestion' && (
+                                  <Chip size="small" color="warning" variant="outlined" label="En gestión" sx={{ height: 17, fontSize: '0.6rem', fontWeight: 600 }} />
+                                )}
+                                {resolucion.revertida && (
+                                  <Chip size="small" variant="outlined" label="Revertida" sx={{ height: 17, fontSize: '0.6rem' }} />
+                                )}
                                 {seguimiento?.descripcion && (
-                                  <Typography variant="caption" color="text.disabled" sx={{ display: 'block', lineHeight: 1.4 }}>
+                                  <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.65rem' }}>
                                     {seguimiento.descripcion}
                                   </Typography>
                                 )}
+                                {documento?.href && (
+                                  <Tooltip title="Abrir documento">
+                                    <IconButton size="small" onClick={() => router.push(documento.href)} sx={{ p: 0.25, color: 'primary.main', ml: 'auto' }}>
+                                      <OpenInNewIcon sx={{ fontSize: 13 }} />
+                                    </IconButton>
+                                  </Tooltip>
+                                )}
                               </Box>
-
-                              {/* Marcar entregado button */}
-                              {!resolucion.revertida && (resolucion.estado_entrega || 'entregado') === 'en_gestion' && canResolveNotaPedido && (
-                                <Tooltip title="Marcar entregado">
-                                  <IconButton
-                                    size="small"
-                                    onClick={() => handleConfirmarEntrega(item._id, resolucion._id)}
-                                    sx={{ color: 'success.main', flexShrink: 0, mt: '-2px' }}
-                                  >
-                                    <CheckCircleOutlineIcon sx={{ fontSize: 16 }} />
-                                  </IconButton>
-                                </Tooltip>
-                              )}
-                              {/* Open button */}
-                              {documento?.href && (
-                                <Tooltip title="Abrir documento">
-                                  <IconButton
-                                    size="small"
-                                    onClick={() => router.push(documento.href)}
-                                    sx={{ color: 'primary.main', flexShrink: 0, mt: '-2px' }}
-                                  >
-                                    <OpenInNewIcon sx={{ fontSize: 16 }} />
-                                  </IconButton>
-                                </Tooltip>
-                              )}
-                            </Box>
-                          );
-                        })}
-                      </Box>
-                    )}
-
-                    {/* Actions footer */}
-                    {canResolve && item.estado !== 'resuelto' && item.estado !== 'cancelado' && (
-                      <Box
-                        sx={{
-                          px: 2,
-                          py: 1,
-                          borderTop: '1px solid',
-                          borderColor: 'grey.100',
-                          bgcolor: 'grey.50',
-                          display: 'flex',
-                          justifyContent: 'flex-end',
-                          gap: 0.75,
-                          alignItems: 'center',
-                        }}
-                      >
-                        <Tooltip title="Cancelar ítem">
-                          <IconButton size="small" color="error" onClick={() => handleCancelarItem(item._id)} sx={{ opacity: 0.7, '&:hover': { opacity: 1 } }}>
-                            <DeleteIcon sx={{ fontSize: 17 }} />
-                          </IconButton>
-                        </Tooltip>
-                        <Button
-                          size="small"
-                          variant="contained"
-                          disableElevation
-                          sx={{ textTransform: 'none', fontSize: '0.75rem', px: 1.5, borderRadius: 1.5 }}
-                          onClick={() => openResolverDialog([item])}
-                        >
-                          Resolver
-                        </Button>
+                            );
+                          })}
+                        </Stack>
                       </Box>
                     )}
                   </Box>
                 );
               })}
-            </Stack>
+            </Box>
 
             {/* ── Paginación de ítems ── */}
             {filteredItems.length > ITEMS_PER_PAGE && (
@@ -3253,6 +3328,7 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
                   { value: 'compra', label: 'Compra', desc: 'Registrar una factura o pago', icon: <AssignmentIcon sx={{ fontSize: 22 }} /> },
                   { value: 'retiro_deposito', label: 'Retiro de depósito', desc: 'Retirar del stock propio de la empresa', icon: <HomeIcon sx={{ fontSize: 22 }} /> },
                   { value: 'retiro_acopio', label: 'Retiro de acopio', desc: 'Retirar de un acopio existente', icon: <InboxIcon sx={{ fontSize: 22 }} /> },
+                  { value: 'cancelacion', label: 'Cancelar ítem', desc: 'Marcar como no se va a realizar (queda registrado)', icon: <BlockIcon sx={{ fontSize: 22 }} /> },
                 ].map(({ value, label, desc, icon }) => {
                   const isSelected = resolverItemTipo === value;
                   const isSuggested = !resolverSuggestionLoading && !resolverConfigTouched && resolverSuggestion?.tipo === value;
@@ -3291,8 +3367,27 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
 
           <Box sx={{ px: 2.5, py: 2, borderTop: '1px solid', borderColor: 'divider', display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
             <Button onClick={closeResolverDialog} sx={{ textTransform: 'none' }}>Cancelar</Button>
-            <Button variant="contained" disableElevation onClick={() => setResolverStep('configure')} sx={{ textTransform: 'none' }}>
-              Siguiente →
+            <Button
+              variant="contained"
+              disableElevation
+              color={resolverItemTipo === 'cancelacion' ? 'error' : 'primary'}
+              onClick={async () => {
+                if (resolverItemTipo === 'cancelacion') {
+                  const itemIds = isBulkResolution
+                    ? resolverItemItems.map((i) => i._id?.toString() || i.id)
+                    : [resolverItemItem?._id?.toString() || resolverItemItem?.id].filter(Boolean);
+                  for (const id of itemIds) {
+                    // eslint-disable-next-line no-await-in-loop
+                    await handleCancelarItem(id);
+                  }
+                  closeResolverDialog();
+                } else {
+                  setResolverStep('configure');
+                }
+              }}
+              sx={{ textTransform: 'none' }}
+            >
+              {resolverItemTipo === 'cancelacion' ? 'Confirmar descarte' : 'Siguiente →'}
             </Button>
           </Box>
         </Box>
@@ -3305,7 +3400,7 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
             <Button size="small" onClick={() => setResolverStep('select')} sx={{ textTransform: 'none', color: 'text.secondary', minWidth: 0 }}>← Volver</Button>
             <Divider orientation="vertical" flexItem />
             <Typography variant="subtitle1" fontWeight={600}>
-              {{ compra: 'Compra', retiro_deposito: 'Retiro de depósito', retiro_acopio: 'Retiro de acopio' }[resolverItemTipo]}
+              {{ compra: 'Compra', retiro_deposito: 'Retiro de depósito', retiro_acopio: 'Retiro de acopio', cancelacion: 'Cancelar ítem' }[resolverItemTipo]}
               {!isBulkResolution && resolverItemItem ? ` — ${resolverItemItem.material_nombre}` : isBulkResolution ? ` — ${resolverItemItems.length} ítems` : ''}
             </Typography>
           </Box>
@@ -3482,6 +3577,7 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
                   {acopios.length === 0 ? (
                     <Typography variant="body2" color="text.secondary">No hay acopios disponibles para esta empresa.</Typography>
                   ) : (
+                    <Box sx={{ maxHeight: 240, overflowY: 'auto', pr: 0.5 }}>
                     <Stack spacing={1}>
                       {sorted.map((acopio) => {
                         const saldo = Number(acopio.totalValor || 0);
@@ -3491,7 +3587,12 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
                           <Paper
                             key={acopio.id}
                             variant="outlined"
-                            onClick={() => updateResolverData((d) => ({ ...d, acopio_id: acopio.id }))}
+                            onClick={() => {
+                              updateResolverData((d) => ({ ...d, acopio_id: acopio.id }));
+                              setRetiroAcopioAccion(null);
+                              setRetiroAcopioRemitos([]);
+                              setRetiroAcopioSelectedRemitoId(null);
+                            }}
                             sx={{
                               p: 2,
                               cursor: 'pointer',
@@ -3516,6 +3617,102 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
                         );
                       })}
                     </Stack>
+                    </Box>
+                  )}
+
+                  {/* Sub-step: acción sobre el remito */}
+                  {resolverItemData.acopio_id && !retiroAcopioAccion && (
+                    <Box sx={{ pt: 1 }}>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>¿El remito ya fue cargado en el acopio?</Typography>
+                      <Stack direction="row" spacing={1}>
+                        <Button
+                          variant="outlined"
+                          size="small"
+                          onClick={handleRetiroAcopioAsociar}
+                          sx={{ textTransform: 'none', flex: 1 }}
+                        >
+                          Asociar remito existente
+                        </Button>
+                        <Button
+                          variant="outlined"
+                          size="small"
+                          color="secondary"
+                          onClick={() => setRetiroAcopioAccion('registrar')}
+                          sx={{ textTransform: 'none', flex: 1 }}
+                        >
+                          Registrar remito
+                        </Button>
+                      </Stack>
+                    </Box>
+                  )}
+
+                  {/* Sub-step: asociar remito */}
+                  {retiroAcopioAccion === 'asociar' && (
+                    <Box>
+                      <Stack direction="row" alignItems="center" sx={{ mb: 1 }}>
+                        <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>Seleccioná el remito:</Typography>
+                        <Button size="small" onClick={() => { setRetiroAcopioAccion(null); setRetiroAcopioSelectedRemitoId(null); }} sx={{ textTransform: 'none', fontSize: 12 }}>← Cambiar</Button>
+                      </Stack>
+                      {retiroAcopioLoadingRemitos ? (
+                        <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
+                          <CircularProgress size={20} />
+                        </Box>
+                      ) : retiroAcopioRemitos.length === 0 ? (
+                        <Typography variant="body2" color="text.secondary">No hay remitos cargados en este acopio.</Typography>
+                      ) : (
+                        <Stack spacing={0.5}>
+                          {retiroAcopioRemitos.map((remito) => {
+                            const isSelR = retiroAcopioSelectedRemitoId === (remito.id || remito._id);
+                            return (
+                              <Paper
+                                key={remito.id || remito._id}
+                                variant="outlined"
+                                onClick={() => setRetiroAcopioSelectedRemitoId(remito.id || remito._id)}
+                                sx={{
+                                  px: 1.5, py: 1, cursor: 'pointer',
+                                  borderColor: isSelR ? 'primary.main' : 'grey.200',
+                                  borderWidth: isSelR ? 2 : 1,
+                                  bgcolor: isSelR ? alpha(C.indigo600, 0.04) : 'background.paper',
+                                  '&:hover': { borderColor: isSelR ? 'primary.main' : 'grey.400' },
+                                }}
+                              >
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                  <Box sx={{ flex: 1 }}>
+                                    <Typography variant="body2" fontWeight={600}>
+                                      {remito.numero_remito ? `N° ${remito.numero_remito}` : 'Sin número'}
+                                    </Typography>
+                                    <Typography variant="caption" color="text.secondary">{remito.fecha || ''}</Typography>
+                                  </Box>
+                                  {remito.movimientos?.length != null && (
+                                    <Typography variant="caption" color="text.secondary">{remito.movimientos.length} ítem(s)</Typography>
+                                  )}
+                                </Box>
+                              </Paper>
+                            );
+                          })}
+                        </Stack>
+                      )}
+                    </Box>
+                  )}
+
+                  {/* Sub-step: registrar remito */}
+                  {retiroAcopioAccion === 'registrar' && (
+                    <Box sx={{ pt: 1 }}>
+                      <Stack direction="row" alignItems="center" sx={{ mb: 1.5 }}>
+                        <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
+                          Se pre-cargarán los materiales en el formulario de remito.
+                        </Typography>
+                        <Button size="small" onClick={() => setRetiroAcopioAccion(null)} sx={{ textTransform: 'none', fontSize: 12 }}>← Cambiar</Button>
+                      </Stack>
+                      <Button
+                        variant="contained"
+                        fullWidth
+                        onClick={handleRegistrarRemitoEnAcopio}
+                        sx={{ textTransform: 'none' }}
+                      >
+                        Ir a registrar remito →
+                      </Button>
+                    </Box>
                   )}
                 </Stack>
               );
@@ -3528,7 +3725,12 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
               variant="contained"
               disableElevation
               onClick={handleResolverItem}
-              disabled={resolverItemLoading || (resolverItemTipo === 'retiro_acopio' && !resolverItemData.acopio_id)}
+              disabled={resolverItemLoading || (resolverItemTipo === 'retiro_acopio' && (
+                !resolverItemData.acopio_id ||
+                !retiroAcopioAccion ||
+                (retiroAcopioAccion === 'asociar' && !retiroAcopioSelectedRemitoId) ||
+                retiroAcopioAccion === 'registrar'
+              ))}
               sx={{ textTransform: 'none' }}
             >
               {resolverItemLoading ? <CircularProgress size={18} color="inherit" /> : 'Confirmar'}
