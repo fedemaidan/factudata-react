@@ -1,4 +1,6 @@
-module.exports = {
+const { withSentryConfig } = require('@sentry/nextjs');
+
+const nextConfig = {
   reactStrictMode: true,
   trailingSlash: true,
   transpilePackages: ['@mui/x-charts'],
@@ -15,3 +17,9 @@ module.exports = {
     return config;
   },
 };
+
+module.exports = withSentryConfig(nextConfig, {
+  org: 'sorbydata',
+  project: 'frontend',
+  silent: true,
+});

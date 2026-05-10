@@ -677,7 +677,6 @@ function BoxSummaryPage() {
         <Container maxWidth="xl">
           <Stack spacing={2}>
             <Typography variant="h5">Resumen de cajas</Typography>
-
             <BoxDashboardHeader projects={projects} filteredProjects={filteredProjects} />
 
             <Paper elevation={0} sx={{ borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
