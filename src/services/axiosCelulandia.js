@@ -3,9 +3,11 @@ import config from "src/config/config";
 import { auth } from "src/config/firebase"; // Asegúrate de tener la referencia correcta a tu configuración de Firebase
 
 const isProduction = process.env.NODE_ENV === "production";
-const apiUrl = isProduction
-  ? "https://api.sorbydata.com/celulandia/api"
-  : "http://localhost:3003/api/celulandia";
+const apiUrl =
+  process.env.NEXT_PUBLIC_CELULANDIA_URL
+  || (isProduction
+    ? "https://api.sorbydata.com/celulandia/api"
+    : "http://localhost:3003/api/celulandia");
 // Crea una instancia de axios
 const api = axios.create({
   baseURL: apiUrl,
