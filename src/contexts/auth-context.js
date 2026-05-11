@@ -164,14 +164,13 @@ export const AuthProvider = (props) => {
 
         for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
           try {
-            const idToken = await user.getIdToken(attempt === 1); // forzar refresh solo en el primer intento
+            const idToken = await user.getIdToken(attempt === 1);
             const updatedUser = await getPayloadUserByUid(user.uid, idToken);
             dispatch({ type: HANDLERS.UPDATE_USER, payload: updatedUser });
             lastError = null;
             break;
           } catch (error) {
             lastError = error;
-            if (error.code === 'sorby/deleted-user' || error.code === 'auth/user-not-found') break; // no reintentar
             if (attempt < MAX_RETRIES) {
               console.warn(`[Auth] Error al cargar perfil (intento ${attempt}/${MAX_RETRIES}), reintentando...`, error);
               await new Promise((res) => setTimeout(res, RETRY_DELAY_MS));
@@ -181,11 +180,7 @@ export const AuthProvider = (props) => {
 
         if (lastError) {
           console.error('[Auth] Error al cargar perfil tras todos los intentos:', lastError);
-          if (lastError.code === 'sorby/deleted-user' || lastError.code === 'auth/user-not-found') {
-            firebaseSignOut(auth).then(() => dispatch({ type: HANDLERS.SIGN_OUT }));
-          } else {
-            dispatch({ type: HANDLERS.INITIALIZE, payload: { user: null, originalUser: null, clearStorage: false } });
-          }
+          dispatch({ type: HANDLERS.INITIALIZE, payload: { user: null, originalUser: null, clearStorage: false } });
         }
       } else {
         const shouldIgnoreNullEvent =

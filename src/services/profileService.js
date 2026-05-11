@@ -100,8 +100,11 @@ const profileService = {
       const response = await api.get(`/profile/user/${encodeURIComponent(userId)}`);
       return response.data;
     } catch (err) {
+      const status = err?.response?.status;
+      // 404 = perfil genuinamente no existe; cualquier otro error es transitorio
+      if (status === 404) return null;
       console.error('Error al obtener perfil por user_id:', err);
-      return null;
+      throw err; // propaga para que el caller pueda reintentar
     }
   },
 };
