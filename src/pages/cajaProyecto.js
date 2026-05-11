@@ -476,7 +476,7 @@ const ProyectoMovimientosPage = () => {
     if (!router.isReady) return;
     router.replace({ pathname: '/cajas', query: router.query });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router.isReady, router.asPath]);
+  }, [router.isReady]);
 
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
