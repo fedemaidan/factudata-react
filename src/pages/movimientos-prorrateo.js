@@ -65,7 +65,7 @@ const MovimientosProrrateoPage = () => {
   };
 
   const handleVerProyecto = (proyectoId) => {
-    router.push(`/cajaProyecto?proyectoId=${proyectoId}`);
+    router.push(`/cajas?proyectoId=${proyectoId}`);
   };
 
   const handleEditTotal = (movimiento) => {

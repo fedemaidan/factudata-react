@@ -253,7 +253,7 @@ const MovementFormPage = () => {
     const titulo = isEditMode ? `Editar (${movimiento?.codigo_operacion || ''})` : 'Nuevo Movimiento';
     setBreadcrumbs([
       { label: 'Inicio', href: '/', icon: <HomeIcon className="h-4 w-4" /> },
-      { label: effectiveProyectoName || 'Proyecto', href: effectiveProyectoId ? `/cajaProyecto?proyectoId=${effectiveProyectoId}` : '/proyectos', icon: <FolderIcon className="h-4 w-4" /> },
+      { label: effectiveProyectoName || 'Proyecto', href: effectiveProyectoId ? `/cajas?proyectoId=${effectiveProyectoId}` : '/proyectos', icon: <FolderIcon className="h-4 w-4" /> },
       { label: titulo, icon: <DocumentTextIcon className="h-4 w-4" /> }
     ]);
     return () => setBreadcrumbs([]);
@@ -967,7 +967,7 @@ const createdAtStr = (() => {
     });
     // Opcional: redirigir o refrescar datos
     setTimeout(() => {
-      router.push(lastPageUrl || `/cajaProyecto?proyectoId=${effectiveProyectoId}`);
+      router.push(lastPageUrl || `/cajas?proyectoId=${effectiveProyectoId}`);
     }, 1500);
   };
 
@@ -1848,7 +1848,7 @@ const createdAtStr = (() => {
                 severity: 'success',
               });
               setTimeout(() => {
-                router.push(lastPageUrl || `/cajaProyecto?proyectoId=${effectiveProyectoId}`);
+                router.push(lastPageUrl || `/cajas?proyectoId=${effectiveProyectoId}`);
               }, 1500);
             }
           }}

@@ -180,7 +180,7 @@ const MovementFields = ({ formik, comprobante_info, empresa, etapas, proveedores
           fullWidth
           sx={{ mt: 1 }}
           onClick={() => {
-            router.push(lastPageUrl || '/cajaProyecto?proyectoId=' + (movimiento ? movimiento.proyecto_id : ''));
+            router.push(lastPageUrl || '/cajas?proyectoId=' + (movimiento ? movimiento.proyecto_id : ''));
           }}
         >
           Volver a {lastPageName || (movimiento ? movimiento.proyecto_nombre : '')}

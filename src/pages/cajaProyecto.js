@@ -471,6 +471,13 @@ const ProyectoMovimientosPage = () => {
   const [proyectos, setProyectos] = useState([]);
   const router = useRouter();
   const { proyectoId } = router.query;
+
+  useEffect(() => {
+    if (!router.isReady) return;
+    router.replace({ pathname: '/cajas', query: router.query });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router.isReady, router.asPath]);
+
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
