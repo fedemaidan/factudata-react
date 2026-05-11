@@ -165,8 +165,25 @@ export const AuthProvider = (props) => {
         for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
           try {
             const idToken = await user.getIdToken(attempt === 1);
-            const updatedUser = await getPayloadUserByUid(user.uid, idToken);
-            dispatch({ type: HANDLERS.UPDATE_USER, payload: updatedUser });
+            const freshAdmin = await getPayloadUserByUid(user.uid, idToken);
+
+            const current = stateRef.current;
+            const spying =
+              !!current.user &&
+              !!current.originalUser &&
+              current.user.id !== current.originalUser.id;
+
+            if (spying) {
+              dispatch({
+                type: HANDLERS.UPDATE_USER,
+                payload: {
+                  user: { ...current.user, token: idToken },
+                  originalUser: freshAdmin,
+                },
+              });
+            } else {
+              dispatch({ type: HANDLERS.UPDATE_USER, payload: freshAdmin });
+            }
             lastError = null;
             break;
           } catch (error) {
@@ -216,12 +233,28 @@ export const AuthProvider = (props) => {
       try {
         console.log('🔄 [Auth] Refrescando datos de usuario...');
         const idToken = await currentUser.getIdToken(true);
-        const freshUser = await getPayloadUserByUid(currentUser.uid, idToken);
+        const freshAdmin = await getPayloadUserByUid(currentUser.uid, idToken);
 
-        dispatch({
-          type: HANDLERS.UPDATE_USER,
-          payload: { user: freshUser, originalUser: state.originalUser || freshUser },
-        });
+        const current = stateRef.current;
+        const spying =
+          !!current.user &&
+          !!current.originalUser &&
+          current.user.id !== current.originalUser.id;
+
+        if (spying) {
+          dispatch({
+            type: HANDLERS.UPDATE_USER,
+            payload: {
+              user: { ...current.user, token: idToken },
+              originalUser: freshAdmin,
+            },
+          });
+        } else {
+          dispatch({
+            type: HANDLERS.UPDATE_USER,
+            payload: { user: freshAdmin, originalUser: freshAdmin },
+          });
+        }
         console.log('✅ [Auth] Usuario actualizado correctamente');
       } catch (error) {
         console.error('❌ [Auth] Error refrescando usuario:', error);
