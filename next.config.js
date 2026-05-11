@@ -22,4 +22,5 @@ module.exports = withSentryConfig(nextConfig, {
   org: 'sorbydata',
   project: 'frontend',
   silent: true,
+  hideSourceMaps: true,
 });

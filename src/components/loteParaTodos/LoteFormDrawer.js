@@ -12,8 +12,8 @@ import {
   ESTADO_LEGAL_LABELS,
   SITUACION_FISICA,
   SITUACION_FISICA_LABELS,
-  puedeTransicionarCondicion
 } from '../../data/loteParaTodos/constantes.js';
+import { puedeTransicionarCondicion } from '../../data/loteParaTodos/mockLotes.js';
 import { mockVendedores } from '../../data/loteParaTodos/mockVendedores.js';
 
 const LoteFormDrawer = ({
