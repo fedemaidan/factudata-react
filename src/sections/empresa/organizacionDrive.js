@@ -66,6 +66,7 @@ import {
   deleteSheetConfig,
   syncSheetConfig,
 } from "src/services/sheetConfigService";
+import { FIREBASE_CLIENT_EMAIL } from "src/config/env";
 
 // ────────────────────────────────────────────────────────────────
 //  Campos disponibles para condiciones de reglas de sheets
@@ -300,9 +301,6 @@ function AvailableColumnsPanel({ rows, onToggle }) {
 //  Panel de error de acceso al Google Sheet (instrucciones)
 // ────────────────────────────────────────────────────────────────
 
-const SERVICE_ACCOUNT_EMAIL =
-  "firebase-adminsdk-xts1d@factudata-3afdf.iam.gserviceaccount.com";
-
 const ACCESS_ERROR_CODES = new Set([
   "SHEET_ACCESS_DENIED",
   "SHEET_NOT_FOUND",
@@ -348,11 +346,11 @@ function ShareAccessErrorPanel({ sheetId, errorMessage, onRetry, retrying }) {
 
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(SERVICE_ACCOUNT_EMAIL);
+      await navigator.clipboard.writeText(FIREBASE_CLIENT_EMAIL);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch {
-      /* clipboard bloqueado */
+    } catch (err) {
+      console.error("Error copying to clipboard:", err);
     }
   };
 
@@ -479,7 +477,7 @@ function ShareAccessErrorPanel({ sheetId, errorMessage, onRetry, retrying }) {
                 lineHeight: 1.4,
               }}
             >
-              {SERVICE_ACCOUNT_EMAIL}
+              {FIREBASE_CLIENT_EMAIL}
             </Typography>
             <Tooltip title={copied ? "¡Copiado!" : "Copiar mail"} arrow placement="top">
               <IconButton

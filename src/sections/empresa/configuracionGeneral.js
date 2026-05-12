@@ -19,6 +19,7 @@ import {
 
 import { Autocomplete } from "@mui/material";
 import { actualizarSheetsDesdeBaseEmpresa } from "src/services/proyectosService";
+import { FIREBASE_CLIENT_EMAIL } from "src/config/env";
 
 export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission }) => {
   const comprobante_info_default = {
@@ -643,10 +644,10 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
         fullWidth
         error={hasPermissionError}
         helperText={
-          hasPermissionError
-            ? "El google sheet no está configurado para que podamos editarlo. Asegurate que el id esté bien escrito y de darle permisos de edición a firebase-adminsdk-xts1d@factudata-3afdf.iam.gserviceaccount.com."
-            : ""
-        }
+            hasPermissionError
+              ? "El google sheet no está configurado para que podamos editarlo. Asegurate que el id esté bien escrito y de darle permisos de edición a " + FIREBASE_CLIENT_EMAIL
+              : ""
+          }
       />
 
       <Typography variant="h6" sx={{ mt: 4 }}>
