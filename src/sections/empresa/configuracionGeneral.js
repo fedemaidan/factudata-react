@@ -190,7 +190,6 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
     "ELIMINAR_NOTA_PEDIDO",
     "RESOLVER_NOTA_PEDIDO",
     "VER_NOTAS_DE_PEDIDO",
-    "RESOLVER_NOTA_PEDIDO",
     "GESTIONAR_MOVIMIENTO",
     "CREAR_INGRESO_CAJA_CHICA",
     "VER_MI_CAJA_CHICA",

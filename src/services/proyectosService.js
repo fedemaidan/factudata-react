@@ -116,7 +116,6 @@ export const getProyectosFromUser = async (user) => {
 export const getProyectoById = async (id) => {
   try {
     const response = await api.get(`/proyecto/${id}`);
-    console.log('Proyecto obtenido con éxito');
     return response.data;
   } catch (err) {
     console.error('Error al obtener el proyecto:', err);

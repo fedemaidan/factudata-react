@@ -116,8 +116,20 @@ export const NotaPedidoAddDialog = ({
 
   const handleSave = () => {
     const data = { ...newNoteData };
+
+    if (!newNoteData.proyecto_id) {
+      setFormError('El proyecto es obligatorio.');
+      return;
+    }
+
     if (modoNota === 'items_estructurados') {
-      const itemsValidos = items.filter((it) => it.material_nombre.trim() && it.cantidad);
+      const itemsConNombre = items.filter((it) => it.material_nombre.trim());
+      const itemsSinCantidad = itemsConNombre.filter((it) => !it.cantidad || parseFloat(it.cantidad) <= 0);
+      if (itemsSinCantidad.length > 0) {
+        setFormError('Completá la cantidad de todos los ítems antes de guardar.');
+        return;
+      }
+      const itemsValidos = itemsConNombre.filter((it) => it.cantidad);
       if (itemsValidos.length === 0) {
         setFormError('Agrega al menos un ítem válido para guardar una nota estructurada.');
         return;
@@ -144,6 +156,11 @@ export const NotaPedidoAddDialog = ({
       <DialogTitle>{title}</DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 1 }}>
+          {formError && (
+            <Typography variant="caption" color="error">
+              {formError}
+            </Typography>
+          )}
           {/* Toggle modo — siempre visible */}
           <Box>
             <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
@@ -241,11 +258,6 @@ export const NotaPedidoAddDialog = ({
               <Typography variant="subtitle2" sx={{ mb: 1 }}>
                 Ítems del pedido
               </Typography>
-              {formError && (
-                <Typography variant="caption" color="error" sx={{ display: 'block', mb: 1 }}>
-                  {formError}
-                </Typography>
-              )}
               <Table size="small">
                 <TableHead>
                   <TableRow>

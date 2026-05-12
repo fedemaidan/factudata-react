@@ -504,13 +504,13 @@ const MaterialAutocomplete = ({
         renderOption={(props, option) => (
           <Box component="li" {...props}>
             <Box sx={{ flexGrow: 1 }}>
-              <Typography variant="body2">
+              <Typography variant="body2" component="div">
                 <strong>{option.nombre}</strong>
                 {option.SKU && (
-                  <Chip 
-                    label={option.SKU} 
-                    size="small" 
-                    sx={{ ml: 1, height: 20 }} 
+                  <Chip
+                    label={option.SKU}
+                    size="small"
+                    sx={{ ml: 1, height: 20 }}
                   />
                 )}
               </Typography>
