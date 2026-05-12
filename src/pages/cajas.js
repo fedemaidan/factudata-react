@@ -772,7 +772,7 @@ const CajasPage = () => {
   const canUseProjectActions = Boolean(activeProject?.id);
 
   useEffect(() => {
-    if (!router.isReady) return;
+    if (!router.isReady || loadingPage) return;
     const nextQuery = { ...router.query };
     delete nextQuery.proyectoId;
     delete nextQuery.proyectoIds;
@@ -793,7 +793,19 @@ const CajasPage = () => {
     if (currentSingle === nextSingle && currentMulti === nextMulti) return;
 
     router.replace({ pathname: '/cajas', query: nextQuery }, undefined, { shallow: true });
-  }, [projectScopeMode, router, selectedProjectIds]);
+  }, [projectScopeMode, router, selectedProjectIds, loadingPage]);
+
+  // URL → scope: cuando se navega a /cajas?proyectoId=X desde afuera (side-nav, redirect)
+  useEffect(() => {
+    if (!router.isReady || proyectos.length === 0) return;
+    const requestedIds = [...new Set([
+      ...parseListParam(queryProyectoIds),
+      ...(queryProyectoId ? [queryProyectoId] : []),
+    ])].filter((id) => proyectos.some((p) => p.id === id));
+    if (requestedIds.length === 0) return;
+    setProjectScopeMode('selection');
+    setSelectedProjectIds(requestedIds);
+  }, [queryProyectoId, queryProyectoIds, router.isReady, proyectos]);
 
   // Setear breadcrumbs
   useEffect(() => {

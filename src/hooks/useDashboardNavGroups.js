@@ -115,14 +115,14 @@ async function buildDefaultGroups({ user, empresa, permisosUsuario, canUseAgente
     if (proys.length > 0) {
       const finGroup = groups.find((g) => g.id === "finanzas");
       if (finGroup) {
-        finGroup.items.push({ title: "Cajas (beta)", path: "/cajas", icon: icon(AccountBalanceWallet) });
+        finGroup.items.push({ title: "Cajas", path: "/cajas", icon: icon(AccountBalanceWallet) });
       }
       groups.push({
         id: "obras",
         label: "Obras",
         items: proys.map((proy) => ({
           title: proy.nombre,
-          path: `cajaProyecto?proyectoId=${proy.id}`,
+          path: `cajas?proyectoId=${proy.id}`,
           icon: (
             <SvgIcon fontSize="small" sx={{ color: proy.activo ? "success.main" : "text.disabled" }}>
               <StoreIcon />
