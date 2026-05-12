@@ -626,7 +626,7 @@ const MovementDataEntryPage = () => {
                 color="primary"
                 variant="text"
                 type="submit"
-                onClick={() => router.push(lastPageUrl? lastPageUrl: '/cajaProyecto?proyectoId=' + movimiento.proyecto_id)}
+                onClick={() => router.push(lastPageUrl? lastPageUrl: '/cajas?proyectoId=' + movimiento.proyecto_id)}
               >
                 Volver a {lastPageName? lastPageName :  movimiento.proyecto}
               </Button>

@@ -38,6 +38,7 @@ import { formatTimestamp } from 'src/utils/formatters';
 import { parseQueryParamList, FILTER_ARRAY_KEYS, FILTER_DATE_KEYS } from 'src/utils/parseData';
 import { useMovimientosFilters } from 'src/hooks/useMovimientosFilters';
 import { FilterBarCajaProyecto } from 'src/components/FilterBarCajaProyecto';
+import ErrorBoundary from 'src/components/ErrorBoundary';
 import AsistenteFlotanteProyecto from 'src/components/asistenteFlotanteProyecto';
 import TransferenciaInternaDialog from 'src/components/TransferenciaInternaDialog';
 import IntercambioMonedaDialog from 'src/components/IntercambioMonedaDialog';
@@ -771,7 +772,7 @@ const CajasPage = () => {
   const canUseProjectActions = Boolean(activeProject?.id);
 
   useEffect(() => {
-    if (!router.isReady) return;
+    if (!router.isReady || loadingPage) return;
     const nextQuery = { ...router.query };
     delete nextQuery.proyectoId;
     delete nextQuery.proyectoIds;
@@ -792,7 +793,19 @@ const CajasPage = () => {
     if (currentSingle === nextSingle && currentMulti === nextMulti) return;
 
     router.replace({ pathname: '/cajas', query: nextQuery }, undefined, { shallow: true });
-  }, [projectScopeMode, router, selectedProjectIds]);
+  }, [projectScopeMode, router, selectedProjectIds, loadingPage]);
+
+  // URL → scope: cuando se navega a /cajas?proyectoId=X desde afuera (side-nav, redirect)
+  useEffect(() => {
+    if (!router.isReady || proyectos.length === 0) return;
+    const requestedIds = [...new Set([
+      ...parseListParam(queryProyectoIds),
+      ...(queryProyectoId ? [queryProyectoId] : []),
+    ])].filter((id) => proyectos.some((p) => p.id === id));
+    if (requestedIds.length === 0) return;
+    setProjectScopeMode('selection');
+    setSelectedProjectIds(requestedIds);
+  }, [queryProyectoId, queryProyectoIds, router.isReady, proyectos]);
 
   // Setear breadcrumbs
   useEffect(() => {
@@ -1238,7 +1251,17 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
       const restoredFilters = deserializeFilterSet(caja.filterSet);
       setFilters((f) => ({ ...f, ...restoredFilters, caja }));
     } else {
-      setFilters((f) => ({ ...f, caja: caja || null }));
+      // Limpiar las dimensiones que la caja controla por scope para que
+      // no queden chips activos que contradigan lo que el backend consulta.
+      // Si la caja no define una dimensión, el filtro del usuario se preserva.
+      setFilters((f) => ({
+        ...f,
+        caja: caja || null,
+        ...(caja?.moneda     ? { moneda: []    } : {}),
+        ...(caja?.medio_pago ? { medioPago: [] } : {}),
+        ...(caja?.estado     ? { estados: []   } : {}),
+        ...(caja?.type       ? { tipo: []      } : {}),
+      }));
     }
   }, [setFilters]);
   
@@ -1496,6 +1519,12 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
       setDashboardPagination(response?.pagination || { page: page + 1, limit: rowsPerPage, total: 0, totalPages: 0, hasNext: false, hasPrev: false });
       if (response?.options) setBackendOptions(response.options);
       return response;
+    } catch (err) {
+      console.error('[cajas] Error al cargar movimientos del dashboard', err);
+      setDashboardItems([]);
+      setDashboardTotals(EMPTY_CAJA_TOTALS);
+      setAlert({ open: true, message: 'Error al cargar los movimientos. Intentá de nuevo.', severity: 'error' });
+      return null;
     } finally {
       setLoadingDashboard(false);
     }
@@ -1519,20 +1548,25 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
       return;
     }
 
-    const entries = await Promise.all(cajas.map(async (caja) => {
-      const params = buildCajaDashboardParams({
-        filters: {},
-        caja,
-      });
-      const response = await movimientosService.getCajasTotales({
-        ...params,
-        empresaId: empresa.id,
-        ...(scopeProjectIds.length > 0 ? { proyectoIds: scopeProjectIds.join(',') } : {}),
-      });
-      return [getCajaTotalsKey(caja), response?.totals || EMPTY_CAJA_TOTALS];
-    }));
+    try {
+      const entries = await Promise.all(cajas.map(async (caja) => {
+        const params = buildCajaDashboardParams({
+          filters: {},
+          caja,
+        });
+        const response = await movimientosService.getCajasTotales({
+          ...params,
+          empresaId: empresa.id,
+          ...(scopeProjectIds.length > 0 ? { proyectoIds: scopeProjectIds.join(',') } : {}),
+        });
+        return [getCajaTotalsKey(caja), response?.totals || EMPTY_CAJA_TOTALS];
+      }));
 
-    setCajasTotalsMap(Object.fromEntries(entries));
+      setCajasTotalsMap(Object.fromEntries(entries));
+    } catch (err) {
+      console.error('[cajas] Error al cargar totales por caja', err);
+      setCajasTotalsMap({});
+    }
   }, [empresa?.id, scopeProjectIds]);
 
   const handleOpenConfirmarPago = useCallback((mov) => {
@@ -2097,6 +2131,7 @@ useEffect(() => {
       <Head>
         <title>{tituloConCodigo}</title>
       </Head>
+      <ErrorBoundary context="cajas">
       <Box component="main" sx={{ flexGrow: 1, py: 8, paddingTop: 2, position: 'relative' }}>
         {loadingPage && (
           <Backdrop open sx={{ position: 'absolute', zIndex: 10, bgcolor: 'rgba(255,255,255,0.7)' }}>
@@ -2377,6 +2412,7 @@ useEffect(() => {
                         storageKey={scopeStorageKey}
                         empresaId={empresa?.id}
                         userId={authUserUid}
+                        cajaScope={activeCaja}
                       />
                       <Stack direction="row" justifyContent="flex-end" spacing={1} sx={{ mt: 2 }}>
                         <Button variant="text" onClick={() => setFiltersOpen(false)}>Cancelar</Button>
@@ -2396,6 +2432,7 @@ useEffect(() => {
                     storageKey={scopeStorageKey}
                     empresaId={empresa?.id}
                     userId={authUserUid}
+                    cajaScope={activeCaja}
                   />
                 )}
               </Stack>
@@ -3487,6 +3524,7 @@ useEffect(() => {
 />
 
 
+      </ErrorBoundary>
     </DashboardLayout>
   );
 };
