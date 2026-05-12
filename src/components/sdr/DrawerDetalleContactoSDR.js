@@ -73,6 +73,14 @@ import ContadoresActividad from './ContadoresActividad';
 import useGrabadorAudio from '../../hooks/useGrabadorAudio';
 
 // Opciones de tamaño de empresa
+const RUBRO_OPTIONS = [
+    { value: '', label: 'Sin especificar' },
+    { value: 'constructora', label: 'Constructora' },
+    { value: 'desarrolladora', label: 'Desarrolladora' },
+    { value: 'estudio de arquitectura', label: 'Estudio de arquitectura' },
+    { value: 'profesional independiente', label: 'Profesional independiente' },
+];
+
 const TAMANO_EMPRESA_OPTIONS = [
     { value: '', label: 'Sin especificar' },
     { value: '1-10', label: '1-10 empleados' },
@@ -2385,6 +2393,7 @@ export const ModalEditarContacto = ({ open, onClose, contacto, empresaId, onSucc
         empresa: '',
         cargo: '',
         tamanoEmpresa: '',
+        rubro: '',
         telefonosSecundarios: []
     });
     const [loading, setLoading] = useState(false);
@@ -2400,6 +2409,7 @@ export const ModalEditarContacto = ({ open, onClose, contacto, empresaId, onSucc
                 empresa: contacto.empresa || '',
                 cargo: contacto.cargo || '',
                 tamanoEmpresa: contacto.tamanoEmpresa || '',
+                rubro: contacto.rubro || '',
                 telefonosSecundarios: contacto.telefonosSecundarios || []
             });
             setError(null);
@@ -2538,6 +2548,21 @@ export const ModalEditarContacto = ({ open, onClose, contacto, empresaId, onSucc
                             onChange={(e) => handleChange('tamanoEmpresa', e.target.value)}
                         >
                             {TAMANO_EMPRESA_OPTIONS.map(opt => (
+                                <MenuItem key={opt.value} value={opt.value}>
+                                    {opt.label}
+                                </MenuItem>
+                            ))}
+                        </Select>
+                    </FormControl>
+
+                    <FormControl fullWidth size="small">
+                        <InputLabel>Tipo de negocio</InputLabel>
+                        <Select
+                            value={RUBRO_OPTIONS.some(o => o.value === formData.rubro) ? formData.rubro : ''}
+                            label="Tipo de negocio"
+                            onChange={(e) => handleChange('rubro', e.target.value)}
+                        >
+                            {RUBRO_OPTIONS.map(opt => (
                                 <MenuItem key={opt.value} value={opt.value}>
                                     {opt.label}
                                 </MenuItem>

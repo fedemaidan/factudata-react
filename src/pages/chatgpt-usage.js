@@ -79,6 +79,16 @@ const formatPricing = (pricing) => {
   return `${formatRate(pricing.inputPerMillion)} in / ${formatRate(pricing.outputPerMillion)} out`;
 };
 
+const isDocumentAiModel = (model) => String(model || '').startsWith('document-ai');
+
+const formatUsageValue = (value, model) => (
+  isDocumentAiModel(model) ? formatNumber(value) : formatTokens(value)
+);
+
+const getUsageSummarySubtitle = (scope) => (
+  `${scope === 'today' ? 'incluye' : 'incluye'} tokens LLM y páginas de Document AI`
+);
+
 const getPricingSourceProps = (source) => {
   switch (source) {
     case 'custom':
@@ -368,6 +378,21 @@ const ChatGptUsagePage = () => {
     valueFormatter: (value) => formatCurrency(value || 0)
   }));
 
+  const intervalLabel = { day: 'día', week: 'semana', month: 'mes' }[sourceInterval] || 'período';
+  const totalCostByPeriod = sourceCostSeries.labels.map((label, i) => ({
+    date: label,
+    totalCostUsd: sourceCostSeries.series.reduce((sum, s) => sum + (s.data[i] || 0), 0)
+  }));
+  const totalCostChartSeries = [{
+    id: 'total',
+    label: 'Costo total',
+    data: totalCostByPeriod.map((d) => d.totalCostUsd),
+    color: '#3b82f6',
+    curve: 'linear',
+    showMark: false,
+    valueFormatter: (value) => formatCurrency(value || 0)
+  }];
+
   return (
     <Box component="main" sx={{ flexGrow: 1, py: 4 }}>
       <Container maxWidth="xl">
@@ -421,23 +446,29 @@ const ChatGptUsagePage = () => {
             </Grid>
             <Grid item xs={12} sm={6} md={3}>
               <MetricCard
-                title="Tokens Hoy"
+                title="Uso Hoy"
                 value={formatTokens(summary.today.tokens)}
-                subtitle="tokens consumidos"
+                subtitle={getUsageSummarySubtitle('today')}
                 icon={TokenIcon}
                 color="warning"
               />
             </Grid>
             <Grid item xs={12} sm={6} md={3}>
               <MetricCard
-                title="Tokens del Mes"
+                title="Uso del Mes"
                 value={formatTokens(summary.month.tokens)}
-                subtitle="tokens consumidos"
+                subtitle={getUsageSummarySubtitle('month')}
                 icon={TokenIcon}
                 color="info"
               />
             </Grid>
           </Grid>
+        )}
+
+        {activeTab === 'reportes' && (
+          <Alert severity="info" sx={{ mb: 4 }}>
+            En esta vista, los modelos LLM muestran tokens. Para Document AI, la columna de uso representa páginas procesadas.
+          </Alert>
         )}
 
         {/* Filtros */}
@@ -713,6 +744,59 @@ const ChatGptUsagePage = () => {
             <Grid item xs={12}>
               <Card>
                 <CardHeader
+                  title={`Costo Total por ${intervalLabel.charAt(0).toUpperCase() + intervalLabel.slice(1)}`}
+                  subheader={`Costo acumulado de todos los modelos agrupado por ${intervalLabel}. Usá el selector de intervalo para cambiar la agrupación.`}
+                  avatar={<AttachMoneyIcon color="success" />}
+                />
+                <CardContent>
+                  {totalCostByPeriod.length === 0 ? (
+                    <Typography color="text.secondary" align="center" sx={{ py: 4 }}>
+                      No hay datos disponibles para el período seleccionado
+                    </Typography>
+                  ) : (
+                    <Stack spacing={3}>
+                      <Box sx={{ overflowX: 'auto' }}>
+                        <LineChart
+                          height={300}
+                          grid={{ horizontal: true, vertical: false }}
+                          xAxis={[{ scaleType: 'point', data: sourceCostSeries.labels }]}
+                          yAxis={[{ min: 0, valueFormatter: (value) => formatCurrency(value || 0) }]}
+                          margin={{ top: 24, right: 24, bottom: 24, left: 60 }}
+                          series={totalCostChartSeries}
+                          slotProps={{ legend: { hidden: true } }}
+                        />
+                      </Box>
+                      <Box sx={{ overflowX: 'auto' }}>
+                        <Table size="small">
+                          <TableHead>
+                            <TableRow>
+                              <TableCell>Período</TableCell>
+                              <TableCell align="right">Costo Total</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {totalCostByPeriod.slice().reverse().map((row) => (
+                              <TableRow key={row.date}>
+                                <TableCell>{row.date}</TableCell>
+                                <TableCell align="right">
+                                  <Typography variant="body2" fontWeight="medium">
+                                    {formatCurrency(row.totalCostUsd)}
+                                  </Typography>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </Box>
+                    </Stack>
+                  )}
+                </CardContent>
+              </Card>
+            </Grid>
+
+            <Grid item xs={12}>
+              <Card>
+                <CardHeader
                   title="Top Sources por Costo"
                   subheader="Serie temporal del costo acumulado por source. Podés ocultar o mostrar líneas según necesites."
                   avatar={<TimelineIcon color="primary" />}
@@ -771,7 +855,7 @@ const ChatGptUsagePage = () => {
               <Card>
                 <CardHeader 
                   title="Estadísticas por Modelo"
-                  subheader="Desglose de uso con tarifa aplicada y tokens input/output"
+                  subheader="Desglose de uso con tarifa aplicada. En LLM se muestran tokens; en Document AI, páginas procesadas."
                 />
                 <CardContent sx={{ maxHeight: 400, overflow: 'auto' }}>
                   <Table size="small">
@@ -779,7 +863,7 @@ const ChatGptUsagePage = () => {
                       <TableRow>
                         <TableCell>Modelo</TableCell>
                         <TableCell align="right">Llamadas</TableCell>
-                        <TableCell align="right">Tokens</TableCell>
+                        <TableCell align="right">Uso</TableCell>
                         <TableCell align="right">Costo</TableCell>
                         <TableCell>Tarifa</TableCell>
                       </TableRow>
@@ -798,10 +882,16 @@ const ChatGptUsagePage = () => {
                             <TableCell align="right">{formatNumber(row.totalCalls)}</TableCell>
                             <TableCell align="right">
                               <Stack spacing={0.25} alignItems="flex-end">
-                                <Typography variant="body2">{formatTokens(row.totalTokens)}</Typography>
-                                <Typography variant="caption" color="text.secondary">
-                                  {formatTokens(row.totalPromptTokens)} in / {formatTokens(row.totalCompletionTokens)} out
-                                </Typography>
+                                <Typography variant="body2">{formatUsageValue(row.totalTokens, row._id)}</Typography>
+                                {isDocumentAiModel(row._id) ? (
+                                  <Typography variant="caption" color="text.secondary">
+                                    {formatNumber(row.totalPromptTokens)} páginas procesadas
+                                  </Typography>
+                                ) : (
+                                  <Typography variant="caption" color="text.secondary">
+                                    {formatTokens(row.totalPromptTokens)} in / {formatTokens(row.totalCompletionTokens)} out
+                                  </Typography>
+                                )}
                               </Stack>
                             </TableCell>
                             <TableCell align="right">
@@ -839,7 +929,7 @@ const ChatGptUsagePage = () => {
               <Card>
                 <CardHeader 
                   title="Uso Diario" 
-                  subheader="Evolución del consumo en el período seleccionado"
+                  subheader="Evolución del consumo en el período seleccionado. El uso agrega tokens LLM y páginas de Document AI."
                 />
                 <CardContent>
                   <Box sx={{ overflowX: 'auto' }}>
@@ -848,7 +938,7 @@ const ChatGptUsagePage = () => {
                         <TableRow>
                           <TableCell>Fecha</TableCell>
                           <TableCell align="right">Llamadas</TableCell>
-                          <TableCell align="right">Tokens</TableCell>
+                          <TableCell align="right">Uso</TableCell>
                           <TableCell align="right">Costo</TableCell>
                           <TableCell align="right">Éxitos</TableCell>
                           <TableCell align="right">Errores</TableCell>
@@ -903,7 +993,7 @@ const ChatGptUsagePage = () => {
               <Card>
                 <CardHeader 
                   title="Llamadas Recientes" 
-                  subheader="Últimas 20 llamadas a la API"
+                  subheader="Últimas 20 llamadas a la API. En Document AI, el uso mostrado corresponde a páginas procesadas."
                 />
                 <CardContent>
                   <Box sx={{ overflowX: 'auto' }}>
@@ -913,7 +1003,7 @@ const ChatGptUsagePage = () => {
                           <TableCell>Fecha/Hora</TableCell>
                           <TableCell>Source</TableCell>
                           <TableCell>Modelo</TableCell>
-                          <TableCell align="right">Tokens</TableCell>
+                          <TableCell align="right">Uso</TableCell>
                           <TableCell align="right">Costo</TableCell>
                           <TableCell align="center">Estado</TableCell>
                         </TableRow>
@@ -947,7 +1037,11 @@ const ChatGptUsagePage = () => {
                                   color={call.model.includes('4o') ? 'primary' : 'default'}
                                 />
                               </TableCell>
-                              <TableCell align="right">{formatTokens(call.tokens?.total || 0)}</TableCell>
+                              <TableCell align="right">
+                                {isDocumentAiModel(call.model)
+                                  ? `${formatNumber(call.tokens?.total || 0)} pág.`
+                                  : formatTokens(call.tokens?.total || 0)}
+                              </TableCell>
                               <TableCell align="right">{formatCurrency(call.estimatedCostUsd)}</TableCell>
                               <TableCell align="center">
                                 {call.success ? (

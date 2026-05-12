@@ -126,6 +126,7 @@ const MaterialAutocomplete = ({
           desc_material: item.desc_material || '',
           stock: item.stock || 0,
           alias: item.alias || [], // Incluir aliases para verificar duplicados
+          precio_unitario: item.precio_unitario ?? null,
           label: `${item.nombre || 'Sin nombre'}${item.SKU ? ` - ${item.SKU}` : ''}`
         }));
 
@@ -172,6 +173,7 @@ const MaterialAutocomplete = ({
           desc_material: response.desc_material || '',
           stock: response.stock || 0,
           alias: response.alias || [], // Incluir aliases para verificar duplicados
+          precio_unitario: response.precio_unitario ?? null,
           label: `${response.nombre || 'Sin nombre'}${response.SKU ? ` - ${response.SKU}` : ''}`
         };
         

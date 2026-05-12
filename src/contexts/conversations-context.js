@@ -146,6 +146,7 @@ const getFiltersFromQuery = (query) => {
   const showInsight = query.showInsight === 'true';
   const insightCategory = getStringParam(query.insightCategory);
   const insightTypesRaw = getStringParam(query.insightTypes);
+  const agentMode = query.agentMode === 'true';
   if (fechaDesde) filters.fechaDesde = fechaDesde;
   if (fechaHasta) filters.fechaHasta = fechaHasta;
   if (creadaDesde) filters.creadaDesde = creadaDesde;
@@ -156,6 +157,7 @@ const getFiltersFromQuery = (query) => {
   if (showInsight) filters.showInsight = true;
   if (insightCategory) filters.insightCategory = insightCategory;
   if (insightTypesRaw) filters.insightTypes = insightTypesRaw.split(',').filter(Boolean);
+  if (agentMode) filters.agentMode = true;
   return filters;
 };
 
@@ -221,7 +223,7 @@ export function ConversationsProvider({ children }) {
 
   const filters = useMemo(() => {
     return normalizeFilterDates(getFiltersFromQuery(router.query));
-  }, [router.query.fechaDesde, router.query.fechaHasta, router.query.creadaDesde, router.query.creadaHasta, router.query.empresaId, router.query.estadoCliente, router.query.tipoContacto, router.query.showInsight, router.query.insightCategory, router.query.insightTypes]);
+  }, [router.query.fechaDesde, router.query.fechaHasta, router.query.creadaDesde, router.query.creadaHasta, router.query.empresaId, router.query.estadoCliente, router.query.tipoContacto, router.query.showInsight, router.query.insightCategory, router.query.insightTypes, router.query.agentMode]);
 
   useEffect(() => {
     selectedRef.current = selected;
@@ -353,6 +355,7 @@ export function ConversationsProvider({ children }) {
   useEffect(() => {
     let cancelled = false;
     const intervalMs = getSyncIntervalMs();
+    const agentMode = !!filters.agentMode;
 
     const runSync = async () => {
       try {
@@ -360,11 +363,11 @@ export function ConversationsProvider({ children }) {
         const now = Date.now();
         const windowCutoff = getMessageWindowCutoff().getTime();
         const messageSince = Math.max(globalLastSync || windowCutoff, windowCutoff);
-        const messageParams = { limit: 2000 };
+        const messageParams = { limit: 2000, agentMode };
         if (messageSince > 0) {
           messageParams.sinceUpdatedAt = new Date(messageSince).toISOString();
         }
-        const convParams = {};
+        const convParams = { agentMode };
         if (globalLastSync > 0) {
           convParams.sinceUpdatedAt = new Date(globalLastSync).toISOString();
         }
@@ -681,6 +684,8 @@ export function ConversationsProvider({ children }) {
   const handleFiltersChange = useCallback(
     async (newFilters) => {
       const normalizedFilters = normalizeFilterDates(newFilters);
+      const agentModeChanged =
+        Boolean(filters?.agentMode) !== Boolean(normalizedFilters?.agentMode);
 
       // Actualizar query params (guardamos solo YYYY-MM-DD para URLs limpias)
       const newQuery = { ...router.query };
@@ -734,12 +739,26 @@ export function ConversationsProvider({ children }) {
       } else {
         delete newQuery.insightTypes;
       }
+      if (normalizedFilters.agentMode) {
+        newQuery.agentMode = 'true';
+      } else {
+        delete newQuery.agentMode;
+      }
+
+      // Al cambiar de modo, la conversación abierta queda fuera del filtro nuevo: deseleccionar.
+      if (agentModeChanged) {
+        delete newQuery.conversationId;
+        dispatch({ type: ACTIONS.SET_SELECTED, payload: null });
+        dispatch({ type: ACTIONS.SET_MESSAGES, payload: [] });
+        dispatch({ type: ACTIONS.SET_SCROLL_TO_MESSAGE_ID, payload: null });
+        dispatch({ type: ACTIONS.SET_HIGHLIGHTED_MESSAGE_ID, payload: null });
+      }
 
       router.replace({ pathname: router.pathname, query: newQuery }, undefined, { shallow: true });
       const query = search || "";
       await runCachedFilters(normalizedFilters);
     },
-    [search, router, runCachedFilters]
+    [filters, search, router, runCachedFilters]
   );
 
   const handleRefreshCurrentConversation = useCallback(async () => {

@@ -40,6 +40,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
     etapa: false,
     empresa_facturacion: false,
     fecha_pago: false,
+    fecha_vencimiento: false,
     obra: false,
     cliente: false,
     factura_cliente: false,
@@ -263,6 +264,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
     "nombre_proveedor",
     "fecha_factura",
     "factura_cliente",
+    "medio_pago",
     "detalle",
   ];
 

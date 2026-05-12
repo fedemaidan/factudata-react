@@ -9,6 +9,7 @@ import {
   GROUP_SECTIONS,
   getOptionsFromContext,
   isSubtotalFieldEnabled,
+  DEFINICION_CAMPOS,
 } from './movementFieldsConfig';
 
 const inputCls =
@@ -261,8 +262,15 @@ const MovementFields = ({
 
   const camposGrupo = useMemo(() => {
     const visibles = getCamposVisibles(comprobante_info, empresa, ingreso_info, tipoMovimiento);
+    // Campos requeridos que la config oculta por defecto deben mostrarse siempre
+    const visibleNames = new Set(visibles.map((c) => c.name));
+    const requiredButHidden = DEFINICION_CAMPOS.filter(
+      (c) => requiredFieldSet.has(c.name) && !visibleNames.has(c.name)
+    );
+    const allVisible = [...visibles, ...requiredButHidden];
+
     if (block) {
-      const ordered = visibles
+      const ordered = allVisible
         .filter((campo) => campo.stitchBlock === block)
         .sort((a, b) => (a.stitchOrder || 0) - (b.stitchOrder || 0));
       if (block === 'financial') {
@@ -273,14 +281,14 @@ const MovementFields = ({
     }
 
     const permitidas = new Set(GROUP_SECTIONS[group] || GROUP_SECTIONS.general);
-    return visibles.filter((campo) => permitidas.has(campo.section));
-  }, [block, group, comprobante_info, ingreso_info, empresa, tipoMovimiento]);
+    return allVisible.filter((campo) => permitidas.has(campo.section));
+  }, [block, group, comprobante_info, ingreso_info, empresa, tipoMovimiento, requiredFieldSet]);
 
   const renderCampo = (campo) => {
     const value = formik.values[campo.name] ?? (campo.type === 'boolean' ? false : '');
     if (['text', 'number', 'date'].includes(campo.type)) {
       if (campo.type === 'date') {
-        const isFechaPago = campo.name === 'fecha_pago';
+        const isFechaPago = campo.name === 'fecha_pago' || campo.name === 'fecha_vencimiento';
         return (
           <div key={campo.name}>
             <PanelOutlineDateField

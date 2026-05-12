@@ -1,7 +1,7 @@
 # Módulo de Reportes — Documento Funcional
 
-> Fecha: Febrero 2026  
-> Estado: Diseño — Pre-implementación  
+> Fecha: Abril 2026  
+> Estado: Implementado  
 > Autores: Equipo Sorby
 
 ---
@@ -10,12 +10,10 @@
 
 ### El problema
 
-Hoy los clientes de Sorby quieren ver la misma información (movimientos de caja, presupuestos) de formas distintas. Esto se resuelve con:
+Los clientes de Sorby quieren ver su información (movimientos de caja, presupuestos) de formas distintas. Esto se resolvía con:
 - **Soporte armando Excels personalizados** → no escala, se rehace cada vez
 - **Filtros de la caja** → limitados, no agrupan ni comparan
 - **Copiar/pegar datos** → propenso a errores, sin conexión a datos reales
-
-El patrón siempre se repite: **"totales arriba, lista abajo"**, agrupado por categoría/proveedor/etapa, en la moneda que el cliente quiere ver.
 
 ### La solución
 
@@ -23,72 +21,90 @@ Un módulo donde cada empresa tiene **reportes configurables** que:
 - Reemplazan los Excels personalizados
 - Se crean inicialmente por soporte (sin código, con un editor visual)
 - Se abren por cualquier usuario de la empresa
-- Son exportables (XLSX, clipboard) para compartir
-- Están siempre conectados a datos reales (no son fotos estáticas)
-- A futuro: los crea el propio usuario
+- Son exportables (XLSX, PDF, clipboard) para compartir
+- Están siempre conectados a datos reales
+- Se pueden compartir públicamente (sin login) vía link con token
 
 ### Principios de diseño
 
-1. **Un reporte = una vista reutilizable.** Se crea una vez, se usa siempre. No es un Excel que se vuelve a armar.
-2. **Mismo dataset, diferentes lentes.** Filtros + moneda de visualización + bloques configurables.
-3. **Simple por defecto, potente si querés.** El usuario ve cards + tabla. El editor de soporte configura sin código.
-4. **Exportable y compartible.** Si no lo puedo mandar por WhatsApp, no sirve.
-5. **Siempre en tu moneda.** Todo el reporte se ve en la moneda que elegís (ARS, USD, CAC, o cada movimiento en su original).
+1. **Un reporte = una vista reutilizable.** Se crea una vez, se usa siempre.
+2. **Mismo dataset, diferentes lentes.** Filtros + moneda + bloques configurables.
+3. **Simple por defecto, potente si querés.** El usuario ve cards + tabla. El editor configura sin código.
+4. **Exportable y compartible.** XLSX, PDF o link público.
+5. **Siempre en tu moneda.** ARS, USD, CAC, o simultáneamente varios mediante chips.
 
 ---
 
-## 2. Templates Pre-armados
+## 2. Concepto: Bloques
 
-Cuando una empresa se da de alta (o se activa el módulo), se crean automáticamente estos reportes:
+Un reporte es una **lista vertical de bloques**. Cada bloque es una sección visual independiente con su propio tipo de visualización y configuración. El editor permite agregar, reordenar y configurar bloques sin código.
+
+Tipos de bloque disponibles:
+
+| Tipo | Para qué sirve |
+|------|---------------|
+| **Métricas** (`metric_cards`) | KPIs arriba: totales, promedios, conteos |
+| **Tabla resumen** (`summary_table`) | Datos agrupados por categoría/proveedor/mes/etc. |
+| **Tabla de movimientos** (`movements_table`) | Listado de movimientos individuales paginado |
+| **Presupuesto vs Ejecutado** (`budget_vs_actual`) | Comparativo presupuesto de control vs gastos reales |
+| **Gráfico** (`chart`) | Visualización de barras, tortas, líneas o áreas |
+| **Detalle agrupado** (`grouped_detail`) | Selector de grupos + tabla de movimientos del grupo |
+| **Matriz presupuestaria** (`category_budget_matrix`) | Tabla de conceptos vs proyectos (estado financiero multi-proyecto) |
+| **Balance entre socios** (`balance_between_partners`) | Balance neto por socio y transferencias necesarias para equilibrar |
+
+Cada bloque tiene un **ancho configurable** en el grid (de 1 a 12 columnas). Dos bloques de 6 columnas aparecen lado a lado.
+
+---
+
+## 3. Templates Pre-armados
+
+Cuando se activa el módulo para una empresa, se crean automáticamente 4 reportes template:
 
 ### 🏗️ Template 1: "Estado de Obra"
-> El Excel más pedido. Reemplaza el 70% de los pedidos a soporte.
+> Métricas clave + resumen por categoría + últimos movimientos.
 
-- **Dataset:** Movimientos + Presupuestos
-- **Filtros:** Fecha (mes actual) + Proyecto (obligatorio) + Tipo
-- **Moneda de visualización:** ARS
+- **Dataset:** Movimientos
+- **Filtros:** Fecha (mes actual) + Proyecto + Tipo + Categorías
+- **Moneda:** ARS
 - **Bloques:**
-  1. **Métricas:** Total Presupuestado | Total Ejecutado | Disponible | % Avance
-  2. **Presupuesto vs Ejecutado** agrupado por categoría (con barras de progreso)
-  3. **Tabla de movimientos** del proyecto
+  1. **Métricas:** Total Egresos | Total Ingresos | Cantidad de Movimientos | Ticket Promedio
+  2. **Tabla resumen** agrupada por categoría (top 10, egresos, con % del total)
+  3. **Tabla de movimientos** (15 por página)
 
 ### 💰 Template 2: "Caja General"
-> Resumen rápido de lo que entra y sale.
-
-- **Dataset:** Movimientos
-- **Filtros:** Fecha (últimos 30 días) + Proyecto (multi-select)
-- **Moneda:** ARS
-- **Bloques:**
-  1. **Métricas:** Total Ingresos | Total Egresos | Saldo
-  2. **Tabla resumen** agrupada por categoría
-  3. **Tabla de movimientos** con todos los campos
-
-### 👷 Template 3: "Resumen por Proveedor"
-> Cuánto le pagué a cada proveedor, ranking.
-
-- **Dataset:** Movimientos
-- **Filtros:** Fecha (mes actual) + Proyecto + Solo egresos
-- **Moneda:** ARS
-- **Bloques:**
-  1. **Métricas:** Total Pagado a Proveedores | Cantidad de Proveedores | Promedio por Proveedor
-  2. **Tabla resumen** agrupada por proveedor (ordenado por total desc, top 20 + "Otros")
-  3. **Tabla de movimientos** filtrada
-
-### 📊 Template 4: "Evolución Mensual"
-> Cómo viene la obra mes a mes.
+> Balance de ingresos y egresos con evolución mensual.
 
 - **Dataset:** Movimientos
 - **Filtros:** Fecha (año actual) + Proyecto
 - **Moneda:** ARS
 - **Bloques:**
-  1. **Métricas:** Total Año | Promedio Mensual
-  2. **Tabla resumen** agrupada por mes (columnas: ingresos, egresos, saldo)
+  1. **Métricas:** Total Ingresos | Total Egresos
+  2. **Tabla resumen** agrupada por mes (con totales)
+
+### 👷 Template 3: "Resumen por Proveedor"
+> Top proveedores por gasto total.
+
+- **Dataset:** Movimientos
+- **Filtros:** Fecha (año actual) + Proyecto + Categorías + Proveedores
+- **Moneda:** ARS
+- **Bloques:**
+  1. **Tabla resumen** agrupada por proveedor (top 15, egresos, con % del total, ticket promedio)
+
+### 📊 Template 4: "Presupuesto vs Real"
+> Comparativo entre presupuesto de control y gastos reales.
+
+- **Dataset:** Movimientos + Presupuestos
+- **Filtros:** Fecha (año actual) + Proyecto
+- **Moneda:** ARS
+- **Bloques:**
+  1. **Métricas:** Total Egresos
+  2. **Presupuesto vs Ejecutado** (agrupado por categoría, alerta de sobreejecución activa)
 
 ---
 
-## 3. Flujos de Usuario
+## 4. Flujos de Usuario
 
-### 3.1 Home — Listado de Reportes
+### 4.1 Home — Listado de Reportes
 
 ```
 ┌─────────────────────────────────────────────────┐
@@ -97,34 +113,36 @@ Cuando una empresa se da de alta (o se activa el módulo), se crean automáticam
 │  🔍 Buscar por nombre o tag...                  │
 │                                                 │
 │  ┌───────────────────────────────────────────┐  │
-│  │ 🏗️ Estado de Obra           Publicado     │  │
-│  │   Presupuesto vs ejecutado por categoría  │  │
-│  │   hace 2 días · soporte                   │  │
+│  │ 🏗️ Estado de Obra            Publicado    │  │
+│  │   Métricas + resumen por categoría        │  │
+│  │   ARS · hace 2 días                       │  │
 │  ├───────────────────────────────────────────┤  │
-│  │ 💰 Caja General              Publicado     │  │
-│  │   Ingresos, egresos y saldo del mes       │  │
-│  │   hace 5 días · soporte                   │  │
+│  │ 💰 Caja General              Publicado    │  │
+│  │   Balance mensual de ingresos y egresos   │  │
+│  │   ARS · hace 5 días                       │  │
 │  ├───────────────────────────────────────────┤  │
-│  │ 👷 Resumen por Proveedor     Borrador     │  │
-│  │   Ranking de proveedores por gasto        │  │
-│  │   hace 1 hora · milagros                  │  │
+│  │ 📋 Resumen Semanal           Borrador     │  │
+│  │   Semana en curso                         │  │
+│  │   ARS · hace 1 hora                       │  │
 │  └───────────────────────────────────────────┘  │
-│                                                 │
 │  Mostrando 3 reportes                           │
 └─────────────────────────────────────────────────┘
 ```
 
 **Acciones por reporte:**
 - **Click en fila** → abre la vista del reporte
-- **Menú ⋮** → Editar | Duplicar | Eliminar (solo owner/soporte)
+- **Menú ⋮** → Editar | Duplicar | Eliminar (con confirmación)
 
-**Estados:**
+**Estados visibles:**
 - `Borrador` — solo visible para el creador. En construcción.
 - `Publicado` — visible para todos los usuarios de la empresa.
+- `Público` — tiene link público generado, accesible sin login.
+
+**Crear nuevo:** Se abre un dialog que pide nombre y opcionalmente permite partir de un template.
 
 ---
 
-### 3.2 Vista del Reporte (modo lectura)
+### 4.2 Vista del Reporte (modo lectura)
 
 Esta es la pantalla principal que reemplaza al Excel.
 
@@ -132,43 +150,36 @@ Esta es la pantalla principal que reemplaza al Excel.
 ┌──────────────────────────────────────────────────────────┐
 │  ← Reportes    Estado de Obra — Torre Norte              │
 │                                                          │
-│  [Exportar Excel ▾]  [Copiar]  [✏️ Editar]              │
+│  [Exportar Excel ▾]  [PDF]  [Compartir]  [✏️ Editar]   │
 │                                                          │
-│  ┌────────────────────────────────────────────────────┐  │
-│  │ Filtros                                            │  │
-│  │                                                    │  │
-│  │ 📅 01/01/2026 → 31/01/2026    🏗️ Torre Norte ▾    │  │
-│  │ 💱 Moneda: [ARS ▾]            Tipo: [Todos ▾]     │  │
-│  └────────────────────────────────────────────────────┘  │
+│  ▶ Filtros ──────────────────────────────────────────── │
+│    📅 01/01/2026 → 31/01/2026    🏗️ Torre Norte ▾       │
+│    Tipo: [Todos ▾]               💱 [ARS] [USD]         │
+│  ──────────────────────────────────────────────────────  │
 │                                                          │
 │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐   │
-│  │ Presup.  │ │ Ejecutado│ │Disponible│ │ Avance   │   │
-│  │$13.000.0 │ │$12.300.0 │ │  $700.000│ │  94.6%   │   │
-│  │          │ │          │ │          │ │ ████████░│   │
+│  │Total Egr.│ │Total Ing.│ │Movimient.│ │Tkt Prom. │   │
+│  │$15.000.0 │ │$22.000.0 │ │   342    │ │  $43.859 │   │
 │  └──────────┘ └──────────┘ └──────────┘ └──────────┘   │
 │                                                          │
-│  Control Presupuestario                                  │
-│  ┌────────────┬────────────┬───────────┬──────┬──────┐  │
-│  │ Categoría  │Presupuest. │ Ejecutado │Disp. │  %   │  │
-│  ├────────────┼────────────┼───────────┼──────┼──────┤  │
-│  │ Materiales │ $5.000.000 │$3.200.000 │$1.8M │ 64%  │  │
-│  │            │            │ ██████░░░ │      │      │  │
-│  ├────────────┼────────────┼───────────┼──────┼──────┤  │
-│  │ Mano Obra  │ $8.000.000 │$9.100.000 │-$1.1M│114% 🔴│
-│  │            │            │ ██████████│      │      │  │
-│  ├────────────┼────────────┼───────────┼──────┼──────┤  │
-│  │ TOTAL      │$13.000.000 │$12.300.00 │$700K │94.6% │  │
-│  └────────────┴────────────┴───────────┴──────┴──────┘  │
+│  Desglose por Categoría                                  │
+│  ┌────────────┬────────────┬──────────┬──────────────┐  │
+│  │ Categoría  │ Monto Total│ Cantidad │ % del Total  │  │
+│  ├────────────┼────────────┼──────────┼──────────────┤  │
+│  │ Materiales │ $5.200.000 │    45    │    34.7%     │  │
+│  │ Mano Obra  │ $8.100.000 │    22    │    54.0%     │  │
+│  │ Otros      │ $1.700.000 │    18    │    11.3%     │  │
+│  ├────────────┼────────────┼──────────┼──────────────┤  │
+│  │ TOTAL      │$15.000.000 │    85    │   100.0%     │  │
+│  └────────────┴────────────┴──────────┴──────────────┘  │
 │                                                          │
-│  Detalle de Movimientos                    Copiar 📋     │
+│  Últimos Movimientos                         📋 Copiar  │
 │  ┌──────┬────────────┬───────────┬────────┬──────────┐  │
 │  │Fecha │ Proveedor  │ Categoría │ Obs.   │  Total   │  │
 │  ├──────┼────────────┼───────────┼────────┼──────────┤  │
 │  │15/01 │ Corralón X │ Materiales│ Hierro │$450.000  │  │
-│  │14/01 │ Electrici..│ Mano Obra │ Inst.  │$320.000  │  │
-│  │...   │            │           │        │          │  │
 │  └──────┴────────────┴───────────┴────────┴──────────┘  │
-│  Mostrando 25 de 342 · [1] [2] [3] ... [14] →          │
+│  Mostrando 15 de 342 · [1] [2] ... →                   │
 └──────────────────────────────────────────────────────────┘
 ```
 
@@ -177,339 +188,283 @@ Esta es la pantalla principal que reemplaza al Excel.
 | Acción | Comportamiento |
 |--------|---------------|
 | Cambiar filtro | Recomputa todos los bloques instantáneamente (datos ya en memoria) |
-| Cambiar moneda | Reconvierte todos los valores usando equivalencias. El dropdown está siempre visible |
-| Click en fila de movimiento | Abre el movimiento en la caja (link a `/cajaProyecto?...`) |
-| Exportar Excel | Descarga .xlsx con hojas separadas |
-| Copiar (en tabla) | Copia al clipboard en formato Tab-Separated (pegable en Excel/Sheets) |
+| Chips de moneda (ARS/USD/CAC) | Activa o desactiva monedas. Con varios chips activos, las columnas monetarias se expanden por moneda |
+| Click en fila agrupada (tabla/gráfico) | Abre DrillDown modal con los movimientos individuales del grupo |
+| Click en movimiento | Abre link a `/cajaProyecto` con filtros pre-aplicados |
+| Exportar Excel | Descarga .xlsx con hojas separadas por bloque |
+| PDF | Genera PDF server-side (usando la configuración actual) |
+| Copiar (en tabla) | Copia al clipboard en formato TSV (pegable en Excel/Sheets) |
+| Compartir | Genera un link público con token. Opcional: fija los filtros actuales en el link |
 
 ---
 
-### 3.3 Editor de Reporte (modo constructor)
+### 4.3 DrillDown — Ver movimientos detrás de un dato
 
-Para soporte al principio, luego para admins de la empresa.
+Al hacer click en cualquier fila agrupada (tabla resumen, gráfico, etc.) se abre un modal con:
+- El nombre del grupo (ej: "Materiales")
+- La tabla de movimientos individuales que conforman ese valor
+- Los mismos filtros de moneda que el reporte principal
 
-#### Paso 1: Meta y Dataset
-
-```
-┌──────────────────────────────────────────────────┐
-│  Crear Reporte                                    │
-│                                                   │
-│  Nombre: [Estado de Obra - Torre Norte       ]    │
-│  Descripción: [Control presupuestario mensual]    │
-│  Tags: [obra] [mensual] [+]                       │
-│                                                   │
-│  ── Dataset ──                                    │
-│  ☑ Movimientos de caja                            │
-│  ☑ Presupuestos de control                        │
-│                                                   │
-│  ── Moneda de visualización ──                    │
-│  (●) Pesos ARS                                    │
-│  ( ) Dólares USD                                  │
-│  ( ) Índice CAC                                   │
-│  ( ) Moneda original de cada movimiento           │
-│                                                   │
-│                      [Siguiente →]                │
-└──────────────────────────────────────────────────┘
-```
-
-#### Paso 2: Filtros disponibles
-
-```
-┌──────────────────────────────────────────────────┐
-│  Filtros del Reporte                              │
-│                                                   │
-│  Qué filtros puede usar el usuario al ver el      │
-│  reporte? Los que actives aparecen en la barra.   │
-│                                                   │
-│  ☑ Fecha (siempre activo)                         │
-│     Default: [Mes actual ▾]                       │
-│                                                   │
-│  ☑ Proyecto(s)                                    │
-│     Default: [Ninguno — el usuario elige ▾]       │
-│                                                   │
-│  ☑ Tipo (egreso/ingreso)                          │
-│     Default: [Todos ▾]                            │
-│                                                   │
-│  ☑ Categoría                                      │
-│  ☐ Proveedor                                      │
-│  ☐ Etapa                                          │
-│  ☐ Medio de pago                                  │
-│  ☐ Moneda original                                │
-│                                                   │
-│              [← Anterior]  [Siguiente →]          │
-└──────────────────────────────────────────────────┘
-```
-
-#### Paso 3: Layout — Bloques
-
-```
-┌──────────────────────────────────────────────────┐
-│  Bloques del Reporte               [+ Agregar]   │
-│                                                   │
-│  Cada bloque es una sección visual.               │
-│  Arrastrá para reordenar.                         │
-│                                                   │
-│  ┌─ 1. Métricas ──────────────────── [⚙] [🗑] ─┐│
-│  │  • Total Presupuestado (sum, presup.monto)    ││
-│  │  • Total Ejecutado (sum, presup.ejecutado)    ││
-│  │  • Disponible (sum, presup.disponible)        ││
-│  │  • % Avance (avg, presup.porcentaje)          ││
-│  └───────────────────────────────────────────────┘│
-│                                                   │
-│  ┌─ 2. Presupuesto vs Ejecutado ──── [⚙] [🗑] ─┐│
-│  │  Agrupar por: Categoría                       ││
-│  │  Tipo: Egresos                                ││
-│  │  Columnas: presupuestado, ejecutado,          ││
-│  │           disponible, %, barra                ││
-│  └───────────────────────────────────────────────┘│
-│                                                   │
-│  ┌─ 3. Tabla de Movimientos ──────── [⚙] [🗑] ─┐│
-│  │  Columnas: fecha, proveedor, categoría,       ││
-│  │           observación, total                  ││
-│  │  Ordenar por: fecha desc                      ││
-│  │  25 por página                                ││
-│  └───────────────────────────────────────────────┘│
-│                                                   │
-│          [← Anterior]  [Preview]  [Guardar]       │
-└──────────────────────────────────────────────────┘
-```
-
-#### Configuración de un bloque (ejemplo: Métrica)
-
-Al clickear ⚙ en un bloque de métricas:
-
-```
-┌──────────────────────────────────────────────────┐
-│  Configurar Métrica                               │
-│                                                   │
-│  Título: [Total Egresos                      ]    │
-│                                                   │
-│  Dataset:    [Movimientos ▾]                      │
-│  Operación:  [Suma ▾]                             │
-│  Campo:      [Total ▾]                            │
-│  Filtrar por tipo: [Solo Egresos ▾]               │
-│                                                   │
-│  Filtros extra (opcional):                        │
-│  Categoría: [                              ]      │
-│  Proveedor: [                              ]      │
-│                                                   │
-│  Color: (●) Rojo  ( ) Verde  ( ) Azul  ( ) Gris  │
-│                                                   │
-│                          [Cancelar]  [Aceptar]    │
-└──────────────────────────────────────────────────┘
-```
+Esto permite ir del resumen al detalle sin salir del reporte.
 
 ---
 
-## 4. Moneda de Visualización — Experiencia de Usuario
+### 4.4 Editor de Reporte (estilo DataStudio)
 
-### Cómo lo ve el usuario
-
-En la barra de filtros hay un selector de moneda que dice **"Ver en:"**
+El editor se divide en dos paneles:
 
 ```
-💱 Ver en: [ARS ▾]
-            ├─ $ Pesos (ARS)
-            ├─ USD Dólares (blue)
-            ├─ CAC (índice construcción)
-            └─ Original (cada mov. en su moneda)
+┌──────────────────────────────────────────────────────────┐
+│  ← Reportes    Estado de Obra                            │
+│                                          [Guardar]       │
+│  ┌─────────────────────┐ ┌────────────────────────────┐  │
+│  │  CONFIGURACIÓN      │ │  PREVIEW (datos reales)     │  │
+│  │                     │ │                             │  │
+│  │  ▼ General          │ │  ┌────────┐ ┌────────┐      │  │
+│  │    Nombre: [...]    │ │  │$15.000 │ │  342   │      │  │
+│  │    Estado: Borrador │ │  └────────┘ └────────┘      │  │
+│  │    Desc:   [...]    │ │                             │  │
+│  │    Presupuestos: ☐  │ │  ┌─────────────────────┐   │  │
+│  │                     │ │  │ Materiales │$5.200.000│   │  │
+│  │  ▼ Monedas          │ │  │ Mano Obra  │$8.100.000│   │  │
+│  │    [ARS] [USD] [CAC]│ │  └─────────────────────┘   │  │
+│  │                     │ │                             │  │
+│  │  ▶ Filtros          │ │  ┌─────────────────────┐   │  │
+│  │  ▶ Permisos         │ │  │ 15/01 | Materiales  │   │  │
+│  │                     │ │  │ 14/01 | Mano Obra   │   │  │
+│  │  ▼ Bloques          │ │  └─────────────────────┘   │  │
+│  │    1. Métricas  ⚙🗑 │ │                             │  │
+│  │    2. Tabla Cat ⚙🗑 │ └────────────────────────────┘  │
+│  │    3. Movimient ⚙🗑 │                                 │
+│  │    [+ Agregar]      │                                 │
+│  └─────────────────────┘                                 │
+└──────────────────────────────────────────────────────────┘
 ```
+
+**Panel izquierdo — acordeones:**
+
+**General:**
+- Nombre del reporte
+- Estado (Borrador / Publicado)
+- Descripción
+- Toggle para incluir presupuestos de control
+
+**Monedas:** Multi-select de monedas disponibles para el reporte (ARS / USD / CAC)
+
+**Filtros disponibles:** Toggles para habilitar/deshabilitar cada filtro en la vista. Opciones:
+- Fecha (siempre habilitado)
+- Proyecto(s) — con opción "Fijar proyectos" para que el usuario no pueda cambiarlos
+- Tipo (egreso/ingreso)
+- Categorías, Proveedores, Etapas
+- Medio de pago, Moneda del movimiento
+- Usuarios
+- Factura cliente
+
+**Permisos:** Multi-select de usuarios con acceso. Opción de generar link público.
+
+**Bloques:** Lista de bloques con botones para reordenar (↑↓), configurar (⚙), duplicar y eliminar. Botón "Agregar bloque" abre el selector de tipo.
+
+**Panel derecho:** Preview en vivo con datos reales del período/proyecto por defecto.
+
+---
+
+### 4.5 Configurar un bloque
+
+Al hacer click en ⚙ de un bloque se abre un dialog. Primero muestra los campos comunes:
+
+- **Título** del bloque
+- **Ancho** (col_span: 6 para medio ancho, 12 para ancho completo)
+- **Filtrar por tipo** (Todos / Solo Egresos / Solo Ingresos)
+
+Luego los campos específicos por tipo:
+
+**Métricas:** Hasta 8 cards. Para cada una: título, operación (suma/conteo/promedio/min/max), campo (total/subtotal), filtro por tipo, color (gris/verde/rojo/naranja/azul).
+
+**Tabla resumen:** Agrupar por (categoría/proveedor/etapa/proyecto/mes/moneda/medio de pago/usuario), columnas de datos, mostrar %, mostrar fila de totales, Top N, exclusiones.
+
+**Tabla de movimientos:** Columnas visibles (selección múltiple), filas por página (5–100), ordenamiento.
+
+**Presupuesto vs Ejecutado:** Agrupar por, tipo (egresos/ingresos/ambos), columnas a mostrar (presupuestado/ejecutado/disponible/%/barra de progreso), alerta de sobreejecución en rojo, exclusiones.
+
+**Gráfico:** Tipo (barras/torta/dona/línea/área), agrupación, columnas (series), Top N.
+
+**Detalle agrupado:** Agrupación, estilo de chips (chip simple o mini-card con valor), columnas de tabla interna, filas por página.
+
+**Matriz presupuestaria:** Categoría objetivo, tipo de presupuesto, etiquetas de filas, opción de proyectos específicos.
+
+**Balance entre socios:** Selección de socios por teléfono, mostrar/ocultar cards de resumen.
+
+---
+
+## 5. Moneda de Visualización
+
+### El selector de moneda
+
+En la barra de filtros hay chips de moneda:
+
+```
+💱  [ARS]  [USD]  [CAC]
+```
+
+- Se pueden activar **varios simultáneamente**
+- Con un solo chip activo: las columnas monetarias muestran el valor en esa moneda
+- Con varios chips: las columnas monetarias se expanden (una sub-columna por moneda)
+- El modo `'original'` no está en los chips; está como opción de display_currency en la config
 
 ### Qué pasa cuando cambia la moneda
 
 | Cambio | Efecto |
 |--------|--------|
-| ARS → USD | Todas las cards, tablas y movimientos se reconvierten a dólares. Se usan las `equivalencias` pre-calculadas de cada movimiento |
-| ARS → CAC | Idem pero a unidades CAC. Útil para comparar contra presupuestos indexados por CAC |
-| Cualquiera → Original | Cada movimiento se muestra en su moneda nativa. Las métricas de suma se muestran separadas: "$12.500.000 ARS + USD 2.300" |
+| ARS → USD | Reconvierte usando `equivalencias.total.usd_blue` de cada movimiento |
+| ARS → CAC | Reconvierte usando `equivalencias.total.cac` |
+| Activar ARS + USD | Columnas dobles: `Total (ARS)` y `Total (USD)` lado a lado |
+| Moneda original (en config) | Cada movimiento en su moneda nativa; métricas separadas por moneda |
 
 ### Caso especial: Presupuesto vs Ejecutado
 
-En el bloque `budget_vs_actual`, tanto el presupuesto como el ejecutado se convierten a la moneda de visualización. Esto es especialmente útil cuando hay presupuestos indexados por CAC que se comparan con gastos en ARS y USD.
+Tanto presupuesto como ejecutado se convierten a la moneda seleccionada. Útil para comparar presupuestos en CAC con gastos en ARS y USD.
 
 ---
 
-## 5. Exportación
+## 6. Exportación y Compartir
 
 ### Exportar a Excel (XLSX)
 
-Botón siempre visible en la vista del reporte. Genera un archivo `.xlsx` con:
+Botón siempre visible. Genera un `.xlsx` con una hoja por bloque relevante:
 
 | Hoja | Contenido |
 |------|-----------|
-| **Resumen** | Métricas como tabla (Nombre | Valor) |
-| **Desglose** | Tabla resumen agrupada (si existe el bloque) |
-| **Presupuesto vs Ejecutado** | Tabla de control (si existe el bloque) |
-| **Movimientos** | Tabla de detalle completa (todos, no solo la página visible) |
+| **Métricas** | Cards como tabla (Nombre \| Valor) |
+| **[Nombre de bloque]** | Datos de cada tabla resumen |
+| **Presupuesto vs Ejecutado** | Si existe el bloque |
+| **Movimientos** | Todos los movimientos filtrados (no solo la página visible) |
 
-El archivo lleva el nombre del reporte: `Estado de Obra - Torre Norte.xlsx`
+El archivo respeta la moneda de visualización activa y los filtros actuales.
+
+### Generar PDF
+
+Botón "PDF" en la vista del reporte. El PDF se genera server-side y se descarga como archivo.
 
 ### Copiar tabla
 
-Cada tabla tiene un botón 📋 que copia los datos al clipboard en formato TSV (Tab-Separated). Al pegar en Excel/Google Sheets, queda con columnas separadas.
+Cada tabla tiene un botón 📋 que copia los datos al clipboard en formato TSV. Al pegar en Excel/Google Sheets, las columnas quedan separadas.
+
+### Compartir — Link público
+
+El botón "Compartir" permite:
+1. Generar un link con token único
+2. Opcionalmente fijar los filtros actuales en el link (fecha, proyectos, etc.)
+3. El destinatario abre el link y ve el reporte completo sin necesidad de login
+
+Los datos se sirven desde MongoDB server-side. Si el reporte tiene proyectos fijos en su config, el link solo muestra esos proyectos independientemente de los filtros del link.
 
 ---
 
-## 6. Permisos (simplificado para MVP)
+## 7. Permisos
 
-### MVP — Sin sistema de permisos granular
+### MVP
 
 | Rol | Puede hacer |
 |-----|-------------|
 | **Soporte Sorby** | Crear, editar, eliminar, publicar cualquier reporte |
 | **Usuario de la empresa** | Ver reportes publicados. Cambiar filtros. Exportar |
-
-No hay viewer/editor/admin por reporte en el MVP. Se agrega en V2.
+| **Usuario con acceso explícito** | Ver reportes en estado borrador si está en `permisos.usuarios` |
+| **Anónimo (link público)** | Ver reportes con `permisos.publico = true` vía token |
 
 ### Futuro (V2)
 
-- Permisos por reporte: quién puede ver, quién puede editar
-- Roles: admin de empresa puede crear reportes (no solo soporte)
+- Permisos granulares por reporte (viewer / editor / admin)
+- Roles: admin de empresa puede crear reportes
 - Reportes "privados" vs "de empresa"
 
 ---
 
-## 7. Historias de Usuario — Plan de Implementación
+## 8. Historias de Usuario
 
-### MVP-0: Base del módulo
+### Implementado (MVP-0 a MVP-2)
 
-#### HU1 — Entidad Reporte + Home + Templates pre-armados
+#### HU1 — Entidad Reporte + Home + Templates ✅
 
 **Como** soporte de Sorby  
-**Quiero** que exista un listado de reportes por empresa con templates pre-armados  
-**Para** tener la base del módulo y que el usuario ya vea reportes útiles al entrar
+**Quiero** que exista un listado de reportes con templates pre-armados  
+**Para** tener la base del módulo con reportes útiles desde el primer día
 
-**Alcance:**
-- Modelo `Report` en MongoDB
-- Endpoints CRUD: crear, listar, obtener, actualizar, eliminar, duplicar
-- Página `reportes.js` con listado (nombre, descripción, tags, estado, fecha)
-- Al activar el módulo para una empresa, se crean los 4 templates pre-armados
-- Acciones: abrir (click en fila), menú con editar/duplicar/eliminar
-
-**Criterios de aceptación:**
-- Se listan reportes de la empresa con búsqueda por nombre/tag
-- Los 4 templates aparecen automáticamente para una empresa nueva
-- Se puede duplicar un reporte (clona config, queda como borrador)
-- Empty state claro cuando no hay reportes
+**Alcance implementado:**
+- Modelo `Report` en MongoDB con todos los sub-schemas
+- Endpoints CRUD completos
+- Página `reportes/index.js` con listado y búsqueda
+- 4 templates sembrados automáticamente por empresa
+- Acciones: abrir, menú con editar/duplicar/eliminar
 
 ---
 
-### MVP-1: Motor + Vista de lectura
-
-#### HU2 — Report Engine (frontend, lógica pura)
+#### HU2 — Report Engine ✅
 
 **Como** desarrollador  
 **Quiero** un módulo JS que reciba datos + config y devuelva resultados computados  
 **Para** separar la lógica de cómputo del rendering y poder testearla
 
-**Alcance:**
-- Archivo `reportEngine.js` (sin dependencias de React)
-- Funciones: `run()`, `applyGlobalFilters()`, `processBlock()`
-- Procesadores por tipo de bloque: métricas, tabla resumen, tabla movimientos, presupuesto vs ejecutado
-- Conversión de moneda usando `equivalencias` del movimiento
-- Helpers: sum, avg, count, groupBy, sortBy, topN
-
-**Criterios de aceptación:**
-- Dado un array de movimientos + config de reporte + filtros, devuelve resultados para cada bloque
-- La conversión de moneda funciona correctamente para ARS→USD, USD→ARS, ARS→CAC, y 'original'
-- Bloque `budget_vs_actual` cruza presupuestos con ejecutado correctamente
-- Funciona con 3.000 movimientos en <200ms
+**Alcance implementado:**
+- `reportEngine.js` (~1.750 LOC, sin dependencias de React)
+- `executeReport()` como función principal
+- 8 procesadores de bloque
+- Conversión multi-moneda con `equivalencias`
+- Filtros globales y por bloque, con normalización de texto
 
 ---
 
-#### HU3 — Vista del Reporte + Filtros Globales
+#### HU3 — Vista del Reporte + Filtros ✅
 
 **Como** usuario de una empresa  
 **Quiero** abrir un reporte y ver métricas + tablas con filtros interactivos  
-**Para** reemplazar los Excels que me arma soporte
+**Para** reemplazar los Excels que arma soporte
 
-**Alcance:**
-- Componente `ReportView.js` (dentro de `reportes.js`)
-- Barra de filtros: fecha (DateRange), proyectos (multi-select), tipo, categoría, etc.
-- Selector de moneda de visualización siempre visible
-- Renderizar bloques:
-  - `MetricCardsBlock` — cards horizontales
-  - `SummaryTableBlock` — tabla agrupada con totales
-  - `MovementsTableBlock` — tabla paginada con link a movimiento
-  - `BudgetVsActualBlock` — tabla con barras de progreso y alerta de sobreejecución
-- Fetch de datos: movimientos desde Firestore + presupuestos desde API + cotizaciones
-
-**Criterios de aceptación:**
-- Cambiar un filtro recomputa todos los bloques instantáneamente
-- Cambiar la moneda reconvierte todos los valores
-- La tabla de movimientos pagina en frontend (25/50/100 por página)
-- Click en movimiento abre link a cajaProyecto con filtros
-- Empty state: "No hay datos para estos filtros"
-- El bloque presupuesto vs ejecutado resalta en rojo las sobreejecuciones
+**Alcance implementado:**
+- `ReportView.js` que renderiza los 8 tipos de bloque
+- Barra de filtros colapsable con todos los filtros habilitados
+- Chips de moneda multi-seleccionables (ARS/USD/CAC)
+- DrillDown: click en fila agrupada abre modal con movimientos
+- Paginación frontend en tabla de movimientos
+- Link a movimiento individual desde la tabla
 
 ---
 
-### MVP-2: Editor + Exportación
-
-#### HU4 — Editor de Reportes (wizard para soporte)
+#### HU4 — Editor de Reportes ✅
 
 **Como** soporte de Sorby  
-**Quiero** crear y editar reportes desde un editor visual paso a paso  
-**Para** dejar de depender de un dev y dejar de armar Excels manualmente
+**Quiero** crear y editar reportes desde un editor visual  
+**Para** ser autónomo y dejar de armar Excels
 
-**Alcance:**
-- Componente `ReportEditor.js` (wizard de 3 pasos)
-- Paso 1: Meta (nombre, descripción, tags) + Dataset + Moneda display
-- Paso 2: Filtros disponibles (toggles + defaults)
-- Paso 3: Layout (agregar/reordenar/configurar bloques)
-- Configurador por tipo de bloque (forms específicos)
-- Preview en vivo (usa el engine con datos reales)
+**Alcance implementado:**
+- Editor DataStudio-style: panel de config + preview en vivo
+- Configuración de meta, filtros, permisos y bloques
+- `BlockEditorDialog.js` para configurar los 8 tipos de bloque
+- Preview con datos reales
 - Guardar como borrador / Publicar
 
-**Criterios de aceptación:**
-- Soporte puede crear un reporte completo sin tocar código
-- Puede agregar los 4 tipos de bloque y configurar cada uno
-- El preview muestra datos reales con los filtros default
-- Puede publicar y que aparezca para los usuarios de la empresa
-- Puede editar un reporte existente (carga la config actual)
-
 ---
 
-#### HU5 — Exportación XLSX + Copiar al Clipboard
+#### HU5 — Exportación + Compartir ✅
 
 **Como** usuario  
-**Quiero** exportar el reporte a Excel y copiar tablas al clipboard  
-**Para** mandarlo por mail o WhatsApp como hacen hoy con los Excels
+**Quiero** exportar el reporte y compartirlo  
+**Para** mandarlo por mail o WhatsApp
 
-**Alcance:**
-- Botón "Exportar Excel" en la vista del reporte
-- Genera .xlsx con hojas: Resumen, Desglose, Presupuesto vs Ejecutado, Movimientos
-- Respeta la moneda de visualización actual
-- Respeta los filtros globales actuales
-- Botón "Copiar" en cada tabla (copia TSV al clipboard)
-
-**Criterios de aceptación:**
-- El XLSX se descarga y abre correctamente en Excel/Google Sheets
-- Los números están formateados como números (no texto)
-- La hoja de movimientos incluye TODOS los movimientos filtrados (no solo la página visible)
-- Copiar tabla + pegar en Excel mantiene columnas y datos
+**Alcance implementado:**
+- Exportación XLSX con hojas por bloque
+- Generación de PDF server-side
+- Copiar tabla al clipboard (TSV)
+- Compartir: link público con token opcional, con filtros fijados
 
 ---
 
-### V2: Governance + IA
+### Pendiente (V2)
 
 #### HU6 — Versionado + Auditoría + Snapshots
 
 **Como** admin/soporte  
 **Quiero** versionar cambios, auditar ediciones y guardar "cortes"  
-**Para** escalar el módulo sin miedo a romper reportes productivos
-
-**Alcance:**
-- Versionado: draft + publishedVersion + historial de versiones
-- Rollback a versión anterior
-- Auditoría: log de cambios (quién, qué, cuándo)
-- Snapshot: guardar "corte" de un reporte con fecha (datos congelados para informe mensual)
-- Comparar snapshot vs datos actuales
-
-**Criterios de aceptación:**
-- Puedo volver a una versión anterior de un reporte
-- Se registra quién cambió qué y cuándo
-- Puedo guardar un snapshot y reabrirlo meses después con los mismos datos
+**Para** escalar sin miedo a romper reportes productivos
 
 ---
 
@@ -517,18 +472,7 @@ No hay viewer/editor/admin por reporte en el MVP. Se agrega en V2.
 
 **Como** usuario  
 **Quiero** describir en lenguaje natural qué quiero ver y que se genere un reporte  
-**Para** no tener que aprender el editor ni depender de soporte
-
-**Alcance:**
-- Input: "Quiero ver cuánto gasté en materiales este mes vs el anterior, agrupado por proveedor"
-- Output: config de reporte generada automáticamente
-- El usuario revisa la config y puede ajustar antes de guardar
-- Usa el modelo de IA existente (asistente flotante de proyecto como referencia)
-
-**Criterios de aceptación:**
-- Genera un reporte válido con bloques correctos el 80% de las veces
-- El usuario puede editar la config generada antes de guardar
-- Si no entiende el pedido, hace preguntas de clarificación
+**Para** no tener que aprender el editor
 
 ---
 
@@ -536,70 +480,58 @@ No hay viewer/editor/admin por reporte en el MVP. Se agrega en V2.
 
 **Como** usuario  
 **Quiero** recibir un reporte por email periódicamente  
-**Para** no tener que entrar a la plataforma cada lunes
-
-**Alcance:**
-- Configurar frecuencia: diario, semanal (qué día), mensual (qué día del mes)
-- Generar el reporte como PDF/XLSX y enviarlo por email
-- El engine ya es JS puro, se puede correr server-side con un cron
-
-**Criterios de aceptación:**
-- Un reporte programado se ejecuta en el horario configurado
-- El email llega con el reporte adjunto (XLSX)
-- Si no hay datos para el periodo, se envía email informativo ("Sin movimientos esta semana")
+**Para** no tener que entrar a la plataforma cada semana
 
 ---
 
-## 8. Roadmap Visual
+## 9. Roadmap
 
 ```
-    MVP-0 (Semana 1-2)          MVP-1 (Semana 3-5)
-    ┌─────────────┐             ┌───────────────────┐
-    │ HU1         │             │ HU2 + HU3         │
-    │ Schema +    │────────────>│ Engine +           │
-    │ Listado +   │             │ Vista de lectura + │
-    │ Templates   │             │ Filtros + Moneda   │
-    └─────────────┘             └────────┬──────────┘
-                                         │
-                      MVP-2 (Semana 6-8)  │
-                      ┌──────────────────┐│
-                      │ HU4 + HU5       │◄┘
-                      │ Editor wizard +  │
-                      │ Export XLSX      │
-                      └────────┬─────────┘
-                               │
-                    V2 (Cuando esté listo)
-                    ┌──────────────────────┐
-                    │ HU6: Governance       │
-                    │ HU7: Asistente IA     │
-                    │ HU8: Email digest     │
-                    └──────────────────────┘
+    MVP-0 ✅                MVP-1 ✅
+    ┌─────────────┐         ┌───────────────────┐
+    │ HU1         │         │ HU2 + HU3         │
+    │ Schema +    │────────>│ Engine (8 bloques) │
+    │ Listado +   │         │ Vista de lectura + │
+    │ 4 Templates │         │ Filtros + Monedas  │
+    └─────────────┘         └────────┬──────────┘
+                                     │
+                  MVP-2 ✅            │
+                  ┌──────────────────┐│
+                  │ HU4 + HU5       │◄┘
+                  │ Editor          │
+                  │ Export XLSX+PDF │
+                  │ Link público    │
+                  └────────┬─────────┘
+                           │
+                V2 (pendiente)
+                ┌──────────────────────┐
+                │ HU6: Governance       │
+                │ HU7: Asistente IA     │
+                │ HU8: Email digest     │
+                └──────────────────────┘
 ```
-
-### Hito clave: al terminar MVP-1, los usuarios ya pueden consumir reportes pre-armados.
-
-Soporte no necesita el editor todavía — los templates se crean por código. El editor (HU4) es para que soporte sea autónomo y deje de pedir cambios al dev.
 
 ---
 
-## 9. Métricas de éxito
+## 10. Métricas de éxito
 
 | Métrica | Objetivo |
 |---------|----------|
 | Excels armados por soporte por semana | Reducir de ~5 a ~1 |
-| Tiempo promedio para responder "quiero ver X" | De 1-2 días a inmediato (el reporte ya existe) |
+| Tiempo para responder "quiero ver X" | De 1-2 días a inmediato |
 | Usuarios que usan reportes vs caja directa | >30% en 3 meses |
-| Reportes creados por empresa | >5 en el primer mes |
 | Exportaciones XLSX por semana | >10 (señal de que reemplaza al Excel) |
+| Links públicos generados | >5/mes (señal de uso para compartir) |
 
 ---
 
-## 10. Riesgos y Mitigaciones
+## 11. Riesgos y Mitigaciones
 
 | Riesgo | Probabilidad | Impacto | Mitigación |
 |--------|-------------|---------|------------|
-| Performance con muchos movimientos (>5.000) | Media | Alto | El engine es JS puro, portable al backend si es necesario. Filtros de fecha reducen el dataset |
-| Los usuarios no adoptan y siguen pidiendo Excel | Alta | Alto | Templates pre-armados + exportación XLSX cubren el caso "copiar y mandar". Soporte los guía al reporte en vez de armar Excel |
-| El editor es complejo para soporte | Media | Medio | Wizard paso a paso. Preview en vivo. Duplicar templates existentes como base |
-| Equivalencias de moneda faltantes en movimientos viejos | Baja | Medio | Fallback a mostrar en moneda original si no hay equivalencias. Botón "recalcular equivalencias" ya existe |
-| Firestore query límites (no puede filtrar por muchos campos a la vez) | Media | Medio | Traer por empresa_id y filtrar en memoria. Con <3.000 docs es viable |
+| Performance con muchos movimientos (>5.000) | Media | Alto | El engine es JS puro, portable al backend. Filtros de fecha reducen el dataset |
+| Los usuarios no adoptan y siguen pidiendo Excel | Alta | Alto | Templates pre-armados + exportación XLSX cubren el caso "copiar y mandar". El link público facilita el compartir |
+| El editor es complejo para soporte | Media | Medio | Preview en vivo. Duplicar templates existentes como base |
+| Equivalencias de moneda faltantes en movimientos viejos | Baja | Medio | Fallback a mostrar en moneda original. Botón "recalcular equivalencias" ya existe |
+| Firestore query límites | Media | Medio | Se trae por `empresa_id` y se filtra en memoria. Con <3.000 docs es viable |
+| Link público expone datos sensibles | Media | Alto | El token es único y revocable. El admin elige qué proyectos están en el scope del link |

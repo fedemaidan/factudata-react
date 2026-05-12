@@ -24,6 +24,8 @@ const BLOCK_TYPE_LABELS = {
   summary_table: 'Tabla Resumen',
   movements_table: 'Tabla de Movimientos',
   budget_vs_actual: 'Presupuesto vs Real',
+  monthly_budget_control: 'Control Presupuestario Mensual',
+  category_budget_matrix: 'Matriz de Presupuestos por Proyecto',
   chart: 'Gráfico',
   grouped_detail: 'Detalle por Grupo',
   balance_between_partners: 'Balance entre Socios',
@@ -260,6 +262,12 @@ const ReportEditor = ({
         break;
       case 'budget_vs_actual':
         detail = 'Tipo: ' + (block.mostrar_tipo || 'egreso') + ' · Por: ' + (block.agrupar_por || 'categoria');
+        break;
+      case 'monthly_budget_control':
+        detail = 'Mensual · ' + (block.categorias_control?.length || 3) + ' categorias · % avance';
+        break;
+      case 'category_budget_matrix':
+        detail = 'Categoria: ' + (block.categoria_objetivo || 'Todas') + ' · Por proyecto';
         break;
       case 'chart':
         detail = (block.chart_type || 'bar') + ' · Por ' + (block.agrupar_por || 'categoria');

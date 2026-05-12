@@ -57,6 +57,22 @@ export function getMes(mov) {
   return `${y}-${m}`;
 }
 
+function getMonthKeyFromDate(date) {
+  if (!date || isNaN(date.getTime())) return null;
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  return `${y}-${m}`;
+}
+
+function formatMonthKey(key) {
+  if (!key || key === 'sin-fecha') return 'Sin fecha';
+  const [year, month] = String(key).split('-').map(Number);
+  if (!year || !month) return key;
+  const date = new Date(year, month - 1, 1);
+  const label = date.toLocaleDateString('es-AR', { month: 'short', year: 'numeric' });
+  return label.replace('.', '').replace(' ', '-');
+}
+
 /**
  * Convierte fecha de movimiento a Date
  */
@@ -66,6 +82,15 @@ function toDate(mov) {
   if (f?.toDate) return f.toDate();
   if (f?.seconds) return new Date(f.seconds * 1000);
   const d = new Date(f);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+function toPlainDate(value) {
+  if (!value) return null;
+  if (value?.toDate) return value.toDate();
+  if (value?.seconds) return new Date(value.seconds * 1000);
+  if (value instanceof Date) return isNaN(value.getTime()) ? null : value;
+  const d = new Date(value);
   return isNaN(d.getTime()) ? null : d;
 }
 
@@ -105,6 +130,15 @@ function normalizeFilterText(value) {
 
 function toNormalizedSet(values = []) {
   return new Set((values || []).map((v) => normalizeFilterText(v)).filter(Boolean));
+}
+
+function normalizeCategoryFilterValue(value) {
+  return normalizeFilterText(value == null || value === '' ? 'Sin categoría' : value);
+}
+
+function getPresupuestoCategoryLabel(presupuesto) {
+  const value = presupuesto?.categoria ?? presupuesto?.rubro;
+  return value == null || value === '' ? 'Sin categoría' : value;
 }
 
 function getMovimientoUserCandidates(m) {
@@ -282,7 +316,7 @@ export function filterMovimientos(movimientos, filters = {}, extraContext = {}) 
   // Categorías
   if (filters.categorias?.length > 0) {
     const set = toNormalizedSet(filters.categorias);
-    result = result.filter((m) => set.has(normalizeFilterText(m.categoria)));
+    result = result.filter((m) => set.has(normalizeCategoryFilterValue(m.categoria)));
   }
 
   // Proveedores
@@ -359,7 +393,7 @@ export function applyBlockFilters(movimientos, block) {
   if (fe) {
     if (fe.categorias?.length > 0) {
       const set = toNormalizedSet(fe.categorias);
-      result = result.filter((m) => set.has(normalizeFilterText(m.categoria)));
+      result = result.filter((m) => set.has(normalizeCategoryFilterValue(m.categoria)));
     }
     if (fe.proveedores?.length > 0) {
       const set = toNormalizedSet(fe.proveedores);
@@ -378,7 +412,7 @@ export function applyBlockFilters(movimientos, block) {
   if (ex) {
     if (ex.categorias?.length > 0) {
       const set = toNormalizedSet(ex.categorias);
-      result = result.filter((m) => !set.has(normalizeFilterText(m.categoria)));
+      result = result.filter((m) => !set.has(normalizeCategoryFilterValue(m.categoria)));
     }
     if (ex.proveedores?.length > 0) {
       const set = toNormalizedSet(ex.proveedores);
@@ -430,6 +464,31 @@ export function aggregate(values, operacion) {
   return fn(values);
 }
 
+function findLinkedBudgetVsActualBlock(metricBlock, reportConfig) {
+  const layout = reportConfig?.layout;
+  if (!Array.isArray(layout) || layout.length === 0) return null;
+
+  if (metricBlock?.linked_budget_block_id) {
+    const byId = layout.find(
+      (b) => b?.type === 'budget_vs_actual' && b?.id === metricBlock.linked_budget_block_id,
+    );
+    if (byId) return byId;
+  }
+
+  if (Number.isInteger(metricBlock?.linked_budget_block_index)) {
+    const byIndex = layout[metricBlock.linked_budget_block_index];
+    if (byIndex?.type === 'budget_vs_actual') return byIndex;
+  }
+
+  const title = normalizeFilterText(metricBlock?.titulo || '');
+  const shouldAutoLink =
+    metricBlock?.sync_with_budget_vs_actual === true
+    || title.includes('resumen presupuest');
+
+  if (!shouldAutoLink) return null;
+  return layout.find((b) => b?.type === 'budget_vs_actual') || null;
+}
+
 // ─── Agrupación ───
 
 const GROUP_KEYS = {
@@ -466,11 +525,21 @@ export function groupBy(movimientos, campo) {
  * Procesa un bloque metric_cards
  * @returns {Array<{ id, titulo, valor, formato, color }>}
  */
-export function processMetricCards(block, movimientos, _presupuestos, currencies) {
+export function processMetricCards(block, movimientos, _presupuestos, currencies, _cotizaciones, extraContext = {}) {
   const metricas = block.metricas || [];
+  const linkedBudgetBlock = findLinkedBudgetVsActualBlock(block, extraContext?.reportConfig);
 
   return metricas.map((metrica) => {
     let data = movimientos;
+
+    // Si esta metrica está asociada al bloque Presupuesto vs Ejecución,
+    // hereda sus filtros/exclusiones para que no sume categorías ocultas.
+    if (linkedBudgetBlock) {
+      data = applyBlockFilters(data, linkedBudgetBlock);
+      if (!metrica.filtro_tipo && linkedBudgetBlock.mostrar_tipo && linkedBudgetBlock.mostrar_tipo !== 'ambos') {
+        data = data.filter((m) => m.type === linkedBudgetBlock.mostrar_tipo);
+      }
+    }
 
     // Filtro de tipo del metric card individual
     if (metrica.filtro_tipo) {
@@ -482,7 +551,7 @@ export function processMetricCards(block, movimientos, _presupuestos, currencies
     if (fe) {
       if (fe.categorias?.length > 0) {
         const set = toNormalizedSet(fe.categorias);
-        data = data.filter((m) => set.has(normalizeFilterText(m.categoria)));
+        data = data.filter((m) => set.has(normalizeCategoryFilterValue(m.categoria)));
       }
       if (fe.proveedores?.length > 0) {
         const set = toNormalizedSet(fe.proveedores);
@@ -687,6 +756,7 @@ export function processBudgetVsActual(block, movimientos, presupuestos, currenci
   const data = applyBlockFilters(movimientos, block);
   const agruparPor = block.agrupar_por || 'categoria';
   const runtimeProjectIds = new Set((extraContext?.filters?.proyectos || []).map((id) => String(id)));
+  const runtimeCategorySet = toNormalizedSet(extraContext?.filters?.categorias || []);
 
   // Filtrar presupuestos por tipo si corresponde
   let presFiltered = presupuestos || [];
@@ -709,6 +779,11 @@ export function processBudgetVsActual(block, movimientos, presupuestos, currenci
     presFiltered = presFiltered.filter((p) => runtimeProjectIds.has(getPresupuestoProjectInfo(p).id));
   }
 
+  // Respetar filtro global de categorías también en presupuestos
+  if (runtimeCategorySet.size > 0) {
+    presFiltered = presFiltered.filter((p) => runtimeCategorySet.has(normalizeCategoryFilterValue(getPresupuestoCategoryLabel(p))));
+  }
+
   // Excluir presupuestos específicos
   if (block.excluir?.presupuestos?.length > 0) {
     const exSet = new Set(block.excluir.presupuestos.map((n) => n.toLowerCase()));
@@ -724,7 +799,7 @@ export function processBudgetVsActual(block, movimientos, presupuestos, currenci
       case 'etapa': return (p.etapa || 'Sin etapa').toLowerCase();
       case 'proveedor': return (p.proveedor || p.nombre_proveedor || 'Sin proveedor').toLowerCase();
       case 'categoria':
-      default: return (p.categoria || p.rubro || 'Sin categoría').toLowerCase();
+      default: return getPresupuestoCategoryLabel(p).toLowerCase();
     }
   };
   const getPresNombre = (p) => {
@@ -732,7 +807,7 @@ export function processBudgetVsActual(block, movimientos, presupuestos, currenci
       case 'etapa': return p.etapa || 'Sin etapa';
       case 'proveedor': return p.proveedor || p.nombre_proveedor || 'Sin proveedor';
       case 'categoria':
-      default: return p.categoria || p.rubro || 'Sin categoría';
+      default: return getPresupuestoCategoryLabel(p);
     }
   };
 
@@ -1039,8 +1114,240 @@ export function processCategoryBudgetMatrix(block, movimientos, presupuestos, cu
   };
 }
 
+/**
+ * Procesa un control presupuestario mensual.
+ * Columnas = categorías seleccionadas, filas = meses, avance = acumulado / presupuesto objetivo.
+ */
+export function processMonthlyBudgetControl(block, movimientos, presupuestos, currencies, cotizaciones, extraContext = {}) {
+  const displayCurrency = currencies[0];
+  const tipoTarget = block.tipo_presupuesto || 'egreso';
+  const baseMovimientos = Array.isArray(movimientos) ? movimientos : [];
+  const runtimeFilteredMovimientos = extraContext?.filters
+    ? filterMovimientos(baseMovimientos, extraContext.filters, extraContext)
+    : baseMovimientos;
+  const runtimeProjectIds = new Set((extraContext?.filters?.proyectos || []).map((id) => String(id)));
+  const runtimeCategorySet = toNormalizedSet(extraContext?.filters?.categorias || []);
+
+  let presFiltered = Array.isArray(presupuestos) ? [...presupuestos] : [];
+  if (tipoTarget !== 'ambos') {
+    presFiltered = presFiltered.filter((p) => (p.tipo || 'egreso') === tipoTarget);
+  }
+  if (runtimeProjectIds.size > 0) {
+    presFiltered = presFiltered.filter((p) => runtimeProjectIds.has(getPresupuestoProjectInfo(p).id));
+  }
+  if (runtimeCategorySet.size > 0) {
+    presFiltered = presFiltered.filter((p) => runtimeCategorySet.has(normalizeCategoryFilterValue(getPresupuestoCategoryLabel(p))));
+  }
+
+  const configuredCategories = sanitizeStringList(block.categorias_control);
+  const isGeneralPresupuesto = (p) => !p?.categoria && !p?.rubro && !p?.etapa && !p?.proveedor && !p?.nombre_proveedor;
+  const isCategoryOnlyPresupuesto = (p) => !!(p?.categoria || p?.rubro) && !p?.etapa && !p?.proveedor && !p?.nombre_proveedor;
+  const categoryBudgetItems = presFiltered.filter(isCategoryOnlyPresupuesto);
+  const generalBudgetItems = presFiltered.filter(isGeneralPresupuesto);
+
+  const sumPresupuestos = (items) => items.reduce(
+    (acc, p) => acc + Math.abs(getPresupuestoAmount(p, displayCurrency, cotizaciones)),
+    0,
+  );
+
+  let categories = configuredCategories;
+  if (categories.length === 0 && Array.isArray(extraContext?.filters?.categorias) && extraContext.filters.categorias.length > 0) {
+    categories = sanitizeStringList(extraContext.filters.categorias);
+  }
+  if (categories.length === 0) {
+    const byCategory = new Map();
+    for (const p of categoryBudgetItems) {
+      const label = getPresupuestoCategoryLabel(p);
+      const key = normalizeCategoryFilterValue(label);
+      const current = byCategory.get(key) || { label, total: 0 };
+      current.total += Math.abs(getPresupuestoAmount(p, displayCurrency, cotizaciones));
+      byCategory.set(key, current);
+    }
+    categories = [...byCategory.values()]
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 3)
+      .map((c) => c.label);
+  }
+
+  if (categories.length === 0) {
+    const byCategory = new Map();
+    for (const m of runtimeFilteredMovimientos) {
+      const label = m?.categoria || 'Sin categoría';
+      const key = normalizeCategoryFilterValue(label);
+      const current = byCategory.get(key) || { label, total: 0 };
+      current.total += Math.abs(getAmount(m, displayCurrency, block.campo_monto || 'total'));
+      byCategory.set(key, current);
+    }
+    categories = [...byCategory.values()]
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 3)
+      .map((c) => c.label);
+  }
+
+  if (categories.length === 0) categories = ['Sin categoría'];
+
+  const categoryKeys = categories.map((c) => normalizeCategoryFilterValue(c));
+  const categoryKeySet = new Set(categoryKeys);
+
+  let presupuestoTotal = Number(block.presupuesto_total_manual || 0);
+  if (!Number.isFinite(presupuestoTotal) || presupuestoTotal <= 0) {
+    const generalTotal = sumPresupuestos(generalBudgetItems);
+    const selectedCategoryTotal = sumPresupuestos(
+      categoryBudgetItems.filter((p) => categoryKeySet.has(normalizeCategoryFilterValue(getPresupuestoCategoryLabel(p)))),
+    );
+    const allCategoryTotal = sumPresupuestos(categoryBudgetItems);
+    const shouldScopeToVisibleCategories = categoryKeySet.size > 0;
+
+    // Misma intención que Control de Presupuestos:
+    // si hay presupuesto general de egresos, funciona como techo del proyectado;
+    // si las categorías asignadas superan ese techo, se muestra la suma real asignada.
+    if (shouldScopeToVisibleCategories && selectedCategoryTotal > 0) {
+      presupuestoTotal = selectedCategoryTotal;
+    } else {
+      presupuestoTotal = generalTotal > 0
+        ? Math.max(generalTotal, allCategoryTotal)
+        : allCategoryTotal;
+    }
+  }
+
+  let data = applyBlockFilters(runtimeFilteredMovimientos, {
+    ...block,
+    filtro_tipo: tipoTarget === 'ambos' ? null : tipoTarget,
+  });
+  if (categoryKeySet.size > 0) {
+    data = data.filter((m) => categoryKeySet.has(normalizeCategoryFilterValue(m.categoria)));
+  }
+
+  const dateCandidates = [
+    toPlainDate(block.fecha_inicio),
+    toPlainDate(block.fecha_fin),
+    toPlainDate(extraContext?.filters?.fecha_from),
+    toPlainDate(extraContext?.filters?.fecha_to),
+    ...data.map(toDate),
+  ].filter(Boolean);
+
+  let startDate = toPlainDate(block.fecha_inicio) || toPlainDate(extraContext?.filters?.fecha_from);
+  let endDate = toPlainDate(block.fecha_fin) || toPlainDate(extraContext?.filters?.fecha_to);
+
+  if (!startDate && dateCandidates.length > 0) {
+    startDate = new Date(Math.min(...dateCandidates.map((d) => d.getTime())));
+  }
+  if (!endDate && dateCandidates.length > 0) {
+    endDate = new Date(Math.max(...dateCandidates.map((d) => d.getTime())));
+  }
+  if (!startDate || !endDate) {
+    const now = new Date();
+    startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    endDate = startDate;
+  }
+
+  startDate = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+  endDate = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+  if (startDate > endDate) {
+    const tmp = startDate;
+    startDate = endDate;
+    endDate = tmp;
+  }
+
+  const monthKeys = [];
+  const cursor = new Date(startDate);
+  while (cursor <= endDate) {
+    monthKeys.push(getMonthKeyFromDate(cursor));
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+
+  const byMonth = new Map();
+  for (const key of monthKeys) {
+    byMonth.set(key, {
+      mes: key,
+      mesLabel: formatMonthKey(key),
+      categorias: Object.fromEntries(categories.map((c) => [c, 0])),
+      total: 0,
+      total_cac: 0,
+      acumulado: 0,
+      acumulado_cac: 0,
+      porcentaje_avance: 0,
+      _movimientos: [],
+      _movimientos_by_category: Object.fromEntries(categories.map((c) => [c, []])),
+    });
+  }
+
+  for (const m of data) {
+    const key = getMes(m);
+    if (!byMonth.has(key)) continue;
+    const categoryIndex = categoryKeys.indexOf(normalizeCategoryFilterValue(m.categoria));
+    if (categoryIndex === -1) continue;
+    const label = categories[categoryIndex];
+    const amountField = block.campo_monto || 'total';
+    const amount = Math.abs(getAmount(m, displayCurrency, amountField));
+    const amountCac = Math.abs(getAmount(m, 'CAC', amountField));
+    const row = byMonth.get(key);
+    row.categorias[label] = (row.categorias[label] || 0) + amount;
+    row.total += amount;
+    row.total_cac += amountCac;
+    row._movimientos.push(m);
+    row._movimientos_by_category[label].push(m);
+  }
+
+  let acumulado = 0;
+  let acumuladoCac = 0;
+  const rows = [...byMonth.values()].map((row) => {
+    acumulado += row.total;
+    acumuladoCac += row.total_cac;
+    return {
+      ...row,
+      acumulado,
+      acumulado_cac: acumuladoCac,
+      porcentaje_avance: presupuestoTotal > 0 ? acumulado / presupuestoTotal : 0,
+    };
+  });
+
+  const totalsByCategory = Object.fromEntries(categories.map((c) => [c, 0]));
+  for (const row of rows) {
+    for (const c of categories) {
+      totalsByCategory[c] += row.categorias[c] || 0;
+    }
+  }
+  const totalEjecutado = rows.reduce((acc, row) => acc + row.total, 0);
+  const totalEjecutadoCac = rows.reduce((acc, row) => acc + row.total_cac, 0);
+
+  return {
+    obra_nombre: block.obra_nombre || extraContext?.projectName || '',
+    fecha_inicio: startDate.toISOString(),
+    fecha_fin: endDate.toISOString(),
+    presupuesto_label: block.presupuesto_label || 'Egresos proyectados',
+    presupuesto_total: presupuestoTotal,
+    categories,
+    rows,
+    campo_monto: block.campo_monto || 'total',
+    totals: {
+      label: 'Total',
+      categorias: totalsByCategory,
+      total: totalEjecutado,
+      total_cac: totalEjecutadoCac,
+      acumulado: totalEjecutado,
+      acumulado_cac: totalEjecutadoCac,
+      porcentaje_avance: presupuestoTotal > 0 ? totalEjecutado / presupuestoTotal : 0,
+    },
+  };
+}
+
 function normalizeText(value) {
   return String(value || '').trim().toLowerCase();
+}
+
+function sanitizeStringList(values = []) {
+  const out = [];
+  const seen = new Set();
+  for (const value of values || []) {
+    const label = String(value || '').trim();
+    if (!label) continue;
+    const key = normalizeFilterText(label);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(label);
+  }
+  return out;
 }
 
 function inferTipoCreacionFromPresupuesto(presupuesto) {
@@ -1525,6 +1832,7 @@ const BLOCK_PROCESSORS = {
   summary_table: processSummaryTable,
   movements_table: processMovementsTable,
   budget_vs_actual: processBudgetVsActual,
+  monthly_budget_control: processMonthlyBudgetControl,
   category_budget_matrix: processCategoryBudgetMatrix,
   chart: processChart,
   grouped_detail: processGroupedDetail,
@@ -1544,6 +1852,7 @@ export function executeReport(reportConfig, movimientos, presupuestos = [], disp
     ? displayCurrencies
     : [reportConfig.display_currency || 'ARS'];
   const layout = reportConfig.layout || [];
+  const processorContext = { ...(extraContext || {}), reportConfig };
 
   return layout.map((block) => {
     const processor = BLOCK_PROCESSORS[block.type];
@@ -1552,7 +1861,7 @@ export function executeReport(reportConfig, movimientos, presupuestos = [], disp
     }
 
     try {
-      const data = processor(block, movimientos, presupuestos, currencies, cotizaciones, extraContext);
+      const data = processor(block, movimientos, presupuestos, currencies, cotizaciones, processorContext);
       return { type: block.type, titulo: block.titulo || '', data };
     } catch (err) {
       console.error(`Error procesando bloque ${block.type}:`, err);
@@ -1573,7 +1882,7 @@ function capitalizar(str) {
  */
 export function getUniqueValues(movimientos, campo) {
   const map = {
-    categoria: (m) => m.categoria,
+    categoria: (m) => (m?.categoria == null || m?.categoria === '' ? 'Sin categoría' : m.categoria),
     proveedor: (m) => m.nombre_proveedor,
     etapa: (m) => m.etapa,
     proyecto: (m) => m.proyecto,

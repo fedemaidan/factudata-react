@@ -173,6 +173,7 @@ export const UsuariosDetails = ({ empresa }) => {
 
   const [agentePhones, setAgentePhones] = useState([]);
   const [agenteToggleLoading, setAgenteToggleLoading] = useState(false);
+  const [agenteWebToggleLoading, setAgenteWebToggleLoading] = useState(false);
 
   // Opciones de proveedores desde la API
   const [proveedoresOptions, setProveedoresOptions] = useState([]);
@@ -994,6 +995,27 @@ export const UsuariosDetails = ({ empresa }) => {
     }
   };
 
+  const handleToggleAgenteWeb = async (event) => {
+    const nextOn = event.target.checked;
+    if (!editingUsuario?.id) return;
+    setAgenteWebToggleLoading(true);
+    try {
+      await profileService.updateProfile(editingUsuario.id, { agenteWebEnabled: nextOn });
+      const updated = { ...editingUsuario, agenteWebEnabled: nextOn };
+      setEditingUsuario(updated);
+      setUsuarios((prev) => prev.map((u) => (u.id === editingUsuario.id ? updated : u)));
+      setSnackbarMessage(nextOn ? 'Asistente web activado' : 'Asistente web desactivado');
+      setSnackbarSeverity('success');
+    } catch (error) {
+      console.error('Error al actualizar asistente web:', error);
+      setSnackbarMessage(error.response?.data?.error || 'No se pudo actualizar el asistente web');
+      setSnackbarSeverity('error');
+    } finally {
+      setSnackbarOpen(true);
+      setAgenteWebToggleLoading(false);
+    }
+  };
+
   return (
     <div>
       <Card>
@@ -1519,6 +1541,29 @@ export const UsuariosDetails = ({ empresa }) => {
                 />
                 <Typography variant="caption" color="text.secondary" sx={{ display: 'block', ml: 4.25, mt: -0.5 }}>
                   Desactivado: flujo clásico del bot. Activado: asistente por mensaje.
+                </Typography>
+              </Box>
+            )}
+            {editingUsuario && (
+              <Box sx={{ mt: 0.5, mb: 0.5 }}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      size="small"
+                      checked={!!editingUsuario.agenteWebEnabled}
+                      onChange={handleToggleAgenteWeb}
+                      disabled={agenteWebToggleLoading}
+                      inputProps={{ 'aria-label': 'Asistente conversacional web' }}
+                    />
+                  }
+                  label={
+                    <Typography component="span" variant="body2" color="text.secondary">
+                      Asistente conversacional (Web)
+                    </Typography>
+                  }
+                />
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', ml: 4.25, mt: -0.5 }}>
+                  Desactivado: usuario no ve el chat IA en el dashboard. Activado: acceso en beta.
                 </Typography>
               </Box>
             )}

@@ -336,7 +336,7 @@ function ProjectRow({ p, categoriaColors = {} }) {
 
         <TableCell align="right">
           <Stack direction="row" spacing={1} justifyContent="flex-end">
-            <Button size="small" variant="outlined" endIcon={<OpenInNewIcon />} href={`/cajaProyecto?proyectoId=${p.id}`} target="_blank" rel="noopener">
+            <Button size="small" variant="outlined" endIcon={<OpenInNewIcon />} href={`/cajas?proyectoId=${p.id}`} target="_blank" rel="noopener">
               Ver detalles
             </Button>
             <Button size="small" variant="contained" href={`/movementForm/?proyectoName=${p.nombre}&proyectoId=${p.id}&lastPageName="Resumen general"&lastPageUrl="/vistaResumen"`}  target="_blank" rel="noopener">Agregar mov.</Button>
@@ -677,7 +677,6 @@ function BoxSummaryPage() {
         <Container maxWidth="xl">
           <Stack spacing={2}>
             <Typography variant="h5">Resumen de cajas</Typography>
-
             <BoxDashboardHeader projects={projects} filteredProjects={filteredProjects} />
 
             <Paper elevation={0} sx={{ borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>

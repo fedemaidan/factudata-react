@@ -154,6 +154,8 @@ const ReportDetailPage = () => {
     if (!filters || Object.keys(filters).length === 0) return '';
     const params = new URLSearchParams();
     Object.entries(filters).forEach(([key, value]) => {
+      // Link dinamico: mantener fecha_from, pero no fijar fecha_to
+      if (key === 'fecha_to') return;
       if (value == null) return;
       if (Array.isArray(value)) {
         if (value.length > 0) params.set(key, value.join(','));

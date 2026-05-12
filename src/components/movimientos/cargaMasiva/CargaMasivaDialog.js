@@ -21,6 +21,7 @@ import ImageIcon from '@mui/icons-material/Image';
 import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
 import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos';
 import proveedorService from 'src/services/proveedorService';
+import profileService from 'src/services/profileService';
 import movimientosService from 'src/services/movimientosService';
 import { getCamposConfig } from 'src/components/movementFieldsConfig';
 import CargaArchivosStep from './steps/CargaArchivosStep';
@@ -39,8 +40,9 @@ import PasoRevisarProveedores from 'src/sections/importMovimientos/PasoRevisarPr
 import PasoAclaracionesMovimientos from 'src/sections/importMovimientos/PasoAclaracionesMovimientos';
 import PasoResumen from 'src/sections/importMovimientos/PasoResumen';
 import PasoValidarMovimientosImport from 'src/sections/importMovimientos/PasoValidarMovimientosImport';
+import PasoControlEntidadesOcr from 'src/sections/importMovimientos/PasoControlEntidadesOcr';
 
-const STEPS_OCR = ['Archivos', 'Contexto', 'Validación'];
+const STEPS_OCR = ['Archivos', 'Contexto', 'Control', 'Validación'];
 const STEPS_TABULAR = ['Planilla', 'Categorías', 'Proveedores', 'Aclaraciones', 'Validación', 'Resumen'];
 
 const initialContexto = () => ({
@@ -65,6 +67,7 @@ const initialImportWizardData = () => ({
   mapeosSubcategorias: [],
   mapeosProveedores: [],
   aclaracionesUsuario: '',
+  creadorDefaultPhone: '',
   entidadesResueltas: null,
   resultadoFinal: null,
   codigoPrevisualizacion: null,
@@ -99,6 +102,7 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
     etapas: [],
     obrasOptions: [],
     clientesOptions: [],
+    perfiles: [],
   });
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmLoading, setConfirmLoading] = useState(false);
@@ -117,6 +121,7 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
   const aclaracionesRef = useRef(null);
   const validacionRef = useRef(null);
   const validacionOcrRef = useRef(null);
+  const controlOcrRef = useRef(null);
 
   const [validacionNavState, setValidacionNavState] = useState({
     continuarDisabled: true,
@@ -170,7 +175,10 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
     (async () => {
       try {
         const obras = Array.isArray(empresa.obras) ? empresa.obras : [];
-        const provNombres = await proveedorService.getNombres(empresa.id);
+        const [provNombres, perfiles] = await Promise.all([
+          proveedorService.getNombres(empresa.id),
+          profileService.getProfileByEmpresa(empresa.id),
+        ]);
         if (cancelled) return;
         setDrawerCatalogos({
           comprobanteInfo: empresa.comprobante_info || {},
@@ -188,7 +196,13 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
           etapas: empresa.etapas || [],
           obrasOptions: obras.map((o) => o.nombre).filter(Boolean),
           clientesOptions: [...new Set(obras.map((o) => o.cliente).filter(Boolean))],
+          perfiles: Array.isArray(perfiles) ? perfiles : [],
         });
+        if (user?.phone) {
+          setImportWizardData((prev) =>
+            prev.creadorDefaultPhone ? prev : { ...prev, creadorDefaultPhone: user.phone },
+          );
+        }
       } catch (e) {
         console.warn('CargaMasiva: catálogos', e);
       }
@@ -357,6 +371,17 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
       if (!contexto.proyecto_id) return;
       if (!preguntasEstanCompletas(preguntasGpt, respuestasGpt)) return;
       await handleRunAnalyze();
+      return;
+    }
+    if (activeStep === 2) {
+      // Control de categorías/proveedores: aplica el remap a batchItems y avanza a validación
+      try {
+        await controlOcrRef.current?.submitStep();
+      } catch (e) {
+        setAnalyzeError(e?.message || 'Error aplicando control de entidades');
+        return;
+      }
+      setActiveStep(3);
     }
   };
 
@@ -413,7 +438,7 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
 
   const handleBack = () => {
     if (cargaModo === 'ocr') {
-      if (activeStep === 2) return;
+      if (activeStep === 3) return; // No volver desde Validación
       if (activeStep === 1) {
         setPreguntasGpt([]);
         setRespuestasGpt({});
@@ -524,7 +549,7 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
 
   const showPrimaryNext =
     cargaModo === 'ocr'
-      ? activeStep < 2
+      ? activeStep < 3
       : cargaModo === 'tabular'
         ? activeStep < 5
         : false;
@@ -541,7 +566,7 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
 
   const backDisabled =
     cargaModo === 'ocr'
-      ? activeStep === 2 || analyzeLoading
+      ? activeStep === 3 || analyzeLoading
       : cargaModo === 'tabular'
         ? tabularLoading
         : false;
@@ -554,6 +579,7 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
       updateWizardData: updateImportWizardData,
       setLoading: setTabularLoading,
       setError: setTabularError,
+      perfiles: drawerCatalogos.perfiles,
     };
     switch (activeStep) {
       case 0:
@@ -591,6 +617,7 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
             ref={aclaracionesRef}
             wizardData={importWizardData}
             updateWizardData={updateImportWizardData}
+            perfiles={drawerCatalogos.perfiles}
             onNext={() => {}}
             onBack={() => {}}
             hideNavigation
@@ -782,6 +809,15 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
                 />
               )}
               {activeStep === 2 && !analyzeLoading && (
+                <PasoControlEntidadesOcr
+                  ref={controlOcrRef}
+                  batchItems={batchItems}
+                  setBatchItems={setBatchItems}
+                  empresaCategorias={empresa?.categorias || []}
+                  proveedoresCatalogo={drawerCatalogos.proveedores.filter((p) => p !== 'Ajuste')}
+                />
+              )}
+              {activeStep === 3 && !analyzeLoading && (
                 <ValidacionLoteStep
                   ref={validacionOcrRef}
                   onNavStateChange={setValidacionNavState}
@@ -848,7 +884,7 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
 
             <Box sx={{ flex: 1 }} />
 
-            {cargaModo === 'ocr' && activeStep === 2 && validacionNavState.hasItems && (
+            {cargaModo === 'ocr' && activeStep === 3 && validacionNavState.hasItems && (
               <>
                 <Typography variant="caption" color="text.secondary">
                   {validacionNavState.textoProgreso}

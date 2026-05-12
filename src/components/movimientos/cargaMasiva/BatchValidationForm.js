@@ -20,6 +20,7 @@ import {
 } from 'src/components/movementFieldsConfig';
 import { formatNumberWithThousands, parsearMonto } from 'src/utils/celulandia/separacionMiles';
 import { formatTimestamp } from 'src/utils/formatters';
+import { normalizarNombre } from 'src/utils/normalizarNombre';
 
 const MONEY_FIELDS = new Set([
   'total',
@@ -62,10 +63,14 @@ const BatchValidationForm = ({
   saving = false,
   tipoMov = 'egreso',
 }) => {
-  const categoriaSeleccionada = useMemo(
-    () => (categorias || []).find((c) => c.name === form.categoria),
-    [categorias, form.categoria],
-  );
+  const categoriaSeleccionada = useMemo(() => {
+    const lista = categorias || [];
+    if (!form.categoria) return undefined;
+    const exact = lista.find((c) => c.name === form.categoria);
+    if (exact) return exact;
+    const norm = normalizarNombre(form.categoria);
+    return lista.find((c) => c?.name && normalizarNombre(c.name) === norm);
+  }, [categorias, form.categoria]);
 
   const camposConfig = useMemo(
     () => getCamposConfig(comprobanteInfo, ingresoInfo, tipoMov),

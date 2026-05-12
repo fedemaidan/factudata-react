@@ -21,6 +21,8 @@ const resolveConversationUserId = (conversation) => {
   return null;
 };
 
+const isAgentConversation = (conversation) => conversation?.source === 'agent_web';
+
 export function useMessagesFetch({
   selected,
   skipDefaultLoadRef,
@@ -80,9 +82,11 @@ export function useMessagesFetch({
         const sinceTimestamp = Math.max(baseSince, windowCutoff);
         const sinceDate = new Date(Math.max(0, sinceTimestamp));
 
+        const agentMode = isAgentConversation(selected);
         const params = {
           limit: needsFullWindow ? 1000 : PAGE * 2,
           sort: "desc",
+          agentMode,
         };
         if (sinceDate.getTime()) {
           params.sinceCreatedAt = sinceDate.toISOString();
@@ -102,6 +106,7 @@ export function useMessagesFetch({
           const fallback = await fetchMessages(conversationId, {
             limit: 500,
             sort: "desc",
+            agentMode: isAgentConversation(selected),
           });
           fetchedItems = fallback?.items?.length ? fallback.items : fetchedItems;
           if (fetchedItems.length && typeof fallback?.total === "number") {
@@ -172,7 +177,7 @@ export function useMessagesFetch({
         const now = Date.now();
         const baseSince = globalLastSync ? Math.max(globalLastSync, now - intervalMs) : windowCutoff;
         const sinceTimestamp = Math.max(baseSince, windowCutoff);
-        const params = { limit: 2000 };
+        const params = { limit: 2000, agentMode: isAgentConversation(selected) };
         if (sinceTimestamp > 0) {
           params.sinceUpdatedAt = new Date(sinceTimestamp).toISOString();
         }
@@ -211,6 +216,7 @@ export function useMessagesFetch({
         const { items, total } = await fetchMessages(selected.ultimoMensaje.id_conversacion, {
           limit: PAGE,
           offset: currentOffset,
+          agentMode: isAgentConversation(selected),
         });
 
         const reversedItems = [...items].reverse();
@@ -295,6 +301,7 @@ export function useMessagesFetch({
           limit: limitToFetch,
           offset: 0,
           sort: "desc",
+          agentMode: isAgentConversation(conversation),
         });
 
         const reversedItems = [...items].reverse();
@@ -328,6 +335,7 @@ export function useMessagesFetch({
       const { items, total } = await fetchMessages(conversationId, {
         limit: PAGE,
         offset: 0,
+        agentMode: isAgentConversation(selected),
       });
 
       const reversedItems = [...items].reverse();

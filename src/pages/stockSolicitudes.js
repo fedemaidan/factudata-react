@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import {
-  Alert, Box, Button, Chip, Container, Divider, FormControl, IconButton, InputLabel,
+  Alert, Box, Button, Chip, Container, Dialog, DialogActions, DialogContent,
+  DialogContentText, DialogTitle, Divider, FormControl, IconButton, InputLabel,
   Menu, MenuItem, ListItemIcon, ListItemText, Paper, Select, Snackbar, Stack,
   Table, TableBody, TableCell, TableHead, TablePagination, TableRow,
   TextField, Tooltip, Typography,
@@ -104,6 +105,10 @@ export default function StockSolicitudes() {
   // ===== modal ajuste de stock
   const [openAjusteModal, setOpenAjusteModal] = useState(false);
   const [ajusteLoading, setAjusteLoading] = useState(false);
+
+  // ===== confirmación actualización de precio en catálogo
+  const [openConfirmPrecio, setOpenConfirmPrecio] = useState(false);
+  const [pendingGuardarArgs, setPendingGuardarArgs] = useState(null);
 
   // ===== stock config de la empresa (Fase T / Fase 3)
   const [stockConfig, setStockConfig] = useState({});
@@ -286,7 +291,19 @@ export default function StockSolicitudes() {
   const [queryProcessed, setQueryProcessed] = useState(false);
   useEffect(() => {
     if (!router.isReady || queryProcessed) return;
-    const { crear, tipo, subtipo, material_id, material_nombre } = router.query;
+    const { crear, tipo, subtipo, material_id, material_nombre, solicitudId } = router.query;
+
+    // Abrir modal de edición directo por ID (ej: /stockSolicitudes/?solicitudId=xxx)
+    if (solicitudId) {
+      if (!user) return; // esperar a que cargue el usuario
+      setQueryProcessed(true);
+      StockSolicitudesService.obtenerSolicitud({ solicitudId })
+        .then((entry) => { if (entry) openEdit(entry); })
+        .catch(() => {});
+      router.replace('/stockSolicitudes', undefined, { shallow: true });
+      return;
+    }
+
     if (crear !== '1' || !tipo) { setQueryProcessed(true); return; }
     setQueryProcessed(true);
     const mode = tipo === 'TRANSFERENCIA' ? 'transferencia' : tipo === 'EGRESO' ? 'egreso' : 'ingreso';
@@ -312,7 +329,7 @@ export default function StockSolicitudes() {
     setOpenModal(true);
     router.replace('/stockSolicitudes', undefined, { shallow: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router.isReady, queryProcessed]);
+  }, [router.isReady, queryProcessed, user]);
 
   const openEdit = (entry) => {
     const s = entry?.solicitud || {};
@@ -385,6 +402,7 @@ export default function StockSolicitudes() {
         cantidad_original: mm?.cantidad_original || Math.abs(mm?.cantidad ?? 0),
         cantidad_entregada: mm?.cantidad_entregada || 0,
         fecha_entrega: mm?.fecha_entrega || null,
+        precio_unitario: mm?.precio_unitario ?? null,
       })));
     }
     setOpenModal(true);
@@ -411,7 +429,7 @@ export default function StockSolicitudes() {
   };
 
   // ───── Guardar solicitud (crear/editar) ─────
-  const guardarSolicitud = async () => {
+  const guardarSolicitud = async (actualizarCatalogo) => {
     try {
       if (!user) throw new Error('Usuario no autenticado');
 
@@ -452,9 +470,29 @@ export default function StockSolicitudes() {
         });
       }
 
+      // Verificar si hay movimientos con precio e id_material que requieran confirmación
+      const movsConPrecioYMaterial = effectiveMovs.filter(
+        (m) => m.precio_unitario != null && m.precio_unitario !== '' && m.id_material,
+      );
+      if (movsConPrecioYMaterial.length > 0 && actualizarCatalogo === undefined) {
+        // Guardar los args y mostrar el diálogo de confirmación
+        setPendingGuardarArgs(effectiveMovs);
+        setOpenConfirmPrecio(true);
+        return;
+      }
+
+      // Aplicar la decisión del usuario sobre el catálogo
+      const movsFinales = effectiveMovs.map((m) => ({
+        ...m,
+        actualizar_precio_catalogo:
+          actualizarCatalogo === true && m.precio_unitario != null && m.precio_unitario !== '' && m.id_material
+            ? true
+            : false,
+      }));
+
       await StockSolicitudesService.guardarSolicitud({
         user, form: { ...form, responsable: user?.email || '' },
-        movs: effectiveMovs, editMode, editId,
+        movs: movsFinales, editMode, editId,
       });
 
       setOpenModal(false);
@@ -1015,6 +1053,38 @@ export default function StockSolicitudes() {
         user={user}
         proyectos={proyectos}
       />
+
+      {/* ─── Confirmación de actualización de precio en catálogo ─── */}
+      <Dialog open={openConfirmPrecio} onClose={() => setOpenConfirmPrecio(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Actualizar precio en catálogo</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            {`Tenés ${(pendingGuardarArgs || []).filter((m) => m.precio_unitario != null && m.precio_unitario !== '' && m.id_material).length} material(es) con precio ingresado. ¿Querés actualizar también el precio en el catálogo de materiales?`}
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => { setOpenConfirmPrecio(false); setPendingGuardarArgs(null); }}>
+            Cancelar
+          </Button>
+          <Button
+            onClick={() => {
+              setOpenConfirmPrecio(false);
+              guardarSolicitud(false);
+            }}
+          >
+            Solo en el movimiento
+          </Button>
+          <Button
+            variant="contained"
+            onClick={() => {
+              setOpenConfirmPrecio(false);
+              guardarSolicitud(true);
+            }}
+          >
+            Actualizar catálogo
+          </Button>
+        </DialogActions>
+      </Dialog>
     </>
   );
 }

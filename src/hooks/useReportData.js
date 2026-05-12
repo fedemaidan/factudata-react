@@ -62,6 +62,32 @@ function toMovimientoDate(mov) {
   return isNaN(d.getTime()) ? null : d;
 }
 
+function normalizeFilterOptionText(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ');
+}
+
+function normalizeCategoryLabel(value) {
+  return value == null || value === '' ? 'Sin categoría' : value;
+}
+
+function getExcludedCategorySetFromLayout(layout = []) {
+  const set = new Set();
+  for (const block of layout || []) {
+    const cats = block?.excluir?.categorias;
+    if (!Array.isArray(cats)) continue;
+    for (const category of cats) {
+      const key = normalizeFilterOptionText(normalizeCategoryLabel(category));
+      if (key) set.add(key);
+    }
+  }
+  return set;
+}
+
 function applyDateBoundsToFilters(defaultFilters, filtrosSchema, movimientos) {
   if (!filtrosSchema?.fecha?.enabled) return defaultFilters;
 
@@ -303,9 +329,15 @@ export function useReportData(user, empresaId) {
       }
 
       // Poblar opciones de filtros
+      const excludedCategorySet = getExcludedCategorySetFromLayout(fullReport.layout || []);
+      const visibleCategories = getUniqueValues(movs, 'categoria').filter((category) => {
+        const key = normalizeFilterOptionText(normalizeCategoryLabel(category));
+        return !excludedCategorySet.has(key);
+      });
+
       setAvailableOptions((prev) => ({
         ...prev,
-        categorias: getUniqueValues(movs, 'categoria'),
+        categorias: visibleCategories,
         proveedores: getUniqueValues(movs, 'proveedor'),
         etapas: getUniqueValues(movs, 'etapa'),
         mediosPago: getUniqueValues(movs, 'medio_pago'),

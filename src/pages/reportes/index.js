@@ -176,6 +176,29 @@ const TEMPLATES = [
     ],
   },
   {
+    nombre: 'Control Presupuestario Mensual',
+    descripcion: 'Seguimiento mensual por categorías, total acumulado y % de avance',
+    display_currency: 'ARS',
+    datasets: { movimientos: true, presupuestos: true },
+    filtros_schema: {
+      fecha: { enabled: true, default_range: 'current_year' },
+      proyectos: { enabled: true },
+      tipo: { enabled: false, default_value: 'egreso' },
+      categorias: { enabled: true },
+      moneda_equivalente: { enabled: true, default_values: ['ARS'] },
+    },
+    layout: [
+      {
+        type: 'monthly_budget_control',
+        titulo: 'Control Presupuestario',
+        tipo_presupuesto: 'egreso',
+        campo_monto: 'subtotal',
+        categorias_control: [],
+        presupuesto_label: 'Egresos proyectados',
+      },
+    ],
+  },
+  {
     nombre: 'Categoria por Proyecto',
     descripcion: 'Planilla por categoria con inicial, adicionales, total, recibido y saldo por proyecto',
     display_currency: 'ARS',

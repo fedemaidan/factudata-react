@@ -22,12 +22,13 @@ import { useBreadcrumbs } from "src/contexts/breadcrumbs-context";
 import Bars3Icon from "@heroicons/react/24/solid/Bars3Icon";
 import NavigateNextIcon from "@mui/icons-material/NavigateNext";
 import { useRouter } from "next/router";
+import { AgentLauncher } from "src/components/agent/AgentLauncher";
 
 const SIDE_NAV_WIDTH = 280;
 const TOP_NAV_HEIGHT = 64;
 
 export const TopNav = (props) => {
-  const { onNavOpen, title, updateAvailable, onUpdateClick, navWidth = SIDE_NAV_WIDTH, headerActions } = props; // <-- NUEVO
+  const { onNavOpen, title, titleIcon, updateAvailable, onUpdateClick, navWidth = SIDE_NAV_WIDTH, headerActions } = props; // <-- NUEVO
   const { breadcrumbs } = useBreadcrumbs();
   const lgUp = useMediaQuery((theme) => theme.breakpoints.up("lg"), { noSsr: true });
   const accountPopover = usePopover();
@@ -119,8 +120,21 @@ export const TopNav = (props) => {
                 })}
               </Breadcrumbs>
             ) : (
-              <Stack direction="row" alignItems="center" spacing={2} flex={1}>
-                <Typography 
+              <Stack direction="row" alignItems="center" spacing={1.25} flex={1}>
+                {titleIcon ? (
+                  <Box
+                    aria-hidden
+                    sx={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                    }}
+                  >
+                    {titleIcon}
+                  </Box>
+                ) : null}
+                <Typography
                   variant="h6"
                   sx={{
                     fontSize: { xs: '1rem', sm: '1.25rem' }
@@ -150,8 +164,9 @@ export const TopNav = (props) => {
             )}
           </Stack>
 
-          {/* Lado derecho: Acciones + Avatar */}
+          {/* Lado derecho: Launcher IA + Acciones + Avatar */}
           <Stack alignItems="center" direction="row" spacing={2}>
+            <AgentLauncher />
             {requiereCargarDatos && (
               <Button
                 style={{ textTransform: "none", padding: 0 }}
@@ -208,6 +223,7 @@ export const TopNav = (props) => {
 TopNav.propTypes = {
   onNavOpen: PropTypes.func,
   title: PropTypes.string,
+  titleIcon: PropTypes.node,
   breadcrumbs: PropTypes.arrayOf(PropTypes.shape({
     label: PropTypes.string,
     href: PropTypes.string,

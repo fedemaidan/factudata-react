@@ -14,6 +14,7 @@ const BLOCK_TYPES = [
   { value: 'summary_table', label: 'Tabla Resumen', desc: 'Agrupa movimientos por categoría, proveedor, etapa, mes, etc. con totales.' },
   { value: 'movements_table', label: 'Tabla de Movimientos', desc: 'Lista individual de movimientos con paginación.' },
   { value: 'budget_vs_actual', label: 'Presupuesto vs Real', desc: 'Compara presupuesto de control vs gastos reales por categoría.' },
+  { value: 'monthly_budget_control', label: 'Control Presupuestario Mensual', desc: 'Agrupa gastos por mes y por categorías de presupuesto, con total acumulado y % de avance.' },
   { value: 'category_budget_matrix', label: 'Matriz de Presupuestos por Proyecto', desc: 'Para una categoría específica, muestra presupuesto inicial, adicionales, total, recibido y saldo por proyecto.' },
   { value: 'chart', label: 'Gráfico', desc: 'Muestra datos agrupados en gráficos de barras, torta, línea o área.' },
   { value: 'grouped_detail', label: 'Detalle por Grupo', desc: 'Muestra chips o mini-cards de grupos con tabla de movimientos filtrada al seleccionar.' },
@@ -136,6 +137,20 @@ function defaultBlock(type) {
         mostrar_tipo: 'egreso',
         alerta_sobreejecucion: true,
         presupuestos_con_campo: null,
+        excluir: {},
+      };
+    case 'monthly_budget_control':
+      return {
+        ...base,
+        titulo: 'Control Presupuestario',
+        tipo_presupuesto: 'egreso',
+        campo_monto: 'subtotal',
+        categorias_control: [],
+        presupuesto_total_manual: null,
+        presupuesto_label: 'Egresos proyectados',
+        obra_nombre: '',
+        fecha_inicio: '',
+        fecha_fin: '',
         excluir: {},
       };
     case 'category_budget_matrix':
@@ -320,7 +335,7 @@ const BlockEditorDialog = ({
           </FormControl>
 
           {/* Filtro de tipo (compartido) */}
-          {!['budget_vs_actual', 'category_budget_matrix'].includes(block.type) && (
+          {!['budget_vs_actual', 'monthly_budget_control', 'category_budget_matrix'].includes(block.type) && (
             <FormControl size="small" fullWidth>
               <InputLabel>Filtrar por tipo de movimiento</InputLabel>
               <Select
@@ -349,6 +364,9 @@ const BlockEditorDialog = ({
           )}
           {block.type === 'budget_vs_actual' && (
             <BudgetVsActualConfig block={block} onChange={updateBlock} excludeOptions={excludeOptions} />
+          )}
+          {block.type === 'monthly_budget_control' && (
+            <MonthlyBudgetControlConfig block={block} onChange={updateBlock} excludeOptions={excludeOptions} />
           )}
           {block.type === 'category_budget_matrix' && (
             <CategoryBudgetMatrixConfig block={block} onChange={updateBlock} proyectos={proyectos} />
@@ -829,6 +847,117 @@ function BudgetVsActualConfig({ block, onChange, excludeOptions = {} }) {
         Este bloque cruza los presupuestos de control cargados en Sorby con los movimientos reales.
         Hacé click en una fila para ver los movimientos que la componen.
       </Alert>
+    </Stack>
+  );
+}
+
+function MonthlyBudgetControlConfig({ block, onChange, excludeOptions = {} }) {
+  return (
+    <Stack spacing={2}>
+      <Alert severity="info" variant="outlined" sx={{ py: 0.5 }}>
+        Armá una planilla mensual: columnas por categoría, total del mes, acumulado y porcentaje de avance contra los egresos proyectados.
+      </Alert>
+
+      <TextField
+        label="Nombre de la obra"
+        value={block.obra_nombre || ''}
+        onChange={(e) => onChange('obra_nombre', e.target.value)}
+        size="small"
+        fullWidth
+        placeholder="Ej: YPF Caja Edificada Contrato 6"
+      />
+
+      <Autocomplete
+        multiple
+        freeSolo
+        size="small"
+        options={excludeOptions.categorias || []}
+        filterSelectedOptions
+        value={block.categorias_control || []}
+        onChange={(_, val) => onChange('categorias_control', sanitizeExcludeValues(val))}
+        renderTags={(value, getTagProps) =>
+          value.map((option, index) => (
+            <Chip key={option} label={option} size="small" {...getTagProps({ index })} />
+          ))
+        }
+        renderInput={(params) => (
+          <TextField
+            {...params}
+            label="Categorías del presupuesto"
+            placeholder="Ej: Jornales, Materiales neto, Servicios neto"
+            helperText="Si lo dejás vacío, toma las 3 categorías con mayor presupuesto."
+          />
+        )}
+      />
+
+      <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+        <FormControl size="small" fullWidth>
+          <InputLabel>Tipo de presupuesto</InputLabel>
+          <Select
+            value={block.tipo_presupuesto || 'egreso'}
+            label="Tipo de presupuesto"
+            onChange={(e) => onChange('tipo_presupuesto', e.target.value)}
+          >
+            <MenuItem value="egreso">Solo Egresos</MenuItem>
+            <MenuItem value="ingreso">Solo Ingresos</MenuItem>
+            <MenuItem value="ambos">Ambos</MenuItem>
+          </Select>
+        </FormControl>
+
+        <FormControl size="small" fullWidth>
+          <InputLabel>Monto a descontar</InputLabel>
+          <Select
+            value={block.campo_monto || 'subtotal'}
+            label="Monto a descontar"
+            onChange={(e) => onChange('campo_monto', e.target.value)}
+          >
+            <MenuItem value="total">Total</MenuItem>
+            <MenuItem value="subtotal">Subtotal neto</MenuItem>
+          </Select>
+        </FormControl>
+      </Stack>
+
+      <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+        <TextField
+          label="Desde"
+          type="date"
+          value={block.fecha_inicio || ''}
+          onChange={(e) => onChange('fecha_inicio', e.target.value)}
+          size="small"
+          fullWidth
+          InputLabelProps={{ shrink: true }}
+          helperText="Vacío = usa el filtro del reporte"
+        />
+        <TextField
+          label="Hasta"
+          type="date"
+          value={block.fecha_fin || ''}
+          onChange={(e) => onChange('fecha_fin', e.target.value)}
+          size="small"
+          fullWidth
+          InputLabelProps={{ shrink: true }}
+          helperText="Vacío = usa el filtro del reporte"
+        />
+      </Stack>
+
+      <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+        <TextField
+          label="Etiqueta del presupuesto"
+          value={block.presupuesto_label || 'Egresos proyectados'}
+          onChange={(e) => onChange('presupuesto_label', e.target.value)}
+          size="small"
+          fullWidth
+        />
+        <TextField
+          label="Presupuesto manual"
+          type="number"
+          value={block.presupuesto_total_manual || ''}
+          onChange={(e) => onChange('presupuesto_total_manual', e.target.value ? Number(e.target.value) : null)}
+          size="small"
+          fullWidth
+          helperText="Vacío = suma presupuestos de las categorías"
+        />
+      </Stack>
     </Stack>
   );
 }

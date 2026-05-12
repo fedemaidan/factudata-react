@@ -1,13 +1,17 @@
 export const getNombreCliente = (c) => {
   if (c?.profile && c?.empresa) {
-    return `${c.profile.firstName} ${c.profile.lastName} - (${c.empresa.nombre}) ${c.profile.phone.slice(-4)}`;
+    const fullName = [c.profile.firstName, c.profile.lastName].filter(Boolean).join(' ').trim()
+      || c.profile.email
+      || '';
+    const tail = c.profile.phone ? ` ${String(c.profile.phone).slice(-4)}` : '';
+    return `${fullName} - (${c.empresa.nombre})${tail}`;
   }
   if (c?.ultimoMensaje?.emisor?.toLowerCase() === "sorby") {
     return c?.ultimoMensaje?.receptor;
   }
   return c?.wPid?.split('@')[0] || c?.lid;
 }
-  
+
 export const getTitulo = (selected) => {
   if (!selected) {
     return "Conversaciones";

@@ -1,7 +1,7 @@
 # Módulo de Reportes — Documento Técnico
 
-> Fecha: Febrero 2026  
-> Estado: Diseño — Pre-implementación  
+> Fecha: Abril 2026  
+> Estado: Implementado  
 > Autores: Equipo Sorby
 
 ---
@@ -15,7 +15,6 @@
 | **Backend single-process** | El backend Node.js corre en un solo proceso. Agregar cómputo pesado de reportes puede bloquear requests de otros usuarios (carga de movimientos, WhatsApp bot, etc.) |
 | **Firestore no soporta agregaciones** | No hay `GROUP BY`, `SUM`, `AVG` nativos. Cualquier agregación requiere traer documentos y computar en memoria |
 | **Volumen de datos manejable** | ~3.000 movimientos máx por empresa. En un browser moderno, agregar 3.000 objetos toma <100ms |
-| **Equipo** | La persona que va a desarrollar el módulo (Milagros) trabaja en frontend. Minimizar dependencia del backend acelera el desarrollo |
 | **Iteración rápida** | Cambiar lógica de agregación en frontend = hot reload. En backend = restart + redeploy |
 
 ### Qué vive en cada capa
@@ -25,8 +24,8 @@
 │                    FRONTEND                           │
 │                                                      │
 │  ┌─────────────┐   ┌──────────────┐   ┌───────────┐ │
-│  │ Report       │   │ Report       │   │ Report    │ │
-│  │ Config CRUD  │   │ Engine       │   │ Renderer  │ │
+│  │ Report       │   │ Report       │   │ Block     │ │
+│  │ Config CRUD  │   │ Engine       │   │ Renderers │ │
 │  │ (fetch/save) │   │ (compute)    │   │ (React)   │ │
 │  └──────┬───────┘   └──────┬───────┘   └─────┬─────┘ │
 │         │                  │                  │       │
@@ -43,10 +42,11 @@
 │              BACKEND                │         │
 │                                     │         │
 │  ┌────────────┐  ┌───────────────┐  │         │
-│  │ Reports    │  │ Firestore     │  │         │
-│  │ CRUD API   │  │ (movimientos, │  │         │
-│  │ (MongoDB)  │  │ presupuestos) │  │         │
-│  └────────────┘  └───────────────┘  │         │
+│  │ Reports    │  │ Firestore /   │  │         │
+│  │ CRUD API   │  │ MongoDB       │  │         │
+│  │ (MongoDB)  │  │ (movimientos, │  │         │
+│  └────────────┘  │ presupuestos) │  │         │
+│                  └───────────────┘  │         │
 └─────────────────────────────────────┘         │
                                                 │
                                     ┌───────────▼────┐
@@ -60,11 +60,11 @@
 
 | Capa | Responsabilidad |
 |------|----------------|
-| **Backend (MongoDB)** | CRUD de configuraciones de reportes. Persistencia, listado, duplicación. Nada de cómputo |
-| **Backend (Firestore)** | Fuente de datos: movimientos y presupuestos. Endpoints existentes, sin cambios |
-| **Frontend — Data Fetcher** | Trae movimientos, presupuestos y cotizaciones usando servicios existentes |
-| **Frontend — Report Engine** | Aplica filtros, convierte monedas, computa métricas, agrupa, ordena. Puro JS, sin React |
-| **Frontend — Report Renderer** | Componentes React que consumen el output del engine y renderizan bloques |
+| **Backend (MongoDB)** | CRUD de configuraciones de reportes. Persistencia, listado, duplicación, templates. Nada de cómputo |
+| **Backend (Firestore / MongoDB)** | Fuente de datos: movimientos y presupuestos. Para vistas autenticadas se usa Firestore desde el cliente; para vistas públicas se usa MongoDB server-side |
+| **Frontend — Data Fetcher** | Hook `useReportData`: trae movimientos, presupuestos, proyectos, usuarios de empresa y cotizaciones |
+| **Frontend — Report Engine** | `executeReport()`: aplica filtros, convierte monedas, computa métricas, agrupa, ordena. Puro JS sin React |
+| **Frontend — Block Renderers** | Componentes React por tipo de bloque. Consumen el output del engine |
 
 ---
 
@@ -76,496 +76,598 @@
 {
   _id: ObjectId,
   empresa_id: String,           // required, indexed
-  
+
   // ── Meta ──
   nombre: String,               // "Estado de Obra - Torre Norte"
-  descripcion: String,          // Texto libre
-  tags: [String],               // ["obra", "mensual", "materiales"]
-  es_template: Boolean,         // true = plantilla pre-armada, no editable por usuario
-  template_origen: String,      // ID del template del que se creó (null si es original)
-  
+  descripcion: String,
+  tags: [String],
+  es_template: Boolean,         // true = plantilla pre-armada
+  template_origen: String,      // ID del template origen (null si es original)
+
   // ── Estado ──
   status: String,               // 'draft' | 'published'
-  owner_user_id: String,        // UID del creador
-  
-  // ── Dataset ──
-  // Qué datos consume este reporte
-  datasets: {
-    movimientos: Boolean,       // default true — trae movimientos de caja
-    presupuestos: Boolean,      // default false — trae presupuestos de control
+  owner_user_id: String,
+
+  // ── Permisos de acceso ──
+  permisos: {
+    usuarios: [String],         // user IDs / emails con acceso explícito
+    publico: Boolean,           // true = accesible sin login vía link_token
+    link_token: String,         // token único para el link público (null si no generado)
   },
-  
-  // ── Moneda de visualización ──
-  // Concepto central: en qué moneda se muestra TODO el reporte
+
+  // ── Dataset ──
+  datasets: {
+    movimientos: Boolean,       // default true
+    presupuestos: Boolean,      // default false
+  },
+
+  // ── Moneda de visualización por defecto ──
   display_currency: String,     // 'ARS' | 'USD' | 'CAC' | 'original'
-                                // 'original' = cada ítem en su moneda nativa
-  
-  // ── Filtros globales ──
-  // Define qué filtros están disponibles y sus defaults
+
+  // ── Filtros configurables ──
   filtros_schema: {
     fecha: {
-      enabled: true,            // siempre true, no se puede desactivar
+      enabled: true,            // siempre true
       default_range: String,    // 'last_30_days' | 'current_month' | 'last_month' | 'current_year' | 'custom'
       default_from: Date,       // solo si default_range = 'custom'
       default_to: Date,
     },
     proyectos: {
       enabled: Boolean,
-      default_ids: [String],    // IDs de proyectos pre-seleccionados (multi-select)
+      default_ids: [String],
+      fijos: Boolean,           // true = los proyectos están forzados, el usuario no puede cambiarlos
+      proyecto_ids: [String],   // proyectos forzados (solo si fijos = true)
     },
-    tipo: {                     // egreso | ingreso
+    tipo: {
       enabled: Boolean,
       default_value: String,    // null = ambos
     },
-    categorias: {
+    categorias:        { enabled, default_values: [String] },
+    proveedores:       { enabled, default_values: [String] },
+    etapas:            { enabled, default_values: [String] },
+    medio_pago:        { enabled, default_values: [String] },
+    moneda_movimiento: { enabled, default_value: String },
+    usuarios:          { enabled, default_values: [String] },
+    factura_cliente:   { enabled, default_value: String }, // 'cliente' | 'propia' | null
+    moneda_equivalente: {
       enabled: Boolean,
-      default_values: [String],
-    },
-    proveedores: {
-      enabled: Boolean,
-      default_values: [String],
-    },
-    etapas: {
-      enabled: Boolean,
-      default_values: [String],
-    },
-    medio_pago: {
-      enabled: Boolean,
-      default_values: [String],
-    },
-    moneda_movimiento: {        // filtrar por moneda original del movimiento
-      enabled: Boolean,
-      default_value: String,    // 'ARS' | 'USD' | null (todas)
+      default_values: [String], // default ['ARS'] — los chips pre-seleccionados
     },
   },
-  
+
   // ── Layout: bloques del reporte ──
-  // Array ordenado de bloques que se renderizan de arriba a abajo
-  layout: [
-    // Cada bloque es un objeto con type + config
-    // Ver sección "Tipos de Bloques" abajo
-  ],
-  
+  layout: [BlockSchema],        // Array ordenado — ver sección 3
+
   // ── Timestamps ──
   createdAt: Date,
   updatedAt: Date,
 }
 ```
 
-### Índices recomendados
+### Índices
 
 ```javascript
-{ empresa_id: 1, updatedAt: -1 }   // Listado por empresa, más reciente primero
-{ empresa_id: 1, status: 1 }       // Filtrar por publicados
-{ empresa_id: 1, es_template: 1 }  // Listar templates
+{ empresa_id: 1, updatedAt: -1 }
+{ empresa_id: 1, status: 1 }
+{ empresa_id: 1, es_template: 1 }
 ```
 
 ---
 
-## 3. Tipos de Bloques (layout[])
+## 3. Bloques (layout[])
+
+Un **bloque** es la unidad visual de un reporte. El campo `layout` es un array ordenado de bloques que se renderizan de arriba a abajo. Cada bloque tiene un `type` que determina cómo lo procesa el engine y qué componente lo renderiza.
+
+### Campos comunes a todos los bloques
+
+```javascript
+{
+  type: String,           // Ver tipos abajo
+  titulo: String,         // Título visible encima del bloque (opcional)
+  col_span: Number,       // Ancho en columnas del grid (1–12). Default 12 = ancho completo
+  filtro_tipo: String,    // 'egreso' | 'ingreso' | null — filtra el dataset del bloque
+  filtros_extra: {        // Filtros adicionales al global (se intersectan)
+    categorias: [String],
+    proveedores: [String],
+    etapas: [String],
+  },
+  excluir: Object,        // Exclusiones: { categorias, proveedores, etapas, usuarios }
+  presupuestos_con_campo: String, // Filtra presupuestos que tengan un campo específico no vacío
+}
+```
+
+---
 
 ### 3.1 `metric_cards` — Tarjetas de métricas
+
+Cards con un valor grande. Útiles para KPIs arriba del reporte.
 
 ```javascript
 {
   type: 'metric_cards',
-  titulo: String,               // "Resumen General" (opcional)
+  titulo: String,
   metricas: [
     {
-      id: String,               // UUID para referenciar
+      id: String,
       titulo: String,           // "Total Egresos"
       dataset: String,          // 'movimientos' | 'presupuestos'
       operacion: String,        // 'sum' | 'count' | 'avg' | 'min' | 'max'
-      campo: String,            // 'total' | 'subtotal' (para movimientos)
-                                // 'monto' | 'ejecutado' | 'disponible' (para presupuestos)
-      filtro_tipo: String,      // 'egreso' | 'ingreso' | null (hereda del global)
-      filtros_extra: {          // Filtros ADICIONALES al global (se intersectan)
-        categorias: [String],
-        proveedores: [String],
-        etapas: [String],
-      },
+      campo: String,            // 'total' | 'subtotal' (mov.) | 'monto' | 'ejecutado' | 'disponible' (presup.)
+      filtro_tipo: String,
+      filtros_extra: {},
       formato: String,          // 'currency' | 'number' | 'percentage'
       color: String,            // 'default' | 'success' | 'error' | 'warning' | 'info'
+
+      // Vinculación con bloque budget_vs_actual (opcional)
+      sync_with_budget_vs_actual: Boolean,  // Hereda filtros/exclusiones del bloque BvA
+      linked_budget_block_id: String,       // ID específico del bloque BvA a vincular
+      linked_budget_block_index: Number,    // Alternativa: índice en el layout
     }
   ],
 }
 ```
 
+**Nota:** Una métrica puede "vincularse" a un bloque `budget_vs_actual` del mismo reporte para que sus filtros sean coherentes. Si `sync_with_budget_vs_actual = true`, el engine busca automáticamente el primer bloque BvA del layout.
+
 **Output del engine:**
 ```javascript
-{
-  type: 'metric_cards',
-  titulo: "Resumen General",
-  resultados: [
-    { id: "xxx", titulo: "Total Egresos", valor: 15000000, formato: "currency", color: "error" },
-    { id: "yyy", titulo: "Total Ingresos", valor: 22000000, formato: "currency", color: "success" },
-    { id: "zzz", titulo: "Movimientos", valor: 342, formato: "number", color: "default" },
-  ]
-}
+[
+  { id: "xxx", titulo: "Total Egresos", valor: 15000000, formato: "currency", color: "error" },
+  // Si hay múltiples displayCurrencies:
+  { id: "yyy", titulo: "Total", valores: { ARS: 15000000, USD: 10000 }, formato: "currency", color: "default" },
+]
 ```
+
+---
 
 ### 3.2 `summary_table` — Tabla resumen agrupada
 
 ```javascript
 {
   type: 'summary_table',
-  titulo: String,               // "Desglose por Categoría"
+  titulo: String,
   dataset: String,              // 'movimientos' | 'presupuestos'
-  agrupar_por: String,          // 'categoria' | 'proveedor' | 'etapa' | 'proyecto' | 'mes' | 'moneda_original'
+  agrupar_por: String,          // 'categoria' | 'proveedor' | 'etapa' | 'proyecto' | 'mes'
+                                // | 'moneda_original' | 'medio_pago' | 'usuario'
   columnas: [
     {
       id: String,
-      titulo: String,           // "Total Gastado"
+      titulo: String,
       operacion: String,        // 'sum' | 'count' | 'avg'
-      campo: String,            // 'total' | 'subtotal' | 'monto' | 'ejecutado'
-      formato: String,          // 'currency' | 'number' | 'percentage'
+      campo: String,
+      formato: String,
     }
   ],
   mostrar_porcentaje: Boolean,  // Columna "% del Total"
-  orden: {
-    campo: String,              // ID de la columna o '_grupo'
-    direccion: String,          // 'asc' | 'desc'
-  },
-  top_n: Number,                // null = mostrar todo, N = top N + "Otros"
-  mostrar_total: Boolean,       // Fila de totales al final
-  filtro_tipo: String,          // 'egreso' | 'ingreso' | null
-  filtros_extra: {},            // Igual que en métricas
+  orden: { campo, direccion },
+  top_n: Number,                // null = todo, N = top N + "Otros"
+  mostrar_total: Boolean,
+  filtro_tipo: String,
+  filtros_extra: {},
+  excluir: {},
 }
 ```
 
 **Output del engine:**
 ```javascript
 {
-  type: 'summary_table',
-  titulo: "Desglose por Categoría",
-  columnas: ["Categoría", "Total Gastado", "Cantidad", "% del Total"],
-  filas: [
+  headers: ["Categoría", "Monto Total", "Cantidad", "% del Total"],
+  rows: [
     { grupo: "Materiales", valores: [5200000, 45, 34.7] },
-    { grupo: "Mano de Obra", valores: [8100000, 22, 54.0] },
     { grupo: "Otros", valores: [1700000, 18, 11.3] },
   ],
-  totales: [15000000, 85, 100],
+  totals: [15000000, 85, 100],
 }
 ```
+
+---
 
 ### 3.3 `movements_table` — Tabla de movimientos (detalle)
 
 ```javascript
 {
   type: 'movements_table',
-  titulo: String,               // "Detalle de Movimientos"
-  columnas_visibles: [String],  // ['fecha_factura', 'proveedor', 'categoria', 'observacion', 'total', 'moneda']
-                                // Subconjunto de campos del movimiento
-  orden: {
-    campo: String,              // 'fecha_factura' | 'total' | 'proveedor' | etc.
-    direccion: String,
-  },
-  page_size: Number,            // 25 | 50 | 100
+  titulo: String,
+  columnas_visibles: [String],  // Subconjunto de: 'fecha', 'tipo', 'categoria',
+                                // 'proveedor_nombre', 'proyecto_nombre', 'monto_display',
+                                // 'subtotal_display', 'ingreso_display', 'egreso_display',
+                                // 'moneda', 'medioPago', 'notas', 'etapa', 'estado',
+                                // 'usuario_nombre'
+  orden: { campo, direccion },
+  page_size: Number,            // 5–100, default 25
   filtro_tipo: String,
   filtros_extra: {},
 }
 ```
 
-**Nota:** La paginación es 100% frontend (slice del array filtrado). No hay request paginado.
+La paginación es 100% frontend (slice del array). El engine devuelve todas las filas; el componente las pagina.
 
-### 3.4 `budget_vs_actual` — Presupuesto vs Ejecutado ⭐
+---
 
-Este es el bloque estrella. Cruza datos de presupuestos de control con movimientos ejecutados.
+### 3.4 `budget_vs_actual` — Presupuesto vs Ejecutado
+
+Cruza datos de presupuestos de control con movimientos ejecutados.
 
 ```javascript
 {
   type: 'budget_vs_actual',
-  titulo: String,               // "Control Presupuestario"
-  agrupar_por: String,          // 'categoria' | 'proveedor' | 'etapa'  
+  titulo: String,
+  agrupar_por: String,          // 'categoria' | 'etapa' | 'proveedor'
   mostrar_tipo: String,         // 'egreso' | 'ingreso' | 'ambos'
-  columnas: [String],           // Subconjunto de: ['presupuestado', 'ejecutado', 'disponible', 'porcentaje', 'barra']
-  orden: {
-    campo: String,
-    direccion: String,
-  },
-  alerta_sobreejecucion: Boolean, // Resaltar en rojo si ejecutado > presupuestado
+  columnas_budget: [String],    // Subconjunto de: 'presupuestado', 'ejecutado', 'disponible', 'porcentaje', 'barra'
+  orden: { campo, direccion },
+  alerta_sobreejecucion: Boolean,
   filtros_extra: {},
+  presupuestos_con_campo: String,
+  excluir: {},
 }
 ```
 
 **Output del engine:**
 ```javascript
 {
-  type: 'budget_vs_actual',
-  titulo: "Control Presupuestario",
-  filas: [
-    { 
-      grupo: "Materiales", 
-      presupuestado: 5000000, 
-      ejecutado: 3200000, 
-      disponible: 1800000, 
-      porcentaje: 64.0,
-      sobreejecucion: false 
-    },
-    { 
-      grupo: "Mano de Obra", 
-      presupuestado: 8000000, 
-      ejecutado: 9100000, 
-      disponible: -1100000, 
-      porcentaje: 113.75,
-      sobreejecucion: true 
-    },
+  columnas: ["Categoría", "Presup.", "Ejecutado", "Disponible", "%"],
+  rows: [
+    { grupo: "Materiales", presupuestado: 5000000, ejecutado: 3200000, disponible: 1800000, porcentaje: 64.0, sobreejecucion: false },
+    { grupo: "Mano de Obra", presupuestado: 8000000, ejecutado: 9100000, disponible: -1100000, porcentaje: 113.75, sobreejecucion: true },
   ],
-  totales: { presupuestado: 13000000, ejecutado: 12300000, disponible: 700000, porcentaje: 94.6 },
+  totals: { presupuestado: 13000000, ejecutado: 12300000, disponible: 700000, porcentaje: 94.6 },
 }
 ```
 
 ---
 
-## 4. Moneda de Visualización — Cómo funciona
+### 3.5 `chart` — Gráfico
 
-### El concepto
+```javascript
+{
+  type: 'chart',
+  titulo: String,
+  chart_type: String,           // 'bar' | 'pie' | 'donut' | 'line' | 'area'
+  agrupar_por: String,          // Igual que summary_table
+  columnas: [ColumnaConfig],    // Hasta 4 columnas (series)
+  top_n: Number,
+  filtro_tipo: String,
+  filtros_extra: {},
+  excluir: {},
+}
+```
 
-Cada reporte tiene un `display_currency` que define en qué moneda se muestran **todos** los valores monetarios. Esto es una "lente" que transforma los datos antes de renderizar.
+Renderizado por `ChartBlock.js` usando Chart.js.
 
-### Opciones
+---
+
+### 3.6 `grouped_detail` — Detalle agrupado con selector
+
+Muestra grupos como chips/cards clicables. Al seleccionar un grupo, aparece la tabla de movimientos de ese grupo.
+
+```javascript
+{
+  type: 'grouped_detail',
+  titulo: String,
+  agrupar_por: String,
+  chips_style: String,          // 'chip' | 'metric'
+  columnas_visibles: [String],  // Columnas de la tabla interna
+  page_size: Number,
+  filtro_tipo: String,
+  filtros_extra: {},
+  excluir: {},
+}
+```
+
+**Output del engine:**
+```javascript
+{
+  groups: [
+    { key: "Materiales", count: 45, total: 5200000 },
+    { key: "Mano de Obra", count: 22, total: 8100000 },
+  ],
+  columnas: [...],
+  pageSize: 25,
+  currencies: ['ARS'],
+  chipsStyle: 'chip',
+}
+```
+
+El componente filtra los movimientos del grupo seleccionado en el cliente, sin llamadas adicionales al engine.
+
+---
+
+### 3.7 `category_budget_matrix` — Matriz presupuestaria por proyecto
+
+Muestra una matriz donde las columnas son proyectos y las filas son conceptos (presupuestos) de una categoría. Útil para ver el estado financiero de múltiples proyectos a la vez.
+
+```javascript
+{
+  type: 'category_budget_matrix',
+  titulo: String,
+  categoria_objetivo: String,         // Categoría de presupuestos a mostrar
+  tipo_presupuesto: String,           // 'egreso' | 'ingreso' | 'ambos'
+  columna_concepto_titulo: String,    // Título de la columna de conceptos (default 'Concepto')
+  asumir_monto_incluye_adicionales: Boolean, // Si true, no suma adicionales por separado
+  label_presupuesto_inicial: String,
+  label_total_presupuesto: String,
+  label_recibido: String,
+  label_saldo: String,
+  proyectos_seleccionados: [String],  // [] = todos los proyectos con datos
+}
+```
+
+**Output del engine:**
+```javascript
+{
+  categoria: "Subcontratos",
+  rowHeaderTitle: "Concepto",
+  projectColumns: ["Torre Norte", "Torre Sur", "Local A"],
+  rows: [
+    {
+      concepto: "Estructura",
+      byProject: {
+        "Torre Norte": { presupuesto_inicial: 1000000, adicionales: 200000, total: 1200000, recibido: 900000, saldo: 300000 },
+        "Torre Sur":   { ... },
+      }
+    },
+  ],
+}
+```
+
+---
+
+### 3.8 `balance_between_partners` — Balance entre socios
+
+Calcula el balance neto por socio (basado en movimientos ingresados desde su teléfono) y muestra las transferencias necesarias para equilibrar aportes.
+
+```javascript
+{
+  type: 'balance_between_partners',
+  titulo: String,
+  show_summary_cards: Boolean,        // Mostrar tarjetas resumen por socio
+  socios_telefonos: [String],         // Teléfonos de los socios a incluir ([] = todos)
+}
+```
+
+**Output del engine:**
+```javascript
+{
+  socios: [
+    { nombre: "Juan", telefono: "...", totalIngresado: 1200000, totalEgresado: 800000, saldo: 400000 },
+    { nombre: "María", telefono: "...", totalIngresado: 600000, totalEgresado: 900000, saldo: -300000 },
+  ],
+  saldoNetoTotal: 100000,
+  aporteIdeal: 350000,
+  isBalanced: false,
+  transfers: [
+    { de: "María", a: "Juan", monto: 300000 },
+  ],
+  showSummaryCards: true,
+}
+```
+
+El algoritmo de transferencias es greedy: los deudores pagan primero a los mayores acreedores.
+
+---
+
+## 4. Moneda de Visualización
+
+### `display_currency` vs `displayCurrencies`
+
+El campo `display_currency` en la config del reporte define el **default**. Pero la UI permite al usuario activar múltiples monedas simultáneamente mediante chips (`moneda_equivalente`). El engine recibe `displayCurrencies: string[]` — si hay más de una, expande las columnas monetarias.
+
+### Opciones de moneda
 
 | Valor | Comportamiento |
 |-------|---------------|
-| `'ARS'` | Todos los montos se muestran en pesos argentinos. Movimientos USD se convierten usando `equivalencias.total.ars` (o `subtotal.ars`) |
-| `'USD'` | Todos los montos se muestran en dólares blue. Movimientos ARS se convierten usando `equivalencias.total.usd_blue` |
-| `'CAC'` | Todos los montos se muestran en unidades CAC. Se usa `equivalencias.total.cac` |
-| `'original'` | Cada movimiento se muestra en su moneda nativa. Las métricas de suma se separan por moneda |
+| `'ARS'` | Montos en pesos. Usa `equivalencias[campo].ars` |
+| `'USD'` | Montos en dólares blue. Usa `equivalencias[campo].usd_blue` |
+| `'CAC'` | Montos en índice CAC. Usa `equivalencias[campo].cac` |
+| `'original'` | Cada movimiento en su moneda nativa. Sin conversión |
 
 ### Implementación en el Engine
 
 ```javascript
-// reportEngine.js — función de conversión de moneda
-
-const EQUIV_MAP = {
-  ARS: (mov, campo) => mov.equivalencias?.[campo]?.ars ?? mov[campo],
-  USD: (mov, campo) => mov.equivalencias?.[campo]?.usd_blue ?? null,
-  CAC: (mov, campo) => mov.equivalencias?.[campo]?.cac ?? null,
+// reportEngine.js
+const CURRENCY_FIELD = {
+  ARS: 'ars',
+  USD: 'usd_blue',
+  CAC: 'cac',
 };
 
-function getMontoEnMoneda(movimiento, displayCurrency, campoBase = 'total') {
-  // campoBase = 'total' | 'subtotal'
-  
+export function getAmount(mov, displayCurrency = 'ARS', campo = 'total') {
   if (displayCurrency === 'original') {
-    // Devolver en moneda nativa
-    return {
-      valor: movimiento[campoBase] || 0,
-      moneda: movimiento.moneda || 'ARS',
-    };
+    return campo === 'total'
+      ? (mov.total ?? mov.monto ?? 0)
+      : (mov.subtotal ?? mov.total ?? mov.monto ?? 0);
   }
-  
-  const monedaMov = movimiento.moneda || 'ARS';
-  
-  // Si la moneda del movimiento ya es la de display, usar directo
-  if (
-    (displayCurrency === 'ARS' && monedaMov === 'ARS') ||
-    (displayCurrency === 'USD' && monedaMov === 'USD')
-  ) {
-    return { valor: movimiento[campoBase] || 0, moneda: displayCurrency };
-  }
-  
-  // Usar equivalencias pre-calculadas
-  const converter = EQUIV_MAP[displayCurrency];
-  if (converter) {
-    const valor = converter(movimiento, campoBase);
-    return { valor: valor || 0, moneda: displayCurrency };
-  }
-  
-  // Fallback: devolver en moneda original
-  return { valor: movimiento[campoBase] || 0, moneda: monedaMov };
+  const key = CURRENCY_FIELD[displayCurrency];
+  const val = mov?.equivalencias?.[campo]?.[key];
+  if (val != null && !isNaN(val)) return val;
+  return mov.total ?? mov.monto ?? 0; // fallback a monto original
 }
 ```
 
-### Moneda en presupuestos de control
+### Presupuestos
 
-Los presupuestos ya almacenan en moneda de almacenamiento (ARS/USD/CAC). Para convertir:
+Los presupuestos almacenan un `cotizacion_snapshot` al momento de creación y el engine usa las cotizaciones actuales para convertir:
 
 ```javascript
-function getMontoPresupuestoEnMoneda(presupuesto, displayCurrency, cotizacionActual) {
-  const monedaAlmacenamiento = presupuesto.moneda; // 'ARS' | 'USD' | 'CAC'
-  
-  if (monedaAlmacenamiento === displayCurrency) {
-    return presupuesto.monto;
-  }
-  
-  // Primero a ARS, después a display
-  let enARS = presupuesto.monto;
-  if (monedaAlmacenamiento === 'USD') enARS = presupuesto.monto * cotizacionActual.dolar_blue;
-  if (monedaAlmacenamiento === 'CAC') enARS = presupuesto.monto * cotizacionActual.cac_indice;
-  
+function getPresupuestoAmount(pres, displayCurrency, cotizaciones) {
+  const moneda = pres.moneda; // 'ARS' | 'USD' | 'CAC'
+  if (moneda === displayCurrency) return pres.monto;
+  // Normalizar a ARS, luego convertir a target
+  let enARS = pres.monto;
+  if (moneda === 'USD') enARS = pres.monto * cotizaciones.dolar_blue;
+  if (moneda === 'CAC') enARS = pres.monto * cotizaciones.cac_indice;
   if (displayCurrency === 'ARS') return enARS;
-  if (displayCurrency === 'USD') return enARS / cotizacionActual.dolar_blue;
-  if (displayCurrency === 'CAC') return enARS / cotizacionActual.cac_indice;
-  
-  return presupuesto.monto;
+  if (displayCurrency === 'USD') return enARS / cotizaciones.dolar_blue;
+  if (displayCurrency === 'CAC') return enARS / cotizaciones.cac_indice;
+  return pres.monto;
 }
 ```
 
-### El caso `'original'` en métricas y tablas resumen
+---
 
-Cuando `display_currency = 'original'`, no se puede sumar ARS + USD. El engine separa por moneda:
+## 5. Filtros del Engine
+
+### Filtros globales (`filterMovimientos`)
+
+El engine aplica los filtros en este orden:
+
+| Filtro | Campo en movimiento | Comparación |
+|--------|---------------------|-------------|
+| `fecha_from / fecha_to` | `fecha_factura` o `fecha` | Fecha local, inclusive en ambos extremos |
+| `proyectos` | `proyecto_id` | Set de IDs exactos |
+| `tipo` | `type` | `'egreso'` \| `'ingreso'` |
+| `categorias` | `categoria` | Normalizado (sin tildes, lowercase) |
+| `proveedores` | `nombre_proveedor` | Normalizado |
+| `etapas` | `etapa` | Normalizado |
+| `medio_pago` | `medio_pago` | Normalizado |
+| `usuarios` | `usuario_nombre`, `usuario`, `user_id`, teléfono | Multi-campo + lookup por empresa |
+| `moneda_movimiento` | `moneda` | Exacto |
+| `factura_cliente` | campo de factura de cliente | `'cliente'` \| `'propia'` |
+
+### Normalización de texto
+
+Todos los filtros de texto usan la misma normalización para comparación insensible a tildes y mayúsculas:
 
 ```javascript
-// En vez de: { titulo: "Total", valor: 15000000 }
-// Devuelve: 
-{ 
-  titulo: "Total", 
-  valores_por_moneda: { 
-    ARS: 12500000, 
-    USD: 2300 
-  } 
+function normalizeFilterText(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '') // quitar tildes
+    .replace(/\s+/g, ' ');
 }
 ```
 
-El renderer muestra ambos valores apilados.
+### Filtros por bloque (`applyBlockFilters`)
+
+Además de los filtros globales, cada bloque puede tener sus propios `filtro_tipo` y `filtros_extra` que se aplican sobre el subset ya filtrado globalmente.
 
 ---
 
-## 5. Flujo de Datos — Data Fetcher
+## 6. Report Engine — Contrato
 
-### Qué datos se traen y de dónde
-
-```
-Al abrir un reporte:
-│
-├─ 1. Fetch config del reporte
-│     GET /api/reports/:id
-│     → MongoDB → report config JSON
-│
-├─ 2. Fetch movimientos (si datasets.movimientos = true)
-│     → Firestore directo (client-side, igual que cajaProyecto.js)
-│     → Query: empresa_id + filtros básicos (proyecto, moneda, fecha)
-│     → Resultado: array de movimientos con equivalencias
-│
-├─ 3. Fetch presupuestos (si datasets.presupuestos = true)
-│     GET /api/presupuesto/empresa/:empresaId
-│     → presupuestoService.listarPresupuestos()
-│     → Resultado: array de presupuestos con monto, ejecutado, etc.
-│
-├─ 4. Fetch cotizaciones actuales (para display_currency y presupuestos indexados)
-│     → MonedasService.listarDolar({ limit: 1 })
-│     → MonedasService.listarCAC({ limit: 1 })
-│     → Resultado: { dolar_blue, cac_indice }
-│
-└─ 5. Pasar todo al Report Engine
-      engine.run(config, movimientos, presupuestos, cotizaciones)
-      → Devuelve resultados por bloque, listos para renderizar
-```
-
-### Caching y performance
-
-| Estrategia | Detalle |
-|------------|---------|
-| **Caching de datos** | Los movimientos se cachean en estado React (o context). Si el usuario cambia filtros, se re-filtra el array en memoria, no se re-fetcha |
-| **Re-fetch** | Solo al abrir el reporte o al hacer "Actualizar" explícito |
-| **Cotizaciones** | Se traen una vez al montar la página. No cambian durante la sesión |
-| **Config del reporte** | Se trae una vez. Se re-fetcha solo si el usuario entra al editor |
-
-### Fetch de movimientos — Reutilizar patrón existente
-
-Hoy `cajaProyecto.js` trae movimientos directo de Firestore:
-
-```javascript
-// Patrón existente (funciona bien con <3000 docs)
-const q = query(
-  collection(db, 'movimientos'),
-  where('empresa_id', '==', empresaId),
-  // + where por proyecto si aplica
-  orderBy('fecha_factura', 'desc')
-);
-const snapshot = await getDocs(q);
-const movimientos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-```
-
-Para reportes multi-proyecto, se trae por `empresa_id` sin filtrar por proyecto, y se filtra en memoria.
-
----
-
-## 6. Report Engine — Lógica pura (sin React)
-
-### Diseño
-
-El engine es un módulo JS puro (sin dependencias de React) que recibe datos y config, y devuelve resultados. Esto permite:
-- Testear con unit tests sin DOM
-- Reusar la lógica si en el futuro se mueve al backend
-- Separar cómputo de renderizado
-
-### Archivo: `src/tools/reportEngine.js`
+### Archivo: `src/tools/reportEngine.js` (JS puro, sin React, ~1.750 LOC)
 
 ```
 reportEngine.js
-├── run(config, data, cotizaciones) → resultados[]
-│   ├── applyGlobalFilters(movimientos, filtros, filtersValues)
-│   ├── processBlock(block, filteredData, cotizaciones, displayCurrency)
-│   │   ├── processMetricCards(block, data, ...)
-│   │   ├── processSummaryTable(block, data, ...)
-│   │   ├── processMovementsTable(block, data, ...)
-│   │   └── processBudgetVsActual(block, data, presupuestos, ...)
-│   └── return resultados[]
-├── getMontoEnMoneda(mov, displayCurrency, campo)
-├── getMontoPresupuestoEnMoneda(presupuesto, displayCurrency, cotiz)
-└── helpers: sum, avg, count, groupBy, sortBy, topN
+├── executeReport(config, movimientos, presupuestos, displayCurrencies, cotizaciones, extraContext) → Array<BlockResult>
+│   └── Para cada bloque: BLOCK_PROCESSORS[block.type](block, movs, presupuestos, currencies, cotizaciones, extraContext)
+│
+├── filterMovimientos(movimientos, filters, extraContext) → Array
+├── applyBlockFilters(movimientos, block) → Array
+├── groupBy(movimientos, campo) → Map<string, Array>
+├── aggregate(values, operacion) → number
+├── getAmount(mov, displayCurrency, campo) → number
+├── getMes(mov) → string ('YYYY-MM')
+│
+├── processMetricCards(block, movs, presupuestos, currencies, cotizaciones, extraContext)
+├── processSummaryTable(block, movs, presupuestos, currencies)
+├── processMovementsTable(block, movs, presupuestos, currencies)
+├── processBudgetVsActual(block, movs, presupuestos, currencies, cotizaciones, extraContext)
+├── processCategoryBudgetMatrix(block, movs, presupuestos, currencies, cotizaciones, extraContext)
+├── processGroupedDetail(block, movs, presupuestos, currencies)
+├── processBalanceBetweenPartners(block, movs, presupuestos, currencies, cotizaciones, extraContext)
+├── processChart(block, movs, presupuestos, currencies, cotizaciones)
+│
+├── getUniqueValues(movimientos, campo) → Array  // Para poblar dropdowns de filtros
+├── buildDefaultFilters(filtrosSchema) → Object  // Construye estado inicial de filtros
+└── formatValue(value, formato, displayCurrency) → string
 ```
 
-### Contrato del engine
+### Contrato de `executeReport`
 
 ```javascript
 // Input
-const input = {
-  config: reportConfig,           // El JSON de MongoDB
-  filtersValues: {                // Valores ACTUALES de los filtros (lo que el usuario eligió en la UI)
-    fecha_from: '2026-01-01',
-    fecha_to: '2026-01-31',
-    proyectos: ['proj_123', 'proj_456'],
-    categorias: ['Materiales'],
-    // ...
-  },
-  movimientos: [...],             // Array completo de movimientos
-  presupuestos: [...],            // Array de presupuestos de control (si aplica)
-  cotizaciones: {
-    dolar_blue: 1450,
-    cac_indice: 1180.5,
-  },
-};
+executeReport(
+  reportConfig,          // Objeto de MongoDB (con layout, filtros_schema, etc.)
+  movimientos,           // Array completo ya traído de Firestore/MongoDB
+  presupuestos,          // Array de presupuestos ([] si datasets.presupuestos = false)
+  displayCurrencies,     // ['ARS'] | ['ARS', 'USD'] | ['USD'] — array, no string
+  cotizaciones,          // { dolar_blue: 1450, cac_indice: 1180.5 }
+  extraContext,          // { usuariosEmpresa, proyectos, reportConfig }
+);
 
-// Output
-const output = {
-  bloques: [
-    { type: 'metric_cards', titulo: '...', resultados: [...] },
-    { type: 'summary_table', titulo: '...', columnas: [...], filas: [...], totales: [...] },
-    { type: 'budget_vs_actual', titulo: '...', filas: [...], totales: {...} },
-    { type: 'movements_table', titulo: '...', columnas: [...], filas: [...], totalCount: 342, page: 1 },
-  ],
-  meta: {
-    movimientos_total: 342,
-    presupuestos_total: 12,
-    filtros_aplicados: { ... },
-    display_currency: 'ARS',
-    ejecutado_en_ms: 45,
-  },
-};
+// Output: Array<BlockResult>
+[
+  { type: 'metric_cards', titulo: 'Resumen', data: [...] },
+  { type: 'summary_table', titulo: 'Desglose', data: { headers, rows, totals } },
+  { type: 'movements_table', titulo: 'Detalle', data: { columnas, rows, pageSize, totalRows } },
+  { type: 'budget_vs_actual', titulo: 'Control', data: { columnas, rows, totals } },
+  // Si hubo error en un bloque:
+  { type: 'chart', titulo: '...', data: null, error: 'mensaje' },
+]
 ```
 
 ---
 
-## 7. API Backend — Endpoints del módulo (MongoDB)
+## 7. Flujo de Datos — Hook `useReportData`
 
-Solo CRUD de configuraciones. No hay cómputo.
+El hook `useReportData` en el componente `/pages/reportes/[id].js` orquesta todos los fetches:
+
+```
+Al montar la página del reporte:
+│
+├─ 1. Fetch config del reporte
+│     GET /api/reports/:id
+│     → MongoDB → report config JSON (con layout, filtros_schema, permisos)
+│
+├─ 2. Fetch movimientos (si datasets.movimientos = true)
+│     → Firestore client-side (query por empresa_id)
+│     → Array de movimientos con equivalencias pre-calculadas
+│
+├─ 3. Fetch presupuestos (si datasets.presupuestos = true)
+│     GET /api/presupuesto/empresa/:empresaId
+│     → Array de presupuestos de control
+│
+├─ 4. Fetch proyectos + usuariosEmpresa
+│     → Para poblar dropdowns de filtros y lookup de usuarios
+│
+├─ 5. Fetch cotizaciones actuales
+│     → MonedasService.listarDolar() + MonedasService.listarCAC()
+│     → { dolar_blue, cac_indice }
+│
+├─ 6. Calcular availableOptions (para dropdowns de filtros)
+│     getUniqueValues(movimientos, campo) para cada filtro habilitado
+│
+└─ 7. Al cambiar filtros → executeReport(config, movimientos, presupuestos, ...)
+      Los datos completos quedan en memoria; no se re-fetcha al cambiar filtros
+```
+
+### Vista pública (sin login)
+
+Para reportes con `permisos.publico = true`, la página `reportes/public/[token].js` hace:
+
+```
+GET /api/reports/public/:token
+→ Backend devuelve { report, movimientos, presupuestos }
+  Los movimientos se traen server-side desde MongoDB (MovimientoCajaRepository)
+  respetando proyectos fijos si los hay
+```
+
+---
+
+## 8. API Backend — Endpoints
+
+Solo CRUD de configuraciones. Todo el cómputo es frontend.
 
 ### Base: `/api/reports`
 
 | Verbo | Ruta | Descripción |
 |-------|------|-------------|
-| `GET` | `/` | Listar reportes de la empresa. Query: `?empresa_id=X&status=published` |
-| `GET` | `/:id` | Obtener config de un reporte |
-| `POST` | `/` | Crear reporte (body = config JSON) |
+| `GET` | `/` | Listar reportes de la empresa. Query: `?empresa_id=X` |
+| `GET` | `/:id` | Obtener config completa de un reporte |
+| `POST` | `/` | Crear reporte |
 | `PUT` | `/:id` | Actualizar reporte |
 | `DELETE` | `/:id` | Eliminar reporte |
-| `POST` | `/:id/duplicate` | Duplicar reporte (clona config, status = draft) |
-| `GET` | `/templates` | Listar plantillas pre-armadas (es_template = true) |
-| `POST` | `/from-template/:templateId` | Crear reporte desde plantilla |
+| `POST` | `/:id/duplicate` | Duplicar (clona config, status = draft) |
+| `GET` | `/templates` | Listar templates disponibles para la empresa |
+| `POST` | `/from-template` | Crear reporte a partir de un template. Body: `{ templateId, empresa_id, nombre }` |
+| `POST` | `/export-pdf` | Generar PDF server-side. Body: `{ reportConfig, results, ... }`. Devuelve URL del PDF |
+| `GET` | `/public/:token` | Obtener reporte público con datos. No requiere autenticación |
 
-### Modelo Mongoose
+### Modelo Mongoose (ReportModel.js)
 
 ```javascript
 const ReportSchema = new Schema({
@@ -577,144 +679,194 @@ const ReportSchema = new Schema({
   template_origen: String,
   status: { type: String, enum: ['draft', 'published'], default: 'draft' },
   owner_user_id: String,
+  permisos: {
+    usuarios: [String],
+    publico: { type: Boolean, default: false },
+    link_token: { type: String, default: null },
+  },
   datasets: {
     movimientos: { type: Boolean, default: true },
     presupuestos: { type: Boolean, default: false },
   },
   display_currency: { type: String, enum: ['ARS', 'USD', 'CAC', 'original'], default: 'ARS' },
-  filtros_schema: { type: Schema.Types.Mixed, default: {} },
-  layout: { type: [Schema.Types.Mixed], default: [] },
+  filtros_schema: FiltrosSchemaConfig,
+  layout: [BlockSchema],
 }, { timestamps: true });
-
-ReportSchema.index({ empresa_id: 1, updatedAt: -1 });
-ReportSchema.index({ empresa_id: 1, es_template: 1 });
 ```
+
+Sub-schemas relevantes:
+- `FiltroExtraSchema`: `{ categorias, proveedores, etapas }`
+- `MetricaConfigSchema`: Config de una métrica individual (14 campos)
+- `ColumnaConfigSchema`: Config de una columna de tabla (5 campos)
+- `BlockSchema`: Wrapper genérico con todos los campos posibles para los 8 tipos
+- `FiltrosSchemaConfig`: Configuración de disponibilidad de filtros (10 filtros)
 
 ---
 
-## 8. Exportación XLSX
+## 9. Backend Service (`reportService.js`)
 
-### Estrategia: 100% frontend
+| Método | Descripción |
+|--------|-------------|
+| `list(empresa_id)` | Lista reportes (resumen sin layout completo) |
+| `getById(id, empresa_id)` | Reporte completo |
+| `create(data)` | Valida `empresa_id` + `nombre` obligatorios |
+| `update(id, empresa_id, data)` | Previene sobrescribir `_id`, `createdAt`, `updatedAt`, `empresa_id` |
+| `delete(id, empresa_id)` | Hard delete |
+| `duplicate(id, empresa_id, nuevoNombre)` | Clona config, resetea timestamps, status = draft |
+| `createFromTemplate(templateId, empresa_id, overrides)` | Templates del sistema (`__system__`) o de la empresa |
+| `getTemplates(empresa_id)` | Busca templates con `es_template: true` |
+| `getByToken(token)` | Busca por `permisos.link_token` + `permisos.publico: true` |
+| `getPublicData(token)` | Igual que anterior + trae movimientos y presupuestos desde MongoDB |
+| `seedDefaultTemplatesIfMissing(empresaId)` | Siembra los 4 templates default si la empresa no tiene ninguno. Idempotente (usa upsert) |
 
-Ya existe la librería `xlsx` (`SheetJS`) usada en `presupuestos.js`. Se reutiliza.
+### `getPublicData` — Lógica de proyectos para vista pública
 
-### Flujo
+```
+1. Si filtros_schema.proyectos.fijos = true y proyecto_ids definidos
+   → fetchMovimientosByProyectos(proyecto_ids)
+2. Si report.proyectos_compartidos tiene IDs
+   → fetchMovimientosByProyectos(proyectos_compartidos)
+3. Fallback
+   → fetchMovimientosByEmpresa(empresa_id)
+```
+
+Los movimientos se traen de **MongoDB** (no Firestore) server-side.
+
+---
+
+## 10. Templates Default (`defaultTemplates.js`)
+
+Se siembran automáticamente la primera vez que una empresa accede a sus templates (`seedDefaultTemplatesIfMissing`). Son 4 templates:
+
+| Nombre | Datasets | Bloques |
+|--------|----------|---------|
+| **Estado de Obra** | Movimientos | metric_cards + summary_table (por categoría) + movements_table |
+| **Caja General** | Movimientos | metric_cards (ingresos/egresos) + summary_table (por mes) |
+| **Resumen por Proveedor** | Movimientos | summary_table (por proveedor, top 15) |
+| **Presupuesto vs Real** | Movimientos + Presupuestos | metric_cards + budget_vs_actual |
+
+Los templates tienen `empresa_id` asignado a la empresa destino (no son templates de sistema global). Pueden ser editados por el equipo después de creados.
+
+---
+
+## 11. Exportación
+
+### XLSX (100% frontend)
+
+Usa la librería `xlsx` (SheetJS) ya presente en el proyecto:
 
 ```
 Usuario clickea "Exportar Excel"
 │
-├─ 1. Tomar resultados actuales del engine (ya computados)
-│
-├─ 2. Generar workbook:
-│     ├─ Hoja "Resumen": métricas como tabla (nombre | valor)
-│     ├─ Hoja "Desglose": tabla resumen agrupada
-│     ├─ Hoja "Presupuesto vs Ejecutado": si hay bloque budget_vs_actual
-│     └─ Hoja "Movimientos": tabla de detalle
-│
-├─ 3. Formato: headers en negrita, números formateados, moneda como prefijo
-│
-└─ 4. Descargar: XLSX.writeFile(wb, `${reporte.nombre}.xlsx`)
+├─ 1. Tomar resultados actuales del engine (ya en memoria)
+├─ 2. Generar workbook con hojas separadas por bloque
+└─ 3. XLSX.writeFile(wb, `${reporte.nombre}.xlsx`)
+```
+
+### PDF (server-side)
+
+```
+POST /api/reports/export-pdf
+Body: { reportConfig, results, ... }
+→ Backend usa generarReportePDF()
+→ Devuelve URL del PDF generado
 ```
 
 ### Copiar tabla al clipboard
 
-Los componentes de tabla tendrán un botón "Copiar". Implementación:
-
 ```javascript
-// Convertir filas a TSV (Tab-Separated Values) compatible con Excel/Google Sheets
+// TSV compatible con Excel/Google Sheets
 const tsv = [headers.join('\t'), ...rows.map(r => r.join('\t'))].join('\n');
 navigator.clipboard.writeText(tsv);
 ```
 
 ---
 
-## 9. Estructura de Archivos (Frontend)
+## 12. Estructura de Archivos
+
+### Frontend
 
 ```
 src/
-├── pages/
-│   └── reportes.js                    // Página principal: listado + vista + editor
+├── pages/reportes/
+│   ├── index.js                       // Listado de reportes de la empresa
+│   ├── [id].js                        // Vista + editor de un reporte
+│   └── public/[token].js              // Vista pública sin login
 │
 ├── tools/
-│   └── reportEngine.js                // Engine puro (sin React). Toda la lógica de cómputo
+│   └── reportEngine.js                // Engine puro (~1.750 LOC)
 │
-├── components/
-│   └── reportes/
-│       ├── ReportList.js              // Listado de reportes (Home)
-│       ├── ReportView.js              // Vista de lectura de un reporte
-│       ├── ReportFiltersBar.js        // Barra de filtros globales
-│       ├── ReportEditor.js            // Editor/wizard para crear/editar
-│       ├── ReportExport.js            // Lógica de exportación XLSX
-│       │
-│       │── blocks/                    // Un componente por tipo de bloque
-│       │   ├── MetricCardsBlock.js
-│       │   ├── SummaryTableBlock.js
-│       │   ├── MovementsTableBlock.js
-│       │   └── BudgetVsActualBlock.js
-│       │
-│       └── editor/                    // Sub-componentes del editor
-│           ├── BlockConfigurator.js   // Config de un bloque (form)
-│           ├── FilterToggle.js        // Toggle de filtros habilitados
-│           └── MetricConfigurator.js  // Config de una métrica individual
+├── components/reportes/
+│   ├── ReportView.js                  // Renderiza los bloques (ejecuta engine)
+│   ├── ReportFiltersBar.js            // Barra de filtros interactiva
+│   ├── ReportEditor.js                // Editor DataStudio-style (left panel config + right panel preview)
+│   ├── BlockEditorDialog.js           // Dialog para configurar un bloque (8 tipos)
+│   ├── DrillDownDialog.js             // Modal con movimientos al hacer click en un dato agrupado
+│   │
+│   └── blocks/
+│       ├── MetricCardsBlock.js
+│       ├── SummaryTableBlock.js
+│       ├── MovementsTableBlock.js
+│       ├── BudgetVsActualBlock.js
+│       ├── CategoryBudgetMatrixBlock.js
+│       ├── ChartBlock.js
+│       ├── GroupedDetailBlock.js
+│       └── BalanceBetweenPartnersBlock.js
 │
-├── services/
-│   └── reportService.js               // Axios wrapper para /api/reports
+└── services/
+    └── reportService.js               // Axios wrapper para /api/reports
 ```
 
-### Estructura Backend
+### Backend
 
 ```
 src/
-├── models/
-│   └── Report.js                      // Schema Mongoose
+├── models/report/
+│   └── ReportModel.js                 // Schema Mongoose (todos los sub-schemas)
 │
 ├── routes/
 │   └── reportRoutes.js                // Express router
 │
-├── controllers/
-│   └── reportController.js            // Handlers (thin: valida + llama service)
+├── controllers/report/
+│   └── reportController.js            // Handlers (delgados: valida + llama service)
 │
-└── services/
-    └── reportService.js               // CRUD MongoDB (create, update, delete, list, duplicate)
+└── services/report/
+    ├── reportService.js               // CRUD + getPublicData + seedDefaultTemplatesIfMissing
+    └── defaultTemplates.js            // Definición de los 4 templates default
 ```
 
 ---
 
-## 10. Campos del Movimiento relevantes para Reportes
+## 13. Campos de Movimiento relevantes para el Engine
 
-Estos son los campos que el Report Engine necesita leer:
-
-| Campo | Tipo | Uso en reportes |
-|-------|------|----------------|
-| `fecha_factura` | Timestamp | Filtro por fecha, agrupación por mes |
+| Campo | Tipo | Uso |
+|-------|------|-----|
+| `fecha_factura` | Timestamp / ISO string | Filtro por fecha, agrupación por mes |
 | `type` | `'egreso'` \| `'ingreso'` | Filtro por tipo |
 | `total` | Number | Monto principal |
 | `subtotal` | Number | Monto sin impuestos |
 | `moneda` | `'ARS'` \| `'USD'` | Moneda original |
-| `equivalencias` | Object | Conversión multi-moneda (ver estructura arriba) |
-| `categoria` | String | Agrupación/filtro |
-| `subcategoria` | String | Agrupación/filtro |
+| `equivalencias` | Object | `{ total: { ars, usd_blue, cac }, subtotal: { ... } }` |
+| `categoria` | String | Agrupación/filtro (null → 'Sin categoría') |
 | `nombre_proveedor` | String | Agrupación/filtro |
 | `etapa` | String | Agrupación/filtro |
+| `medio_pago` | String | Agrupación/filtro |
 | `proyecto_id` | String | Filtro por proyecto |
-| `proyecto_nombre` | String | Display en tablas |
-| `observacion` | String | Display en detalle |
-| `tipo_comprobante` | String | Display |
-| `numero_factura` | String | Display |
-| `medio_pago` | String | Filtro/agrupación |
-| `empresa_id` | String | Filtro base |
-| `imagen_url` | String | Link a comprobante |
-| `codigo` | String | Referencia |
+| `proyecto` / `proyecto_nombre` | String | Display + agrupación |
+| `observacion` / `notas` | String | Display en detalle |
+| `empresa_id` | String | Filtro base (todos los movimientos ya son de la empresa) |
+| `usuario_nombre`, `usuario`, `user_id` | String / Object | Filtro por usuario (multi-campo) |
+| `telefono` / `from` | String | Identificación de socio (para balance_between_partners) |
 
 ---
 
-## 11. Plan de Migración Futura (si el frontend se queda corto)
+## 14. Plan de Migración Futura
 
-Si en el futuro el volumen de datos supera lo razonable para frontend (~10.000+ movimientos), el plan es:
+Si el volumen supera lo razonable para frontend (~10.000+ movimientos):
 
 1. Crear un sync periódico Firestore → MongoDB (cloud function o cron)
-2. Mover el `reportEngine.js` al backend (ya es JS puro, portable)
+2. Mover `reportEngine.js` al backend (ya es JS puro, portable)
 3. El endpoint `POST /reports/run` ejecuta el engine server-side
 4. El frontend solo renderiza resultados
 
-La arquitectura actual (engine como módulo puro sin dependencias de React) está diseñada para que esta migración sea un cambio de dónde se invoca, no de qué se invoca.
+La arquitectura actual (engine como módulo puro sin dependencias de React) está diseñada para que esta migración sea mínima.

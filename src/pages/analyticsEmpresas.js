@@ -53,8 +53,10 @@ import {
   Search as SearchIcon,
   Lightbulb as LightbulbIcon,
   WhatsApp as WhatsAppIcon,
-  Web as WebIcon
+  Web as WebIcon,
+  FileDownload as FileDownloadIcon
 } from '@mui/icons-material';
+import * as XLSX from 'xlsx';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
@@ -769,6 +771,48 @@ const AnalyticsEmpresasPage = () => {
     return `${desde} - ${hasta} (${periodoInfo.dias} días)`;
   };
 
+  const getExportData = () => {
+    return filteredEmpresas.map(emp => ({
+      'Empresa': emp.nombre,
+      'Estado': emp.esCliente ? (emp.estaDadoDeBaja ? 'Baja' : 'Cliente') : 'No Cliente',
+      'Total Usuarios': emp.totalUsuarios || 0,
+      'Usuarios Validados': emp.usuariosValidados || 0,
+      'Con Movimientos': emp.usuariosConMovimientos || 0,
+      'Movs. Periodo': emp.movimientosEnPeriodo || 0,
+      'Movs. Histórico': emp.totalMovimientos || 0,
+      'Movs. WhatsApp': emp.movimientosPorOrigen?.whatsapp || 0,
+      'Movs. Web': emp.movimientosPorOrigen?.web || 0,
+      'Remitos Periodo': emp.remitosEnPeriodo || 0,
+      'Acopios Totales': emp.totalAcopios || 0,
+      'Insights Periodo': emp.insightsEnPeriodo || 0,
+      'Cliente Desde': emp.esCliente ? (emp.fechaRegistroCliente ? new Date(emp.fechaRegistroCliente).toLocaleDateString('es-AR') : '') : '-',
+      'Último Uso': emp.ultimoUso ? new Date(emp.ultimoUso).toLocaleDateString('es-AR') : '-'
+    }));
+  };
+
+  const exportToExcel = () => {
+    const data = getExportData();
+    const worksheet = XLSX.utils.json_to_sheet(data);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Empresas");
+    XLSX.writeFile(workbook, `analytics_empresas_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
+  const exportToCSV = () => {
+    const data = getExportData();
+    const worksheet = XLSX.utils.json_to_sheet(data);
+    const csvData = XLSX.utils.sheet_to_csv(worksheet);
+    const blob = new Blob([csvData], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `analytics_empresas_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   // Si hay que mostrar el selector de fechas
   if (showDateSelector) {
     return (
@@ -905,6 +949,22 @@ const AnalyticsEmpresasPage = () => {
                   </Button>
                 </Stack>
               </Box>
+              <Stack direction="row" spacing={1}>
+                <Button 
+                  variant="outlined" 
+                  startIcon={<FileDownloadIcon />} 
+                  onClick={exportToCSV}
+                >
+                  CSV
+                </Button>
+                <Button 
+                  variant="contained" 
+                  startIcon={<FileDownloadIcon />} 
+                  onClick={exportToExcel}
+                >
+                  Excel
+                </Button>
+              </Stack>
             </Box>
 
             {/* Tarjetas de resumen - SOLO CLIENTES */}

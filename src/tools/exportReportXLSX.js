@@ -42,6 +42,9 @@ export function exportReportToXLSX(reportConfig, results, movimientos = [], disp
       case 'budget_vs_actual':
         exportBudgetVsActual(wb, sheetName, block.data, displayCurrency);
         break;
+      case 'monthly_budget_control':
+        exportMonthlyBudgetControl(wb, sheetName, block.data, displayCurrency);
+        break;
       case 'category_budget_matrix':
         exportCategoryBudgetMatrix(wb, sheetName, block.data, displayCurrency);
         break;
@@ -188,6 +191,58 @@ function exportBudgetVsActual(wb, name, data, displayCurrency) {
   }
 
   const ws = XLSX.utils.json_to_sheet(xlsRows);
+  XLSX.utils.book_append_sheet(wb, ws, name);
+}
+
+function exportMonthlyBudgetControl(wb, name, data) {
+  const {
+    obra_nombre: obraNombre,
+    fecha_inicio: fechaInicio,
+    presupuesto_label: presupuestoLabel,
+    presupuesto_total: presupuestoTotal = 0,
+    categories = [],
+    rows = [],
+    totals,
+  } = data || {};
+
+  const formatDate = (value) => {
+    if (!value) return '';
+    const d = new Date(value);
+    return isNaN(d.getTime()) ? '' : d.toLocaleDateString('es-AR');
+  };
+
+  const aoa = [
+    ['Control presupuestario'],
+    ['Obra', obraNombre || ''],
+    ['Fecha de inicio', formatDate(fechaInicio)],
+    [presupuestoLabel || 'Egresos proyectados', presupuestoTotal],
+    [],
+    ['Mes', ...categories, 'Total mes', 'Acumulado', '% avance', 'Gasto CAC'],
+  ];
+
+  for (const row of rows) {
+    aoa.push([
+      row.mesLabel,
+      ...categories.map((category) => Number(row.categorias?.[category] || 0)),
+      Number(row.total || 0),
+      Number(row.acumulado || 0),
+      row.porcentaje_avance != null ? `${(row.porcentaje_avance * 100).toFixed(2)}%` : '',
+      Number(row.total_cac || 0),
+    ]);
+  }
+
+  if (totals) {
+    aoa.push([
+      totals.label || 'Total',
+      ...categories.map((category) => Number(totals.categorias?.[category] || 0)),
+      Number(totals.total || 0),
+      Number(totals.acumulado || 0),
+      totals.porcentaje_avance != null ? `${(totals.porcentaje_avance * 100).toFixed(2)}%` : '',
+      Number(totals.total_cac || 0),
+    ]);
+  }
+
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
   XLSX.utils.book_append_sheet(wb, ws, name);
 }
 

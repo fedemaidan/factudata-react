@@ -1,11 +1,12 @@
 /**
- * ImputarPagoDialog — distribuye un pago entre múltiples remitos pendientes de un proveedor.
+ * ImputarPagoDialog — distribuye un pago entre remitos pendientes seleccionados de un proveedor.
  *
- * Paso 1: ingresar monto total del pago + fecha.
- * Paso 2: tabla de remitos pendientes con input editable por fila.
+ * Paso 1: seleccionar qué facturas incluir (checkboxes) + ingresar monto + fecha.
+ * Paso 2: tabla de remitos seleccionados con input editable por fila.
  *         La suma debe coincidir con el monto ingresado en paso 1.
  *
  * Al confirmar lanza un PATCH por cada remito afectado usando buildInlinePagoPatch.
+ * Prop `remitoInicial`: si se provee, pre-selecciona solo esa factura al abrir.
  */
 
 import { useEffect, useMemo, useState } from 'react';
@@ -13,6 +14,7 @@ import {
   Alert,
   Box,
   Button,
+  Checkbox,
   CircularProgress,
   Dialog,
   DialogActions,
@@ -80,25 +82,42 @@ const buildPatch = (movimiento, nextMontoPagado, fechaPago) => {
  * @param {string}   props.proveedor     — nombre del proveedor
  * @param {Array}    props.remitos        — movimientos pendientes del proveedor
  */
-export default function ImputarPagoDialog({ open, onClose, onSuccess, proveedor, remitos = [] }) {
+export default function ImputarPagoDialog({ open, onClose, onSuccess, proveedor, remitos = [], remitoInicial = null, selectedIdsInicial = null }) {
   const [step, setStep] = useState(1);
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [montoTotal, setMontoTotal] = useState('');
   const [fechaPago, setFechaPago] = useState('');
   const [importes, setImportes] = useState({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // Montos rápidos precalculados
-  const totalAprobadoPendiente = useMemo(
-    () => remitos.reduce((acc, r) => acc + Math.max(0, (Number(r.monto_aprobado) || 0) - (Number(r.monto_pagado) || 0)), 0),
-    [remitos]
-  );
-  const totalPedidoPendiente = useMemo(
-    () => remitos.reduce((acc, r) => acc + Math.max(0, (Number(r.total) || 0) - (Number(r.monto_pagado) || 0)), 0),
-    [remitos]
+  // Remitos filtrados según selección
+  const remitosFiltrados = useMemo(
+    () => remitos.filter((r) => selectedIds.has(r.id || r._id)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [remitos, selectedIds]
   );
 
-  // Inicializar fecha a hoy al abrir
+  const toggleSelection = (id) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  // Montos rápidos precalculados (sobre las facturas seleccionadas)
+  const totalAprobadoPendiente = useMemo(
+    () => remitosFiltrados.reduce((acc, r) => acc + Math.max(0, (Number(r.monto_aprobado) || 0) - (Number(r.monto_pagado) || 0)), 0),
+    [remitosFiltrados]
+  );
+  const totalPedidoPendiente = useMemo(
+    () => remitosFiltrados.reduce((acc, r) => acc + Math.max(0, (Number(r.total) || 0) - (Number(r.monto_pagado) || 0)), 0),
+    [remitosFiltrados]
+  );
+
+  // Inicializar al abrir
   useEffect(() => {
     if (open) {
       const hoy = new Date();
@@ -108,7 +127,17 @@ export default function ImputarPagoDialog({ open, onClose, onSuccess, proveedor,
       setImportes({});
       setStep(1);
       setError(null);
+    // Selección inicial: prioridad selectedIdsInicial > remitoInicial > todo
+      if (selectedIdsInicial?.length > 0) {
+        setSelectedIds(new Set(selectedIdsInicial));
+      } else if (remitoInicial) {
+        const rid = remitoInicial.id || remitoInicial._id;
+        setSelectedIds(new Set([rid]));
+      } else {
+        setSelectedIds(new Set(remitos.map((r) => r.id || r._id)));
+      }
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   const montoTotalNum = normalizeAmount(montoTotal) || 0;
@@ -117,17 +146,17 @@ export default function ImputarPagoDialog({ open, onClose, onSuccess, proveedor,
     [importes]
   );
   const diferencia = montoTotalNum - sumaImportes;
-  const importesValidos = Math.abs(diferencia) < 0.005;
+  const importesValidos = selectedIds.size > 0 && Math.abs(diferencia) < 0.005;
 
   const handleMontoChange = (id, value) => {
     setImportes((prev) => ({ ...prev, [id]: value }));
   };
 
-  // Distribuir automáticamente el monto entre los remitos (FIFO por deuda)
+  // Distribuir automáticamente el monto entre los remitos seleccionados (FIFO por deuda)
   const handleAutoDistribuir = () => {
     let restante = montoTotalNum;
     const nuevo = {};
-    for (const rem of remitos) {
+    for (const rem of remitosFiltrados) {
       if (restante <= 0) break;
       const deuda = (Number(rem.total) || 0) - (Number(rem.monto_pagado) || 0);
       const asignar = Math.min(restante, deuda);
@@ -144,7 +173,7 @@ export default function ImputarPagoDialog({ open, onClose, onSuccess, proveedor,
     setLoading(true);
     const fechaTs = dateToTimestamp(fechaPago) || buildTodayTimestamp();
     try {
-      const tareas = remitos
+      const tareas = remitosFiltrados
         .map((rem) => {
           const id = rem.id || rem._id;
           const monto = normalizeAmount(importes[id]);
@@ -165,6 +194,40 @@ export default function ImputarPagoDialog({ open, onClose, onSuccess, proveedor,
     }
   };
 
+  // Confirma directamente (sin step 2) cuando no hace falta distribuir:
+  // - 1 sola factura, O
+  // - monto cubre la deuda total de todas las seleccionadas
+  const puedeConfirmarDirecto = remitosFiltrados.length === 1 || montoTotalNum >= totalPedidoPendiente - 0.005;
+
+  const handleConfirmarDirecto = async () => {
+    setError(null);
+    setLoading(true);
+    const fechaTs = dateToTimestamp(fechaPago) || buildTodayTimestamp();
+    try {
+      // Distribuir FIFO: cubrir la deuda de cada factura en orden
+      let restante = montoTotalNum;
+      const tareas = [];
+      for (const rem of remitosFiltrados) {
+        if (restante <= 0) break;
+        const deuda = Math.max(0, (Number(rem.total) || 0) - (Number(rem.monto_pagado) || 0));
+        const asignar = Math.min(restante, deuda);
+        if (asignar > 0) {
+          const id = rem.id || rem._id;
+          tareas.push(movimientosService.updateMovimiento(id, buildPatch(rem, asignar, fechaTs)));
+          restante -= asignar;
+        }
+      }
+      await Promise.all(tareas);
+      onSuccess?.();
+      onClose?.();
+    } catch (err) {
+      console.error('Error al imputar pago:', err);
+      setError('Ocurrió un error al guardar. Verificá la conexión e intentá nuevamente.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
       <DialogTitle>
@@ -178,6 +241,28 @@ export default function ImputarPagoDialog({ open, onClose, onSuccess, proveedor,
 
         {step === 1 && (
           <Stack spacing={2} sx={{ pt: 1 }}>
+            {/* Resumen de facturas incluidas */}
+            <Box sx={{ bgcolor: 'grey.50', borderRadius: 1, px: 2, py: 1.5 }}>
+              <Typography variant="caption" color="text.secondary" fontWeight={600} display="block" sx={{ mb: 0.5 }}>
+                {remitosFiltrados.length === 1 ? 'Factura a pagar' : `Facturas a pagar (${remitosFiltrados.length})`}
+              </Typography>
+              {remitosFiltrados.map((rem) => {
+                const deuda = Math.max(0, (Number(rem.total) || 0) - (Number(rem.monto_pagado) || 0));
+                return (
+                  <Typography key={rem.id || rem._id} variant="body2" color="text.primary">
+                    {formatTimestamp(rem.fecha_factura)}{rem.categoria ? ` — ${rem.categoria}` : ''}
+                    {' '}
+                    <Typography component="span" variant="body2" color="text.secondary">
+                      (deuda: {formatCurrencyWithCode(deuda)})
+                    </Typography>
+                  </Typography>
+                );
+              })}
+              {remitosFiltrados.length === 0 && (
+                <Typography variant="body2" color="warning.main">No hay facturas seleccionadas.</Typography>
+              )}
+            </Box>
+
             <TextField
               label="Monto total del pago"
               type="number"
@@ -250,7 +335,7 @@ export default function ImputarPagoDialog({ open, onClose, onSuccess, proveedor,
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {remitos.map((rem) => {
+                  {remitosFiltrados.map((rem) => {
                     const id = rem.id || rem._id;
                     const deuda = (Number(rem.total) || 0) - (Number(rem.monto_pagado) || 0);
                     return (
@@ -297,10 +382,11 @@ export default function ImputarPagoDialog({ open, onClose, onSuccess, proveedor,
         {step === 1 && (
           <Button
             variant="contained"
-            disabled={montoTotalNum <= 0 || !fechaPago}
-            onClick={() => setStep(2)}
+            disabled={selectedIds.size === 0 || montoTotalNum <= 0 || !fechaPago || loading}
+            onClick={() => puedeConfirmarDirecto ? handleConfirmarDirecto() : setStep(2)}
+            startIcon={loading && puedeConfirmarDirecto ? <CircularProgress size={16} /> : null}
           >
-            Siguiente
+            {puedeConfirmarDirecto ? 'Confirmar pago' : 'Siguiente — distribuir'}
           </Button>
         )}
 

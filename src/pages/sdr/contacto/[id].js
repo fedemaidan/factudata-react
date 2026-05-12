@@ -1978,6 +1978,11 @@ const ContactoSDRDetailPage = () => {
                                                 ✉️ {contacto.email}
                                             </Typography>
                                         )}
+                                        {contacto.rubro && (
+                                            <Typography variant="caption" color="text.secondary" fontSize="0.78rem">
+                                                🏷️ {contacto.rubro}
+                                            </Typography>
+                                        )}
                                     </Stack>
 
                                     {/* Datos del Bot — inline key:value + A/B + agendar */}

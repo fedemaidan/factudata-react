@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import PresupuestoProfesionalService from 'src/services/presupuestoProfesional/presupuestoProfesionalService';
 
 const mapRubrosImportados = (rubros = []) => {
@@ -38,6 +38,11 @@ const validateImportFiles = (files) => {
   return null;
 };
 
+const isExcelFile = (file) =>
+  /\.(xlsx|xls)$/i.test(file?.name || '') ||
+  (file?.type || '').includes('spreadsheet') ||
+  (file?.type || '').includes('excel');
+
 const usePlantillaImport = ({ empresaId, showAlert, onImportSuccess }) => {
   const [openImport, setOpenImport] = useState(false);
   const [importFiles, setImportFiles] = useState([]);
@@ -45,8 +50,50 @@ const usePlantillaImport = ({ empresaId, showAlert, onImportSuccess }) => {
   const [importName, setImportName] = useState('');
   const [importTipo, setImportTipo] = useState('');
   const [importPhase, setImportPhase] = useState('idle');
+  const [availableSheets, setAvailableSheets] = useState([]);
+  const [selectedSheet, setSelectedSheet] = useState('');
+  const [inspecting, setInspecting] = useState(false);
 
-  const fileGroupError = useMemo(() => validateImportFiles(importFiles), [importFiles]);
+  const baseFileError = useMemo(() => validateImportFiles(importFiles), [importFiles]);
+  const sheetSelectionPending =
+    importFiles.length === 1 && isExcelFile(importFiles[0]) && availableSheets.length > 1 && !selectedSheet;
+  const fileGroupError = baseFileError || (sheetSelectionPending ? 'Elegí qué hoja importar.' : null);
+
+  useEffect(() => {
+    if (importFiles.length !== 1) {
+      setAvailableSheets([]);
+      setSelectedSheet('');
+      return;
+    }
+    const file = importFiles[0];
+    if (isImageFile(file)) {
+      setAvailableSheets([]);
+      setSelectedSheet('');
+      return;
+    }
+
+    let cancelled = false;
+    setInspecting(true);
+    PresupuestoProfesionalService.inspectPlantilla(file)
+      .then((res) => {
+        if (cancelled) return;
+        const sheets = Array.isArray(res?.sheets) ? res.sheets : [];
+        setAvailableSheets(sheets);
+        setSelectedSheet(sheets.length === 1 ? sheets[0] : '');
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setAvailableSheets([]);
+        setSelectedSheet('');
+      })
+      .finally(() => {
+        if (!cancelled) setInspecting(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [importFiles]);
 
   const handleAddImportFiles = (files = []) => {
     if (!files.length) return;
@@ -74,6 +121,9 @@ const usePlantillaImport = ({ empresaId, showAlert, onImportSuccess }) => {
     setImportName('');
     setImportTipo('');
     setImportPhase('idle');
+    setAvailableSheets([]);
+    setSelectedSheet('');
+    setInspecting(false);
   };
 
   const handleOpenImportDialog = () => {
@@ -105,7 +155,8 @@ const usePlantillaImport = ({ empresaId, showAlert, onImportSuccess }) => {
         importFiles,
         empresaId,
         importName,
-        importTipo
+        importTipo,
+        selectedSheet || undefined
       );
 
       const sourceName = importFiles[0]?.name || '';
@@ -144,8 +195,12 @@ const usePlantillaImport = ({ empresaId, showAlert, onImportSuccess }) => {
     importTipo,
     importPhase,
     fileGroupError,
+    availableSheets,
+    selectedSheet,
+    inspecting,
     setImportName,
     setImportTipo,
+    setSelectedSheet,
     handleOpenImportDialog,
     handleCloseImportDialog,
     handleAddImportFiles,

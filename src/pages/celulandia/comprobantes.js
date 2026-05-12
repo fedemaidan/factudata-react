@@ -473,6 +473,7 @@ const ComprobantesCelulandiaPage = () => {
 
       <ComprobanteModal open={modalOpen} onClose={handleCloseModal} imagenUrl={imagenModal} />
       <EditarModal
+        key={selectedData?._id || "none"}
         open={editarModalOpen}
         onClose={() => setEditarModalOpen(false)}
         data={selectedData}

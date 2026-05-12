@@ -78,7 +78,7 @@ const ListaProyectosPage = () => {
                       <TableCell><Button
                             color="primary"
                             startIcon={<EditIcon />}
-                            onClick={() => router.push('/cajaProyecto/?proyectoId=' + proyecto.id)}
+                            onClick={() => router.push('/cajas?proyectoId=' + proyecto.id)}
                           >
                             Ver proyecto
                           </Button></TableCell>

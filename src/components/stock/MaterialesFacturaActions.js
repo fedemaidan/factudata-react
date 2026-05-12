@@ -21,6 +21,7 @@ import {
   FormControlLabel,
   FormControl,
   FormLabel,
+  Divider,
 } from '@mui/material';
 import WarehouseIcon from '@mui/icons-material/Warehouse';
 import HomeWorkIcon from '@mui/icons-material/HomeWork';
@@ -49,6 +50,8 @@ const STEP_DISCREPANCIAS = 3;
 const STEP_RESULTADO = 4;
 // Fase 3: paso de espera mientras DistribuirMaterialesDialog está abierto
 const STEP_DISTRIBUIR = 5;
+// Paso de confirmación antes de crear solicitud (depósito / directo a obra)
+const STEP_CONFIRMACION = 6;
 
 const DESTINOS = {
   ACOPIO: 'acopio',
@@ -122,13 +125,20 @@ const MaterialesFacturaActions = ({
       return;
     }
     setDestino(dest);
+    // Pre-seleccionar la obra del movimiento cuando va directo a obra
+    if (dest === DESTINOS.DIRECTO_OBRA && movimiento?.proyecto_id) {
+      const obraDelMovimiento = proyectos.find(
+        (p) => (p.id || p._id) === movimiento.proyecto_id
+      ) || null;
+      setProyectoSeleccionado(obraDelMovimiento);
+    }
     // DISTRIBUIR no tiene sub-opciones: saltar directo a extracción
     if (dest === DESTINOS.DISTRIBUIR) {
       setStep(STEP_SUBOPCIONES);
       return;
     }
     setStep(STEP_SUBOPCIONES);
-  }, [onDismiss]);
+  }, [onDismiss, movimiento, proyectos]);
 
   // --- Crear ticket/acopio con materiales extraidos ---
   const crearDestinoConMateriales = useCallback(async (materiales) => {
@@ -181,19 +191,26 @@ const MaterialesFacturaActions = ({
         });
         resultData = { tipo: 'acopio', id: res.data?.acopio_id, data: res.data };
 
-        // Persistir acopio_id en Firestore (solo campos nuevos, no spread completo)
+        // Persistir acopio_id en MongoDB (acumular en array)
+        const acopioId = res.data?.acopio_id;
         await movimientosService.updateMovimiento(movimientoId, {
-          acopio_id: res.data?.acopio_id,
+          acopio_id: acopioId,
+          acopios_ids: [acopioId].filter(Boolean),
           stock_procesado: true,
         });
+
+        // Para acopio: redirigir directamente sin mostrar pantalla de resultado
+        setLoading(false);
+        onComplete?.({ tipo: 'acopio', acopio_id: res.data?.acopio_id });
+        return;
       } else {
         // Solicitud de stock (deposito, directo obra, o pendiente)
         // destino_stock: 'deposito' = reservado en deposito, 'obra' = consumido/entregado en obra
         // subtipo: COMPRA = compra normal, COMPRA_DIRECTA = directo a obra, PENDIENTE_ASIGNAR = sin obra
         let subtipo = 'COMPRA';
         let destinoStock = 'deposito';
-        let proyId = null;
-        let proyNombre = null;
+        let solicProyId = null;
+        let solicProyNombre = null;
 
         if (destino === DESTINOS.DEPOSITO && subOpcion === SUB_DEPOSITO.PENDIENTE) {
           subtipo = 'PENDIENTE_ASIGNAR';
@@ -201,33 +218,34 @@ const MaterialesFacturaActions = ({
         } else if (destino === DESTINOS.DEPOSITO && subOpcion === SUB_DEPOSITO.RESERVADO_OBRA) {
           subtipo = 'COMPRA';
           destinoStock = 'deposito';
-          proyId = proyectoSeleccionado?.id || proyectoSeleccionado?._id;
-          proyNombre = proyectoSeleccionado?.nombre;
+          solicProyId = proyectoSeleccionado?.id || proyectoSeleccionado?._id;
+          solicProyNombre = proyectoSeleccionado?.nombre;
         } else if (destino === DESTINOS.DIRECTO_OBRA) {
           subtipo = 'COMPRA_DIRECTA';
           destinoStock = 'obra';
-          proyId = proyectoSeleccionado?.id || proyectoSeleccionado?._id;
-          proyNombre = proyectoSeleccionado?.nombre;
+          solicProyId = proyectoSeleccionado?.id || proyectoSeleccionado?._id;
+          solicProyNombre = proyectoSeleccionado?.nombre;
         }
 
-        const res = await api.post('/solicitud-material/from-caja', {
+        const solRes = await api.post('/solicitud-material/from-caja', {
           empresa_id: empresaId,
           empresa_nombre: empresaNombre,
           movimiento_caja_id: movimientoId,
           materiales: materialesValidos,
-          proyecto_id: proyId,
-          proyecto_nombre: proyNombre,
+          proyecto_id: solicProyId,
+          proyecto_nombre: solicProyNombre,
           subtipo,
           destino: destinoStock,
           proveedor: nombreProveedor ? { nombre: nombreProveedor } : null,
           validacion_movimientos: stockConfig.validacion_movimientos || false,
         });
-        const data = res.data?.data || res.data;
+        const data = solRes.data?.data || solRes.data;
         resultData = { tipo: 'solicitud', id: data.solicitud_id, data };
 
-        // Persistir solicitud_stock_id en Firestore (solo campos nuevos, no spread completo)
+        // Persistir solicitud_stock_id en MongoDB (acumular en array)
         await movimientosService.updateMovimiento(movimientoId, {
           solicitud_stock_id: data.solicitud_id,
+          solicitudes_stock_ids: [data.solicitud_id].filter(Boolean),
           stock_procesado: true,
         });
       }
@@ -322,8 +340,10 @@ const MaterialesFacturaActions = ({
           } else if (destino === DESTINOS.DISTRIBUIR) {
             setStep(STEP_DISTRIBUIR);
             setOpenDistribuir(true);
-          } else {
+          } else if (destino === DESTINOS.ACOPIO) {
             await crearDestinoConMateriales(statusRes.materiales);
+          } else {
+            setStep(STEP_CONFIRMACION);
           }
           return;
         }
@@ -362,6 +382,12 @@ const MaterialesFacturaActions = ({
       setOpenDistribuir(true);
       return;
     }
+    if (destino === DESTINOS.DEPOSITO || destino === DESTINOS.DIRECTO_OBRA) {
+      setMaterialesExtraidos(materialesResueltos);
+      setStep(STEP_CONFIRMACION);
+      return;
+    }
+    // ACOPIO (y cualquier otro): crear directamente sin paso de confirmacion
     await crearDestinoConMateriales(materialesResueltos);
   }, [destino, materialesExtraidos, resoluciones, crearDestinoConMateriales]);
 
@@ -439,9 +465,10 @@ const MaterialesFacturaActions = ({
       return 'Opciones';
     }
     if (step === STEP_EXTRACCION) return 'Extrayendo materiales...';
-    if (step === STEP_DISCREPANCIAS) return 'Verificacion de materiales';
+    if (step === STEP_DISCREPANCIAS) return 'Revisar datos dudosos';
     if (step === STEP_RESULTADO) return 'Resultado';
     if (step === STEP_DISTRIBUIR) return 'Distribuyendo materiales...';
+    if (step === STEP_CONFIRMACION) return 'Confirmar materiales';
     return '';
   }, [step, destino]);
 
@@ -595,7 +622,7 @@ const MaterialesFacturaActions = ({
       <CircularProgress size={48} />
       <Typography variant="subtitle2">Extrayendo materiales de la factura...</Typography>
       <Typography variant="caption" color="text.secondary">
-        Modo preciso (O3 + verificacion). Puede tardar ~1 min por hoja.
+        Gemini 2.5 Flash + GPT-5.4 · verificacion doble. Puede tardar ~1 min por hoja.
       </Typography>
       <Box sx={{ width: '100%' }}>
         <LinearProgress variant="determinate" value={progreso} sx={{ height: 6, borderRadius: 3 }} />
@@ -607,24 +634,84 @@ const MaterialesFacturaActions = ({
   );
 
   const renderStepDiscrepancias = () => (
-    <Stack spacing={2}>
-      <Alert severity="warning" variant="outlined">
-        Se encontraron {materialesConDiscrepancia.length} material(es) con discrepancias entre la extraccion y la verificacion.
-        Revisa y elegi el valor correcto para cada uno.
-      </Alert>
+    <Stack spacing={2.5}>
+      {/* Imagen de referencia */}
+      {urlImagen && (
+        <Box>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.75 }}>
+            Imagen de la factura — usala para elegir el valor correcto
+          </Typography>
+          <Box
+            component="img"
+            src={urlImagen}
+            alt="Factura"
+            sx={{
+              width: '100%',
+              maxHeight: 320,
+              objectFit: 'contain',
+              borderRadius: 1,
+              border: '1px solid',
+              borderColor: 'divider',
+              bgcolor: 'grey.50',
+              cursor: 'zoom-in',
+              display: 'block',
+            }}
+            onClick={() => window.open(urlImagen, '_blank')}
+          />
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+            Clic para abrir en tamaño completo
+          </Typography>
+        </Box>
+      )}
+
+      <Divider />
+
+      <Typography variant="body2" color="text.secondary">
+        La IA leyó dos valores distintos para {materialesConDiscrepancia.length === 1 ? 'este campo' : 'estos campos'}.
+        Mirá la imagen y elegí el correcto.
+      </Typography>
 
       {materialesConDiscrepancia.map((mat) => {
         const idx = mat._idx;
         const v = mat._verificacion || {};
+        const descripcion = mat.descripcion || mat.nombre || null;
+        const codigo = mat.codigo || mat.SKU || null;
+        // Título claro del material
+        let tituloMaterial = descripcion || (codigo ? `Código ${codigo}` : `Línea ${idx + 1} de la factura`);
+        // Subtítulo: si tiene descripción, mostrar el código como referencia
+        const subtituloMaterial = descripcion && codigo ? `Cód. ${codigo}` : null;
+
         return (
           <Paper key={idx} variant="outlined" sx={{ p: 2 }}>
-            <Typography variant="subtitle2" sx={{ mb: 1 }}>
-              {mat.descripcion || mat.nombre || 'Material ' + (idx + 1)}
-            </Typography>
+            <Stack direction="row" alignItems="flex-start" spacing={1} sx={{ mb: 1.5 }}>
+              <Box
+                sx={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: '50%',
+                  bgcolor: 'warning.100',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                  mt: 0.25,
+                }}
+              >
+                <Typography variant="caption" sx={{ fontWeight: 700, color: 'warning.dark' }}>
+                  ?
+                </Typography>
+              </Box>
+              <Box>
+                <Typography variant="subtitle2">{tituloMaterial}</Typography>
+                {subtituloMaterial && (
+                  <Typography variant="caption" color="text.secondary">{subtituloMaterial}</Typography>
+                )}
+              </Box>
+            </Stack>
 
             {v.requiere_cantidad_input && (
               <FormControl sx={{ mb: 1.5 }} fullWidth>
-                <FormLabel sx={{ fontSize: '0.8rem' }}>Cantidad</FormLabel>
+                <FormLabel sx={{ fontSize: '0.8rem', mb: 0.5 }}>¿Cuál es la cantidad?</FormLabel>
                 <RadioGroup
                   value={resoluciones[idx]?.cantidad ?? ''}
                   onChange={(e) => setResoluciones((prev) => ({
@@ -635,12 +722,12 @@ const MaterialesFacturaActions = ({
                   <FormControlLabel
                     value={String(v.cantidad_original)}
                     control={<Radio size="small" />}
-                    label={'Extraccion: ' + v.cantidad_original}
+                    label={<Typography variant="body2" sx={{ fontWeight: 500 }}>{v.cantidad_original}</Typography>}
                   />
                   <FormControlLabel
                     value={String(v.cantidad_verificada)}
                     control={<Radio size="small" />}
-                    label={'Verificacion: ' + v.cantidad_verificada}
+                    label={<Typography variant="body2" sx={{ fontWeight: 500 }}>{v.cantidad_verificada}</Typography>}
                   />
                 </RadioGroup>
               </FormControl>
@@ -648,7 +735,7 @@ const MaterialesFacturaActions = ({
 
             {v.requiere_precio_input && (
               <FormControl sx={{ mb: 1.5 }} fullWidth>
-                <FormLabel sx={{ fontSize: '0.8rem' }}>Precio unitario</FormLabel>
+                <FormLabel sx={{ fontSize: '0.8rem', mb: 0.5 }}>¿Cuál es el precio unitario?</FormLabel>
                 <RadioGroup
                   value={resoluciones[idx]?.precio ?? ''}
                   onChange={(e) => setResoluciones((prev) => ({
@@ -659,12 +746,12 @@ const MaterialesFacturaActions = ({
                   <FormControlLabel
                     value={String(v.precio_original)}
                     control={<Radio size="small" />}
-                    label={'Extraccion: $' + v.precio_original}
+                    label={<Typography variant="body2" sx={{ fontWeight: 500 }}>${v.precio_original}</Typography>}
                   />
                   <FormControlLabel
                     value={String(v.precio_verificado)}
                     control={<Radio size="small" />}
-                    label={'Verificacion: $' + v.precio_verificado}
+                    label={<Typography variant="body2" sx={{ fontWeight: 500 }}>${v.precio_verificado}</Typography>}
                   />
                 </RadioGroup>
               </FormControl>
@@ -672,7 +759,7 @@ const MaterialesFacturaActions = ({
 
             {v.requiere_codigo_input && (
               <FormControl fullWidth>
-                <FormLabel sx={{ fontSize: '0.8rem' }}>Codigo</FormLabel>
+                <FormLabel sx={{ fontSize: '0.8rem', mb: 0.5 }}>¿Cuál es el código?</FormLabel>
                 <RadioGroup
                   value={resoluciones[idx]?.codigo ?? ''}
                   onChange={(e) => setResoluciones((prev) => ({
@@ -683,12 +770,12 @@ const MaterialesFacturaActions = ({
                   <FormControlLabel
                     value={v.codigo_original || ''}
                     control={<Radio size="small" />}
-                    label={'Extraccion: ' + (v.codigo_original || '(vacio)')}
+                    label={<Typography variant="body2" sx={{ fontWeight: 500 }}>{v.codigo_original || '(sin código)'}</Typography>}
                   />
                   <FormControlLabel
                     value={v.codigo_verificado || ''}
                     control={<Radio size="small" />}
-                    label={'Verificacion: ' + (v.codigo_verificado || '(vacio)')}
+                    label={<Typography variant="body2" sx={{ fontWeight: 500 }}>{v.codigo_verificado || '(sin código)'}</Typography>}
                   />
                 </RadioGroup>
               </FormControl>
@@ -736,7 +823,7 @@ const MaterialesFacturaActions = ({
             url_imagen_compra: urlImagen ? [urlImagen] : [],
           });
           if (!acopioPrincipal) acopioPrincipal = res.data?.acopio_id;
-          resultados.push({ tipo: 'acopio', id: res.data?.acopio_id, data: res.data });
+          resultados.push({ tipo: 'acopio', id: res.data?.acopio_id, data: res.data, proyecto_nombre, dest, items: materialesNorm.length });
         } else {
           let subtipo = 'COMPRA';
           let destinoStock = 'deposito';
@@ -761,13 +848,21 @@ const MaterialesFacturaActions = ({
           });
           const data = res.data?.data || res.data;
           if (!solicitudPrincipal) solicitudPrincipal = data.solicitud_id;
-          resultados.push({ tipo: 'solicitud', id: data.solicitud_id, data });
+          resultados.push({ tipo: 'solicitud', id: data.solicitud_id, data, proyecto_nombre, dest, items: materialesNorm.length });
         }
       }
 
+      const todasSolicitudes = resultados.filter(r => r.tipo === 'solicitud').map(r => r.id).filter(Boolean);
+      const todosAcopios = resultados.filter(r => r.tipo === 'acopio').map(r => r.id).filter(Boolean);
       const updateData = { stock_procesado: true };
-      if (solicitudPrincipal) updateData.solicitud_stock_id = solicitudPrincipal;
-      if (acopioPrincipal) updateData.acopio_id = acopioPrincipal;
+      if (todasSolicitudes.length) {
+        updateData.solicitud_stock_id = todasSolicitudes[0];
+        updateData.solicitudes_stock_ids = todasSolicitudes;
+      }
+      if (todosAcopios.length) {
+        updateData.acopio_id = todosAcopios[0];
+        updateData.acopios_ids = todosAcopios;
+      }
       await movimientosService.updateMovimiento(movimientoId, updateData);
 
       setResultado({ tipo: 'distribuido', resultados, total: resultados.length });
@@ -779,6 +874,126 @@ const MaterialesFacturaActions = ({
       onError?.(msg);
     }
   }, [empresaId, empresaNombre, movimientoId, urlImagen, nombreProveedor, stockConfig, onError]);
+
+  // --- Confirmar materiales antes de crear solicitud (STEP_CONFIRMACION) ---
+  const handleConfirmConfirmacion = useCallback(async () => {
+    await crearDestinoConMateriales(materialesExtraidos);
+  }, [crearDestinoConMateriales, materialesExtraidos]);
+
+  const patchMaterialExtraido = useCallback((idx, field, value) => {
+    setMaterialesExtraidos((prev) =>
+      prev.map((m, i) => (i === idx ? { ...m, [field]: value } : m))
+    );
+  }, []);
+
+  const removeMaterialExtraido = useCallback((idx) => {
+    setMaterialesExtraidos((prev) => prev.filter((_, i) => i !== idx));
+  }, []);
+
+  const renderStepConfirmacion = () => {
+    let resumenDestino = '';
+    if (destino === DESTINOS.DEPOSITO) {
+      resumenDestino = subOpcion === SUB_DEPOSITO.PENDIENTE
+        ? 'Depósito — Pendiente de asignar'
+        : `Depósito — Reservado para ${proyectoSeleccionado?.nombre || 'obra'}`;
+    } else if (destino === DESTINOS.DIRECTO_OBRA) {
+      resumenDestino = `Directo a obra — ${proyectoSeleccionado?.nombre || ''}`;
+    }
+
+    return (
+      <Stack spacing={2}>
+        <Alert severity="info" variant="outlined" sx={{ py: 0.75 }}>
+          <Typography variant="body2" fontWeight={600}>{resumenDestino}</Typography>
+          <Typography variant="caption" color="text.secondary">
+            Revisá y editá los materiales antes de confirmar
+          </Typography>
+        </Alert>
+
+        {urlImagen && (
+          <Box
+            component="img"
+            src={urlImagen}
+            alt="Factura"
+            sx={{
+              width: '100%',
+              maxHeight: 220,
+              objectFit: 'contain',
+              borderRadius: 1,
+              border: '1px solid',
+              borderColor: 'divider',
+              bgcolor: 'grey.50',
+              cursor: 'zoom-in',
+            }}
+            onClick={() => window.open(urlImagen, '_blank')}
+          />
+        )}
+
+        <Stack spacing={1}>
+          {materialesExtraidos.map((m, i) => {
+            const nombre = m.descripcion || m.nombre || m.Nombre || '';
+            return (
+              <Paper key={i} variant="outlined" sx={{ px: 1.5, py: 1 }}>
+                <Stack direction="row" alignItems="center" spacing={1}>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                      {nombre || `Línea ${i + 1}`}
+                      {(m.codigo || m.SKU) && (
+                        <Typography component="span" variant="caption" color="text.disabled" sx={{ ml: 0.75 }}>
+                          · {m.codigo || m.SKU}
+                        </Typography>
+                      )}
+                    </Typography>
+                    <Stack direction="row" spacing={1}>
+                      <TextField
+                        label="Cantidad"
+                        size="small"
+                        type="number"
+                        value={m.cantidad ?? ''}
+                        onChange={(e) => patchMaterialExtraido(i, 'cantidad', parseFloat(e.target.value) || '')}
+                        inputProps={{ min: 0, step: 'any' }}
+                        sx={{ width: 100 }}
+                      />
+                      <TextField
+                        label="Precio unit."
+                        size="small"
+                        type="number"
+                        value={m.valorUnitario ?? m.precio_unitario ?? ''}
+                        onChange={(e) => {
+                          const v = e.target.value === '' ? null : parseFloat(e.target.value);
+                          patchMaterialExtraido(i, 'valorUnitario', v);
+                        }}
+                        inputProps={{ min: 0, step: 'any' }}
+                        sx={{ width: 120 }}
+                      />
+                      {m.unidad && (
+                        <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center' }}>
+                          {m.unidad}
+                        </Typography>
+                      )}
+                    </Stack>
+                  </Box>
+                  <IconButton
+                    size="small"
+                    onClick={() => removeMaterialExtraido(i)}
+                    aria-label="Eliminar material"
+                    sx={{ color: 'text.disabled', '&:hover': { color: 'error.main' } }}
+                  >
+                    <CloseIcon fontSize="small" />
+                  </IconButton>
+                </Stack>
+              </Paper>
+            );
+          })}
+        </Stack>
+
+        {materialesExtraidos.length === 0 && (
+          <Alert severity="warning" variant="outlined">
+            No quedan materiales. Volvé para reintentar la extracción.
+          </Alert>
+        )}
+      </Stack>
+    );
+  };
 
   const renderStepResultado = () => {
     if (loading) {
@@ -799,6 +1014,16 @@ const MaterialesFacturaActions = ({
     if (!resultado) return null;
 
     // Resultado distribuido
+    const DEST_LABEL = {
+      acopio: 'Acopio',
+      deposito: 'Depósito',
+      obra: 'Directo a obra',
+      pendiente_asignar: 'Pendiente asignar',
+      directo_obra: 'Directo a obra',
+      para_obra: 'Para obra',
+    };
+    const destLabel = (r) => DEST_LABEL[r.dest] || r.dest || (r.tipo === 'acopio' ? 'Acopio' : 'Depósito');
+
     if (resultado.tipo === 'distribuido') {
       return (
         <Paper variant="outlined" sx={{ p: 2, bgcolor: 'success.50', borderColor: 'success.light' }}>
@@ -821,7 +1046,7 @@ const MaterialesFacturaActions = ({
                     : '/movimientosAcopio?acopioId=' + r.id
                 }
               >
-                {r.tipo === 'solicitud' ? `Ver solicitud ${String(r.id || '').slice(-6)}` : `Ver acopio ${String(r.id || '').slice(-6)}`}
+                {[r.proyecto_nombre, `${destLabel(r)} (${r.items ?? '?'} ítems)`].filter(Boolean).join(' · ')}
               </Button>
             ))}
           </Stack>
@@ -875,7 +1100,7 @@ const MaterialesFacturaActions = ({
     <Dialog
       open={open}
       onClose={step === STEP_EXTRACCION ? undefined : onClose}
-      maxWidth="sm"
+      maxWidth={step === STEP_DISCREPANCIAS ? 'md' : 'sm'}
       fullWidth
       PaperProps={{ sx: { minHeight: 300 } }}
     >
@@ -904,6 +1129,7 @@ const MaterialesFacturaActions = ({
         {step === STEP_SUBOPCIONES && renderStepSubOpciones()}
         {step === STEP_EXTRACCION && renderStepExtraccion()}
         {step === STEP_DISCREPANCIAS && renderStepDiscrepancias()}
+        {step === STEP_CONFIRMACION && renderStepConfirmacion()}
         {step === STEP_RESULTADO && renderStepResultado()}
       </DialogContent>
 
@@ -916,7 +1142,7 @@ const MaterialesFacturaActions = ({
             disabled={!canConfirmSub || loading}
             startIcon={loading ? <CircularProgress size={16} /> : null}
           >
-            Extraer materiales y crear
+            Extraer materiales
           </Button>
         </DialogActions>
       )}
@@ -928,6 +1154,26 @@ const MaterialesFacturaActions = ({
             onClick={handleConfirmDiscrepancias}
             variant="contained"
             disabled={loading}
+            startIcon={loading ? <CircularProgress size={16} /> : null}
+          >
+            Confirmar
+          </Button>
+        </DialogActions>
+      )}
+
+      {step === STEP_CONFIRMACION && (
+        <DialogActions>
+          <Button
+            onClick={() => setStep(tieneDiscrepancias ? STEP_DISCREPANCIAS : STEP_SUBOPCIONES)}
+            variant="outlined"
+            disabled={loading}
+          >
+            Volver
+          </Button>
+          <Button
+            onClick={handleConfirmConfirmacion}
+            variant="contained"
+            disabled={loading || materialesExtraidos.length === 0}
             startIcon={loading ? <CircularProgress size={16} /> : null}
           >
             Confirmar y crear

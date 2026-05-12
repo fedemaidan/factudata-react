@@ -198,6 +198,7 @@ const PresupuestoDrawer = ({
   const [error, setError] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmGuardar, setConfirmGuardar] = useState(false);
+  const [confirmSalir, setConfirmSalir] = useState(false);
   const [recalculando, setRecalculando] = useState(false);
 
   /** Archivos seleccionados antes de crear el presupuesto (se suben tras el POST) */
@@ -403,6 +404,7 @@ const PresupuestoDrawer = ({
       setMovimientosLoading(false);
       setEquivToggles({ ars: true, usd: false, cac: false });
       setMovOrdenAsc(true);
+      setConfirmSalir(false);
     }
   }, [open]);
 
@@ -832,12 +834,49 @@ const PresupuestoDrawer = ({
 
   const label = mode === 'editar' ? presupuesto?.label : valorAgrupacion;
 
+  // Detectar si el formulario tiene cambios sin guardar
+  const isDirty = (() => {
+    if (mode === 'crear') {
+      return (
+        monto !== '' ||
+        fechaPresupuesto !== hoyStr ||
+        moneda !== 'ARS' ||
+        indexacion !== null ||
+        proveedorInput !== '' ||
+        pendingAdjuntosFiles.length > 0 ||
+        (showFullForm && (proyectoSel !== (proyectoId || '') || categoriaSel !== '' || etapaSel !== ''))
+      );
+    }
+    const originalMonto = String(presupuesto?.monto_ingresado || presupuesto?.monto || '');
+    const originalFecha = presupuesto?.fecha_presupuesto || presupuesto?.cotizacion_snapshot?.fecha_presupuesto || hoyStr;
+    const originalMoneda = presupuesto?.moneda_display || presupuesto?.moneda || 'ARS';
+    const originalIndexacion = presupuesto?.indexacion || null;
+    const originalBaseCalculo = presupuesto?.base_calculo || 'total';
+    return (
+      String(nuevoMonto) !== originalMonto ||
+      fechaPresupuesto !== originalFecha ||
+      nuevaMoneda !== originalMoneda ||
+      nuevaIndexacion !== originalIndexacion ||
+      nuevaBaseCalculo !== originalBaseCalculo ||
+      adicionalMonto !== '' ||
+      adicionalConcepto !== ''
+    );
+  })();
+
+  const handleRequestClose = () => {
+    if (isDirty && !loading) {
+      setConfirmSalir(true);
+    } else {
+      onClose();
+    }
+  };
+
   return (
     <>
     <Drawer
       anchor="right"
       open={open}
-      onClose={onClose}
+      onClose={handleRequestClose}
       PaperProps={{ sx: { width: { xs: '100%', sm: (activeTab === TAB_MAP.movimientos || activeTab === TAB_MAP.adjuntos) ? 720 : 480 }, transition: 'width 0.3s ease' } }}
     >
       <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -859,7 +898,7 @@ const PresupuestoDrawer = ({
               )
             )}
           </Stack>
-          <IconButton onClick={onClose} disabled={recalculando}>
+          <IconButton onClick={handleRequestClose} disabled={recalculando}>
             <CloseIcon />
           </IconButton>
         </Stack>
@@ -2563,6 +2602,18 @@ const PresupuestoDrawer = ({
         </Box>
       </Box>
     </Drawer>
+
+    {/* Dialog de confirmación para salir sin guardar */}
+    <Dialog open={confirmSalir} onClose={() => setConfirmSalir(false)} maxWidth="xs" fullWidth>
+      <DialogTitle>¿Salir sin guardar?</DialogTitle>
+      <DialogContent>
+        <Typography sx={{ pt: 1 }}>Tenés cambios sin guardar. Si salís ahora, se perderá la información ingresada.</Typography>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={() => setConfirmSalir(false)}>Cancelar</Button>
+        <Button color="error" variant="contained" onClick={() => { setConfirmSalir(false); onClose(); }}>Salir sin guardar</Button>
+      </DialogActions>
+    </Dialog>
 
     {/* Dialog de confirmación para guardar */}
     <Dialog open={confirmGuardar} onClose={() => setConfirmGuardar(false)} maxWidth="xs" fullWidth>
