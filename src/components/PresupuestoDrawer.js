@@ -358,7 +358,7 @@ const PresupuestoDrawer = ({
         setIndexacion(null);
         setCacTipo('general');
         setBaseCalculo('total');
-        setProveedorInput('');
+        setProveedoresSel([]);
         setProyectoSel(proyectoId || '');
         setClasificacionesSel([]);
         setEtapaSel('');
