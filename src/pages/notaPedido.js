@@ -54,6 +54,7 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import DownloadIcon from '@mui/icons-material/Download';
 import HomeIcon from '@mui/icons-material/Home';
 import AssignmentIcon from '@mui/icons-material/Assignment';
+import UndoIcon from '@mui/icons-material/Undo';
 import InboxIcon from '@mui/icons-material/Inbox';
 import HistoryIcon from '@mui/icons-material/History';
 import PersonIcon from '@mui/icons-material/Person';
@@ -195,6 +196,7 @@ const NotaPedidoPage = () => {
   const [currentNota, setCurrentNota] = useState(null);
   const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
   const [notaToDelete, setNotaToDelete] = useState(null);
+  const [deshacerConfirm, setDeshacerConfirm] = useState(null); // { itemId, resolucionId, label }
   const [profiles, setProfiles] = useState([]);
   const [proyectos, setProyectos] = useState([]);
   const [notasEstados, setNotasEstados] = useState([]);
@@ -1256,6 +1258,24 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
     }
   };
 
+  const handleDeshacerResolucion = async (itemId, resolucionId) => {
+    if (!comentariosDialogNota) return;
+    try {
+      const result = await notaPedidoService.deshacerResolucion(comentariosDialogNota.id, itemId, resolucionId);
+      if (result?.nota) {
+        setComentariosDialogNota(result.nota);
+        setNotas((prev) => prev.map((n) => n.id === result.nota.id ? result.nota : n));
+        setFilteredNotas((prev) => prev.map((n) => n.id === result.nota.id ? result.nota : n));
+      }
+      setAlert({ open: true, message: 'Resolución revertida', severity: 'success' });
+    } catch (err) {
+      const msg = err?.response?.data?.error || 'Error al revertir la resolución';
+      setAlert({ open: true, message: msg, severity: 'error' });
+    } finally {
+      setDeshacerConfirm(null);
+    }
+  };
+
   const handleConfirmarEntrega = useCallback(async (itemId, resolucionId) => {
     if (!comentariosDialogNota) return;
     try {
@@ -2281,6 +2301,25 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
   </DialogActions>
 </Dialog>
 
+<Dialog open={!!deshacerConfirm} onClose={() => setDeshacerConfirm(null)}>
+  <DialogTitle>Deshacer resolución</DialogTitle>
+  <DialogContent>
+    <Typography>
+      ¿Deshacer la resolución <strong>{deshacerConfirm?.label}</strong>? Se creará el movimiento compensatorio correspondiente y el ítem volverá al estado anterior.
+    </Typography>
+  </DialogContent>
+  <DialogActions>
+    <Button onClick={() => setDeshacerConfirm(null)}>Cancelar</Button>
+    <Button
+      color="error"
+      variant="contained"
+      onClick={() => handleDeshacerResolucion(deshacerConfirm.itemId, deshacerConfirm.resolucionId)}
+    >
+      Deshacer
+    </Button>
+  </DialogActions>
+</Dialog>
+
 <NotaPedidoLogoRequeridoDialog
   open={openLogoRequeridoModal}
   onClose={() => setOpenLogoRequeridoModal(false)}
@@ -2470,6 +2509,7 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
               <Stack direction="row" spacing={1} alignItems="center">
                 <span>Ítems</span>
                 <Chip label={comentariosDialogNota.items.length} size="small" variant="outlined" sx={{ height: 20, fontSize: '0.7rem' }} />
+                <Chip label="beta" size="small" color="warning" sx={{ height: 16, fontSize: '0.6rem', fontWeight: 700 }} />
               </Stack>
             }
             icon={<AssignmentIcon sx={{ fontSize: 18 }} />}
@@ -2777,13 +2817,30 @@ const [archivoSeleccionado, setArchivoSeleccionado] = useState(null);
                                     {seguimiento.descripcion}
                                   </Typography>
                                 )}
-                                {documento?.href && (
-                                  <Tooltip title="Abrir documento">
-                                    <IconButton size="small" onClick={() => router.push(documento.href)} sx={{ p: 0.25, color: 'primary.main', ml: 'auto' }}>
-                                      <OpenInNewIcon sx={{ fontSize: 13 }} />
-                                    </IconButton>
-                                  </Tooltip>
-                                )}
+                                <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                  {documento?.href && (
+                                    <Tooltip title="Abrir documento">
+                                      <IconButton size="small" onClick={() => router.push(documento.href)} sx={{ p: 0.25, color: 'primary.main' }}>
+                                        <OpenInNewIcon sx={{ fontSize: 13 }} />
+                                      </IconButton>
+                                    </Tooltip>
+                                  )}
+                                  {canResolve && !resolucion.revertida && resolucion.tipo !== 'cancelacion' && (
+                                    <Tooltip title="Deshacer esta resolución">
+                                      <IconButton
+                                        size="small"
+                                        onClick={() => setDeshacerConfirm({
+                                          itemId: item._id?.toString() || item.id,
+                                          resolucionId: resolucion._id?.toString() || resolucion.id,
+                                          label: getResolucionTipoLabel(resolucion.tipo),
+                                        })}
+                                        sx={{ p: 0.25, color: 'text.disabled', '&:hover': { color: 'error.main' } }}
+                                      >
+                                        <UndoIcon sx={{ fontSize: 13 }} />
+                                      </IconButton>
+                                    </Tooltip>
+                                  )}
+                                </Box>
                               </Box>
                             );
                           })}
