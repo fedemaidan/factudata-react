@@ -32,8 +32,8 @@ La carga masiva permite al usuario crear múltiples movimientos en una sola sesi
 | 2 | **Planilla:** sube hasta 10 archivos (`.csv`, `.xlsx`, `.xls`; ~10 MB c/u). Para Excel multi-hoja, selecciona hojas. |
 | 3 | **Categorías:** revisión y mapeo de categorías detectadas. |
 | 4 | **Proveedores:** revisión y mapeo de proveedores detectados. |
-| 5 | **Aclaraciones:** instrucciones adicionales para la IA + selector "Creador del lote" (default = usuario logueado). Aplica a todas las filas; se puede sobrescribir por fila en el paso siguiente. |
-| 6 | **Validación:** tabla con filas procesadas por IA. Se puede editar, omitir o aprobar cada fila. La tabla muestra columnas adicionales **Estado** y **Creador**. En el modal de edición se puede modificar estado (`Pendiente / Parcialmente Pagado / Pagado`), `monto_pagado` (solo si Parcialmente Pagado + egreso) y creador. |
+| 5 | **Aclaraciones:** instrucciones adicionales para la IA (texto libre). El creador de cada fila lo detecta GPT automáticamente a partir de los datos de la planilla y la lista de perfiles de la empresa (que el backend inyecta en el prompt). El usuario puede corregirlo manualmente fila por fila en el paso siguiente. |
+| 6 | **Validación:** tabla con filas procesadas por IA. Se puede editar, omitir o aprobar cada fila. La tabla muestra columnas adicionales **Estado** y **Creador**. En el modal de edición se puede modificar estado (`Pendiente / Parcialmente Pagado / Pagado`), `monto_pagado` (solo si Parcialmente Pagado + egreso) y creador (override manual sobre la detección de GPT). |
 | 7 | **Resumen:** confirmación final y creación de movimientos. |
 
 ## Límites y constantes
