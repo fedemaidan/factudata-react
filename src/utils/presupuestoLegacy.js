@@ -4,20 +4,11 @@
  */
 
 export function getClasificacionesEfectivas(presupuesto) {
-  if (!presupuesto) return [];
-  if (Array.isArray(presupuesto.clasificaciones) && presupuesto.clasificaciones.length > 0) {
-    return presupuesto.clasificaciones.map((c) => ({
-      categoria: c.categoria,
-      subcategorias: Array.isArray(c.subcategorias) ? [...c.subcategorias] : [],
-    }));
-  }
-  if (presupuesto.categoria && presupuesto.subcategoria) {
-    return [{ categoria: presupuesto.categoria, subcategorias: [presupuesto.subcategoria] }];
-  }
-  if (presupuesto.categoria) {
-    return [{ categoria: presupuesto.categoria, subcategorias: [] }];
-  }
-  return [];
+  if (!presupuesto || !Array.isArray(presupuesto.clasificaciones)) return [];
+  return presupuesto.clasificaciones.map((c) => ({
+    categoria: c.categoria,
+    subcategorias: Array.isArray(c.subcategorias) ? [...c.subcategorias] : [],
+  }));
 }
 
 export function normalizarClasificacionesUI(clasif) {

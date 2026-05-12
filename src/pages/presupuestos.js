@@ -320,8 +320,6 @@ const PresupuestosPage = () => {
         proyecto_id: p.proyecto_id || null,
         proveedor: p.proveedor || null,
         clasificaciones: getClasificacionesEfectivas(p),
-        categoria: p.categoria || null,
-        subcategoria: p.subcategoria || null,
         etapa: p.etapa || null,
       },
     });

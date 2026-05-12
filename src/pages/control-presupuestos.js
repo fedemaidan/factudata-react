@@ -58,7 +58,22 @@ import { getEmpresaById, getEmpresaDetailsFromUser } from 'src/services/empresaS
 import proveedorService from 'src/services/proveedorService';
 import { getProyectosFromUser } from 'src/services/proyectosService';
 import { formatCurrency, formatTimestamp } from 'src/utils/formatters';
-import { getClasificacionesEfectivas } from 'src/utils/presupuestoLegacy';
+import { getClasificacionesEfectivas, formatClasificacionesText } from 'src/utils/presupuestoLegacy';
+
+// ─── Helpers de item de presupuesto (multi-categoría) ────────────────────────
+const itemTieneCategorias = (item) =>
+  Array.isArray(item?.clasificaciones) && item.clasificaciones.length > 0;
+const itemEsGeneral = (item) =>
+  !itemTieneCategorias(item) && !item?.etapa && !item?.proveedor;
+const itemMatcheaCategoria = (item, cat) =>
+  (item?.clasificaciones || []).some((c) => c.categoria === cat);
+const labelItem = (item, fallback = 'Ingreso general') => {
+  const partes = [];
+  if (itemTieneCategorias(item)) partes.push(formatClasificacionesText(item.clasificaciones));
+  if (item?.etapa) partes.push(item.etapa);
+  if (item?.proveedor) partes.push(item.proveedor);
+  return partes.length > 0 ? partes.join(' · ') : fallback;
+};
 import dayjs from 'dayjs';
 import PresupuestoDrawer from 'src/components/PresupuestoDrawer';
 import Tooltip from '@mui/material/Tooltip';
@@ -99,8 +114,8 @@ const calcularTotalesResumen = (resumen, tipoCambio = null, monedaVista = 'ARS')
   // Sumar items separando general (techo) de específicos (asignaciones)
   const sumarPorTipo = (porMoneda) => {
     const allItems = Object.values(porMoneda || {}).flatMap(m => m.items || []);
-    const generales = allItems.filter(i => !i.categoria && !i.etapa && !i.proveedor);
-    const especificos = allItems.filter(i => i.categoria || i.etapa || i.proveedor);
+    const generales = allItems.filter(itemEsGeneral);
+    const especificos = allItems.filter((i) => !itemEsGeneral(i));
     
     if (generales.length > 0) {
       let total = generales.reduce((s, i) => s + convertir(i.monto || 0, i.moneda || 'ARS', i.cac_tipo), 0);
@@ -565,8 +580,8 @@ const ControlPresupuestosPage = () => {
     
     const sumarPorTipo = (obtenerItems) => {
       const items = obtenerItems();
-      const generales = items.filter(i => !i.categoria && !i.etapa && !i.proveedor);
-      const especificos = items.filter(i => i.categoria || i.etapa || i.proveedor);
+      const generales = items.filter(itemEsGeneral);
+      const especificos = items.filter((i) => !itemEsGeneral(i));
       
       if (generales.length > 0) {
         // Hay presupuesto general: usarlo como techo
@@ -699,9 +714,9 @@ const ControlPresupuestosPage = () => {
     if (allItems.length === 0) return { presupuesto: null, ejecutado: 0, id: null, historial: [], moneda: 'ARS' };
     
     const items = allItems.filter(item => {
-      if (tipoAgrupacion === 'categoria') return item.categoria === valor && !item.etapa && !item.proveedor;
-      if (tipoAgrupacion === 'etapa') return item.etapa === valor && !item.categoria && !item.proveedor;
-      if (tipoAgrupacion === 'proveedor') return item.proveedor === valor && !item.categoria && !item.etapa;
+      if (tipoAgrupacion === 'categoria') return itemMatcheaCategoria(item, valor) && !item.etapa && !item.proveedor;
+      if (tipoAgrupacion === 'etapa') return item.etapa === valor && !itemTieneCategorias(item) && !item.proveedor;
+      if (tipoAgrupacion === 'proveedor') return item.proveedor === valor && !itemTieneCategorias(item) && !item.etapa;
       return false;
     });
     
@@ -734,8 +749,6 @@ const ControlPresupuestosPage = () => {
       tipo: item.tipo || 'egreso',
       proveedor: item.proveedor || null,
       clasificaciones: getClasificacionesEfectivas(item),
-      categoria: item.categoria || null,
-      subcategoria: item.subcategoria || null,
       etapa: item.etapa || null,
     };
   };
@@ -801,8 +814,6 @@ const ControlPresupuestosPage = () => {
         fecha_presupuesto: item.fecha_presupuesto || null,
         proveedor: item.proveedor || null,
         clasificaciones: getClasificacionesEfectivas(item),
-        categoria: item.categoria || null,
-        subcategoria: item.subcategoria || null,
         etapa: item.etapa || null,
         proyecto_id: item.proyecto_id || proyectoSeleccionado || null,
       },
@@ -829,8 +840,6 @@ const ControlPresupuestosPage = () => {
     fecha_presupuesto: item.fecha_presupuesto || null,
     proveedor: item.proveedor || null,
     clasificaciones: getClasificacionesEfectivas(item),
-    categoria: item.categoria || null,
-    subcategoria: item.subcategoria || null,
     etapa: item.etapa || null,
     proyecto_id: item.proyecto_id || proyectoSeleccionado || null,
   });
@@ -869,29 +878,28 @@ const ControlPresupuestosPage = () => {
     const items = obtenerTodosLosItemsEgresos();
     const conv = (i) => convertir(i.monto || 0, i.moneda || 'ARS', i.cac_tipo);
     
-    // Presupuesto general (sin categoria, etapa ni proveedor)
+    // Presupuesto general (sin clasificaciones, etapa ni proveedor)
     const general = items
-      .filter(i => !i.categoria && !i.etapa && !i.proveedor)
+      .filter(itemEsGeneral)
       .reduce((sum, i) => sum + conv(i), 0);
-    
-    // ID del presupuesto general
-    const generalItem = items.find(i => !i.categoria && !i.etapa && !i.proveedor);
+
+    const generalItem = items.find(itemEsGeneral);
     const generalId = generalItem?.id || null;
     const generalHistorial = generalItem?.historial || [];
-    
-    // Suma de presupuestos por categoría
+
+    // Suma de presupuestos con clasificaciones (cada item cuenta una sola vez, aunque cubra N categorías)
     const porCategoria = items
-      .filter(i => i.categoria && !i.etapa && !i.proveedor)
+      .filter(i => itemTieneCategorias(i) && !i.etapa && !i.proveedor)
       .reduce((sum, i) => sum + conv(i), 0);
-    
+
     // Suma de presupuestos por etapa
     const porEtapa = items
-      .filter(i => i.etapa && !i.categoria && !i.proveedor)
+      .filter(i => i.etapa && !itemTieneCategorias(i) && !i.proveedor)
       .reduce((sum, i) => sum + conv(i), 0);
-    
+
     // Suma de presupuestos por proveedor
     const porProveedor = items
-      .filter(i => i.proveedor && !i.categoria && !i.etapa)
+      .filter(i => i.proveedor && !itemTieneCategorias(i) && !i.etapa)
       .reduce((sum, i) => sum + conv(i), 0);
     
     return { porCategoria, porEtapa, porProveedor, general, generalId, generalHistorial, generalItem: generalItem || null };
@@ -1323,7 +1331,7 @@ const ControlPresupuestosPage = () => {
                             const saldoEnARS = esIdx && idxActual ? (item.monto - (item.ejecutado || 0)) * idxActual : null;
                             const fmtARS = (v) => v != null ? `$${Number(v).toLocaleString('es-AR', { maximumFractionDigits: 0 })}` : '';
                             const fmtUnidad = (v) => `${Number(v).toLocaleString('es-AR', { maximumFractionDigits: 2 })} ${unidadIdx}`;
-                            const label = [item.categoria, item.etapa, item.proveedor].filter(Boolean).join(' · ') || 'Ingreso general';
+                            const label = labelItem(item);
                             return (
                               <Paper key={item.id} variant="outlined" sx={{ p: { xs: 1.5, md: 2 } }}>
                                 {/* Fila 1: label + badges */}
@@ -1521,7 +1529,7 @@ const ControlPresupuestosPage = () => {
                                     size="small"
                                     sx={{ minWidth: 'auto', px: 0.5, fontSize: '0.7rem' }}
                                     onClick={() => {
-                                      const generalItem = obtenerTodosLosItemsEgresos().find(i => !i.categoria && !i.etapa && !i.proveedor);
+                                      const generalItem = obtenerTodosLosItemsEgresos().find(itemEsGeneral);
                                       if (generalItem) abrirDrawerEditar(generalItem, 'General');
                                     }}
                                   >
@@ -1534,7 +1542,7 @@ const ControlPresupuestosPage = () => {
                                       color="info" 
                                       variant="outlined"
                                       onClick={() => {
-                                        const generalItem = obtenerTodosLosItemsEgresos().find(i => !i.categoria && !i.etapa && !i.proveedor);
+                                        const generalItem = obtenerTodosLosItemsEgresos().find(itemEsGeneral);
                                         if (generalItem) abrirDrawerEditar(generalItem, 'General');
                                       }}
                                       sx={{ cursor: 'pointer', height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }}

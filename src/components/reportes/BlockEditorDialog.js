@@ -1120,7 +1120,7 @@ function CategoryBudgetMatrixConfig({ block, onChange, proyectos = [] }) {
         size="small"
         fullWidth
         placeholder="Ej: Mano de obra"
-        helperText="Se compara contra el campo categoria/rubro del presupuesto."
+        helperText="Se compara contra las clasificaciones del presupuesto (matchea si alguna categoría coincide)."
       />
 
       <FormControl size="small" fullWidth>

@@ -136,9 +136,13 @@ function normalizeCategoryFilterValue(value) {
   return normalizeFilterText(value == null || value === '' ? 'Sin categoría' : value);
 }
 
-function getPresupuestoCategoryLabel(presupuesto) {
-  const value = presupuesto?.categoria ?? presupuesto?.rubro;
-  return value == null || value === '' ? 'Sin categoría' : value;
+function getPresupuestoCategorias(presupuesto) {
+  const cats = Array.isArray(presupuesto?.clasificaciones)
+    ? presupuesto.clasificaciones.map((c) => c.categoria).filter(Boolean)
+    : [];
+  if (cats.length > 0) return cats;
+  if (presupuesto?.rubro) return [presupuesto.rubro];
+  return ['Sin categoría'];
 }
 
 function getMovimientoUserCandidates(m) {
@@ -767,7 +771,7 @@ export function processBudgetVsActual(block, movimientos, presupuestos, currenci
   if (block.presupuestos_con_campo) {
     const campoReq = block.presupuestos_con_campo; // 'categoria' | 'etapa' | 'proveedor'
     presFiltered = presFiltered.filter((p) => {
-      if (campoReq === 'categoria') return !!(p.categoria || p.rubro);
+      if (campoReq === 'categoria') return !!(p.clasificaciones?.length || p.rubro);
       if (campoReq === 'etapa') return !!p.etapa;
       if (campoReq === 'proveedor') return !!(p.proveedor || p.nombre_proveedor);
       return true;
@@ -779,35 +783,33 @@ export function processBudgetVsActual(block, movimientos, presupuestos, currenci
     presFiltered = presFiltered.filter((p) => runtimeProjectIds.has(getPresupuestoProjectInfo(p).id));
   }
 
-  // Respetar filtro global de categorías también en presupuestos
+  // Respetar filtro global de categorías también en presupuestos (matchea si alguna clasificación coincide)
   if (runtimeCategorySet.size > 0) {
-    presFiltered = presFiltered.filter((p) => runtimeCategorySet.has(normalizeCategoryFilterValue(getPresupuestoCategoryLabel(p))));
+    presFiltered = presFiltered.filter((p) =>
+      getPresupuestoCategorias(p).some((cat) =>
+        runtimeCategorySet.has(normalizeCategoryFilterValue(cat))
+      )
+    );
   }
 
   // Excluir presupuestos específicos
   if (block.excluir?.presupuestos?.length > 0) {
     const exSet = new Set(block.excluir.presupuestos.map((n) => n.toLowerCase()));
     presFiltered = presFiltered.filter((p) => {
-      const nombre = (p.nombre || p.categoria || p.rubro || '').toLowerCase();
+      const nombre = (p.nombre || p.rubro || '').toLowerCase();
       return !exSet.has(nombre);
     });
   }
 
-  // Función para obtener clave de agrupación de un presupuesto
-  const getPresKey = (p) => {
+  // Función para obtener clave(s) de agrupación de un presupuesto.
+  // Para agrupar por categoría: un presupuesto con N clasificaciones genera N entradas
+  // (replicación — el monto se cuenta entero en cada categoría que cubre).
+  const getPresKeys = (p) => {
     switch (agruparPor) {
-      case 'etapa': return (p.etapa || 'Sin etapa').toLowerCase();
-      case 'proveedor': return (p.proveedor || p.nombre_proveedor || 'Sin proveedor').toLowerCase();
+      case 'etapa': return [(p.etapa || 'Sin etapa')];
+      case 'proveedor': return [(p.proveedor || p.nombre_proveedor || 'Sin proveedor')];
       case 'categoria':
-      default: return getPresupuestoCategoryLabel(p).toLowerCase();
-    }
-  };
-  const getPresNombre = (p) => {
-    switch (agruparPor) {
-      case 'etapa': return p.etapa || 'Sin etapa';
-      case 'proveedor': return p.proveedor || p.nombre_proveedor || 'Sin proveedor';
-      case 'categoria':
-      default: return getPresupuestoCategoryLabel(p);
+      default: return getPresupuestoCategorias(p);
     }
   };
 
@@ -819,22 +821,22 @@ export function processBudgetVsActual(block, movimientos, presupuestos, currenci
   const exclusionField = exclusionFieldByGroup[agruparPor];
   const exclusionSet = exclusionField ? toNormalizedSet(block.excluir?.[exclusionField] || []) : new Set();
   if (exclusionSet.size > 0) {
-    presFiltered = presFiltered.filter((p) => !exclusionSet.has(normalizeFilterText(getPresNombre(p))));
+    presFiltered = presFiltered.filter((p) =>
+      !getPresKeys(p).every((nombre) => exclusionSet.has(normalizeFilterText(nombre)))
+    );
   }
 
   // Mapear presupuestos por campo de agrupación
   const presMap = new Map();
   for (const p of presFiltered) {
-    const key = getPresKey(p);
-    if (!presMap.has(key)) {
-      presMap.set(key, {
-        nombre: getPresNombre(p),
-        presupuestado: 0,
-      });
+    const monto = getPresupuestoAmount(p, displayCurrency, cotizaciones);
+    for (const nombre of getPresKeys(p)) {
+      const key = String(nombre).toLowerCase();
+      if (!presMap.has(key)) {
+        presMap.set(key, { nombre, presupuestado: 0 });
+      }
+      presMap.get(key).presupuestado += monto;
     }
-    const entry = presMap.get(key);
-    // Sumar monto presupuestado (convertido a display currency usando cotizaciones live)
-    entry.presupuestado += getPresupuestoAmount(p, displayCurrency, cotizaciones);
   }
 
   // Agrupar movimientos por el campo seleccionado
@@ -940,10 +942,10 @@ export function processCategoryBudgetMatrix(block, movimientos, presupuestos, cu
       continue;
     }
 
-    // Filtrar por categoría específica (si fue indicada)
+    // Filtrar por categoría específica (matchea si alguna clasificación coincide).
     if (categoriaTarget) {
-      const categoriaPres = normalizeText(p.categoria || p.rubro || '');
-      if (categoriaPres !== categoriaTarget) {
+      const cats = getPresupuestoCategorias(p).map(normalizeText);
+      if (!cats.includes(categoriaTarget)) {
         continue;
       }
     }
@@ -1136,12 +1138,17 @@ export function processMonthlyBudgetControl(block, movimientos, presupuestos, cu
     presFiltered = presFiltered.filter((p) => runtimeProjectIds.has(getPresupuestoProjectInfo(p).id));
   }
   if (runtimeCategorySet.size > 0) {
-    presFiltered = presFiltered.filter((p) => runtimeCategorySet.has(normalizeCategoryFilterValue(getPresupuestoCategoryLabel(p))));
+    presFiltered = presFiltered.filter((p) =>
+      getPresupuestoCategorias(p).some((cat) =>
+        runtimeCategorySet.has(normalizeCategoryFilterValue(cat))
+      )
+    );
   }
 
   const configuredCategories = sanitizeStringList(block.categorias_control);
-  const isGeneralPresupuesto = (p) => !p?.categoria && !p?.rubro && !p?.etapa && !p?.proveedor && !p?.nombre_proveedor;
-  const isCategoryOnlyPresupuesto = (p) => !!(p?.categoria || p?.rubro) && !p?.etapa && !p?.proveedor && !p?.nombre_proveedor;
+  const hasCategorias = (p) => (Array.isArray(p?.clasificaciones) && p.clasificaciones.length > 0) || !!p?.rubro;
+  const isGeneralPresupuesto = (p) => !hasCategorias(p) && !p?.etapa && !p?.proveedor && !p?.nombre_proveedor;
+  const isCategoryOnlyPresupuesto = (p) => hasCategorias(p) && !p?.etapa && !p?.proveedor && !p?.nombre_proveedor;
   const categoryBudgetItems = presFiltered.filter(isCategoryOnlyPresupuesto);
   const generalBudgetItems = presFiltered.filter(isGeneralPresupuesto);
 
@@ -1157,11 +1164,13 @@ export function processMonthlyBudgetControl(block, movimientos, presupuestos, cu
   if (categories.length === 0) {
     const byCategory = new Map();
     for (const p of categoryBudgetItems) {
-      const label = getPresupuestoCategoryLabel(p);
-      const key = normalizeCategoryFilterValue(label);
-      const current = byCategory.get(key) || { label, total: 0 };
-      current.total += Math.abs(getPresupuestoAmount(p, displayCurrency, cotizaciones));
-      byCategory.set(key, current);
+      const monto = Math.abs(getPresupuestoAmount(p, displayCurrency, cotizaciones));
+      for (const label of getPresupuestoCategorias(p)) {
+        const key = normalizeCategoryFilterValue(label);
+        const current = byCategory.get(key) || { label, total: 0 };
+        current.total += monto;
+        byCategory.set(key, current);
+      }
     }
     categories = [...byCategory.values()]
       .sort((a, b) => b.total - a.total)
@@ -1193,7 +1202,11 @@ export function processMonthlyBudgetControl(block, movimientos, presupuestos, cu
   if (!Number.isFinite(presupuestoTotal) || presupuestoTotal <= 0) {
     const generalTotal = sumPresupuestos(generalBudgetItems);
     const selectedCategoryTotal = sumPresupuestos(
-      categoryBudgetItems.filter((p) => categoryKeySet.has(normalizeCategoryFilterValue(getPresupuestoCategoryLabel(p)))),
+      categoryBudgetItems.filter((p) =>
+        getPresupuestoCategorias(p).some((cat) =>
+          categoryKeySet.has(normalizeCategoryFilterValue(cat))
+        )
+      ),
     );
     const allCategoryTotal = sumPresupuestos(categoryBudgetItems);
     const shouldScopeToVisibleCategories = categoryKeySet.size > 0;

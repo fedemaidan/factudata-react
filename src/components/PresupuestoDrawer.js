@@ -595,8 +595,9 @@ const PresupuestoDrawer = ({
         if (clasificacionesSel.length > 0) data.clasificaciones = normalizarClasificacionesUI(clasificacionesSel);
       } else {
         // Formulario simplificado (control-presupuestos)
-        if (tipoAgrupacion === 'categoria') data.categoria = valorAgrupacion;
-        else if (tipoAgrupacion === 'etapa') data.etapa = valorAgrupacion;
+        if (tipoAgrupacion === 'categoria') {
+          data.clasificaciones = [{ categoria: valorAgrupacion, subcategorias: [] }];
+        } else if (tipoAgrupacion === 'etapa') data.etapa = valorAgrupacion;
         else if (tipoAgrupacion === 'proveedor') data.proveedor = valorAgrupacion || proveedorInput;
 
         if (!tipoAgrupacion && proveedorInput) {
