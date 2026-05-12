@@ -19,6 +19,7 @@ import {
 
 import { Autocomplete } from "@mui/material";
 import { actualizarSheetsDesdeBaseEmpresa } from "src/services/proyectosService";
+import { getSheetConfigsByEmpresa, syncSheetConfig } from "src/services/sheetConfigService";
 import { FIREBASE_CLIENT_EMAIL } from "src/config/env";
 
 export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission }) => {
@@ -305,15 +306,33 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
     setIsRegenerandoSheets(true);
     try {
       const resultado = await actualizarSheetsDesdeBaseEmpresa(empresa.id);
-      if (resultado.success) {
+
+      const configs = await getSheetConfigsByEmpresa(empresa.id);
+      const configsActivas = configs.filter((c) => c.activo !== false);
+      const syncResults = await Promise.all(
+        configsActivas.map((c) => syncSheetConfig(c._id))
+      );
+      const syncErrores = syncResults.filter((r) => r.error).length;
+
+      if (!resultado.success) {
         setSnackbarInfo({
-          message: "Sheets regenerados correctamente.",
+          message: "Ocurrió un error al regenerar los sheets.",
+          severity: "error",
+        });
+      } else if (syncErrores > 0) {
+        setSnackbarInfo({
+          message: `Sheets regenerados, pero falló la sincronización de ${syncErrores} planilla(s) adicional(es).`,
+          severity: "warning",
+        });
+      } else if (configsActivas.length > 0) {
+        setSnackbarInfo({
+          message: `Sheets regenerados.`,
           severity: "success",
         });
       } else {
         setSnackbarInfo({
-          message: "Ocurrió un error al regenerar los sheets.",
-          severity: "error",
+          message: "Sheets regenerados correctamente.",
+          severity: "success",
         });
       }
     } catch (error) {
