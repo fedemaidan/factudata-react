@@ -72,6 +72,7 @@ import {
   coincideMovimientoConClasificaciones,
 } from 'src/utils/presupuestoLegacy';
 import ClasificacionesPicker from 'src/components/ClasificacionesPicker';
+import ProveedoresMultiSelect from 'src/components/ProveedoresMultiSelect';
 
 // Helper: calcular la fecha YYYY-MM del CAC aplicado (regla -2 meses)
 const calcularFechaCACAplicada = (fechaStr) => {
@@ -141,7 +142,9 @@ const PresupuestoDrawer = ({
   const [tipo, setTipo] = useState(tipoDefault);
   const [monto, setMonto] = useState('');
   const [moneda, setMoneda] = useState('ARS');
-  const [proveedorInput, setProveedorInput] = useState('');
+  // proveedoresSel: array de objetos { id, nombre } (vacío = matchea cualquier proveedor).
+  // Soporta strings libres (proveedor nuevo) que se persisten sin id.
+  const [proveedoresSel, setProveedoresSel] = useState([]);
 
   // === Estado: Formulario completo ===
   const [proyectoSel, setProyectoSel] = useState(proyectoId || '');
@@ -371,7 +374,7 @@ const PresupuestoDrawer = ({
         setNuevaBaseCalculo(presupuesto.base_calculo || 'total');
         setClasificacionesSel(getClasificacionesEfectivas(presupuesto));
         setEtapaSel(presupuesto.etapa || '');
-        setProveedorInput(presupuesto.proveedor || '');
+        setProveedoresSel(Array.isArray(presupuesto.proveedores) ? presupuesto.proveedores : []);
         setMotivo('');
         setMostrarHistorial(drawerView === 'historial' || presupuesto.historial?.length > 0);
         // Fecha del presupuesto: usar la guardada o hoy
@@ -425,7 +428,10 @@ const PresupuestoDrawer = ({
     return movimientosProyecto.filter(m => {
       if (m.type !== tipoMov) return false;
       if (m.es_conversion_moneda) return false;
-      if (presupuesto.proveedor && m.nombre_proveedor !== presupuesto.proveedor) return false;
+      if (Array.isArray(presupuesto.proveedores) && presupuesto.proveedores.length > 0) {
+        const nombres = presupuesto.proveedores.map((p) => p.nombre);
+        if (!nombres.includes(m.nombre_proveedor)) return false;
+      }
       if (presupuesto.etapa && m.etapa !== presupuesto.etapa) return false;
       if (!coincideMovimientoConClasificaciones(presupuesto, { categoria: m.categoria, subcategoria: m.subcategoria })) return false;
       // Filtro por fechaInicio
@@ -590,7 +596,7 @@ const PresupuestoDrawer = ({
 
       if (showFullForm) {
         // Formulario completo: asignar campos opcionales
-        if (proveedorInput) data.proveedor = proveedorInput;
+        if (proveedoresSel.length > 0) data.proveedores = proveedoresSel;
         if (etapaSel) data.etapa = etapaSel;
         if (clasificacionesSel.length > 0) data.clasificaciones = normalizarClasificacionesUI(clasificacionesSel);
       } else {
@@ -598,10 +604,13 @@ const PresupuestoDrawer = ({
         if (tipoAgrupacion === 'categoria') {
           data.clasificaciones = [{ categoria: valorAgrupacion, subcategorias: [] }];
         } else if (tipoAgrupacion === 'etapa') data.etapa = valorAgrupacion;
-        else if (tipoAgrupacion === 'proveedor') data.proveedor = valorAgrupacion || proveedorInput;
+        else if (tipoAgrupacion === 'proveedor') {
+          const fallback = valorAgrupacion ? [{ nombre: valorAgrupacion }] : proveedoresSel;
+          if (fallback.length > 0) data.proveedores = fallback;
+        }
 
-        if (!tipoAgrupacion && proveedorInput) {
-          data.proveedor = proveedorInput;
+        if (!tipoAgrupacion && proveedoresSel.length > 0) {
+          data.proveedores = proveedoresSel;
         }
       }
 
@@ -664,6 +673,9 @@ const PresupuestoDrawer = ({
         cac_tipo: nuevaMoneda === 'ARS' && nuevaIndexacion === 'CAC' ? (nuevoCacTipo || 'general') : null,
         nuevaBaseCalculo: nuevaBaseCalculo || 'total',
         fecha_presupuesto: fechaPresupuesto || null,
+        clasificaciones: normalizarClasificacionesUI(clasificacionesSel),
+        etapa: etapaSel || null,
+        proveedores: proveedoresSel,
       };
 
       // Si el usuario hizo override del índice, enviarlo al backend
@@ -851,7 +863,7 @@ const PresupuestoDrawer = ({
         fechaPresupuesto !== hoyStr ||
         moneda !== 'ARS' ||
         indexacion !== null ||
-        proveedorInput !== '' ||
+        proveedoresSel.length > 0 ||
         pendingAdjuntosFiles.length > 0 ||
         (showFullForm && (proyectoSel !== (proyectoId || '') || clasificacionesSel.length > 0 || etapaSel !== ''))
       );
@@ -1224,26 +1236,12 @@ const PresupuestoDrawer = ({
               {!showFullForm && tipoAgrupacion === 'proveedor' && !valorAgrupacion && (
                 <Box>
                   <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
-                    Proveedor
+                    Proveedores
                   </Typography>
-                  <Autocomplete
-                    freeSolo
+                  <ProveedoresMultiSelect
+                    value={proveedoresSel}
+                    onChange={setProveedoresSel}
                     options={proveedoresEmpresa}
-                    value={proveedorInput}
-                    onChange={(e, val) => setProveedorInput(val || '')}
-                    onInputChange={(e, val) => setProveedorInput(val || '')}
-                    getOptionLabel={(option) => option || ''}
-                    renderInput={(params) => (
-                      <TextField {...params} placeholder="Buscar o crear proveedor..." />
-                    )}
-                    renderOption={(props, option) => (
-                      <li {...props}>
-                        <Stack direction="row" spacing={1} alignItems="center">
-                          <StorefrontIcon fontSize="small" color="action" />
-                          <Typography>{option}</Typography>
-                        </Stack>
-                      </li>
-                    )}
                   />
                 </Box>
               )}
@@ -1292,27 +1290,13 @@ const PresupuestoDrawer = ({
 
                       <Box>
                         <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
-                          Proveedor
+                          Proveedores
                         </Typography>
-                        <Autocomplete
-                          freeSolo
+                        <ProveedoresMultiSelect
+                          value={proveedoresSel}
+                          onChange={setProveedoresSel}
                           options={proveedoresEmpresa}
-                          value={proveedorInput}
-                          onChange={(e, val) => setProveedorInput(val || '')}
-                          onInputChange={(e, val) => setProveedorInput(val || '')}
-                          getOptionLabel={(option) => option || ''}
                           size="small"
-                          renderInput={(params) => (
-                            <TextField {...params} placeholder="Buscar o crear proveedor..." />
-                          )}
-                          renderOption={(props, option) => (
-                            <li {...props}>
-                              <Stack direction="row" spacing={1} alignItems="center">
-                                <StorefrontIcon fontSize="small" color="action" />
-                                <Typography>{option}</Typography>
-                              </Stack>
-                            </li>
-                          )}
                         />
                       </Box>
 
@@ -1403,7 +1387,9 @@ const PresupuestoDrawer = ({
                       <> en <strong>{proyectos.find(p => p.id === proyectoSel)?.nombre}</strong></>
                     )}
                     {!showFullForm && label && <> para <strong>{label}</strong></>}
-                    {proveedorInput && <> · proveedor: <strong>{proveedorInput}</strong></>}
+                    {proveedoresSel.length > 0 && (
+                      <> · proveedor{proveedoresSel.length > 1 ? 'es' : ''}: <strong>{proveedoresSel.map((p) => p.nombre).join(', ')}</strong></>
+                    )}
                     {etapaSel && <> · etapa: <strong>{etapaSel}</strong></>}
                     {clasificacionesSel.length === 1 && (
                       <> · {clasificacionesSel[0].subcategorias.length === 0
@@ -1498,7 +1484,9 @@ const PresupuestoDrawer = ({
                         const params = new URLSearchParams();
                         params.set('proyectoId', proyectoId || presupuesto.proyecto_id);
                         if (presupuesto.tipo) params.set('tipo', presupuesto.tipo);
-                        if (presupuesto.proveedor) params.set('proveedores', presupuesto.proveedor);
+                        if (Array.isArray(presupuesto.proveedores) && presupuesto.proveedores.length > 0) {
+                          params.set('proveedores', presupuesto.proveedores.map((p) => p.nombre).filter(Boolean).join(','));
+                        }
                         if (presupuesto.etapa) params.set('etapa', presupuesto.etapa);
                         const clasif = getClasificacionesEfectivas(presupuesto);
                         // Pasamos los filtros a cajaProyecto solo cuando hay 1 sola entrada

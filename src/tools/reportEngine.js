@@ -145,6 +145,17 @@ function getPresupuestoCategorias(presupuesto) {
   return ['Sin categoría'];
 }
 
+function getPresupuestoProveedores(presupuesto) {
+  const nombres = Array.isArray(presupuesto?.proveedores)
+    ? presupuesto.proveedores.map((p) => p?.nombre).filter(Boolean)
+    : [];
+  return nombres;
+}
+
+function presupuestoTieneProveedores(presupuesto) {
+  return getPresupuestoProveedores(presupuesto).length > 0;
+}
+
 function getMovimientoUserCandidates(m) {
   const values = [];
 
@@ -773,7 +784,7 @@ export function processBudgetVsActual(block, movimientos, presupuestos, currenci
     presFiltered = presFiltered.filter((p) => {
       if (campoReq === 'categoria') return !!(p.clasificaciones?.length || p.rubro);
       if (campoReq === 'etapa') return !!p.etapa;
-      if (campoReq === 'proveedor') return !!(p.proveedor || p.nombre_proveedor);
+      if (campoReq === 'proveedor') return presupuestoTieneProveedores(p);
       return true;
     });
   }
@@ -802,12 +813,15 @@ export function processBudgetVsActual(block, movimientos, presupuestos, currenci
   }
 
   // Función para obtener clave(s) de agrupación de un presupuesto.
-  // Para agrupar por categoría: un presupuesto con N clasificaciones genera N entradas
-  // (replicación — el monto se cuenta entero en cada categoría que cubre).
+  // Para agrupar por categoría/proveedor: un presupuesto con N entradas genera N filas
+  // (replicación — el monto se cuenta entero en cada categoría/proveedor que cubre).
   const getPresKeys = (p) => {
     switch (agruparPor) {
       case 'etapa': return [(p.etapa || 'Sin etapa')];
-      case 'proveedor': return [(p.proveedor || p.nombre_proveedor || 'Sin proveedor')];
+      case 'proveedor': {
+        const provs = getPresupuestoProveedores(p);
+        return provs.length > 0 ? provs : ['Sin proveedor'];
+      }
       case 'categoria':
       default: return getPresupuestoCategorias(p);
     }
@@ -1147,8 +1161,8 @@ export function processMonthlyBudgetControl(block, movimientos, presupuestos, cu
 
   const configuredCategories = sanitizeStringList(block.categorias_control);
   const hasCategorias = (p) => (Array.isArray(p?.clasificaciones) && p.clasificaciones.length > 0) || !!p?.rubro;
-  const isGeneralPresupuesto = (p) => !hasCategorias(p) && !p?.etapa && !p?.proveedor && !p?.nombre_proveedor;
-  const isCategoryOnlyPresupuesto = (p) => hasCategorias(p) && !p?.etapa && !p?.proveedor && !p?.nombre_proveedor;
+  const isGeneralPresupuesto = (p) => !hasCategorias(p) && !p?.etapa && !presupuestoTieneProveedores(p);
+  const isCategoryOnlyPresupuesto = (p) => hasCategorias(p) && !p?.etapa && !presupuestoTieneProveedores(p);
   const categoryBudgetItems = presFiltered.filter(isCategoryOnlyPresupuesto);
   const generalBudgetItems = presFiltered.filter(isGeneralPresupuesto);
 

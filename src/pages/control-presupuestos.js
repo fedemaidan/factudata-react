@@ -60,18 +60,25 @@ import { getProyectosFromUser } from 'src/services/proyectosService';
 import { formatCurrency, formatTimestamp } from 'src/utils/formatters';
 import { getClasificacionesEfectivas, formatClasificacionesText } from 'src/utils/presupuestoLegacy';
 
-// ─── Helpers de item de presupuesto (multi-categoría) ────────────────────────
+// ─── Helpers de item de presupuesto (multi-categoría / multi-proveedor) ──────
 const itemTieneCategorias = (item) =>
   Array.isArray(item?.clasificaciones) && item.clasificaciones.length > 0;
+const itemTieneProveedores = (item) =>
+  Array.isArray(item?.proveedores) && item.proveedores.length > 0;
 const itemEsGeneral = (item) =>
-  !itemTieneCategorias(item) && !item?.etapa && !item?.proveedor;
+  !itemTieneCategorias(item) && !item?.etapa && !itemTieneProveedores(item);
 const itemMatcheaCategoria = (item, cat) =>
   (item?.clasificaciones || []).some((c) => c.categoria === cat);
+const itemMatcheaProveedor = (item, nombre) =>
+  (item?.proveedores || []).some((p) => p.nombre === nombre);
+const itemNombresProveedores = (item) =>
+  (item?.proveedores || []).map((p) => p.nombre).filter(Boolean);
 const labelItem = (item, fallback = 'Ingreso general') => {
   const partes = [];
   if (itemTieneCategorias(item)) partes.push(formatClasificacionesText(item.clasificaciones));
   if (item?.etapa) partes.push(item.etapa);
-  if (item?.proveedor) partes.push(item.proveedor);
+  const provNombres = itemNombresProveedores(item);
+  if (provNombres.length > 0) partes.push(provNombres.join(', '));
   return partes.length > 0 ? partes.join(' · ') : fallback;
 };
 import dayjs from 'dayjs';
@@ -546,7 +553,9 @@ const ControlPresupuestosPage = () => {
         const egresosPorMoneda = result.resumen.egresosPorMoneda || {};
         Object.values(egresosPorMoneda).forEach(monedaData => {
           (monedaData.items || []).forEach(item => {
-            if (item.proveedor) proveedores.add(item.proveedor);
+            (item.proveedores || []).forEach((p) => {
+              if (p.nombre) proveedores.add(p.nombre);
+            });
           });
         });
         setProveedoresAgregados(Array.from(proveedores));
@@ -714,9 +723,9 @@ const ControlPresupuestosPage = () => {
     if (allItems.length === 0) return { presupuesto: null, ejecutado: 0, id: null, historial: [], moneda: 'ARS' };
     
     const items = allItems.filter(item => {
-      if (tipoAgrupacion === 'categoria') return itemMatcheaCategoria(item, valor) && !item.etapa && !item.proveedor;
-      if (tipoAgrupacion === 'etapa') return item.etapa === valor && !itemTieneCategorias(item) && !item.proveedor;
-      if (tipoAgrupacion === 'proveedor') return item.proveedor === valor && !itemTieneCategorias(item) && !item.etapa;
+      if (tipoAgrupacion === 'categoria') return itemMatcheaCategoria(item, valor) && !item.etapa && !itemTieneProveedores(item);
+      if (tipoAgrupacion === 'etapa') return item.etapa === valor && !itemTieneCategorias(item) && !itemTieneProveedores(item);
+      if (tipoAgrupacion === 'proveedor') return itemMatcheaProveedor(item, valor) && !itemTieneCategorias(item) && !item.etapa;
       return false;
     });
     
@@ -747,7 +756,7 @@ const ControlPresupuestosPage = () => {
       cac_tipo: item.cac_tipo || null,
       fecha_presupuesto: item.fecha_presupuesto || null,
       tipo: item.tipo || 'egreso',
-      proveedor: item.proveedor || null,
+      proveedores: Array.isArray(item.proveedores) ? item.proveedores : [],
       clasificaciones: getClasificacionesEfectivas(item),
       etapa: item.etapa || null,
     };
@@ -812,7 +821,7 @@ const ControlPresupuestosPage = () => {
         cotizacion_snapshot: item.cotizacion_snapshot || null,
         cac_tipo: item.cac_tipo || null,
         fecha_presupuesto: item.fecha_presupuesto || null,
-        proveedor: item.proveedor || null,
+        proveedores: Array.isArray(item.proveedores) ? item.proveedores : [],
         clasificaciones: getClasificacionesEfectivas(item),
         etapa: item.etapa || null,
         proyecto_id: item.proyecto_id || proyectoSeleccionado || null,
@@ -838,7 +847,7 @@ const ControlPresupuestosPage = () => {
     cotizacion_snapshot: item.cotizacion_snapshot || null,
     cac_tipo: item.cac_tipo || null,
     fecha_presupuesto: item.fecha_presupuesto || null,
-    proveedor: item.proveedor || null,
+    proveedores: Array.isArray(item.proveedores) ? item.proveedores : [],
     clasificaciones: getClasificacionesEfectivas(item),
     etapa: item.etapa || null,
     proyecto_id: item.proyecto_id || proyectoSeleccionado || null,
@@ -889,17 +898,17 @@ const ControlPresupuestosPage = () => {
 
     // Suma de presupuestos con clasificaciones (cada item cuenta una sola vez, aunque cubra N categorías)
     const porCategoria = items
-      .filter(i => itemTieneCategorias(i) && !i.etapa && !i.proveedor)
+      .filter(i => itemTieneCategorias(i) && !i.etapa && !itemTieneProveedores(i))
       .reduce((sum, i) => sum + conv(i), 0);
 
     // Suma de presupuestos por etapa
     const porEtapa = items
-      .filter(i => i.etapa && !itemTieneCategorias(i) && !i.proveedor)
+      .filter(i => i.etapa && !itemTieneCategorias(i) && !itemTieneProveedores(i))
       .reduce((sum, i) => sum + conv(i), 0);
 
-    // Suma de presupuestos por proveedor
+    // Suma de presupuestos por proveedor (cada item cuenta una sola vez, aunque cubra N proveedores)
     const porProveedor = items
-      .filter(i => i.proveedor && !itemTieneCategorias(i) && !i.etapa)
+      .filter(i => itemTieneProveedores(i) && !itemTieneCategorias(i) && !i.etapa)
       .reduce((sum, i) => sum + conv(i), 0);
     
     return { porCategoria, porEtapa, porProveedor, general, generalId, generalHistorial, generalItem: generalItem || null };

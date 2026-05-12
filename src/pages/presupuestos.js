@@ -173,7 +173,7 @@ const PresupuestosPage = () => {
       const term = searchTerm.toLowerCase();
       setFilteredPresupuestos(
         presupuestos.filter((p) => {
-          const proveedor = p.proveedor?.toLowerCase() || '';
+          const proveedor = (p.proveedores || []).map((pr) => pr.nombre || '').join(' ').toLowerCase();
           const etapa = p.etapa?.toLowerCase() || '';
           const proyecto = proyectos.find(pr => pr.id === p.proyecto_id)?.nombre?.toLowerCase() || '';
           const matchTerm = proveedor.includes(term) || etapa.includes(term) || proyecto.includes(term);
@@ -309,7 +309,7 @@ const PresupuestosPage = () => {
         monto_ingresado: p.monto_ingresado || p.monto,
         base_calculo: p.base_calculo || 'total',
         tipo: p.tipo || 'egreso',
-        label: `#${p.codigo} — ${p.proveedor || proyectos.find(pr => pr.id === p.proyecto_id)?.nombre || 'Sin nombre'}`,
+        label: `#${p.codigo} — ${(p.proveedores || []).map((pr) => pr.nombre).filter(Boolean).join(', ') || proyectos.find(pr => pr.id === p.proyecto_id)?.nombre || 'Sin nombre'}`,
         historial: p.historial || [],
         ejecutado: p.ejecutado || 0,
         cotizacion_snapshot: p.cotizacion_snapshot || null,
@@ -318,7 +318,7 @@ const PresupuestosPage = () => {
         adicionales: p.adicionales || [],
         adjuntos: p.adjuntos || [],
         proyecto_id: p.proyecto_id || null,
-        proveedor: p.proveedor || null,
+        proveedores: Array.isArray(p.proveedores) ? p.proveedores : [],
         clasificaciones: getClasificacionesEfectivas(p),
         etapa: p.etapa || null,
       },
@@ -359,7 +359,7 @@ const PresupuestosPage = () => {
                     Tipo: p.tipo === 'ingreso' ? 'Ingreso' : 'Egreso',
                     'Fecha inicio': formatTimestamp(p.fechaInicio),
                     Monto: p.monto,
-                    Proveedor: p.proveedor,
+                    Proveedor: (p.proveedores || []).map((pr) => pr.nombre).filter(Boolean).join(', '),
                     Etapa: p.etapa,
                     Clasificaciones: formatClasificacionesText(getClasificacionesEfectivas(p)),
                     Proyecto: proyectos.find((pr) => pr.id === p.proyecto_id)?.nombre || '',
@@ -591,8 +591,10 @@ const PresupuestosPage = () => {
                           return (
                             <TableCell>
                               <Stack spacing={0.25}>
-                                {p.proveedor && (
-                                  <Typography variant="caption" color="text.secondary">Proveedor: <Box component="span" sx={{ color: 'text.primary' }}>{p.proveedor}</Box></Typography>
+                                {Array.isArray(p.proveedores) && p.proveedores.length > 0 && (
+                                  <Typography variant="caption" color="text.secondary">
+                                    Proveedor{p.proveedores.length > 1 ? 'es' : ''}: <Box component="span" sx={{ color: 'text.primary' }}>{p.proveedores.map((pr) => pr.nombre).filter(Boolean).join(', ')}</Box>
+                                  </Typography>
                                 )}
                                 {clasif.map((c, i) => (
                                   <Stack key={`${c.categoria}-${i}`} direction="row" spacing={0.5} alignItems="center" flexWrap="wrap">
@@ -611,7 +613,7 @@ const PresupuestosPage = () => {
                                 {p.etapa && (
                                   <Typography variant="caption" color="text.secondary">Etapa: <Box component="span" sx={{ color: 'text.primary' }}>{p.etapa}</Box></Typography>
                                 )}
-                                {!p.proveedor && clasif.length === 0 && !p.etapa && (
+                                {(!Array.isArray(p.proveedores) || p.proveedores.length === 0) && clasif.length === 0 && !p.etapa && (
                                   <Typography variant="caption" color="text.disabled">-</Typography>
                                 )}
                               </Stack>
