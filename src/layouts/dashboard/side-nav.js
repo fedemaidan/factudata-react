@@ -157,6 +157,7 @@ export const SideNav = (props) => {
       if (esAdmin) {
         finanzasItems.push({ title: "Control presupuestos", path: "/control-presupuestos", icon: <SvgIcon fontSize="small"><NoteAltIcon /></SvgIcon> });
         if (permisosUsuario.includes("VER_PRESUPUESTOS_PROFESIONALES")) finanzasItems.push({ title: "Presupuestos profesionales", path: "/presupuestosProfesionales", icon: <SvgIcon fontSize="small"><NoteAltIcon /></SvgIcon> });
+        finanzasItems.push({ title: "🚧 Mock — Control de Obra", path: "/mockObra", icon: <SvgIcon fontSize="small"><NoteAltIcon /></SvgIcon> });
       }
       if (finanzasItems.length > 0) newGroups.push({ id: "finanzas", label: "Finanzas", items: finanzasItems });
 

@@ -16,7 +16,6 @@ import ImageIcon from '@mui/icons-material/Image';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import EditIcon from '@mui/icons-material/Edit';
 import SaveIcon from '@mui/icons-material/Save';
-import AddIcon from '@mui/icons-material/Add';
 import Switch from '@mui/material/Switch';
 
 import { useRouter } from 'next/router';

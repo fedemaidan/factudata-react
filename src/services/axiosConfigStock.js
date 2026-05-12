@@ -21,7 +21,7 @@ const waitForUser = () =>
             else reject(new Error("No hay usuario autenticado"));
         });
     });
-ese 
+
 const waitForAuthReady = async () => {
     if (typeof auth.authStateReady === 'function') {
         await auth.authStateReady();

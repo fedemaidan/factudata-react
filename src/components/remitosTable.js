@@ -70,7 +70,7 @@ const RemitosTable = ({
 
   const totalFiltrado = remitosFiltrados.reduce((s, r) => s + (Number(r.valorOperacion) || 0), 0);
 
-  const filtrosActivos = filtroEstado || filtroFechaDesde || filtroFechaHasta;
+  const filtrosActivos = filtroEstado || filtroFechaDesde || filtroFechaHasta || filtroNumero;
 
   const exportarExcel = () => {
     const data = remitosFiltrados.map((r) => ({
@@ -178,7 +178,7 @@ const RemitosTable = ({
             InputLabelProps={{ shrink: true }}
           />
           {filtrosActivos && (
-            <Button size="small" variant="text" onClick={() => { setFiltroEstado(''); setFiltroFechaDesde(''); setFiltroFechaHasta(''); }}>
+            <Button size="small" variant="text" onClick={() => { setFiltroEstado(''); setFiltroFechaDesde(''); setFiltroFechaHasta(''); setFiltroNumero(''); }}>
               Limpiar
             </Button>
           )}
