@@ -30,6 +30,7 @@ import {
   Delete as DeleteIcon
 } from '@mui/icons-material';
 import importMovimientosService from 'src/services/importMovimientosService';
+import { buscarCanonicoEnLista } from 'src/utils/normalizarNombre';
 
 const PasoRevisarProveedores = forwardRef(({
   empresa,
@@ -138,8 +139,28 @@ const PasoRevisarProveedores = forwardRef(({
         };
       });
       
-      console.log('[PasoRevisarProveedores] Proveedores normalizados:', proveedoresNormalizados);
-      setMapeosProveedores(proveedoresNormalizados);
+      // Defensa redundante: matchear cada proveedor detectado contra el catálogo
+      // de la empresa con normalización estricta (case/acentos/espacios). Si el
+      // backend marcó como nuevo pero hay un canónico, lo reclasificamos.
+      const catalogo = empresa?.proveedores_data || empresa?.proveedores || [];
+      const getNombre = (p) => (typeof p === 'string' ? p : (p?.nombre || p?.name || ''));
+      const proveedoresFinales = proveedoresNormalizados.map((prov) => {
+        if (prov.estado === 'existe' || prov.estado === 'variante' || prov.accion === 'usar_existente') {
+          return prov;
+        }
+        const match = buscarCanonicoEnLista(prov.nombre, catalogo, getNombre);
+        if (match.estado === 'nueva') return prov;
+        return {
+          ...prov,
+          estado: match.estado === 'existe' ? 'existe' : 'variante',
+          coincidencia: match.canonico,
+          mapeoA: match.canonico,
+          accion: 'usar_existente',
+        };
+      });
+
+      console.log('[PasoRevisarProveedores] Proveedores normalizados:', proveedoresFinales);
+      setMapeosProveedores(proveedoresFinales);
       
     } catch (error) {
       console.error('[PasoRevisarProveedores] Error cargando análisis:', error);
@@ -264,6 +285,7 @@ const PasoRevisarProveedores = forwardRef(({
   const getEstadoColor = (estado) => {
     switch (estado) {
       case 'existe': return 'success';
+      case 'variante': return 'info';
       case 'nuevo': return 'warning';
       default: return 'default';
     }
@@ -334,7 +356,7 @@ const PasoRevisarProveedores = forwardRef(({
 
       {/* Resumen */}
       <Grid container spacing={2} sx={{ mb: 3 }}>
-        <Grid item xs={12} sm={6}>
+        <Grid item xs={12} sm={4}>
           <Card>
             <CardContent sx={{ textAlign: 'center' }}>
               <PersonIcon sx={{ fontSize: 40, color: 'primary.main', mb: 1 }} />
@@ -342,29 +364,42 @@ const PasoRevisarProveedores = forwardRef(({
                 {mapeosProveedores.length}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Proveedores a crear
+                Detectados
               </Typography>
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} sm={6}>
+        <Grid item xs={12} sm={4}>
           <Card>
             <CardContent sx={{ textAlign: 'center' }}>
               <AddIcon sx={{ fontSize: 40, color: 'info.main', mb: 1 }} />
               <Typography variant="h4" color="info.main">
-                {mapeosProveedores.length}
+                {proveedoresACrear}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Nuevos en tu empresa
+                Nuevos
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} sm={4}>
+          <Card>
+            <CardContent sx={{ textAlign: 'center' }}>
+              <PersonIcon sx={{ fontSize: 40, color: 'success.main', mb: 1 }} />
+              <Typography variant="h4" color="success.main">
+                {proveedoresExistentes}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Ya existen
               </Typography>
             </CardContent>
           </Card>
         </Grid>
       </Grid>
 
-      {mapeosProveedores.length > 0 && (
+      {proveedoresACrear > 0 && (
         <Alert severity="info" sx={{ mb: 3 }}>
-          Se crearán {mapeosProveedores.length} proveedores nuevos en tu empresa. Puedes editar los nombres antes de continuar.
+          Se crearán {proveedoresACrear} proveedor(es) nuevo(s). {proveedoresExistentes > 0 && `${proveedoresExistentes} se mapearán a existentes (variantes detectadas).`}
         </Alert>
       )}
 
@@ -495,9 +530,26 @@ const PasoRevisarProveedores = forwardRef(({
                                 {mapeo.nombre}
                               </Typography>
                               {mapeo.razon_social && (
-                                <Typography variant="caption" color="text.secondary">
+                                <Typography variant="caption" color="text.secondary" display="block">
                                   {mapeo.razon_social}
                                 </Typography>
+                              )}
+                              {mapeo.estado === 'variante' && (
+                                <Chip
+                                  label={`Variante de "${mapeo.mapeoA}"`}
+                                  size="small"
+                                  color="info"
+                                  sx={{ mt: 0.5 }}
+                                />
+                              )}
+                              {mapeo.estado === 'existe' && (
+                                <Chip
+                                  label="Ya existe"
+                                  size="small"
+                                  color="success"
+                                  variant="outlined"
+                                  sx={{ mt: 0.5 }}
+                                />
                               )}
                             </Box>
                           </Box>

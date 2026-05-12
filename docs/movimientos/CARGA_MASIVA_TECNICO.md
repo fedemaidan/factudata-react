@@ -24,7 +24,7 @@ El diálogo mantiene todo en estado local del componente:
 - `files`: archivos subidos (File[])
 - `contexto`: objeto con proyecto, tipo, moneda, categorías, medios, notas, cuestionario GPT
 - `batchItems`: ítems procesados por IA (OCR)
-- `tabularWizard`: estado del wizard de importación (tabular)
+- `tabularWizard`: estado del wizard de importación (tabular). Incluye `creadorDefaultPhone` (creador por defecto del lote, override-able por fila en validación).
 - `loading`, `analyzeError`, `confirmError`: estados de UI
 
 ## Servicios y endpoints
@@ -80,7 +80,17 @@ archivos → upload a storage → extraerData (categorías/proveedores)
 - `canConfirm`: todos los ítems no omitidos pasan `itemFormIsValid`.
 
 ### Tabular
-- `rowIsValid`: acción (CREAR_EGRESO/INGRESO), moneda, estado, fecha, total, proyecto si la empresa tiene proyectos y es import general.
+- `rowIsValid`: acción (CREAR_EGRESO/INGRESO), moneda, estado, fecha, total, proyecto si la empresa tiene proyectos y es import general. Si `estado === 'Parcialmente Pagado'` y `accion === 'CREAR_EGRESO'`, exige `monto_pagado > 0` y `< total`.
+
+## Estado / monto_pagado / creador (tabular)
+
+El payload de cada fila enviado a `confirmar-movimientos` (clave `ia_data`) incluye:
+
+- `estado`: `'Pendiente' | 'Parcialmente Pagado' | 'Pagado'` (solo si la empresa tiene `con_estados`).
+- `monto_pagado`: `number | null` — solo cuando `estado === 'Parcialmente Pagado'` y `accion === 'CREAR_EGRESO'`.
+- `user_phone`: teléfono del creador. Default = `wizardData.creadorDefaultPhone` (= `user.phone` al iniciar). Override por fila desde el `<Select label="Creador">` del modal de edición.
+
+En backend, `persistirMovimientoImportDesdeIa` valida `data.user_phone` contra los perfiles de la empresa; si pertenece, arma `data.creador = { phone, firstName, lastName, id }` que `crearEgreso/IngresoSinWhatsapp` usa para los campos `user_phone` / `nombre_user` / `id_user` del documento Mongo. Si no pertenece, se ignora y se usa el del importador.
 
 ## Catálogos cargados al abrir
 
@@ -88,3 +98,4 @@ archivos → upload a storage → extraerData (categorías/proveedores)
 - Categorías de la empresa (excluyendo "Ingreso dinero" y "Ajuste")
 - Medios de pago
 - Etapas, obras, clientes
+- **Perfiles de la empresa** (vía `profileService.getProfileByEmpresa(empresa.id)`) — usados para el selector "Creador del lote" en aclaraciones y para el override por fila en validación

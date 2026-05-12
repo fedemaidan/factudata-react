@@ -503,7 +503,7 @@ export const ProyectosDetails = ({ empresa, refreshEmpresa }) => {
                   <Box sx={{ flex: 1, minWidth: 0 }}>
                     <ListItemText
                       primary={
-                        <a href={`/cajaProyecto/?proyectoId=${proyecto.id}`} target="_blank" rel="noopener noreferrer">
+                        <a href={`/cajas?proyectoId=${proyecto.id}`} target="_blank" rel="noopener noreferrer">
                           {proyecto.nombre}
                         </a>
                       }

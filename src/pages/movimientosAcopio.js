@@ -419,7 +419,7 @@ const MovimientosAcopioPage = () => {
       ws.mergeCells('A1:H1');
       const tituloCell = ws.getCell('A1');
       tituloCell.value = `INFORME DE REMITOS - ${acopio.codigo || 'Acopio'}`;
-      tituloCell.font = { bold: true, size: 16, color: { argb: 'FF2E7D32' } };
+      tituloCell.font = { bold: true, size: 16 };
       tituloCell.alignment = { horizontal: 'center' };
 
       // Fila 2: Info del acopio
@@ -436,8 +436,7 @@ const MovimientosAcopioPage = () => {
       ws.mergeCells('D3:E3');
       ws.getCell('D3').value = saldoInicial;
       ws.getCell('D3').numFmt = '"$"#,##0.00';
-      ws.getCell('D3').font = { bold: true, size: 14, color: { argb: 'FF1565C0' } };
-      ws.getCell('D3').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE3F2FD' } };
+      ws.getCell('D3').font = { bold: true, size: 14 };
 
       // Fila 4: Espacio
       ws.insertRow(4, []);
@@ -445,8 +444,7 @@ const MovimientosAcopioPage = () => {
       // Fila 5: Encabezados de columna (ya definidos, pero mover a fila 5)
       const headerRow = ws.getRow(5);
       headerRow.values = ['Fecha', 'Nº Remito', 'Estado', 'Material', 'Cantidad', 'Valor Unit.', 'Impacto', 'Saldo Parcial'];
-      headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-      headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF424242' } };
+      headerRow.font = { bold: true };
       headerRow.alignment = { horizontal: 'center' };
       headerRow.height = 22;
 
@@ -462,21 +460,6 @@ const MovimientosAcopioPage = () => {
         // Restar del saldo
         saldoAcumulado -= impactoRemito;
 
-        // Determinar color del saldo
-        const porcentajeRestante = saldoInicial > 0 ? (saldoAcumulado / saldoInicial) * 100 : 0;
-        let saldoColor = 'FF2E7D32'; // Verde por defecto
-        let saldoBgColor = 'FFE8F5E9';
-        if (saldoAcumulado < 0) {
-          saldoColor = 'FFC62828'; // Rojo
-          saldoBgColor = 'FFFFEBEE';
-        } else if (porcentajeRestante <= 20) {
-          saldoColor = 'FFF57C00'; // Naranja
-          saldoBgColor = 'FFFFF3E0';
-        } else if (porcentajeRestante <= 40) {
-          saldoColor = 'FFFBC02D'; // Amarillo
-          saldoBgColor = 'FFFFFDE7';
-        }
-
         if (remito.movimientos.length > 0) {
           remito.movimientos.forEach((mov, idx) => {
             const valorOperacion = mov.valorOperacion || (mov.cantidad * mov.valorUnitario) || 0;
@@ -488,7 +471,7 @@ const MovimientosAcopioPage = () => {
               cantidad: mov.cantidad || 0,
               valorUnit: mov.valorUnitario || 0,
               impacto: valorOperacion,
-              saldo: idx === remito.movimientos.length - 1 ? saldoAcumulado : null
+              saldo: null
             });
 
             // Estilo de primera fila del remito (encabezado del remito)
@@ -496,27 +479,33 @@ const MovimientosAcopioPage = () => {
               row.getCell('fecha').font = { bold: true };
               row.getCell('remito').font = { bold: true, size: 11 };
               row.getCell('estado').font = { bold: true };
-              // Color de fondo para la fila principal del remito
-              row.eachCell((cell) => {
-                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF5F5F5' } };
-              });
             }
 
             // Formato de números
             row.getCell('valorUnit').numFmt = '"$"#,##0.00';
             row.getCell('impacto').numFmt = '"$"#,##0.00';
-            row.getCell('impacto').font = { color: { argb: 'FFC62828' } }; // Rojo para impacto
-
-            // Última fila del remito: mostrar saldo con color
-            if (idx === remito.movimientos.length - 1) {
-              const saldoCell = row.getCell('saldo');
-              saldoCell.numFmt = '"$"#,##0.00';
-              saldoCell.font = { bold: true, color: { argb: saldoColor } };
-              saldoCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: saldoBgColor } };
-            }
+            row.getCell('impacto').font = {};
 
             currentRow++;
           });
+
+          // Fila de total del remito
+          const totalRemitoRow = ws.addRow({
+            fecha: '',
+            remito: '',
+            estado: '',
+            material: 'TOTAL REMITO',
+            cantidad: '',
+            valorUnit: '',
+            impacto: impactoRemito,
+            saldo: saldoAcumulado
+          });
+          totalRemitoRow.getCell('material').font = { bold: true, italic: true };
+          totalRemitoRow.getCell('impacto').numFmt = '"$"#,##0.00';
+          totalRemitoRow.getCell('impacto').font = { bold: true };
+          totalRemitoRow.getCell('saldo').numFmt = '"$"#,##0.00';
+          totalRemitoRow.getCell('saldo').font = { bold: true };
+          currentRow++;
         } else {
           // Remito sin movimientos
           const row = ws.addRow({
@@ -532,8 +521,7 @@ const MovimientosAcopioPage = () => {
           row.getCell('fecha').font = { bold: true };
           row.getCell('remito').font = { bold: true };
           row.getCell('saldo').numFmt = '"$"#,##0.00';
-          row.getCell('saldo').font = { bold: true, color: { argb: saldoColor } };
-          row.getCell('saldo').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: saldoBgColor } };
+          row.getCell('saldo').font = { bold: true };
           currentRow++;
         }
 
@@ -550,12 +538,7 @@ const MovimientosAcopioPage = () => {
       const resumenRow = ws.addRow(['', '', '', '', '', '', 'SALDO FINAL:', saldoAcumulado]);
       resumenRow.getCell(7).font = { bold: true, size: 12 };
       resumenRow.getCell(8).numFmt = '"$"#,##0.00';
-      resumenRow.getCell(8).font = { bold: true, size: 14, color: { argb: saldoAcumulado < 0 ? 'FFC62828' : 'FF2E7D32' } };
-      resumenRow.getCell(8).fill = { 
-        type: 'pattern', 
-        pattern: 'solid', 
-        fgColor: { argb: saldoAcumulado < 0 ? 'FFFFEBEE' : 'FFE8F5E9' } 
-      };
+      resumenRow.getCell(8).font = { bold: true, size: 14 };
 
       // ========== HOJA DE RESUMEN ==========
       const wsResumen = workbook.addWorksheet('Resumen');
@@ -580,20 +563,15 @@ const MovimientosAcopioPage = () => {
 
       const valorAcopiadoRow = wsResumen.addRow({ concepto: 'Valor Acopiado', valor: saldoInicial });
       valorAcopiadoRow.getCell('valor').numFmt = '"$"#,##0.00';
-      valorAcopiadoRow.getCell('valor').font = { bold: true, color: { argb: 'FF1565C0' } };
+      valorAcopiadoRow.getCell('valor').font = { bold: true };
 
       const totalDesRow = wsResumen.addRow({ concepto: 'Total Desacopiado', valor: saldoInicial - saldoAcumulado });
       totalDesRow.getCell('valor').numFmt = '"$"#,##0.00';
-      totalDesRow.getCell('valor').font = { color: { argb: 'FFC62828' } };
+      totalDesRow.getCell('valor').font = {};
 
       const saldoDispRow = wsResumen.addRow({ concepto: 'Saldo Disponible', valor: saldoAcumulado });
       saldoDispRow.getCell('valor').numFmt = '"$"#,##0.00';
-      saldoDispRow.getCell('valor').font = { bold: true, size: 12, color: { argb: saldoAcumulado < 0 ? 'FFC62828' : 'FF2E7D32' } };
-      saldoDispRow.getCell('valor').fill = { 
-        type: 'pattern', 
-        pattern: 'solid', 
-        fgColor: { argb: saldoAcumulado < 0 ? 'FFFFEBEE' : 'FFE8F5E9' } 
-      };
+      saldoDispRow.getCell('valor').font = { bold: true, size: 12 };
 
       wsResumen.addRow([]);
       wsResumen.addRow({ concepto: 'Cantidad de Remitos', valor: remitos.length });

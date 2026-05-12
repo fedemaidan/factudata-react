@@ -15,6 +15,46 @@ const parseIncidenciaSugerida = (value) => {
   return parsed;
 };
 
+/**
+ * Reparte un total entre N items según porcentajes, garantizando suma exacta.
+ * Trabaja en centavos enteros y aplica el método de "largest remainder" (Hamilton):
+ * cada item recibe el piso de su cuota; los centavos sobrantes se asignan a los
+ * items con mayor parte fraccional. Garantiza Σ resultado === totalCentavos exacto.
+ *
+ * @param {number} totalCentavos - total en centavos enteros
+ * @param {Array<{ pct: number, valido: boolean }>} items
+ * @returns {number[]} montos en centavos (mismo orden que items)
+ */
+function repartirLargestRemainder(totalCentavos, items) {
+  const n = items.length;
+  if (n === 0 || totalCentavos <= 0) return new Array(n).fill(0);
+
+  const cuotas = items.map((it) => (it.valido ? (totalCentavos * it.pct) / 100 : 0));
+  const piso = cuotas.map((c) => Math.floor(c));
+  const sumaPiso = piso.reduce((s, x) => s + x, 0);
+
+  // Solo redistribuimos sobrante entre los items válidos. Si la suma de pcts
+  // está cerca de 100, sobrante == totalCentavos - sumaPiso. Si no llega a 100,
+  // dejamos lo que sobra sin asignar (no inventamos centavos).
+  const sumaPct = items.reduce((s, it) => s + (it.valido ? it.pct : 0), 0);
+  const llegaA100 = Math.abs(sumaPct - 100) < 0.01;
+  if (!llegaA100) return piso;
+
+  let sobrante = totalCentavos - sumaPiso;
+  const orden = cuotas
+    .map((c, i) => ({ i, frac: c - Math.floor(c), valido: items[i].valido }))
+    .filter((x) => x.valido)
+    .sort((a, b) => b.frac - a.frac);
+  for (let k = 0; k < orden.length && sobrante > 0; k += 1) {
+    piso[orden[k].i] += 1;
+    sobrante -= 1;
+  }
+  return piso;
+}
+
+const aCentavos = (n) => Math.round((Number(n) || 0) * 100);
+const deCentavos = (c) => Math.round(c) / 100;
+
 export function plantillaRubrosToPresupuestoRubros(rubros = []) {
   return (rubros || []).map((r) => ({
     nombre: r.nombre || '',
@@ -23,6 +63,7 @@ export function plantillaRubrosToPresupuestoRubros(rubros = []) {
     tareas: (r.tareas || []).map((t) => ({
       descripcion: t.descripcion || '',
       monto: null,
+      cantidad: t.cantidad || null,
       incidencia_objetivo_pct: parseIncidenciaSugerida(t.incidencia_pct_sugerida),
     })),
   }));
@@ -39,59 +80,60 @@ export function sumaIncidenciasObjetivoTareas(tareas) {
 
 /**
  * Reparte el monto del rubro entre subrubros (tareas) según incidencia_objetivo_pct.
- * Misma lógica que a nivel presupuesto/rubros.
+ * Usa largest remainder en centavos para garantizar suma exacta.
  */
 export function distribuirMontosPorIncidenciaTareas(totalRubro, tareas) {
   if (!Array.isArray(tareas) || tareas.length === 0) return tareas || [];
   const totalNum = Number(totalRubro) || 0;
+  const totalCentavos = aCentavos(totalNum);
+
   const tareasConPct = tareas.map((t) => {
     const pct = parseIncidencia(t.incidencia_objetivo_pct);
-    const valido = !Number.isNaN(pct) && pct >= 0 && pct <= 100;
+    const valido = pct != null && !Number.isNaN(pct) && pct >= 0 && pct <= 100;
     return { ...t, _pctValido: valido, _pct: valido ? pct : 0, _pctParsed: pct };
   });
   const sumaPct = tareasConPct.reduce((s, t) => s + t._pct, 0);
+
   if (sumaPct <= 0) {
-    const sumT = tareas.reduce((s, t) => s + (Number(t.monto) || 0), 0);
+    // Sin incidencias: si las tareas tienen montos actuales, escalamos proporcionalmente.
+    const sumT = tareas.reduce(
+      (s, t) => s + (Number(t.cantidad) || 1) * (Number(t.monto) || 0),
+      0
+    );
     if (sumT > 0 && totalNum > 0) {
-      const scaled = tareas.map((t) => Math.round((((Number(t.monto) || 0) / sumT) * totalNum * 100)) / 100);
-      const diff = Math.round((totalNum - scaled.reduce((s, m) => s + m, 0)) * 100) / 100;
-      const last = scaled.length - 1;
-      if (last >= 0 && Math.abs(diff) > 0.001) scaled[last] = Math.round((scaled[last] + diff) * 100) / 100;
-      return tareas.map((t, j) => ({
-        ...t,
-        monto: scaled[j],
-        incidencia_pct: totalNum > 0 ? (scaled[j] / totalNum) * 100 : 0,
-        orden: j + 1,
+      const items = tareas.map((t) => ({
+        pct: ((Number(t.cantidad) || 1) * (Number(t.monto) || 0) * 100) / sumT,
+        valido: true,
       }));
+      const efectivosCentavos = repartirLargestRemainder(totalCentavos, items);
+      return tareas.map((t, j) => {
+        const efectivoTotal = deCentavos(efectivosCentavos[j]);
+        const cantidad = Number(t.cantidad) || 1;
+        const monto = deCentavos(Math.round(efectivosCentavos[j] / cantidad));
+        const incidencia_pct = totalNum > 0 ? (efectivoTotal / totalNum) * 100 : 0;
+        return { ...t, monto, incidencia_pct, orden: j + 1 };
+      });
     }
     return tareas.map((t, j) => {
-      const tm = Number(t.monto) || 0;
-      const incidencia_pct = totalNum > 0 ? (tm / totalNum) * 100 : 0;
-      return { ...t, monto: tm, incidencia_pct, orden: j + 1 };
+      const efectivoMonto = (Number(t.cantidad) || 1) * (Number(t.monto) || 0);
+      const incidencia_pct = totalNum > 0 ? (efectivoMonto / totalNum) * 100 : 0;
+      return { ...t, incidencia_pct, orden: j + 1 };
     });
   }
-  const montos = tareasConPct.map((t) =>
-    t._pctValido ? Math.round((totalNum * t._pct) / 100 * 100) / 100 : Number(t.monto) || 0
-  );
-  const sumaMontos = montos.reduce((s, m) => s + m, 0);
-  const diff = Math.round((totalNum - sumaMontos) * 100) / 100;
-  const sumaCercaDe100 = Math.abs(sumaPct - 100) < 0.01;
-  let lastIdx = -1;
-  if (sumaCercaDe100) {
-    for (let i = tareasConPct.length - 1; i >= 0; i -= 1) {
-      if (tareasConPct[i]._pctValido) {
-        lastIdx = i;
-        break;
-      }
-    }
-    if (lastIdx >= 0 && Math.abs(diff) > 0.001) {
-      montos[lastIdx] = Math.round((montos[lastIdx] + diff) * 100) / 100;
-    }
-  }
+
+  const items = tareasConPct.map((t) => ({ pct: t._pct, valido: t._pctValido }));
+  const efectivosCentavos = repartirLargestRemainder(totalCentavos, items);
+
   return tareasConPct.map((t, i) => {
     const { _pctValido, _pct, _pctParsed, ...resto } = t;
-    const monto = montos[i];
-    const incidencia_pct = totalNum > 0 ? (monto / totalNum) * 100 : 0;
+    const efectivoTotal = _pctValido
+      ? deCentavos(efectivosCentavos[i])
+      : Number(t.monto) || 0;
+    const cantidad = Number(t.cantidad) || 1;
+    const monto = _pctValido
+      ? deCentavos(Math.round(efectivosCentavos[i] / cantidad))
+      : Number(t.monto) || 0;
+    const incidencia_pct = totalNum > 0 ? (efectivoTotal / totalNum) * 100 : 0;
     const keepRawIncidencia =
       typeof t.incidencia_objetivo_pct === 'string' && /[.,]$/.test(t.incidencia_objetivo_pct);
     return {
@@ -109,47 +151,28 @@ export function distribuirMontosPorIncidenciaTareas(totalRubro, tareas) {
 }
 
 /**
- * Distribuye montos según incidencias objetivo, manteniendo el total exacto.
- * Ajusta el último rubro con incidencia válida para compensar redondeos.
- * @param {number} total - Total neto deseado
- * @param {Array} rubros - Rubros con incidencia_objetivo_pct
- * @returns {Array} Rubros con monto e incidencia_pct actualizados
+ * Distribuye un total entre rubros según incidencia_objetivo_pct.
+ * Usa largest remainder en centavos para garantizar suma exacta.
  */
 export function distribuirMontosPorIncidencia(total, rubros) {
   if (!Array.isArray(rubros) || rubros.length === 0) return rubros;
   const totalNum = Number(total) || 0;
+  const totalCentavos = aCentavos(totalNum);
+
   const rubrosConPct = rubros.map((r) => {
     const pct = parseIncidencia(r.incidencia_objetivo_pct);
-    const valido = !Number.isNaN(pct) && pct >= 0 && pct <= 100;
+    const valido = pct != null && !Number.isNaN(pct) && pct >= 0 && pct <= 100;
     return { ...r, _pctValido: valido, _pct: valido ? pct : 0, _pctParsed: pct };
   });
   const sumaPct = rubrosConPct.reduce((s, r) => s + r._pct, 0);
   if (sumaPct <= 0) return rubros;
 
-  const montos = rubrosConPct.map((r) =>
-    r._pctValido ? Math.round((totalNum * r._pct) / 100 * 100) / 100 : Number(r.monto) || 0
-  );
-  const sumaMontos = montos.reduce((s, m) => s + m, 0);
-  const diff = Math.round((totalNum - sumaMontos) * 100) / 100;
-
-
-  const sumaCercaDe100 = Math.abs(sumaPct - 100) < 0.01;
-  let lastIdx = -1;
-  if (sumaCercaDe100) {
-    for (let i = rubrosConPct.length - 1; i >= 0; i--) {
-      if (rubrosConPct[i]._pctValido) {
-        lastIdx = i;
-        break;
-      }
-    }
-    if (lastIdx >= 0 && Math.abs(diff) > 0.001) {
-      montos[lastIdx] = Math.round((montos[lastIdx] + diff) * 100) / 100;
-    }
-  }
+  const items = rubrosConPct.map((r) => ({ pct: r._pct, valido: r._pctValido }));
+  const montosCentavos = repartirLargestRemainder(totalCentavos, items);
 
   return rubrosConPct.map((r, i) => {
     const { _pctValido, _pct, _pctParsed, ...resto } = r;
-    const monto = montos[i];
+    const monto = _pctValido ? deCentavos(montosCentavos[i]) : Number(r.monto) || 0;
     const incidencia_pct = totalNum > 0 ? (monto / totalNum) * 100 : 0;
     const keepRawIncidencia =
       typeof r.incidencia_objetivo_pct === 'string' && /[.,]$/.test(r.incidencia_objetivo_pct);

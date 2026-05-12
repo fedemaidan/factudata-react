@@ -288,7 +288,7 @@ const MovementFields = ({
     const value = formik.values[campo.name] ?? (campo.type === 'boolean' ? false : '');
     if (['text', 'number', 'date'].includes(campo.type)) {
       if (campo.type === 'date') {
-        const isFechaPago = campo.name === 'fecha_pago';
+        const isFechaPago = campo.name === 'fecha_pago' || campo.name === 'fecha_vencimiento';
         return (
           <div key={campo.name}>
             <PanelOutlineDateField

@@ -158,13 +158,47 @@ export const AuthProvider = (props) => {
       clearTimeout(authReadyTimeout);
 
       if (user) {
-        const idToken = await user.getIdToken(true); // Forzar actualización
-        const updatedUser = await getPayloadUserByUid(user.uid, idToken);
+        const MAX_RETRIES = 3;
+        const RETRY_DELAY_MS = 1500;
+        let lastError;
 
-        dispatch({
-          type: HANDLERS.UPDATE_USER,
-          payload: updatedUser,
-        });
+        for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+          try {
+            const idToken = await user.getIdToken(attempt === 1);
+            const freshAdmin = await getPayloadUserByUid(user.uid, idToken);
+
+            const current = stateRef.current;
+            const spying =
+              !!current.user &&
+              !!current.originalUser &&
+              current.user.id !== current.originalUser.id;
+
+            if (spying) {
+              dispatch({
+                type: HANDLERS.UPDATE_USER,
+                payload: {
+                  user: { ...current.user, token: idToken },
+                  originalUser: freshAdmin,
+                },
+              });
+            } else {
+              dispatch({ type: HANDLERS.UPDATE_USER, payload: freshAdmin });
+            }
+            lastError = null;
+            break;
+          } catch (error) {
+            lastError = error;
+            if (attempt < MAX_RETRIES) {
+              console.warn(`[Auth] Error al cargar perfil (intento ${attempt}/${MAX_RETRIES}), reintentando...`, error);
+              await new Promise((res) => setTimeout(res, RETRY_DELAY_MS));
+            }
+          }
+        }
+
+        if (lastError) {
+          console.error('[Auth] Error al cargar perfil tras todos los intentos:', lastError);
+          dispatch({ type: HANDLERS.INITIALIZE, payload: { user: null, originalUser: null, clearStorage: false } });
+        }
       } else {
         const shouldIgnoreNullEvent =
           stateRef.current.isAuthenticated &&
@@ -199,12 +233,28 @@ export const AuthProvider = (props) => {
       try {
         console.log('🔄 [Auth] Refrescando datos de usuario...');
         const idToken = await currentUser.getIdToken(true);
-        const freshUser = await getPayloadUserByUid(currentUser.uid, idToken);
+        const freshAdmin = await getPayloadUserByUid(currentUser.uid, idToken);
 
-        dispatch({
-          type: HANDLERS.UPDATE_USER,
-          payload: { user: freshUser, originalUser: state.originalUser || freshUser },
-        });
+        const current = stateRef.current;
+        const spying =
+          !!current.user &&
+          !!current.originalUser &&
+          current.user.id !== current.originalUser.id;
+
+        if (spying) {
+          dispatch({
+            type: HANDLERS.UPDATE_USER,
+            payload: {
+              user: { ...current.user, token: idToken },
+              originalUser: freshAdmin,
+            },
+          });
+        } else {
+          dispatch({
+            type: HANDLERS.UPDATE_USER,
+            payload: { user: freshAdmin, originalUser: freshAdmin },
+          });
+        }
         console.log('✅ [Auth] Usuario actualizado correctamente');
       } catch (error) {
         console.error('❌ [Auth] Error refrescando usuario:', error);

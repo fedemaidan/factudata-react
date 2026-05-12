@@ -158,6 +158,10 @@ const AgentChatPage = () => {
         router.push(action.url);
         return;
       }
+      if (action.type === 'open_presupuesto_profesional' && action.url) {
+        router.push(action.url);
+        return;
+      }
       if (action.type === 'suggest_create_report') {
         sendMessage('guardar como reporte');
         return;

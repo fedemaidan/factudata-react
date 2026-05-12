@@ -46,6 +46,8 @@ export function useMovimientosFilters({
   movimientos, movimientosUSD,
 }) {
   const router = useRouter();
+  const routerRef = useRef(router);
+  useEffect(() => { routerRef.current = router; });
   const [filters, setFilters] = useState(defaultFilters);
   const initializedRef = useRef(false);
   const lastQueryHashRef = useRef(null);
@@ -178,23 +180,22 @@ export function useMovimientosFilters({
   }, [router.isReady, router.query]);
 
   useEffect(() => {
-    if (!initializedRef.current || !router.isReady) return;
-    const nextQuery = buildQueryFromFilters(filters, router.query || {});
+    if (!initializedRef.current || !routerRef.current.isReady) return;
+    const nextQuery = buildQueryFromFilters(filters, routerRef.current.query || {});
     // Solo comparamos los params de filtros para evitar false-positives cuando
     // el scope (proyectoId) acaba de cambiar la URL.
     const qHash = stableStringify(filterParamsSubset(nextQuery));
     if (qHash === lastQueryHashRef.current) return;
     logCajaFilters('Sincronizando filtros hacia query', {
       filters,
-      previousQuery: router.query,
+      previousQuery: routerRef.current.query,
       nextQuery,
     });
     lastQueryHashRef.current = qHash;
-    router.replace({ pathname: router.pathname, query: nextQuery }, undefined, { shallow: true, scroll: false });
-  // proyectoId solo se usaba en el log; tenerlo como dep hacía que este effect
-  // se disparara al cambiar scope, compitiendo con el router.replace del scope effect.
+    routerRef.current.replace({ pathname: routerRef.current.pathname, query: nextQuery }, undefined, { shallow: true, scroll: false });
+  // router se lee via routerRef para no re-disparar este effect en cada render.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters, router]);
+  }, [filters]);
 
 
   // opciones únicas (para selects múltiples)

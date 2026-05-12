@@ -1144,19 +1144,30 @@ function SheetConfigsSection({ empresa }) {
 const nivelesDisponibles = [
   { value: "proyecto_nombre", label: "Proyecto", ejemplo: "Lares 76" },
   { value: "categoria", label: "Categoría", ejemplo: "Materiales" },
+  { value: "subcategoria", label: "Subcategoría", ejemplo: "Hierro" },
+  { value: "cuenta", label: "Cuenta", ejemplo: "Banco Nación" },
+  { value: "medio_pago", label: "Medio de Pago", ejemplo: "Transferencia" },
+  { value: "tipo_factura", label: "Tipo de Factura", ejemplo: "Factura A" },
+  { value: "etapa", label: "Etapa", ejemplo: "Estructura" },
+  { value: "caja_chica", label: "Caja Chica (Sí/No)", ejemplo: "Caja Chica - Sí" },
   { value: "factura_cliente", label: "Factura Cliente (Sí/No)", ejemplo: "Factura Cliente - Sí" },
   { value: "quincena", label: "Quincena", ejemplo: "2026-03 Q1" },
   { value: "mes", label: "Mes", ejemplo: "2026-03" },
   { value: "moneda", label: "Moneda", ejemplo: "ARS" },
   { value: "type", label: "Tipo (Ingreso/Egreso)", ejemplo: "Egresos" },
   { value: "nombre_proveedor", label: "Proveedor", ejemplo: "Corralón Gómez" },
-  { value: "medio_pago", label: "Medio de Pago", ejemplo: "Transferencia" },
 ];
 
 // Tokens disponibles para el nombre del archivo
 const tokensNombreArchivo = [
   { value: "codigo_operacion", label: "Código de Operación", ejemplo: "OP-00123" },
   { value: "categoria", label: "Categoría", ejemplo: "Materiales" },
+  { value: "subcategoria", label: "Subcategoría", ejemplo: "Hierro" },
+  { value: "cuenta", label: "Cuenta", ejemplo: "Banco_Nacion" },
+  { value: "medio_pago", label: "Medio de Pago", ejemplo: "Transferencia" },
+  { value: "tipo_factura", label: "Tipo de Factura", ejemplo: "Factura_A" },
+  { value: "etapa", label: "Etapa", ejemplo: "Estructura" },
+  { value: "caja_chica", label: "Caja Chica", ejemplo: "CC_Si" },
   { value: "fecha", label: "Fecha", ejemplo: "2026-03-05" },
   { value: "proyecto_nombre", label: "Proyecto", ejemplo: "Lares_76" },
   { value: "nombre_proveedor", label: "Proveedor", ejemplo: "Corralon_Gomez" },

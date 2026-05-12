@@ -10,17 +10,19 @@
 2. [Archivos y estructura](#archivos-y-estructura)
 3. [Arquitectura y patrones](#arquitectura-y-patrones)
 4. [Estructura de la página](#estructura-de-la-página)
-5. [Moneda y ajuste monetario](#moneda-y-ajuste-monetario)
-6. [Análisis de superficies y costo por m²](#análisis-de-superficies-y-costo-por-m²)
-7. [Plantilla SorbyData](#plantilla-sorbydata)
-8. [Export a PDF](#export-a-pdf)
-9. [Service – endpoints consumidos](#service--endpoints-consumidos)
-10. [Modelos de datos (referencia)](#modelos-de-datos-referencia)
-11. [Componentes y diálogos](#componentes-y-diálogos)
-12. [Hooks](#hooks)
-13. [Flujos de usuario](#flujos-de-usuario)
-14. [Convenciones y decisiones de diseño](#convenciones-y-decisiones-de-diseño)
-15. [Pendientes / Iteraciones futuras](#pendientes--iteraciones-futuras)
+5. [Modelo de cálculos del formulario](#modelo-de-c%C3%A1lculos-del-formulario)
+6. [Moneda y ajuste monetario](#moneda-y-ajuste-monetario)
+7. [Análisis de superficies y costo por m²](#an%C3%A1lisis-de-superficies-y-costo-por-m%C2%B2)
+8. [Plantilla SorbyData](#plantilla-sorbydata)
+9. [Export a PDF](#export-a-pdf)
+10. [Service – endpoints consumidos](#service--endpoints-consumidos)
+11. [Modelos de datos (referencia)](#modelos-de-datos-referencia)
+12. [Componentes y diálogos](#componentes-y-di%C3%A1logos)
+13. [Hooks](#hooks)
+14. [Flujos de usuario](#flujos-de-usuario)
+15. [Convenciones y decisiones de diseño](#convenciones-y-decisiones-de-dise%C3%B1o)
+16. [Tests](#tests)
+17. [Pendientes / Iteraciones futuras](#pendientes--iteraciones-futuras)
 
 ---
 
@@ -90,7 +92,10 @@ El módulo de **Presupuestos Profesionales** permite a constructoras crear, gest
 |---|---|
 | `src/components/presupuestosProfesionales/constants.js` | ESTADOS, MONEDAS, TRANSICIONES_VALIDAS, TEXTO_NOTAS_DEFAULT, PLANTILLA_SORBYDATA, helpers de formato y parseo numérico |
 | `src/components/presupuestosProfesionales/monedaAjusteConfig.js` | INDEXACION_VALUES, CAC_TIPOS, USD_FUENTES, USD_VALORES, toMesAnterior, normalizarAjusteMoneda |
-| `src/components/presupuestosProfesionales/incidenciaHelpers.js` | plantillaRubrosToPresupuestoRubros, distribuirMontosPorIncidencia, distribuirMontosPorIncidenciaTareas |
+| `src/components/presupuestosProfesionales/incidenciaHelpers.js` | `plantillaRubrosToPresupuestoRubros`, `distribuirMontosPorIncidencia`, `distribuirMontosPorIncidenciaTareas` (largest remainder en centavos enteros) |
+| `src/components/presupuestosProfesionales/presupuestosHandlers.js` | Funciones puras de actualización del form: `aplicarUpdateTareaMonto`, `aplicarUpdateTareaCantidad`, `aplicarUpdateRubro`, `aplicarUpdateIncidenciaObjetivo*`, `aplicarDistribuirPorTotal`, `sumaEfectivaTareas`. Garantizan la invariante "no cascada" (ver §5) |
+| `src/components/presupuestosProfesionales/README.md` | Modelo mental del módulo: glosario, los dos modos, invariantes, lista de handlers |
+| `src/components/presupuestosProfesionales/__tests__/` | Tests unitarios con Jest (`incidenciaHelpers.test.js`, `presupuestosHandlers.test.js`) |
 | `src/utils/presupuestos/exportPresupuestoToPdfRenderer.js` | Export PDF con @react-pdf/renderer — flujo principal + cálculo costoM2 |
 | `src/utils/presupuestos/exportPresupuestoToPdf.js` | Export PDF con jspdf (alternativo) |
 | `src/utils/presupuestos/PdfPresupuestoDocument.js` | Componente React para render del PDF |
@@ -153,6 +158,91 @@ Page (presupuestosProfesionales.js)
 - **Fila fija:** Plantilla SorbyData (chip "Sistema", solo Duplicar)
 - **Tabla:** plantillas propias con Editar, Duplicar, Eliminar
 - **Botones:** Importar archivo, Nueva plantilla
+
+---
+
+## Modelo de cálculos del formulario
+
+> Versión condensada. Para un walkthrough con ejemplos ver
+> `src/components/presupuestosProfesionales/README.md`.
+
+### Glosario
+
+- **Rubro**: categoría con nombre, monto y opcionalmente subrubros (tareas).
+- **Tarea / subrubro**: ítem dentro de un rubro con descripción, cantidad y
+  precio unitario (`monto`). `cantidad = null` equivale a `1` (compat con
+  datos antiguos).
+- **Monto efectivo de una tarea**: `(cantidad || 1) × monto`.
+- **`incidencia_pct`** (derivada): porcentaje calculado a partir de los
+  montos reales. Solo lectura, se muestra como Chip outlined.
+- **`incidencia_objetivo_pct`** (input solo en modo distribuir): porcentaje
+  que el usuario fija para que el sistema reparta el monto.
+
+### Dos modos del formulario
+
+#### Modo normal (default — bottom-up)
+
+| Tipo | Campos |
+|---|---|
+| **Inputs** (TextField) | `tarea.descripcion`, `tarea.cantidad`, `tarea.monto`, `rubro.nombre` |
+| **Mixto** (TextField o Chip) | `rubro.monto` (ver regla más abajo) |
+| **Derivados** (Chip read-only) | `total_neto = Σ rubros`, `incidencia_pct` (rubro y tarea) |
+| **Ocultos** | `incidencia_objetivo_pct` (no se muestra ni se modifica) |
+
+**Regla del `rubro.monto` en modo normal:**
+- Si los subrubros tienen valor (`Σ cantidad × monto > 0`) → es **derivado**
+  (`= Σ tareas`) y se ve como Chip read-only. Editar un subrubro recalcula el
+  rubro automáticamente.
+- Si no hay subrubros, o todos están vacíos → es **editable directamente**
+  (TextField). Útil para rubros "sueltos" sin desglose.
+- Transición transparente: si el usuario suma un subrubro con valor, el rubro
+  pasa a derivado y refleja la suma. Si vuelve a vaciar todos, el monto vuelve
+  a ser editable y se preserva el último valor manual (no se pisa a cero).
+
+#### Modo distribuir (toggle "Distribuir por incidencias" — top-down)
+
+| Tipo | Campos |
+|---|---|
+| **Inputs** | Total neto objetivo, `rubro.incidencia_objetivo_pct`, `tarea.incidencia_objetivo_pct` |
+| **Derivados** | `rubro.monto`, `tarea.monto` (recalculados por la distribución) |
+
+Editar un % objetivo redistribuye los montos según largest remainder. Editar
+un % objetivo en modo normal **solo persiste el valor**, no redistribuye
+(antes esto generaba cascadas confusas).
+
+### Invariante crítica
+
+> **Editar un input nunca debe modificar otro input que el usuario no tocó.**
+
+Los handlers en `presupuestosHandlers.js` son funciones puras y se testean
+para garantizar esta invariante. Editar `tarea.monto` o `tarea.cantidad`
+solo recalcula `rubro.monto` (cuando corresponde) — no toca
+`incidencia_objetivo_pct` de nadie. Editar el `% objetivo` de una tarea en
+modo normal solo persiste el valor.
+
+### Largest remainder en `incidenciaHelpers.js`
+
+`distribuirMontosPorIncidencia` y `distribuirMontosPorIncidenciaTareas`
+reparten un total según porcentajes con **largest remainder en centavos
+enteros**:
+
+1. Cada item recibe `floor(total × pct / 100)` centavos.
+2. El sobrante se asigna uno a uno entre los items con mayor parte fraccional.
+3. Si la suma de % es < 100, el sobrante **no se inventa**: queda monto sin
+   asignar y la UI muestra warning ("Falta X% sin asignar").
+
+Beneficios: la suma coincide exactamente con el total cuando los % suman
+100%, y el % escrito por el usuario nunca se altera al re-render.
+
+### Advertencias en el formulario
+
+| Caso | UI | Severidad |
+|---|---|---|
+| Modo distribuir, Σ % rubros > 100 | Texto al lado del Total | Error |
+| Modo distribuir, Σ % rubros < 100 | Texto al lado del Total | Warning |
+| Modo distribuir, Σ % tareas dentro de un rubro fuera de rango | Banner por rubro | Error/Warning |
+| Modo distribuir, `Σ rubros.monto ≠ totalObjetivo` (desfase > $1) | Banner debajo del Total: "Desfase con el total objetivo: el total real es … (±… respecto al objetivo de …). Se produjo por editar cantidad o precio en algún subrubro." | Warning |
+| Modo normal | Sin warnings de inconsistencia (todo se autocalcula consistentemente) | — |
 
 ---
 
@@ -382,25 +472,23 @@ moneda (ARS|USD), total_neto,
 indexacion (CAC|USD|null), cac_tipo, usd_fuente, usd_valor,
 base_calculo (total|subtotal),
 cotizacion_snapshot { tipo, fuente, referencia, valor, fecha_origen },
-
+empresa_logo_url, logo_pdf_escala (0.5–2.0), header_bg_color ('#RRGGBB'), header_text_color ('#RRGGBB'),
 rubros[{
-  nombre, orden, monto, incidencia_pct,
-  incidencia_objetivo_pct (Number|null),   // meta % para distribución automática
+  nombre, orden, monto,
+  incidencia_pct,                  // calculada
+  incidencia_objetivo_pct (Number|null),         // input solo en modo distribuir
   tareas[{
-    descripcion, orden, monto, incidencia_pct,
-    incidencia_objetivo_pct (Number|null)   // meta % dentro del rubro
-  }]
+    descripcion, orden,
+    monto,                         // valor unitario
+    cantidad,                      // null = 1 (compat con datos antiguos)
+    incidencia_pct,                // calculada
+    incidencia_objetivo_pct,       // input solo en modo distribuir
+  }],
 }],
-
 notas_texto, analisis_superficies {
   sup_cubierta_m2, sup_patios_m2, coef_patios,
   sup_vereda_m2, coef_vereda, sup_ponderada_m2
 },
-
-// Branding PDF
-empresa_logo_url, logo_pdf_escala (0.5–2.0),
-header_bg_color ('#RRGGBB'), header_text_color ('#RRGGBB'),
-
 estado, historial_estados[], version_actual, versiones[], anexos[]
 ```
 
@@ -524,10 +612,34 @@ Cuando el usuario selecciona **aceptado**:
 | CAC | `toMesAnterior` devuelve 2 meses previos (publicación retrasada) |
 | Plantillas vacías | notas = TEXTO_NOTAS_DEFAULT |
 | Textos | Español argentino (vos) |
+| Inputs vs derivados | Inputs como TextField; derivados como Chip read-only (con tooltip "Calculado a partir de…" cuando aplica) |
+| Cascadas | Editar un input solo afecta campos derivados; nunca a otros inputs (ver §5) |
+| Distribución por % | Largest remainder en centavos enteros; nunca se ajusta el último renglón silenciosamente |
 | Parseo numérico | `parseNumberInput`: último `.` o `,` = decimal; `.` anteriores = miles. Acepta `1.000.000`, `20.5`, `20,5` |
 | PDF | Client-side con @react-pdf/renderer; sin endpoint de PDF en el backend |
 | Header PDF | Colores customizables por presupuesto; default azul Sorby `#0a4791` |
 | Logo PDF | Escala 50%–200% configurable en el form |
+
+---
+
+## Tests
+
+Configuración Jest minimalista (no afecta la build de Next, que sigue usando SWC):
+
+- `babel.config.js`: presets babel solo cuando `NODE_ENV=test`.
+- `jest.config.js`: `testEnvironment: 'node'`, busca `**/__tests__/**/*.test.js`.
+- Script: `npm test`.
+
+### Suites
+
+| Archivo | Cobertura |
+|---|---|
+| `src/components/presupuestosProfesionales/__tests__/incidenciaHelpers.test.js` | `distribuirMontosPorIncidencia` (casos: centavos, percentajes que suman <100 o >100, respeto de `cantidad`) |
+| `src/components/presupuestosProfesionales/__tests__/presupuestosHandlers.test.js` | Invariante "no cascada" para cada handler en modo normal; redistribución correcta en modo distribuir; preservación del monto manual cuando todas las tareas quedan vacías |
+
+Total actual: **34 tests, todos passing**.
+
+Para correr solo este módulo: `npx jest src/components/presupuestosProfesionales`.
 
 ---
 
@@ -550,17 +662,10 @@ Cuando el usuario selecciona **aceptado**:
 - [ ] Extraer editor de rubros a componente reutilizable
 - [ ] Validaciones más robustas (ej: al menos un rubro)
 - [ ] Tests unitarios del service
+- [x] Tests unitarios de helpers de cálculo y handlers del form (`incidenciaHelpers`, `presupuestosHandlers`)
+- [x] Largest remainder para distribución por porcentajes (sin ajustes silenciosos al re-render)
+- [x] Eliminar cascadas confusas: editar un input no modifica otros inputs
 
 ---
 
-## Referencia rápida
-
-```
-/presupuestosProfesionales
-  Tab 0: Presupuestos     → CRUD, workflow, export PDF
-  Tab 1: Plantillas      → Plantilla SorbyData + plantillas propias + import
-```
-
----
-
-*Última actualización: Abril 2026*
+*Última actualización: 2026-05-04 — Documento fusionado: modelo de cálculos, análisis m², personalización PDF, handlers puras y tests.*

@@ -12,4 +12,5 @@ export { default as PresupuestosTableRow } from './PresupuestosTableRow';
 export { default as PlantillasTable } from './PlantillasTable';
 export * from './constants';
 export * from './incidenciaHelpers';
+export * from './presupuestosHandlers';
 export * from './monedaAjusteConfig';

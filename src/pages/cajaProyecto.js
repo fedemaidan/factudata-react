@@ -54,6 +54,7 @@ import SettingsIcon from '@mui/icons-material/Settings';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import { buildCompletarPagoUpdateFields, puedeCompletarPagoEgreso } from 'src/utils/movimientoPagoCompleto';
 import { formatCurrencyWithCode } from 'src/utils/formatters';
+import { FILTER_ARRAY_KEYS } from 'src/utils/parseData';
 
 
 // tamaños mínimos por columna (px)
@@ -151,6 +152,12 @@ const deserializeFilterSet = (stored) => {
   dateKeys.forEach((k) => {
     if (out[k] && typeof out[k] === 'string') out[k] = new Date(out[k]);
     else if (out[k]?.seconds) out[k] = new Date(out[k].seconds * 1000);
+  });
+  // Garantizar que los campos array siempre sean arrays (datos legados o corruptos)
+  FILTER_ARRAY_KEYS.forEach((k) => {
+    if (k in out && !Array.isArray(out[k])) {
+      out[k] = out[k] ? [out[k]] : [];
+    }
   });
   return out;
 };
@@ -464,6 +471,13 @@ const ProyectoMovimientosPage = () => {
   const [proyectos, setProyectos] = useState([]);
   const router = useRouter();
   const { proyectoId } = router.query;
+
+  useEffect(() => {
+    if (!router.isReady) return;
+    router.replace({ pathname: '/cajas', query: router.query });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router.isReady]);
+
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 

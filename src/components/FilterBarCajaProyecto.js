@@ -45,6 +45,14 @@ const logFilterBar = (label, payload) => {
 // defaultFilters importado como defaultMovimientosFilters desde parseData.js
 const defaultFilters = defaultMovimientosFilters;
 
+// Mapeo de campos de caja virtual → nombre del filtro que bloquean
+const CAJA_SCOPE_FILTER_MAP = {
+  moneda:     'moneda',
+  medio_pago: 'medioPago',
+  estado:     'estados',
+  type:       'tipo',
+};
+
 const DATE_KEYS = FILTER_DATE_KEYS;
 const TEXT_DRAFT_KEYS = ['palabras', 'observacion', 'codigoSync'];
 const serializeFilters = (f) => {
@@ -78,12 +86,12 @@ export const FilterBarCajaProyecto = ({
   empresa,
   expanded = false,
   onToggleExpanded,
-  storageKey,          // proyectoId
   empresaId,           // empresa.id — para persistir en Mongo
   userId,              // uid del usuario logueado
   showCodigoSync = false,
   searchRequiresSubmit = false,
   searchMinLength = 0,
+  cajaScope = null,    // caja virtual activa; bloquea sus dimensiones en el FilterBar
 }) => {
   const [focusField, setFocusField] = useState(null);
 
@@ -98,6 +106,15 @@ export const FilterBarCajaProyecto = ({
   // cuando una limpieza externa (chip, clearAll) sincroniza los drafts hacia abajo.
   const lastCommitRef = useRef({ palabras: filters.palabras || '', observacion: filters.observacion || '', codigoSync: filters.codigoSync || '' });
   const debounceTimerRef = useRef(null);
+
+  // filterName → valor fijo de la caja activa (solo para dimensiones que la caja define)
+  const cajaScopeLocks = useMemo(() => {
+    if (!cajaScope) return {};
+    return Object.entries(CAJA_SCOPE_FILTER_MAP).reduce((acc, [cajaKey, filterKey]) => {
+      if (cajaScope[cajaKey]) acc[filterKey] = cajaScope[cajaKey];
+      return acc;
+    }, {});
+  }, [cajaScope]);
 
   // Sincronizar drafts cuando los filtros cambian externamente (chips, clearAll, cargar filtro guardado).
   useEffect(() => {
@@ -348,19 +365,28 @@ export const FilterBarCajaProyecto = ({
 
       const isSub = filtro.name === 'subcategorias';
       const isSubDisabled = isSub && !(Array.isArray(filters.categorias) && filters.categorias.length > 0);
+      const cajaLockValue = cajaScopeLocks[filtro.name];
+      const isLockedByCaja = !!cajaLockValue;
+      const isDisabled = isSubDisabled || isLockedByCaja;
+      const tooltipTitle = isLockedByCaja
+        ? `Fijado por la caja "${cajaScope?.nombre}"`
+        : isSubDisabled
+          ? 'Seleccioná una categoría primero para filtrar por subcategoría'
+          : '';
       const selectOptions = isSub ? subcategoriasDisponibles : (filtro.options || options[filtro.optionsKey] || []);
+      const displayValue = isLockedByCaja ? [cajaLockValue] : toArrLocal(value);
 
       return (
         <Tooltip
           key={filtro.name}
-          title={isSubDisabled ? 'Seleccioná una categoría primero para filtrar por subcategoría' : ''}
+          title={tooltipTitle}
           placement="top"
           arrow
         >
           <Box sx={overrideSx || { minWidth: 0, width: '100%' }}>
-            <FormControl sx={{ width: '100%' }} disabled={isSubDisabled} size="small">
+            <FormControl sx={{ width: '100%' }} disabled={isDisabled} size="small">
               <InputLabel>{filtro.label}</InputLabel>
-              <Select multiple value={toArrLocal(value)} onChange={(e) => set(filtro.name, e.target.value)} label={filtro.label} autoFocus={focusField === filtro.name} size="small">
+              <Select multiple value={displayValue} onChange={(e) => set(filtro.name, e.target.value)} label={filtro.label} autoFocus={focusField === filtro.name} size="small">
                 {selectOptions.map((opt) => (<MenuItem key={opt} value={opt}>{opt}</MenuItem>))}
               </Select>
               {isSubDisabled && (
@@ -415,7 +441,8 @@ export const FilterBarCajaProyecto = ({
   const fetchSaved = useCallback(async () => {
     if (!empresaId) return;
     try {
-      const data = await FiltrosGuardadosService.listar(empresaId);
+      const raw = await FiltrosGuardadosService.listar(empresaId);
+      const data = Array.isArray(raw) ? raw : [];
       setSavedFilters(data);
       logFilterBar('Filtros guardados cargados', {
         empresaId,
@@ -631,10 +658,10 @@ export const FilterBarCajaProyecto = ({
           <Divider orientation="vertical" flexItem />
           {/* Buscar */}
           <TextField
-            value={searchRequiresSubmit ? searchDraft : filters.palabras}
+            value={searchRequiresSubmit ? textDrafts.palabras : filters.palabras}
             onChange={(e) => {
               if (searchRequiresSubmit) {
-                setSearchDraft(e.target.value);
+                setTextDrafts((prev) => ({ ...prev, palabras: e.target.value }));
                 return;
               }
               set('palabras', e.target.value);
@@ -656,7 +683,7 @@ export const FilterBarCajaProyecto = ({
               size="small"
               variant="contained"
               onClick={commitSearchDraft}
-              disabled={Boolean(searchDraft?.trim()) && searchDraft.trim().length < searchMinLength}
+              disabled={Boolean(textDrafts.palabras?.trim()) && textDrafts.palabras.trim().length < searchMinLength}
             >
               Buscar
             </Button>

@@ -1,6 +1,7 @@
 export const DEFINICION_CAMPOS = [
   { section: 'basicos', name: 'fecha_factura', label: 'Fecha de la Factura', type: 'date', stitchBlock: 'details', stitchOrder: 10 },
   { section: 'basicos', name: 'fecha_pago', label: 'Fecha de pago', type: 'date', visibleIf: (info) => info.fecha_pago, stitchBlock: 'details', stitchOrder: 20 },
+  { section: 'basicos', name: 'fecha_vencimiento', label: 'Fecha de vencimiento', type: 'date', visibleIf: (info) => info.fecha_vencimiento, stitchBlock: 'details', stitchOrder: 25 },
   { section: 'basicos', name: 'type', label: 'Tipo', type: 'select', options: ['egreso', 'ingreso'], stitchBlock: 'details', stitchOrder: 30 },
   { section: 'basicos', name: 'nombre_proveedor', label: 'Proveedor', type: 'autocomplete', optionsKey: 'proveedores', visibleIf: (info) => info.proveedor, stitchBlock: 'details', stitchOrder: 40 },
   { section: 'basicos', name: 'numero_factura', label: 'Numero de Factura', type: 'text', visibleIf: (info) => info.numero_factura, stitchBlock: 'details', stitchOrder: 50 },
@@ -48,6 +49,7 @@ export const COMPROBANTE_INFO_DEFAULT = {
   etapa: false,
   empresa_facturacion: false,
   fecha_pago: false,
+  fecha_vencimiento: false,
   obra: false,
   cliente: false,
   factura_cliente: false,

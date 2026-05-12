@@ -22,6 +22,12 @@ const ACTION_VISUAL_BY_TYPE = {
     Icon: LaunchRoundedIcon,
     primary: true,
   },
+  open_presupuesto_profesional: {
+    variant: 'contained',
+    color: 'primary',
+    Icon: LaunchRoundedIcon,
+    primary: true,
+  },
   suggest_create_report: {
     variant: 'outlined',
     color: 'inherit',

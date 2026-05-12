@@ -29,10 +29,20 @@ const InputWithSelect = ({
 
   const displayValue = focused ? localValue : (formatDisplay ? formatDisplay(value) : value);
 
+  const toDisplay = useCallback(
+    (v) =>
+      formatDisplay && v != null && v !== ''
+        ? formatDisplay(v)
+        : v == null || v === ''
+        ? ''
+        : String(v),
+    [formatDisplay]
+  );
+
   const handleFocus = useCallback(() => {
     setFocused(true);
-    setLocalValue(value == null || value === '' ? '' : String(value));
-  }, [value]);
+    setLocalValue(toDisplay(value));
+  }, [value, toDisplay]);
 
   const handleBlur = useCallback(() => {
     setFocused(false);
@@ -54,9 +64,9 @@ const InputWithSelect = ({
 
   useEffect(() => {
     if (!focused) return;
-    const raw = value == null || value === '' ? '' : String(value);
-    if (raw !== localValue) {
-      setLocalValue(raw);
+    const displayVal = toDisplay(value);
+    if (displayVal !== localValue) {
+      setLocalValue(displayVal);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
