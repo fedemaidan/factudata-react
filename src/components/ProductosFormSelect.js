@@ -9,7 +9,8 @@ import {
   TableHead,
   TableRow,
   Tooltip,
-  Box
+  Box,
+  Chip,
 } from '@mui/material';
 import { Add, Delete } from '@mui/icons-material';
 import { Autocomplete } from '@mui/material';
@@ -106,9 +107,22 @@ const ProductosFormSelect = ({
           </TableRow>
         </TableHead>
         <TableBody>
-          {productos.map((prod, index) => (
-            <TableRow key={index}>
+          {productos.map((prod, index) => {
+            const esNuevo = prod.codigo?.trim() &&
+              !opcionesMateriales.find((m) => m.codigo === prod.codigo);
+            const npSource = prod._npSource;
+            return (
+            <TableRow key={index} sx={esNuevo && !npSource ? { bgcolor: 'warning.lighter' } : {}}>
               <TableCell>
+                {npSource === 'matcheado' && (
+                  <Chip label="✓ Catálogo" size="small" color="success" sx={{ mb: 0.5, fontSize: 10, height: 18 }} />
+                )}
+                {npSource === 'nuevo' && (
+                  <Chip label="No encontrado" size="small" color="warning" sx={{ mb: 0.5, fontSize: 10, height: 18 }} />
+                )}
+                {!npSource && esNuevo && (
+                  <Chip label="Nuevo" size="small" color="warning" sx={{ mb: 0.5, fontSize: 10, height: 18 }} />
+                )}
                 <Autocomplete
                   freeSolo
                   value={prod.codigo || ''}
@@ -132,10 +146,17 @@ const ProductosFormSelect = ({
                     return option.codigo || '';
                   }}
                   renderOption={(props, option) => (
-                    <li {...props} key={option.codigo}>
-                      <strong>{option.codigo}</strong>&nbsp;- {option.descripcion}
+                    <li {...props} key={option.codigo} style={{ display: 'block', padding: '6px 12px' }}>
+                      <div style={{ fontWeight: 700, fontSize: 12, color: '#555', lineHeight: 1.2 }}>{option.codigo}</div>
+                      <div style={{ fontSize: 13, lineHeight: 1.4 }}>{option.descripcion}</div>
                     </li>
                   )}
+                  slotProps={{
+                    popper: {
+                      style: { minWidth: 320 },
+                      placement: 'bottom-start',
+                    },
+                  }}
                   renderInput={(params) => <TextField {...params} placeholder="Código" size="small" />}
                   fullWidth
                   size="small"
@@ -189,7 +210,8 @@ const ProductosFormSelect = ({
                 </IconButton>
               </TableCell>
             </TableRow>
-          ))}
+            );
+          })}
         </TableBody>
       </Table>
       </Box>

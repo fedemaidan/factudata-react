@@ -1,3 +1,50 @@
+## Mayo 2026 — Notas de Pedido con ítems y resoluciones
+
+### Qué es esto
+
+Hasta ahora las Notas de Pedido eran texto libre: se describía lo que se necesitaba en un mensaje y el sistema lo guardaba como un comentario. A partir de este cambio existe un nuevo modo donde **cada ítem se carga individualmente** con nombre, cantidad y unidad, y el sistema lleva el estado de cada uno (pendiente, en gestión, parcialmente resuelto, resuelto, cancelado).
+
+Esto le da a la empresa una visión mucho más precisa de qué se pidió, qué ya llegó y qué falta.
+
+### Novedades principales
+
+**Ítems por nota de pedido**
+- Al crear o editar una nota, se pueden cargar los materiales uno por uno en lugar de escribirlos como texto libre.
+- El sistema cruza automáticamente cada ítem contra el catálogo de materiales de la empresa para reconocerlos.
+- Cada ítem tiene su propio estado de avance independiente.
+
+**Resolución de ítems**
+- Cada material pendiente se puede resolver de tres maneras: registrando una compra, retirando del depósito de stock, o descontando de un acopio existente.
+- Al resolver un ítem, el sistema genera automáticamente el movimiento correspondiente (egreso de caja, solicitud de stock o remito de acopio).
+- Se puede revertir una resolución si se cargó por error.
+
+**Bot de WhatsApp**
+- El bot ahora puede mostrar los ítems pendientes de una nota y guiar al usuario para resolver cada uno por chat.
+- Soporta los tres tipos de resolución mencionados arriba, sin necesidad de entrar a la plataforma web.
+
+**PDF actualizado**
+- Cuando la nota tiene ítems estructurados, el PDF incluye una tabla con el detalle de materiales, cantidades, precios estimados y estado de cada ítem.
+
+**Exportación de movimientos de presupuesto**
+- Nueva opción para exportar en Excel el detalle de todos los movimientos que componen el ejecutado de un presupuesto.
+
+### Mejoras en acopio de materiales
+
+**Informe de remitos (Excel)**
+- El informe ahora muestra el importe total de cada remito en una fila destacada, además del saldo acumulado. Antes solo se veían los ítems sin un subtotal claro por entrega.
+- Se unificó el estilo visual: todos los saldos tienen el mismo color y tipografía, sin el semáforo verde/naranja/rojo anterior.
+
+**Filtros de remitos**
+- El botón "Limpiar" ahora borra todos los filtros activos, incluido el filtro por número de remito. Antes podía quedarse activo sin que el usuario lo notara.
+
+### Correcciones
+
+- Al revertir un retiro de acopio, el movimiento inverso ahora queda bien asociado al acopio correspondiente (antes apuntaba al remito por error, lo que generaba inconsistencias en el historial).
+- Cuando el bot extrae ítems de un mensaje y no se menciona cantidad, registra automáticamente "1" en lugar de fallar al guardar.
+- La exportación de movimientos de un presupuesto solo está disponible para usuarios de la misma empresa — antes cualquier usuario autenticado podía acceder con el ID del presupuesto.
+
+---
+
 ## v3.0.0
 
 ###### Feb 24, 2023

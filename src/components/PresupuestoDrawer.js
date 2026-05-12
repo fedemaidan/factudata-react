@@ -192,6 +192,7 @@ const PresupuestoDrawer = ({
   const [movimientosFetched, setMovimientosFetched] = useState(false);
   const [equivToggles, setEquivToggles] = useState({ ars: true, usd: false, cac: false });
   const [movOrdenAsc, setMovOrdenAsc] = useState(true); // true = antiguos primero, false = recientes primero
+  const [exportandoMovimientos, setExportandoMovimientos] = useState(false);
 
   // === Estado: UI ===
   const [loading, setLoading] = useState(false);
@@ -2370,6 +2371,29 @@ const PresupuestoDrawer = ({
                         sx={{ cursor: 'pointer', fontSize: '0.65rem', height: 22, ml: 'auto' }}
                       />
                     </Tooltip>
+                    {presupuesto?.id && (
+                      <Tooltip title="Exportar a Excel con equivalencias" arrow>
+                        <Chip
+                          label={exportandoMovimientos ? 'Exportando…' : '↓ Excel'}
+                          size="small"
+                          variant="outlined"
+                          color="primary"
+                          disabled={exportandoMovimientos || !movimientosFetched}
+                          onClick={async () => {
+                            setExportandoMovimientos(true);
+                            try {
+                              const nombre = `movimientos-${presupuesto.nombre || presupuesto.categoria || presupuesto.id}`;
+                              await presupuestoService.exportarMovimientos(presupuesto.id, nombre);
+                            } catch (e) {
+                              console.error('Error exportando movimientos:', e);
+                            } finally {
+                              setExportandoMovimientos(false);
+                            }
+                          }}
+                          sx={{ cursor: 'pointer', fontSize: '0.65rem', height: 22 }}
+                        />
+                      </Tooltip>
+                    )}
                   </Stack>
 
                   {movimientosLoading ? (

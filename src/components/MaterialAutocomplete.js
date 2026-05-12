@@ -28,6 +28,26 @@ import { debounce } from 'lodash';
 import StockMaterialesService from 'src/services/stock/stockMaterialesService';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 
+const EXTERNAL_ALIAS_SOURCES = new Set(['whatsapp', 'ocr', 'remito', 'factura', 'importacion', 'external']);
+
+function normalizeAliasText(text) {
+  return String(text || '').trim().replace(/\s+/g, ' ');
+}
+
+function isMeaningfulAliasCandidate(text) {
+  const normalized = normalizeAliasText(text);
+  if (normalized.length < 4) return false;
+  if (!/[a-zA-ZáéíóúÁÉÍÓÚñÑ]/.test(normalized)) return false;
+
+  const compact = normalized.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ0-9]/g, '');
+  if (compact.length < 4) return false;
+
+  const words = normalized.split(/\s+/).filter(Boolean);
+  if (words.length === 1 && words[0].length < 5) return false;
+
+  return true;
+}
+
 const MaterialAutocomplete = ({
   user,
   value = '', // id del material seleccionado
@@ -40,6 +60,10 @@ const MaterialAutocomplete = ({
   fullWidth = true,
   placeholder = 'Buscar material o escribir nombre...',
   showCreateOption = true, // Permitir crear materiales nuevos
+  syncFallbackText = true,
+  allowAliasSuggestion = false,
+  aliasSuggestionSource = 'manual_ui',
+  originalAliasText = '',
 }) => {
   const [inputValue, setInputValue] = useState('');
   const [options, setOptions] = useState([]);
@@ -49,8 +73,8 @@ const MaterialAutocomplete = ({
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [createLoading, setCreateLoading] = useState(false);
   
-  // Guardar el texto original del remito (no cambia cuando el usuario escribe)
-  const [originalRemitoText, setOriginalRemitoText] = useState('');
+  // Guardar el texto original externo (no cambia cuando el usuario escribe)
+  const [originalSourceText, setOriginalSourceText] = useState('');
   
   // Estado para el diálogo de agregar alias
   const [showAliasDialog, setShowAliasDialog] = useState(false);
@@ -63,13 +87,16 @@ const MaterialAutocomplete = ({
   const [createSubcategoria, setCreateSubcategoria] = useState('');
   const [createAlias, setCreateAlias] = useState('');
   const [createNombre, setCreateNombre] = useState('');
+  const canSuggestAlias = allowAliasSuggestion && EXTERNAL_ALIAS_SOURCES.has(aliasSuggestionSource);
+  const showMissingState = showCreateOption;
   
-  // Guardar el texto original del remito cuando se monta el componente o cambia fallbackText
+  // Guardar el texto original externo cuando se informa explícitamente.
   useEffect(() => {
-    if (fallbackText && !originalRemitoText) {
-      setOriginalRemitoText(fallbackText.trim());
+    const normalizedOriginal = normalizeAliasText(originalAliasText);
+    if (normalizedOriginal && normalizedOriginal !== originalSourceText) {
+      setOriginalSourceText(normalizedOriginal);
     }
-  }, [fallbackText, originalRemitoText]);
+  }, [originalAliasText, originalSourceText]);
 
   // Cargar categorías de empresa cuando se abre el diálogo de crear
   useEffect(() => {
@@ -78,11 +105,14 @@ const MaterialAutocomplete = ({
         setEmpresaCategorias(emp?.categorias_materiales || []);
       }).catch(() => setEmpresaCategorias([]));
 
-      // Inicializar nombre con el texto actual y alias con el texto original del remito
+      // Inicializar nombre con el texto actual y alias solo si viene de una fuente externa válida.
       setCreateNombre(inputValue.trim());
-      const origText = originalRemitoText || fallbackText?.trim() || '';
-      // Si el texto original es diferente al nombre, sugerirlo como alias
-      if (origText && origText.toLowerCase() !== inputValue.trim().toLowerCase()) {
+      const origText = normalizeAliasText(originalSourceText);
+      if (
+        canSuggestAlias
+        && isMeaningfulAliasCandidate(origText)
+        && origText.toLowerCase() !== inputValue.trim().toLowerCase()
+      ) {
         setCreateAlias(origText);
       } else {
         setCreateAlias('');
@@ -90,7 +120,7 @@ const MaterialAutocomplete = ({
       setCreateCategoria('');
       setCreateSubcategoria('');
     }
-  }, [showCreateDialog, user]);
+  }, [showCreateDialog, user, inputValue, originalSourceText, canSuggestAlias]);
 
   // Subcategorías disponibles según la categoría seleccionada en el diálogo de crear
   const createSubcategoriasDisponibles = useMemo(() => {
@@ -210,13 +240,13 @@ const MaterialAutocomplete = ({
       setSelectedMaterial(null);
       setInputValue('');
       setMaterialExists(null);
-    } else if (!value && !selectedMaterial && fallbackText && inputValue !== fallbackText) {
+    } else if (syncFallbackText && !value && !selectedMaterial && fallbackText && inputValue !== fallbackText) {
       // Si no hay ID pero sí hay fallbackText (nombre del remito sin conciliar), mostrarlo
       setInputValue(fallbackText);
-      setMaterialExists(false); // Indicar que NO está conciliado (chip "Nuevo")
+      setMaterialExists(showMissingState ? false : null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value, loadMaterialById, fallbackText]); // Agregamos fallbackText como dependencia
+  }, [value, loadMaterialById, fallbackText, syncFallbackText, showMissingState]);
 
   // Encontrar material seleccionado por ID en opciones existentes (solo si no tenemos selectedMaterial)
   useEffect(() => {
@@ -259,12 +289,14 @@ const MaterialAutocomplete = ({
       setInputValue(newValue.label);
       setMaterialExists(true);
       
-      // Usar el texto original del remito (guardado al montar) para proponer como alias
-      // NO usar lo que el usuario escribió parcialmente en el input
-      const originalText = originalRemitoText || fallbackText?.trim();
+      const originalText = normalizeAliasText(originalSourceText);
       const materialName = newValue.nombre?.trim()?.toLowerCase();
       
-      if (originalText && originalText.toLowerCase() !== materialName) {
+      if (
+        canSuggestAlias
+        && isMeaningfulAliasCandidate(originalText)
+        && originalText.toLowerCase() !== materialName
+      ) {
         // Verificar que no sea ya un alias existente
         const existingAliases = Array.isArray(newValue.alias) 
           ? newValue.alias 
@@ -392,7 +424,7 @@ const MaterialAutocomplete = ({
   // Determinar el color del texto basado en si el material existe
   const getTextColor = () => {
     if (selectedMaterial || materialExists === true) return 'success.main';
-    if (materialExists === false && inputValue.trim().length >= 2) return 'error.main';
+    if (showMissingState && materialExists === false && inputValue.trim().length >= 2) return 'error.main';
     return 'text.primary';
   };
 
@@ -454,7 +486,7 @@ const MaterialAutocomplete = ({
                       sx={{ height: 20, fontSize: '0.7rem' }}
                     />
                   )}
-                  {materialExists === false && inputValue.trim().length >= 2 && (
+                  {showMissingState && materialExists === false && inputValue.trim().length >= 2 && (
                     <Chip 
                       label="Nuevo" 
                       size="small" 
@@ -472,13 +504,13 @@ const MaterialAutocomplete = ({
         renderOption={(props, option) => (
           <Box component="li" {...props}>
             <Box sx={{ flexGrow: 1 }}>
-              <Typography variant="body2">
+              <Typography variant="body2" component="div">
                 <strong>{option.nombre}</strong>
                 {option.SKU && (
-                  <Chip 
-                    label={option.SKU} 
-                    size="small" 
-                    sx={{ ml: 1, height: 20 }} 
+                  <Chip
+                    label={option.SKU}
+                    size="small"
+                    sx={{ ml: 1, height: 20 }}
                   />
                 )}
               </Typography>
@@ -496,7 +528,7 @@ const MaterialAutocomplete = ({
         noOptionsText={
           inputValue.length < 2 
             ? "Escribe al menos 2 caracteres para buscar"
-            : materialExists === false
+            : showMissingState && materialExists === false
             ? `Material "${inputValue}" no existe. Puedes crearlo.`
             : "No se encontraron materiales."
         }

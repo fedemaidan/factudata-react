@@ -68,6 +68,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
   const [confFecha, setConfFecha] = useState(empresa.conf_fecha || "REAL");
   const [tipo, setTipo] = useState(empresa.tipo || "Constructora");
   const [configNotificacionNp, setConfigNotificacionNp] = useState(empresa.config_notificacion_np || 'SOLO_REGISTRADOS');
+  const [notaPedidoModoDefault, setNotaPedidoModoDefault] = useState(empresa.nota_pedido_modo_default || 'texto_libre');
   const [sheetCentral, setSheetCentral] = useState(empresa.sheetCentral || "");
   const [acciones, setAcciones] = useState(empresa.acciones || []);
   const [isLoading, setIsLoading] = useState(false);
@@ -189,6 +190,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
     "CREAR_NOTA_PEDIDO",
     "MODIFICAR_NOTA_PEDIDO",
     "ELIMINAR_NOTA_PEDIDO",
+    "RESOLVER_NOTA_PEDIDO",
     "VER_NOTAS_DE_PEDIDO",
     "GESTIONAR_MOVIMIENTO",
     "CREAR_INGRESO_CAJA_CHICA",
@@ -354,6 +356,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
       conf_fecha: confFecha,
       tipo: tipo,
       config_notificacion_np: configNotificacionNp,
+      nota_pedido_modo_default: notaPedidoModoDefault,
       sheetCentral: sheetCentral,
       acciones: acciones,
       dolarDeAjuste: dolarDeAjuste,
@@ -497,6 +500,19 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
         <MenuItem value="SOLO_REGISTRADOS">Solo Registrados</MenuItem>
         <MenuItem value="SOLO_RESPONSABLE">Solo Responsable</MenuItem>
         <MenuItem value="AMBOS">Ambos</MenuItem>
+      </TextField>
+
+      <TextField
+        select
+        label="Modo por defecto de notas de pedido"
+        value={notaPedidoModoDefault}
+        onChange={(e) => setNotaPedidoModoDefault(e.target.value)}
+        fullWidth
+        sx={{ mt: 2 }}
+        helperText="Define si las nuevas notas de pedido usan texto libre o ítems estructurados por defecto."
+      >
+        <MenuItem value="texto_libre">Texto libre</MenuItem>
+        <MenuItem value="items_estructurados">Ítems estructurados</MenuItem>
       </TextField>
 
       <Typography variant="h6" sx={{ mt: 4 }}>
