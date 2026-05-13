@@ -86,7 +86,6 @@ export const FilterBarCajaProyecto = ({
   empresa,
   expanded = false,
   onToggleExpanded,
-  storageKey,          // proyectoId
   empresaId,           // empresa.id — para persistir en Mongo
   userId,              // uid del usuario logueado
   showCodigoSync = false,

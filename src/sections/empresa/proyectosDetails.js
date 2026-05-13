@@ -38,6 +38,7 @@ import SaveIcon from '@mui/icons-material/Save';
 import AddCircleIcon from '@mui/icons-material/AddCircle';
 import { getProyectosByEmpresa, getProyectosFromUser, hasPermission, updateProyecto, crearProyecto, subirCSVProyecto, otorgarPermisosDriveProyecto, softDeleteMovimientosByProyectoId } from 'src/services/proyectosService';
 import { getEmpresaById } from 'src/services/empresaService';
+import { FIREBASE_CLIENT_EMAIL } from 'src/config/env';
 import { useRouter } from 'next/router';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
@@ -74,7 +75,7 @@ export const ProyectosDetails = ({ empresa, refreshEmpresa }) => {
         const permissionResult = await hasPermission(newSheetId);
         setSheetPermissionError(!permissionResult);
         if (!permissionResult) {
-          formik.setFieldError('sheetWithClient', 'El google sheet no está configurado para que podamos editarlo. Asegurate que el id esté bien escrito y de darle permisos de edición a firebase-adminsdk-xts1d@factudata-3afdf.iam.gserviceaccount.com.');
+          formik.setFieldError('sheetWithClient', 'El google sheet no está configurado para que podamos editarlo. Asegurate que el id esté bien escrito y de darle permisos de edición a ' + FIREBASE_CLIENT_EMAIL);
           formik.setTouched({ ...formik.touched, sheetWithClient: true });
       }
     } catch (error) {
@@ -115,7 +116,7 @@ export const ProyectosDetails = ({ empresa, refreshEmpresa }) => {
         const permissionResult = await hasPermission(newFolderId);
         setFolderPermissionError(!permissionResult);
         if (!permissionResult) {
-            formik.setFieldError('carpetaRef', 'La carpeta no está configurada para que podamos editarla. Asegurate que el id esté bien escrito y de darle permisos de edición a firebase-adminsdk-xts1d@factudata-3afdf.iam.gserviceaccount.com.');
+            formik.setFieldError('carpetaRef', 'La carpeta no está configurada para que podamos editarla. Asegurate que el id esté bien escrito y de darle permisos de edición a ' + FIREBASE_CLIENT_EMAIL);
             formik.setTouched({ ...formik.touched, carpetaRef: true });
         }
     } catch (error) {
@@ -724,7 +725,7 @@ export const ProyectosDetails = ({ empresa, refreshEmpresa }) => {
                 formik.handleChange(event);
               }}
               error={formik.touched.carpetaRef && (Boolean(formik.errors.carpetaRef) || folderPermissionError)}
-              helperText={formik.touched.carpetaRef && (formik.errors.carpetaRef || (folderPermissionError && "La carpeta no está configurada para que podamos editarla. Asegúrate de que el id esté bien escrito y de darle permisos de edición a firebase-adminsdk-xts1d@factudata-3afdf.iam.gserviceaccount.com."))}
+              helperText={formik.touched.carpetaRef && (formik.errors.carpetaRef || (folderPermissionError && "La carpeta no está configurada para que podamos editarla. Asegúrate de que el id esté bien escrito y de darle permisos de edición a " + FIREBASE_CLIENT_EMAIL))}
               style={{ marginTop: '1rem' }}
             />
             <FormControl fullWidth style={{ marginTop: '1rem' }}>
@@ -756,7 +757,7 @@ export const ProyectosDetails = ({ empresa, refreshEmpresa }) => {
                 formik.handleChange(event);
               }}
               error={formik.touched.sheetWithClient && (Boolean(formik.errors.sheetWithClient) || sheetPermissionError)}
-              helperText={formik.touched.sheetWithClient && (formik.errors.sheetWithClient || (sheetPermissionError && "El google sheet no está configurado para que podamos editarlo. Asegúrate de que el id esté bien escrito y de darle permisos de edición a firebase-adminsdk-xts1d@factudata-3afdf.iam.gserviceaccount.com."))}
+              helperText={formik.touched.sheetWithClient && (formik.errors.sheetWithClient || (sheetPermissionError && "El google sheet no está configurado para que podamos editarlo. Asegúrate de que el id esté bien escrito y de darle permisos de edición a " + FIREBASE_CLIENT_EMAIL))}
               style={{ marginTop: '1rem' }}
             />
             <TextField

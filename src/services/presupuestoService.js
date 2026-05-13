@@ -264,6 +264,23 @@ const PresupuestoService = {
       throw error;
     }
   },
+
+  /**
+   * Descarga un Excel con todos los movimientos del presupuesto y sus equivalencias.
+   * @param {string} presupuestoId - ID del presupuesto
+   * @param {string} nombreArchivo - Nombre sugerido del archivo (sin extensión)
+   */
+  exportarMovimientos: async (presupuestoId, nombreArchivo = 'movimientos-presupuesto') => {
+    const response = await api.get(`/presupuesto/${presupuestoId}/export-movimientos`, {
+      responseType: 'blob',
+    });
+    const url = URL.createObjectURL(new Blob([response.data]));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${nombreArchivo}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
 };
 
 export default PresupuestoService;

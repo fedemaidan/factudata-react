@@ -23,6 +23,7 @@ import MoreVertIcon from '@mui/icons-material/MoreVert';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { useRouter } from 'next/router';
 import { getProyectosFromUser, recargarProyecto, updateProyecto } from 'src/services/proyectosService';
+import { getSheetConfigsByEmpresa, syncSheetConfig } from 'src/services/sheetConfigService';
 import movimientosService from 'src/services/movimientosService';
 import profileService from 'src/services/profileService';
 import Snackbar from '@mui/material/Snackbar';
@@ -764,16 +765,12 @@ const CajasPage = () => {
     if (selectedProjects.length === 0) return 'Sin proyectos seleccionados';
     return `${selectedProjects.length} proyectos seleccionados`;
   }, [activeProject, projectScopeMode, selectedProjects.length]);
-  const scopeStorageKey = useMemo(() => {
-    if (projectScopeMode === 'all') return `cajas-${empresa?.id || 'global'}-all`;
-    const ids = [...selectedProjectIds].sort().join('-') || 'none';
-    return `cajas-${empresa?.id || 'global'}-${ids}`;
-  }, [empresa?.id, projectScopeMode, selectedProjectIds]);
   const canUseProjectActions = Boolean(activeProject?.id);
 
   useEffect(() => {
-    if (!router.isReady || loadingPage) return;
-    const nextQuery = { ...router.query };
+    const r = routerRef.current;
+    if (!r.isReady || loadingPage) return;
+    const nextQuery = { ...r.query };
     delete nextQuery.proyectoId;
     delete nextQuery.proyectoIds;
 
@@ -785,15 +782,16 @@ const CajasPage = () => {
       }
     }
 
-    const currentSingle = typeof router.query.proyectoId === 'string' ? router.query.proyectoId : '';
-    const currentMulti = typeof router.query.proyectoIds === 'string' ? router.query.proyectoIds : '';
+    const currentSingle = typeof r.query.proyectoId === 'string' ? r.query.proyectoId : '';
+    const currentMulti = typeof r.query.proyectoIds === 'string' ? r.query.proyectoIds : '';
     const nextSingle = typeof nextQuery.proyectoId === 'string' ? nextQuery.proyectoId : '';
     const nextMulti = typeof nextQuery.proyectoIds === 'string' ? nextQuery.proyectoIds : '';
 
     if (currentSingle === nextSingle && currentMulti === nextMulti) return;
 
-    router.replace({ pathname: '/cajas', query: nextQuery }, undefined, { shallow: true });
-  }, [projectScopeMode, router, selectedProjectIds, loadingPage]);
+    r.replace({ pathname: '/cajas', query: nextQuery }, undefined, { shallow: true });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectScopeMode, selectedProjectIds, loadingPage]);
 
   // URL → scope: cuando se navega a /cajas?proyectoId=X desde afuera (side-nav, redirect)
   useEffect(() => {
@@ -803,8 +801,14 @@ const CajasPage = () => {
       ...(queryProyectoId ? [queryProyectoId] : []),
     ])].filter((id) => proyectos.some((p) => p.id === id));
     if (requestedIds.length === 0) return;
-    setProjectScopeMode('selection');
-    setSelectedProjectIds(requestedIds);
+    setProjectScopeMode((prev) => (prev === 'selection' ? prev : 'selection'));
+    setSelectedProjectIds((prev) => {
+      if (prev.length === requestedIds.length) {
+        const prevSet = new Set(prev);
+        if (requestedIds.every((id) => prevSet.has(id))) return prev;
+      }
+      return requestedIds;
+    });
   }, [queryProyectoId, queryProyectoIds, router.isReady, proyectos]);
 
   // Setear breadcrumbs
@@ -1294,17 +1298,41 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
 
   const handleRecargarProyecto = async (proyecto_id) => {
     const resultado = await recargarProyecto(proyecto_id);
-    if (resultado) {
-      setAlert({
-        open: true,
-        message: 'Sheets recalculados con éxito',
-        severity: 'success',
-      });
-    } else {
+
+    let syncErrores = 0;
+    if (empresa?.id) {
+      try {
+        const configs = await getSheetConfigsByEmpresa(empresa.id);
+        const configsRelevantes = configs.filter(
+          (c) => c.activo !== false && (!c.proyecto_id || c.proyecto_id === proyecto_id)
+        );
+        const syncResults = await Promise.all(
+          configsRelevantes.map((c) => syncSheetConfig(c._id))
+        );
+        syncErrores = syncResults.filter((r) => r.error).length;
+      } catch (e) {
+        console.error('[RecalcularSheets] error al sincronizar planillas adicionales:', e);
+        syncErrores = -1;
+      }
+    }
+
+    if (!resultado) {
       setAlert({
         open: true,
         message: 'Error al recalcular sheets',
         severity: 'error',
+      });
+    } else if (syncErrores > 0) {
+      setAlert({
+        open: true,
+        message: `Sheets recalculados, pero falló la sincronización de ${syncErrores} planilla(s) adicional(es).`,
+        severity: 'warning',
+      });
+    } else {
+      setAlert({
+        open: true,
+        message: 'Sheets recalculados con éxito',
+        severity: 'success',
       });
     }
   };
@@ -2409,7 +2437,6 @@ useEffect(() => {
                         empresa={empresa}
                         expanded={true}
                         onToggleExpanded={() => setFiltersOpen(false)}
-                        storageKey={scopeStorageKey}
                         empresaId={empresa?.id}
                         userId={authUserUid}
                         cajaScope={activeCaja}
@@ -2429,7 +2456,6 @@ useEffect(() => {
                     empresa={empresa}
                     expanded={filtersOpen}
                     onToggleExpanded={() => setFiltersOpen((o) => !o)}
-                    storageKey={scopeStorageKey}
                     empresaId={empresa?.id}
                     userId={authUserUid}
                     cajaScope={activeCaja}

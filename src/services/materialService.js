@@ -2,6 +2,19 @@
 import api from './axiosConfigStock';
 
 const materialService = {
+  // Buscar materiales por nombre (para autocomplete)
+  searchMateriales: async (empresaId, q) => {
+    try {
+      const response = await api.get('/materiales', {
+        params: { empresa_id: empresaId, nombre: q, limit: 20 },
+      });
+      return response.data?.items || response.data?.data || [];
+    } catch (err) {
+      console.error('Error al buscar materiales:', err);
+      return [];
+    }
+  },
+
   // Obtener todos los materiales
   getAllMateriales: async () => {
     try {

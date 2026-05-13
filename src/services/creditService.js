@@ -27,7 +27,6 @@ export const getTotalCreditsForUser = async (userId) => {
     const querySnapshot = await getDocs(q);
 
     querySnapshot.forEach((doc) => {
-      console.log("Estoy calculando", doc.data().amount)
       total += doc.data().amount;
     });
     

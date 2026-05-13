@@ -19,6 +19,8 @@ import {
 
 import { Autocomplete } from "@mui/material";
 import { actualizarSheetsDesdeBaseEmpresa } from "src/services/proyectosService";
+import { getSheetConfigsByEmpresa, syncSheetConfig } from "src/services/sheetConfigService";
+import { FIREBASE_CLIENT_EMAIL } from "src/config/env";
 
 export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission }) => {
   const comprobante_info_default = {
@@ -66,6 +68,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
   const [confFecha, setConfFecha] = useState(empresa.conf_fecha || "REAL");
   const [tipo, setTipo] = useState(empresa.tipo || "Constructora");
   const [configNotificacionNp, setConfigNotificacionNp] = useState(empresa.config_notificacion_np || 'SOLO_REGISTRADOS');
+  const [notaPedidoModoDefault, setNotaPedidoModoDefault] = useState(empresa.nota_pedido_modo_default || 'texto_libre');
   const [sheetCentral, setSheetCentral] = useState(empresa.sheetCentral || "");
   const [acciones, setAcciones] = useState(empresa.acciones || []);
   const [isLoading, setIsLoading] = useState(false);
@@ -187,6 +190,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
     "CREAR_NOTA_PEDIDO",
     "MODIFICAR_NOTA_PEDIDO",
     "ELIMINAR_NOTA_PEDIDO",
+    "RESOLVER_NOTA_PEDIDO",
     "VER_NOTAS_DE_PEDIDO",
     "GESTIONAR_MOVIMIENTO",
     "CREAR_INGRESO_CAJA_CHICA",
@@ -304,15 +308,33 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
     setIsRegenerandoSheets(true);
     try {
       const resultado = await actualizarSheetsDesdeBaseEmpresa(empresa.id);
-      if (resultado.success) {
+
+      const configs = await getSheetConfigsByEmpresa(empresa.id);
+      const configsActivas = configs.filter((c) => c.activo !== false);
+      const syncResults = await Promise.all(
+        configsActivas.map((c) => syncSheetConfig(c._id))
+      );
+      const syncErrores = syncResults.filter((r) => r.error).length;
+
+      if (!resultado.success) {
         setSnackbarInfo({
-          message: "Sheets regenerados correctamente.",
+          message: "Ocurrió un error al regenerar los sheets.",
+          severity: "error",
+        });
+      } else if (syncErrores > 0) {
+        setSnackbarInfo({
+          message: `Sheets regenerados, pero falló la sincronización de ${syncErrores} planilla(s) adicional(es).`,
+          severity: "warning",
+        });
+      } else if (configsActivas.length > 0) {
+        setSnackbarInfo({
+          message: `Sheets regenerados.`,
           severity: "success",
         });
       } else {
         setSnackbarInfo({
-          message: "Ocurrió un error al regenerar los sheets.",
-          severity: "error",
+          message: "Sheets regenerados correctamente.",
+          severity: "success",
         });
       }
     } catch (error) {
@@ -334,6 +356,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
       conf_fecha: confFecha,
       tipo: tipo,
       config_notificacion_np: configNotificacionNp,
+      nota_pedido_modo_default: notaPedidoModoDefault,
       sheetCentral: sheetCentral,
       acciones: acciones,
       dolarDeAjuste: dolarDeAjuste,
@@ -477,6 +500,19 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
         <MenuItem value="SOLO_REGISTRADOS">Solo Registrados</MenuItem>
         <MenuItem value="SOLO_RESPONSABLE">Solo Responsable</MenuItem>
         <MenuItem value="AMBOS">Ambos</MenuItem>
+      </TextField>
+
+      <TextField
+        select
+        label="Modo por defecto de notas de pedido"
+        value={notaPedidoModoDefault}
+        onChange={(e) => setNotaPedidoModoDefault(e.target.value)}
+        fullWidth
+        sx={{ mt: 2 }}
+        helperText="Define si las nuevas notas de pedido usan texto libre o ítems estructurados por defecto."
+      >
+        <MenuItem value="texto_libre">Texto libre</MenuItem>
+        <MenuItem value="items_estructurados">Ítems estructurados</MenuItem>
       </TextField>
 
       <Typography variant="h6" sx={{ mt: 4 }}>
@@ -643,10 +679,10 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
         fullWidth
         error={hasPermissionError}
         helperText={
-          hasPermissionError
-            ? "El google sheet no está configurado para que podamos editarlo. Asegurate que el id esté bien escrito y de darle permisos de edición a firebase-adminsdk-xts1d@factudata-3afdf.iam.gserviceaccount.com."
-            : ""
-        }
+            hasPermissionError
+              ? "El google sheet no está configurado para que podamos editarlo. Asegurate que el id esté bien escrito y de darle permisos de edición a " + FIREBASE_CLIENT_EMAIL
+              : ""
+          }
       />
 
       <Typography variant="h6" sx={{ mt: 4 }}>

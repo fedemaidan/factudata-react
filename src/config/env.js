@@ -1,0 +1,4 @@
+export const FIREBASE_CLIENT_EMAIL =
+  process.env.NEXT_PUBLIC_FIREBASE_CLIENT_EMAIL || process.env.FIREBASE_CLIENT_EMAIL || "";
+
+export default FIREBASE_CLIENT_EMAIL;

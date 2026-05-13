@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   Box, Button, Container, Stack, Typography, TextField, Snackbar, Alert,
-  Grid, Paper, CircularProgress, Dialog, DialogContent, IconButton, Chip,
-  Skeleton, Slider, Fab, Tooltip, Divider
+  Grid, Paper, CircularProgress, Dialog, DialogContent, DialogTitle, DialogActions,
+  IconButton, Chip, Skeleton, Slider, Fab, Tooltip, Divider,
+  FormControlLabel, Radio, RadioGroup, Autocomplete, Collapse, List, ListItem, ListItemText,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
@@ -15,19 +16,21 @@ import ZoomOutIcon from '@mui/icons-material/ZoomOut';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
+import WarehouseIcon from '@mui/icons-material/Warehouse';
+import ConstructionIcon from '@mui/icons-material/Construction';
 import HomeIcon from '@mui/icons-material/Home';
 import InventoryIcon from '@mui/icons-material/Inventory';
 import ReceiptIcon from '@mui/icons-material/Receipt';
 import { useRouter } from 'next/router';
 
 import AcopioService from 'src/services/acopioService';
+import notaPedidoService from 'src/services/notaPedidoService';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import RemitoReadOnlyTable from 'src/components/remitoReadOnlyTable';
 import RemitoItemEditDialog from 'src/components/remitoItemEditDialog';
 import ProductosFormSelect from 'src/components/ProductosFormSelect';
 import { useBreadcrumbs } from 'src/contexts/breadcrumbs-context';
 import { formatCurrency } from 'src/utils/formatters';
-import DestinoDesacopioDialog from 'src/components/acopio/DestinoDesacopioDialog';
 import { useAuth } from 'src/hooks/use-auth';
 import { getProyectosFromUser } from 'src/services/proyectosService';
 import { getEmpresaById } from 'src/services/empresaService';
@@ -45,17 +48,18 @@ function completarPorFuzzy(m, baseMateriales) {
     for (const p of desc.split(/\s+/)) if (p && bd.includes(p)) score++;
     if (score > mejorScore) { mejorScore = score; mejor = b; }
   }
+  const match = mejorScore >= 1 ? mejor : null;
   return {
     ...m,
-    codigo: m.codigo || (mejor && mejor.codigo) || '',
-    descripcion: m.descripcion || (mejor && mejor.descripcion) || '',
-    valorUnitario: m.valorUnitario != null ? m.valorUnitario : (mejor && mejor.valorUnitario) || 0
+    codigo: m.codigo || (match && match.codigo) || '',
+    descripcion: m.descripcion || (match && match.descripcion) || '',
+    valorUnitario: m.valorUnitario != null ? m.valorUnitario : (match && match.valorUnitario) || 0
   };
 }
 
 const GestionRemitoPage = () => {
   const router = useRouter();
-  const { acopioId, remitoId: ridQuery, empresaId } = router.query || {};
+  const { acopioId, remitoId: ridQuery, empresaId, from: fromParam } = router.query || {};
   const { setBreadcrumbs } = useBreadcrumbs();
   const { user } = useAuth();
 
@@ -96,10 +100,18 @@ const GestionRemitoPage = () => {
   const [editIndex, setEditIndex] = useState(-1);
   const [editItem, setEditItem] = useState(null);
 
-  // Fase 2 — Destino desacopio dialog
-  const [destinoDialogOpen, setDestinoDialogOpen] = useState(false);
+  // Destino desacopio (inline — reemplaza el dialog)
   const [destinoDesacopioActivo, setDestinoDesacopioActivo] = useState(false);
+  const [destinoInline, setDestinoInline] = useState('deposito');
+  const [proyectoDestinoInline, setProyectoDestinoInline] = useState(null);
   const [proyectos, setProyectos] = useState([]);
+
+  // Confirmación genérica (número remito, precio 0)
+  const [confirmDialog, setConfirmDialog] = useState(null); // { title, message, onConfirm }
+
+  // Contexto nota de pedido (cuando se llega desde notaPedido.js)
+  const [npContext, setNpContext] = useState(null);
+  const [npBannerExpanded, setNpBannerExpanded] = useState(false);
 
   // Cargar proyectos para el selector de destino
   useEffect(() => {
@@ -160,12 +172,40 @@ const GestionRemitoPage = () => {
         const disponibles = await AcopioService.getMaterialesAcopiados(acopioId);
         setMaterialesDisponibles(disponibles || []);
 
+        // Si viene de nota de pedido, pre-cargar ítems desde el contexto
+        if (fromParam === 'nota_pedido') {
+          try {
+            const ctx = JSON.parse(sessionStorage.getItem('np_remito_context') || 'null');
+            if (ctx && Array.isArray(ctx.items)) {
+              setNpContext(ctx);
+              const base = disponibles || [];
+              const preItems = ctx.items.map((i) => {
+                // completarPorFuzzy devuelve el mejor match; luego buscamos ese código
+                // exacto en el catálogo para obtener valorUnitario (igual que actualizarProducto)
+                const fuzzy = completarPorFuzzy(
+                  { codigo: '', descripcion: i.material_nombre || '', cantidad: i.cantidad || 1 },
+                  base
+                );
+                const exacto = base.find((m) => m.codigo === fuzzy.codigo);
+                return {
+                  codigo: fuzzy.codigo,
+                  descripcion: exacto?.descripcion || fuzzy.descripcion,
+                  cantidad: i.cantidad || 1,
+                  valorUnitario: exacto ? Number(exacto.valorUnitario || 0) : 0,
+                  _npSource: exacto ? 'matcheado' : 'nuevo',
+                };
+              });
+              setItems(preItems);
+            }
+          } catch (_) { /* contexto inválido, ignorar */ }
+        }
+
         // Si es edición
         const rid = ridQuery;
         if (rid) {
           setRemitoId(rid);
           const remito = await AcopioService.obtenerRemito(acopioId, rid);
-          setFecha(remito.fecha || new Date().toISOString().split('T')[0]);
+          setFecha(remito.fecha ? String(remito.fecha).split('T')[0] : new Date().toISOString().split('T')[0]);
           setNumeroRemito(remito.numero_remito || '');
           const url = Array.isArray(remito.url_remito) ? remito.url_remito[0] : remito.url_remito;
           setArchivoRemitoUrl(url || null);
@@ -184,7 +224,7 @@ const GestionRemitoPage = () => {
       }
     };
     cargar();
-  }, [acopioId, ridQuery]);
+  }, [acopioId, ridQuery, fromParam]);
 
   // Handlers de edición
   const openEdit = (idx) => {
@@ -293,31 +333,60 @@ const GestionRemitoPage = () => {
     }
   };
 
-  const guardarRemito = useCallback(async (destinoOpts = null) => {
+  const guardarRemito = useCallback(async (opts = {}) => {
+    const { sinNumeroOk = false, precio0Ok = false } = opts;
+
+    if (!fecha || items.length === 0) {
+      setAlert({ open: true, message: 'Completá fecha y al menos un ítem.', severity: 'warning' });
+      return;
+    }
+
+    // 1. Confirmar si no hay número de remito
+    if (!numeroRemito.trim() && !sinNumeroOk) {
+      setConfirmDialog({
+        title: 'Sin número de remito',
+        message: 'Estás guardando sin número de remito. Asegurate de que sea una decisión consciente. ¿Querés continuar igual?',
+        onConfirm: () => { setConfirmDialog(null); guardarRemito({ ...opts, sinNumeroOk: true }); },
+      });
+      return;
+    }
+
+    // 2. Confirmar si hay ítems con precio 0
+    const itemsSinPrecio = items.filter((it) => Number(it.valorUnitario || 0) === 0);
+    if (itemsSinPrecio.length > 0 && !precio0Ok) {
+      setConfirmDialog({
+        title: 'Ítems con precio $0',
+        message: `${itemsSinPrecio.length} ítem(s) tienen precio unitario en $0. ¿Querés continuar igual?`,
+        onConfirm: () => { setConfirmDialog(null); guardarRemito({ ...opts, precio0Ok: true }); },
+      });
+      return;
+    }
+
+    // 3. Validar destino obra si aplica
+    if (destinoDesacopioActivo && !remitoId && destinoInline === 'obra' && !proyectoDestinoInline) {
+      setAlert({ open: true, message: 'Seleccioná un proyecto destino antes de guardar.', severity: 'warning' });
+      return;
+    }
+
+    setLoadingProceso(true);
+
+    const destinoOpts = (destinoDesacopioActivo && !remitoId)
+      ? { destino: destinoInline, proyecto_id: proyectoDestinoInline?.id || null, proyecto_nombre: proyectoDestinoInline?.nombre || null }
+      : null;
+
+    const itemsParaEnviar = items.map(({ _npSource, ...rest }) => rest);
+
     try {
-      if (!fecha || items.length === 0) {
-        setAlert({ open: true, message: 'Completá fecha y al menos un ítem.', severity: 'warning' });
-        return;
-      }
-
-      // Para creación nueva: mostrar diálogo de destino primero (solo si la empresa lo tiene habilitado)
-      if (!remitoId && !destinoOpts && destinoDesacopioActivo) {
-        setDestinoDialogOpen(true);
-        return;
-      }
-
-      setLoadingProceso(true);
-
       if (remitoId) {
         await AcopioService.editarRemito(
-          acopioId, remitoId, items,
+          acopioId, remitoId, itemsParaEnviar,
           { fecha, valorOperacion: valorTotal, estado: 'confirmado', numero_remito: numeroRemito },
           archivoRemitoFile || undefined
         );
         setAlert({ open: true, message: 'Remito actualizado con éxito', severity: 'success' });
         setTimeout(() => router.push(`/movimientosAcopio?acopioId=${acopioId}&tab=remitos`), 500);
       } else {
-        await AcopioService.crearRemitoConMovimientos(acopioId, items, {
+        const resultado = await AcopioService.crearRemitoConMovimientos(acopioId, itemsParaEnviar, {
           fecha,
           archivo: archivoRemitoFile || undefined,
           numero_remito: numeroRemito,
@@ -325,7 +394,53 @@ const GestionRemitoPage = () => {
           destino_proyecto_id: destinoOpts?.proyecto_id || null,
           destino_proyecto_nombre: destinoOpts?.proyecto_nombre || null,
         });
-        setAlert({ open: true, message: 'Remito creado con éxito. Los materiales fueron registrados en Stock.', severity: 'success' });
+
+        // Agregar materiales nuevos al catálogo del acopio (cantidad 0, sin modificar totales)
+        const nuevosAlCatalogo = items.filter(
+          (it) => it.codigo?.trim() && !materialesDisponibles.some((m) => m.codigo === it.codigo)
+        );
+        for (const item of nuevosAlCatalogo) {
+          try {
+            await AcopioService.agregarProductoAcopio(acopioId, {
+              codigo: item.codigo,
+              descripcion: item.descripcion,
+              cantidad: 0,
+              valorUnitario: item.valorUnitario,
+            });
+          } catch (_) { /* no bloquear si falla */ }
+        }
+
+        // Si venimos de nota de pedido, resolver los ítems contra este remito
+        if (npContext && resultado?.remitoId) {
+          const nuevoRemitoId = resultado.remitoId;
+          let resueltos = 0;
+          for (const npItem of npContext.items) {
+            try {
+              const idempotency_key = typeof crypto !== 'undefined' && crypto.randomUUID
+                ? crypto.randomUUID()
+                : `${Date.now()}-${Math.random()}`;
+              await notaPedidoService.resolverItem(npContext.notaId, npItem.itemId, {
+                idempotency_key,
+                tipo: 'retiro_acopio',
+                acopio_id: npContext.acopioId,
+                remito_id_existente: nuevoRemitoId,
+                cantidad: npItem.cantidad,
+              });
+              resueltos += 1;
+            } catch (_) { /* no bloquear si falla uno */ }
+          }
+          sessionStorage.removeItem('np_remito_context');
+          setAlert({
+            open: true,
+            message: `Remito creado con éxito. ${resueltos} ítem(s) de la nota de pedido marcados como entregados.`,
+            severity: 'success',
+          });
+        } else {
+          const extraMsg = nuevosAlCatalogo.length > 0
+            ? ` ${nuevosAlCatalogo.length} material(es) nuevo(s) agregado(s) al catálogo.`
+            : '';
+          setAlert({ open: true, message: `Remito creado con éxito. Los materiales fueron registrados en Stock.${extraMsg}`, severity: 'success' });
+        }
         setTimeout(() => router.push(`/movimientosAcopio?acopioId=${acopioId}`), 500);
       }
     } catch (e) {
@@ -334,20 +449,17 @@ const GestionRemitoPage = () => {
     } finally {
       setLoadingProceso(false);
     }
-  }, [fecha, items, remitoId, acopioId, valorTotal, numeroRemito, archivoRemitoFile, router]);
-
-  const handleDestinoConfirm = useCallback((destinoOpts) => {
-    setDestinoDialogOpen(false);
-    guardarRemito(destinoOpts);
-  }, [guardarRemito]);
+  }, [fecha, items, remitoId, acopioId, valorTotal, numeroRemito, archivoRemitoFile, router, npContext,
+      destinoDesacopioActivo, destinoInline, proyectoDestinoInline]);
 
   const handleVolver = useCallback(() => {
     if (hasUnsavedChanges) {
       const confirmado = confirm('Tenés cambios sin guardar. ¿Querés salir igual?');
       if (!confirmado) return;
     }
+    if (npContext) sessionStorage.removeItem('np_remito_context');
     router.push(`/movimientosAcopio?acopioId=${acopioId || ''}`);
-  }, [hasUnsavedChanges, acopioId, router]);
+  }, [hasUnsavedChanges, acopioId, router, npContext]);
 
   // Atajos de teclado
   useEffect(() => {
@@ -400,6 +512,36 @@ const GestionRemitoPage = () => {
   return (
     <Box component="main" sx={{ flexGrow: 1, py: 8 }}>
       <Container maxWidth="xl">
+        {/* Banner nota de pedido */}
+        {npContext && (
+          <Alert
+            severity="info"
+            sx={{ mb: 2 }}
+            action={
+              <Button size="small" color="inherit" onClick={() => setNpBannerExpanded((v) => !v)}>
+                {npBannerExpanded ? 'Ocultar' : `Ver ${npContext.items.length} ítem(s)`}
+              </Button>
+            }
+          >
+            Registrando remito para <strong>{npContext.items.length} ítem(s)</strong> de nota de pedido.
+            Al guardar, los ítems se marcarán como entregados automáticamente.
+            <Collapse in={npBannerExpanded}>
+              <List dense disablePadding sx={{ mt: 1 }}>
+                {npContext.items.map((i) => (
+                  <ListItem key={i.itemId} disableGutters sx={{ py: 0 }}>
+                    <ListItemText
+                      primary={i.material_nombre}
+                      secondary={`${i.cantidad}${i.unidad ? ' ' + i.unidad : ''}`}
+                      primaryTypographyProps={{ variant: 'body2', fontWeight: 600 }}
+                      secondaryTypographyProps={{ variant: 'caption' }}
+                    />
+                  </ListItem>
+                ))}
+              </List>
+            </Collapse>
+          </Alert>
+        )}
+
         {/* Header con info del acopio */}
         <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }} spacing={2} mb={3}>
           <Box>
@@ -437,8 +579,172 @@ const GestionRemitoPage = () => {
         </Stack>
 
         <Grid container spacing={3}>
-          {/* Columna izquierda: Archivo del remito */}
-          <Grid item xs={12} md={6}>
+          {/* Columna izquierda: Datos + materiales */}
+          <Grid item xs={12} md={7}>
+            <Stack spacing={2}>
+              {/* Datos básicos */}
+              <Paper elevation={2} sx={{ p: 2 }}>
+                <Typography variant="subtitle1" gutterBottom fontWeight="bold">
+                  📝 Datos del Remito
+                </Typography>
+                <Stack spacing={2}>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+                    <TextField
+                      label="Número de Remito"
+                      placeholder="Ej: 0001-123456"
+                      value={numeroRemito}
+                      onChange={(e) => setNumeroRemito(e.target.value)}
+                      fullWidth
+                      size="small"
+                      InputProps={!numeroRemito.trim() ? {
+                        endAdornment: <Tooltip title="Recomendado — se pedirá confirmación si guardás sin número"><WarningAmberIcon fontSize="small" color="warning" sx={{ mr: 0.5 }} /></Tooltip>
+                      } : undefined}
+                    />
+                    <TextField
+                      label="Fecha"
+                      type="date"
+                      InputLabelProps={{ shrink: true }}
+                      value={fecha}
+                      onChange={(e) => setFecha(e.target.value)}
+                      fullWidth
+                      size="small"
+                      required
+                    />
+                  </Stack>
+
+                  {/* Destino desacopio inline */}
+                  {destinoDesacopioActivo && !remitoId && (
+                    <Box sx={{ pt: 0.5 }}>
+                      <Typography variant="body2" fontWeight={600} sx={{ mb: 0.5 }}>
+                        Destino de los materiales
+                      </Typography>
+                      <RadioGroup
+                        row
+                        value={destinoInline}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setDestinoInline(val);
+                          if (val === 'obra') {
+                            // Pre-cargar el proyecto asignado al acopio
+                            const proyectoAcopio = proyectos.find(
+                              (p) => p.id === acopio?.proyecto_id
+                            ) || (acopio?.proyecto_id
+                              ? { id: acopio.proyecto_id, nombre: acopio.proyecto_nombre || acopio.proyecto_id }
+                              : null);
+                            setProyectoDestinoInline(proyectoAcopio);
+                          } else {
+                            setProyectoDestinoInline(null);
+                          }
+                        }}
+                      >
+                        <FormControlLabel
+                          value="deposito"
+                          control={<Radio size="small" />}
+                          label={<Stack direction="row" alignItems="center" spacing={0.5}><WarehouseIcon fontSize="small" color="primary" /><Typography variant="body2">A depósito</Typography></Stack>}
+                        />
+                        <FormControlLabel
+                          value="obra"
+                          control={<Radio size="small" />}
+                          label={<Stack direction="row" alignItems="center" spacing={0.5}><ConstructionIcon fontSize="small" color="warning" /><Typography variant="body2">A obra</Typography></Stack>}
+                        />
+                      </RadioGroup>
+                      {destinoInline === 'obra' && (
+                        <Autocomplete
+                          options={proyectos}
+                          getOptionLabel={(p) => p.nombre || ''}
+                          value={proyectoDestinoInline}
+                          onChange={(_, v) => setProyectoDestinoInline(v)}
+                          renderInput={(params) => <TextField {...params} label="Proyecto / obra destino" size="small" />}
+                          isOptionEqualToValue={(opt, val) => opt.id === val?.id}
+                          noOptionsText="Sin proyectos"
+                          size="small"
+                          sx={{ mt: 1 }}
+                        />
+                      )}
+                    </Box>
+                  )}
+                </Stack>
+              </Paper>
+
+              {/* Resumen cards */}
+              <Grid container spacing={2}>
+                <Grid item xs={4}>
+                  <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'primary.lighter' }}>
+                    <Typography variant="caption" color="text.secondary">Ítems</Typography>
+                    <Typography variant="h4" color="primary.main" fontWeight="bold">{items.length}</Typography>
+                  </Paper>
+                </Grid>
+                <Grid item xs={4}>
+                  <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'error.lighter' }}>
+                    <Typography variant="caption" color="text.secondary">Valor Total</Typography>
+                    <Typography variant="h6" color="error.main" fontWeight="bold">{formatCurrency(valorTotal)}</Typography>
+                  </Paper>
+                </Grid>
+                <Grid item xs={4}>
+                  <Paper sx={{ p: 2, textAlign: 'center', bgcolor: nuevoSaldo < 0 ? 'error.lighter' : nuevoSaldo < saldoDisponible * 0.2 ? 'warning.lighter' : 'success.lighter' }}>
+                    <Typography variant="caption" color="text.secondary">Saldo restante</Typography>
+                    <Typography variant="h6" fontWeight="bold" color={nuevoSaldo < 0 ? 'error.main' : nuevoSaldo < saldoDisponible * 0.2 ? 'warning.main' : 'success.main'}>
+                      {formatCurrency(nuevoSaldo)}
+                    </Typography>
+                  </Paper>
+                </Grid>
+              </Grid>
+
+              {/* Alerta validación */}
+              {itemsConError.length > 0 && (
+                <Alert severity="warning" icon={<WarningAmberIcon />}>
+                  Hay {itemsConError.length} ítem(s) sin código o con cantidad inválida
+                </Alert>
+              )}
+
+              {/* Lista de ítems */}
+              <Paper elevation={2} sx={{ p: 2 }}>
+                <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
+                  <Typography variant="subtitle1" fontWeight="bold">📦 Materiales ({items.length})</Typography>
+                  <Button size="small" startIcon={<AddIcon />} onClick={agregarItemManual}>Agregar ítem</Button>
+                </Stack>
+                {items.length === 0 ? (
+                  <Box sx={{ py: 4, textAlign: 'center' }}>
+                    <Typography variant="body2" color="text.secondary">
+                      No hay materiales cargados. Subí un archivo y usá "Extraer datos", o agregá ítems manualmente.
+                    </Typography>
+                  </Box>
+                ) : (
+                  <ProductosFormSelect
+                    productos={items}
+                    setProductos={setItems}
+                    valorTotal={valorTotal}
+                    opcionesMateriales={materialesDisponibles}
+                    acopioId={acopioId}
+                    autoCompletarValoresUnitarios
+                  />
+                )}
+              </Paper>
+
+              {/* Botón guardar */}
+              <Stack direction="row" spacing={2}>
+                <Button
+                  variant="contained"
+                  size="large"
+                  fullWidth
+                  onClick={guardarRemito}
+                  disabled={loadingProceso || !items.length || !fecha}
+                  startIcon={loadingProceso ? <CircularProgress size={20} /> : <SaveIcon />}
+                >
+                  {loadingProceso ? 'Guardando...' : 'Guardar Remito'}
+                </Button>
+              </Stack>
+
+              {remitoId && (
+                <Button variant="outlined" color="warning" onClick={() => setDialogoMoverAbierto(true)} fullWidth>
+                  Mover este remito a otro acopio
+                </Button>
+              )}
+            </Stack>
+          </Grid>
+
+          {/* Columna derecha: Archivo del remito */}
+          <Grid item xs={12} md={5}>
             <Paper elevation={2} sx={{ p: 2, height: '100%' }}>
               <Typography variant="subtitle1" gutterBottom fontWeight="bold">
                 📄 Archivo del Remito
@@ -543,140 +849,6 @@ const GestionRemitoPage = () => {
             </Paper>
           </Grid>
 
-          {/* Columna derecha: Datos del remito */}
-          <Grid item xs={12} md={6}>
-            <Stack spacing={2}>
-              {/* Datos básicos */}
-              <Paper elevation={2} sx={{ p: 2 }}>
-                <Typography variant="subtitle1" gutterBottom fontWeight="bold">
-                  📝 Datos del Remito
-                </Typography>
-                <Stack spacing={2}>
-                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-                    <TextField
-                      label="Número de Remito"
-                      placeholder="Ej: 0001-123456"
-                      value={numeroRemito}
-                      onChange={(e) => setNumeroRemito(e.target.value)}
-                      fullWidth
-                      size="small"
-                    />
-                    <TextField
-                      label="Fecha"
-                      type="date"
-                      InputLabelProps={{ shrink: true }}
-                      value={fecha}
-                      onChange={(e) => setFecha(e.target.value)}
-                      fullWidth
-                      size="small"
-                      required
-                    />
-                  </Stack>
-                </Stack>
-              </Paper>
-
-              {/* Resumen cards */}
-              <Grid container spacing={2}>
-                <Grid item xs={4}>
-                  <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'primary.lighter' }}>
-                    <Typography variant="caption" color="text.secondary">Ítems</Typography>
-                    <Typography variant="h4" color="primary.main" fontWeight="bold">
-                      {items.length}
-                    </Typography>
-                  </Paper>
-                </Grid>
-                <Grid item xs={4}>
-                  <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'error.lighter' }}>
-                    <Typography variant="caption" color="text.secondary">Valor Total</Typography>
-                    <Typography variant="h6" color="error.main" fontWeight="bold">
-                      {formatCurrency(valorTotal)}
-                    </Typography>
-                  </Paper>
-                </Grid>
-                <Grid item xs={4}>
-                  <Paper sx={{ 
-                    p: 2, 
-                    textAlign: 'center', 
-                    bgcolor: nuevoSaldo < 0 ? 'error.lighter' : nuevoSaldo < saldoDisponible * 0.2 ? 'warning.lighter' : 'success.lighter' 
-                  }}>
-                    <Typography variant="caption" color="text.secondary">Saldo restante</Typography>
-                    <Typography 
-                      variant="h6" 
-                      fontWeight="bold"
-                      color={nuevoSaldo < 0 ? 'error.main' : nuevoSaldo < saldoDisponible * 0.2 ? 'warning.main' : 'success.main'}
-                    >
-                      {formatCurrency(nuevoSaldo)}
-                    </Typography>
-                  </Paper>
-                </Grid>
-              </Grid>
-
-              {/* Alerta de validación */}
-              {itemsConError.length > 0 && (
-                <Alert severity="warning" icon={<WarningAmberIcon />}>
-                  Hay {itemsConError.length} ítem(s) sin código o con cantidad inválida
-                </Alert>
-              )}
-
-              {/* Lista de ítems */}
-              <Paper elevation={2} sx={{ p: 2 }}>
-                <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
-                  <Typography variant="subtitle1" fontWeight="bold">
-                    📦 Materiales ({items.length})
-                  </Typography>
-                  <Button
-                    size="small"
-                    startIcon={<AddIcon />}
-                    onClick={agregarItemManual}
-                  >
-                    Agregar ítem
-                  </Button>
-                </Stack>
-
-                {items.length === 0 ? (
-                  <Box sx={{ py: 4, textAlign: 'center' }}>
-                    <Typography variant="body2" color="text.secondary">
-                      No hay materiales cargados. Subí un archivo y presioná "Extraer datos", o agregá ítems manualmente.
-                    </Typography>
-                  </Box>
-                ) : (
-                  <ProductosFormSelect
-                    productos={items}
-                    setProductos={setItems}
-                    valorTotal={valorTotal}
-                    opcionesMateriales={materialesDisponibles}
-                    acopioId={acopioId}
-                    autoCompletarValoresUnitarios
-                  />
-                )}
-              </Paper>
-
-              {/* Botones de acción */}
-              <Stack direction="row" spacing={2}>
-                <Button
-                  variant="contained"
-                  size="large"
-                  fullWidth
-                  onClick={guardarRemito}
-                  disabled={loadingProceso || !items.length || !fecha}
-                  startIcon={loadingProceso ? <CircularProgress size={20} /> : <SaveIcon />}
-                >
-                  {loadingProceso ? 'Guardando...' : 'Guardar Remito'}
-                </Button>
-              </Stack>
-
-              {remitoId && (
-                <Button 
-                  variant="outlined" 
-                  color="warning" 
-                  onClick={() => setDialogoMoverAbierto(true)}
-                  fullWidth
-                >
-                  Mover este remito a otro acopio
-                </Button>
-              )}
-            </Stack>
-          </Grid>
         </Grid>
 
         {/* FAB para guardar en mobile */}
@@ -712,14 +884,17 @@ const GestionRemitoPage = () => {
           </Alert>
         </Snackbar>
 
-        {/* Fase 2 — Destino desacopio dialog */}
-        <DestinoDesacopioDialog
-          open={destinoDialogOpen}
-          onClose={() => setDestinoDialogOpen(false)}
-          onConfirm={handleDestinoConfirm}
-          proyectos={proyectos}
-          loading={loadingProceso}
-        />
+        {/* Diálogo de confirmación genérico (número remito vacío, precio 0) */}
+        <Dialog open={!!confirmDialog} onClose={() => setConfirmDialog(null)} maxWidth="xs" fullWidth>
+          <DialogTitle>{confirmDialog?.title}</DialogTitle>
+          <DialogContent>
+            <Typography variant="body2" color="text.secondary">{confirmDialog?.message}</Typography>
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button onClick={() => setConfirmDialog(null)}>Cancelar</Button>
+            <Button variant="contained" onClick={confirmDialog?.onConfirm}>Continuar igual</Button>
+          </DialogActions>
+        </Dialog>
 
         {/* Imagen fullscreen con controles */}
         <Dialog open={fullscreenOpen} onClose={() => setFullscreenOpen(false)} maxWidth={false} fullScreen>
