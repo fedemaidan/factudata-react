@@ -131,6 +131,21 @@ export function aplicarUpdateTareaDescripcion(form, rubroIdx, tareaIdx, value) {
 }
 
 /**
+ * Edita la unidad de medida de una tarea (descriptivo, no afecta cálculos).
+ */
+export function aplicarUpdateTareaUnidad(form, rubroIdx, tareaIdx, value) {
+  const rubro = form.rubros[rubroIdx];
+  const tareas = reemplazarTarea(rubro.tareas, tareaIdx, {
+    ...rubro.tareas[tareaIdx],
+    unidad: value,
+  });
+  return {
+    ...form,
+    rubros: reemplazarRubro(form.rubros, rubroIdx, { ...rubro, tareas }),
+  };
+}
+
+/**
  * Elimina una tarea. Recalcula rubro.monto si quedan tareas con valor;
  * si la lista resultante queda toda vacía, preserva el monto que el rubro
  * ya tenía (que pudo haber sido escrito a mano).

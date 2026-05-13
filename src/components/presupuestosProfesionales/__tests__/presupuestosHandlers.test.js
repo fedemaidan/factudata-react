@@ -13,6 +13,7 @@ import {
   aplicarUpdateTareaMonto,
   aplicarUpdateTareaCantidad,
   aplicarUpdateTareaDescripcion,
+  aplicarUpdateTareaUnidad,
   aplicarRemoveTarea,
   aplicarUpdateRubro,
   aplicarUpdateIncidenciaObjetivoRubro,
@@ -135,6 +136,26 @@ describe('aplicarUpdateTareaDescripcion', () => {
     expect(f1.rubros[0].tareas[0].monto).toBe(100);
     expect(f1.rubros[0].tareas[0].cantidad).toBe(1);
     expect(f1.rubros[0].monto).toBe(0); // monto original del rubro intacto
+  });
+});
+
+describe('aplicarUpdateTareaUnidad', () => {
+  test('solo cambia unidad, no toca cantidad/monto/descripcion ni rubro', () => {
+    const f0 = makeForm();
+    const f1 = aplicarUpdateTareaUnidad(f0, 0, 0, 'm²');
+    expect(f1.rubros[0].tareas[0].unidad).toBe('m²');
+    expect(f1.rubros[0].tareas[0].descripcion).toBe('Pared exterior');
+    expect(f1.rubros[0].tareas[0].cantidad).toBe(1);
+    expect(f1.rubros[0].tareas[0].monto).toBe(100);
+    expect(f1.rubros[0].tareas[1]).toEqual(f0.rubros[0].tareas[1]);
+    expect(f1.rubros[1]).toEqual(f0.rubros[1]);
+  });
+
+  test('permite limpiar la unidad a string vacío', () => {
+    const f0 = makeForm();
+    f0.rubros[0].tareas[0].unidad = 'hora';
+    const f1 = aplicarUpdateTareaUnidad(f0, 0, 0, '');
+    expect(f1.rubros[0].tareas[0].unidad).toBe('');
   });
 });
 

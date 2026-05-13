@@ -55,6 +55,7 @@ import {
   aplicarUpdateTareaMonto,
   aplicarUpdateTareaCantidad,
   aplicarUpdateTareaDescripcion,
+  aplicarUpdateTareaUnidad,
   aplicarRemoveTarea,
   aplicarUpdateRubro,
   aplicarUpdateIncidenciaObjetivoRubro,
@@ -124,7 +125,7 @@ const emptyPresupuesto = {
 };
 
 const emptyRubro = { nombre: '', monto: 0, incidencia_objetivo_pct: null, tareas: [] };
-const emptyTarea = { descripcion: '', monto: null, cantidad: null, incidencia_objetivo_pct: null };
+const emptyTarea = { descripcion: '', monto: null, cantidad: null, unidad: '', incidencia_objetivo_pct: null };
 
 const presupuestoConSuperficieParaPdf = (p) =>
   p && typeof p === 'object'
@@ -463,6 +464,7 @@ const PresupuestosProfesionales = () => {
             cantidad: t.cantidad != null && !Number.isNaN(Number(t.cantidad)) && Number(t.cantidad) > 0
               ? Number(t.cantidad)
               : null,
+            unidad: typeof t.unidad === 'string' ? t.unidad : '',
             incidencia_objetivo_pct:
               t.incidencia_objetivo_pct != null && !Number.isNaN(Number(t.incidencia_objetivo_pct))
                 ? Number(t.incidencia_objetivo_pct)
@@ -594,6 +596,7 @@ const PresupuestosProfesionales = () => {
                 cantidad: t.cantidad != null && !Number.isNaN(Number(t.cantidad)) && Number(t.cantidad) > 0
                   ? Number(t.cantidad)
                   : null,
+                unidad: typeof t.unidad === 'string' && t.unidad.trim() ? t.unidad.trim() : null,
                 incidencia_objetivo_pct:
                   t.incidencia_objetivo_pct != null && !Number.isNaN(Number(t.incidencia_objetivo_pct))
                     ? Number(t.incidencia_objetivo_pct)
@@ -1026,6 +1029,10 @@ const PresupuestosProfesionales = () => {
 
   const ppUpdateTareaCantidad = (rubroIdx, tareaIdx, cantidadRaw) => {
     setPpForm((f) => aplicarUpdateTareaCantidad(f, rubroIdx, tareaIdx, cantidadRaw));
+  };
+
+  const ppUpdateTareaUnidad = (rubroIdx, tareaIdx, value) => {
+    setPpForm((f) => aplicarUpdateTareaUnidad(f, rubroIdx, tareaIdx, value));
   };
 
   const ppUpdateTareaIncidenciaObjetivo = (rubroIdx, tareaIdx, value) => {
@@ -1569,6 +1576,7 @@ const PresupuestosProfesionales = () => {
         updateTarea={ppUpdateTarea}
         onUpdateTareaMonto={ppUpdateTareaMonto}
         onUpdateTareaCantidad={ppUpdateTareaCantidad}
+        onUpdateTareaUnidad={ppUpdateTareaUnidad}
         onUpdateTareaIncidenciaObjetivo={ppUpdateTareaIncidenciaObjetivo}
         moveTarea={ppMoveTarea}
         focusRef={ppFocusRef}

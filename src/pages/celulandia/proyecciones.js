@@ -96,6 +96,11 @@ const ProyeccionesV2Page = () => {
   const [ignorarError, setIgnorarError] = useState("");
 
   const {
+    lotesPendientesPorCodigo,
+    refetch: refetchLotes,
+  } = useLotesPendientes();
+
+  const {
     data: productosResponse,
     isLoading,
     isFetching,
@@ -108,6 +113,7 @@ const ProyeccionesV2Page = () => {
     pageSize: rowsPerPage,
     text: debouncedBusqueda,
     tagId: selectedTagId,
+    lotesPendientesPorCodigo,
   });
 
   const { data: tags = [], isLoading: isLoadingTags } = useQuery({
@@ -121,11 +127,6 @@ const ProyeccionesV2Page = () => {
     },
     retry: false,
   });
-
-  const {
-    proximoArriboPorCodigo,
-    refetch: refetchLotes,
-  } = useLotesPendientes();
 
   const handleSortChange = useCallback((campo) => {
     setPage(0);
@@ -394,9 +395,9 @@ const ProyeccionesV2Page = () => {
         sortable: true,
         render: (item) => {
           const total = item.stockProyectado ?? 0;
-          const infoArribo = proximoArriboPorCodigo.get(item.codigo);
+          const lotes = lotesPendientesPorCodigo.get(item.codigo) ?? [];
 
-          return <PedidoArriboChip total={total} infoArribo={infoArribo} />;
+          return <PedidoArriboChip total={total} lotes={lotes} />;
         },
       },
       {
@@ -407,7 +408,7 @@ const ProyeccionesV2Page = () => {
       },
       {
         key: "cantidadCompraSugerida",
-        label: "Cant. a comprar (200 días)",
+        label: "Cant. a comprar (100 días)",
         sortable: true,
       },
       {
@@ -429,7 +430,7 @@ const ProyeccionesV2Page = () => {
         render: (item) => formatDateDDMMYYYY(item.fechaCero),
       },
     ],
-    [proximoArriboPorCodigo, handleOpenNotaDialog, handleOpenEditarNotaDialog, handleOpenDeleteNotaDialog, handleOpenDetailModal]
+    [lotesPendientesPorCodigo, handleOpenNotaDialog, handleOpenEditarNotaDialog, handleOpenDeleteNotaDialog, handleOpenDetailModal]
   );
 
   const {

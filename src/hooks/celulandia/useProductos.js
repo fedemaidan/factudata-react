@@ -12,6 +12,7 @@ export const useProductos = ({
   pageSize = 50,
   text = "",
   tagId = "",
+  lotesPendientesPorCodigo = null,
 } = {}) => {
   const queryClient = useQueryClient();
   const [isExporting, setIsExporting] = useState(false);
@@ -131,6 +132,16 @@ export const useProductos = ({
         return;
       }
 
+      const lotesMap = lotesPendientesPorCodigo instanceof Map ? lotesPendientesPorCodigo : null;
+      const joinAligned = (values) => {
+        if (!values.length) return "";
+        const allEmpty = values.every((v) => v == null || String(v).trim() === "");
+        if (allEmpty) return "";
+        return values
+          .map((v) => (v == null || String(v).trim() === "" ? "-" : String(v)))
+          .join(", ");
+      };
+
       const data = allProductos.map((item) => {
         const dias = getDiasHastaAgotar(item);
         const diasValue =
@@ -139,6 +150,12 @@ export const useProductos = ({
               ? "+ 1 año"
               : ""
             : String(Math.max(0, Math.trunc(dias)));
+
+        const lotes = lotesMap?.get(item?.codigo) ?? [];
+        const cantPedida = joinAligned(lotes.map((l) => l?.cantidad ?? ""));
+        const fechaLlegada = joinAligned(lotes.map((l) => formatDateDDMMYYYY(l?.fecha)));
+        const contenedores = joinAligned(lotes.map((l) => l?.contenedorCodigo ?? ""));
+        const nroPedidos = joinAligned(lotes.map((l) => l?.numeroPedido ?? ""));
 
         return {
           Código: item?.codigo ?? "",
@@ -152,6 +169,10 @@ export const useProductos = ({
           "Fecha agotamiento": formatDateDDMMYYYY(item?.fechaAgotamientoStock),
           "Cant. a comprar (100 días)": Number(item?.cantidadCompraSugerida ?? 0),
           "Fecha compra sugerida": formatDateDDMMYYYY(item?.fechaCompraSugerida),
+          "Cant. pedida": cantPedida,
+          "Fecha llegada": fechaLlegada,
+          "Contenedor": contenedores,
+          "Nro pedido": nroPedidos,
           Notas: getNotasString(item?.notas),
           "Fecha ingreso": formatDateDDMMYYYY(item?.fechaIngreso),
           "Fecha cero": formatDateDDMMYYYY(item?.fechaCero),
@@ -231,7 +252,7 @@ export const useProductos = ({
     } finally {
       setIsExporting(false);
     }
-  }, [sortField, sortDirection, text, tagId]);
+  }, [sortField, sortDirection, text, tagId, lotesPendientesPorCodigo]);
 
   return {
     ...query,

@@ -661,6 +661,7 @@ const PresupuestoFormDialog = ({
   updateTarea,
   onUpdateTareaMonto,
   onUpdateTareaCantidad,
+  onUpdateTareaUnidad,
   onUpdateTareaIncidenciaObjetivo,
   moveTarea,
   focusRef,
@@ -1224,6 +1225,17 @@ const PresupuestoFormDialog = ({
                               focusRef.current = null;
                             }
                           }}
+                        />
+
+                        {/* Unidad de medida (descriptivo, opcional) */}
+                        <TextField
+                          size="small"
+                          label="Unidad"
+                          placeholder="ej: m²"
+                          value={tarea.unidad || ''}
+                          onChange={(e) => onUpdateTareaUnidad?.(ri, ti, e.target.value)}
+                          sx={{ width: 78, flexShrink: 0 }}
+                          inputProps={{ autoComplete: 'off', maxLength: 12 }}
                         />
 
                         {/* Bloque de precio: cant × unit = total */}

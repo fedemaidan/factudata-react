@@ -10,7 +10,7 @@ export const useLotesPendientes = () => {
     retry: false,
   });
 
-  const proximoArriboPorCodigo = useMemo(() => {
+  const lotesPendientesPorCodigo = useMemo(() => {
     const map = new Map();
     const payload = query.data;
 
@@ -22,38 +22,36 @@ export const useLotesPendientes = () => {
       const codigo = lote?.producto?.codigo;
       if (!codigo) return;
 
-      // Determinar fecha de arribo (contenedor o lote)
       const fechaContenedor = lote?.contenedor?.fechaEstimadaLlegada
         ? new Date(lote.contenedor.fechaEstimadaLlegada)
         : null;
       const fechaLote = lote?.fechaEstimadaDeLlegada
         ? new Date(lote.fechaEstimadaDeLlegada)
         : null;
-
       const fechaArribo = fechaContenedor || fechaLote;
       if (!fechaArribo || Number.isNaN(fechaArribo.getTime())) return;
 
       const cantidad = Number(lote.cantidad) || 0;
       if (!cantidad) return;
 
-      const existing = map.get(codigo);
-      if (!existing || fechaArribo < existing.fecha) {
-        // Primer arribo (o el más cercano en el tiempo)
-        map.set(codigo, { fecha: fechaArribo, cantidad });
-      } else if (fechaArribo.getTime() === existing.fecha.getTime()) {
-        // Si es el mismo día, sumamos cantidades
-        map.set(codigo, {
-          fecha: existing.fecha,
-          cantidad: existing.cantidad + cantidad,
-        });
-      }
+      const item = {
+        fecha: fechaArribo,
+        cantidad,
+        contenedorCodigo: lote?.contenedor?.codigo || null,
+        numeroPedido: lote?.pedido?.numeroPedido || null,
+      };
+
+      if (!map.has(codigo)) map.set(codigo, []);
+      map.get(codigo).push(item);
     });
+
+    map.forEach((arr) => arr.sort((a, b) => a.fecha.getTime() - b.fecha.getTime()));
 
     return map;
   }, [query.data]);
 
   return {
     ...query,
-    proximoArriboPorCodigo,
+    lotesPendientesPorCodigo,
   };
 };
