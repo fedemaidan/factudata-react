@@ -36,8 +36,12 @@ export async function downloadNotaPedidoPdf({ nota, layout, logoUrl, empresaNomb
   const logoDataUrl = logoUrl ? await loadImageAsDataUrl(logoUrl) : null;
   const code = nota?.codigo != null ? String(nota.codigo) : 'nota';
 
+  const tieneItems = nota?.modo === 'items_estructurados' && Array.isArray(nota?.items) && nota.items.length > 0;
+
   let blob;
-  if (templateId) {
+  // Las notas con ítems estructurados siempre usan el componente built-in,
+  // ya que los componentes custom guardados no saben renderizar ítems.
+  if (templateId && !tieneItems) {
     try {
       const PlantillaPDF = await loadCustomComponentById(templateId);
       blob = await pdf(

@@ -553,6 +553,9 @@ export default function EgresoDesdeRemito({
                     user={user}
                     value={mat.id_material || ''}
                     fallbackText={mat.nombre_item || ''}
+                    allowAliasSuggestion
+                    aliasSuggestionSource="remito"
+                    originalAliasText={mat.nombre_item || ''}
                     onTextChange={(text) => {
                       handleUpdateMaterial(mat.id, 'nombre_item', text);
                       handleUpdateMaterial(mat.id, 'id_material', null);

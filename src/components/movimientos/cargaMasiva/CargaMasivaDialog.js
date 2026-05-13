@@ -27,7 +27,7 @@ import { getCamposConfig } from 'src/components/movementFieldsConfig';
 import CargaArchivosStep from './steps/CargaArchivosStep';
 import PreguntasContextoStep from './steps/PreguntasContextoStep';
 import ValidacionLoteStep from './steps/ValidacionLoteStep';
-import { mapExtractedToForm, emptyForm } from './cargaMasivaMap';
+import { mapExtractedToForm, emptyForm, copyShareableFields } from './cargaMasivaMap';
 import { buildMovimientoPayloadFromBatchItem } from './buildBatchMovimientoPayload';
 import {
   pickRandomFiles,
@@ -67,7 +67,6 @@ const initialImportWizardData = () => ({
   mapeosSubcategorias: [],
   mapeosProveedores: [],
   aclaracionesUsuario: '',
-  creadorDefaultPhone: '',
   entidadesResueltas: null,
   resultadoFinal: null,
   codigoPrevisualizacion: null,
@@ -89,6 +88,7 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
   const [cargaModo, setCargaModo] = useState(null);
   const [activeStep, setActiveStep] = useState(0);
   const [files, setFiles] = useState([]);
+  const [pdfSplitPerPage, setPdfSplitPerPage] = useState(false);
   const [contexto, setContexto] = useState(initialContexto);
   const [analyzeLoading, setAnalyzeLoading] = useState(false);
   const [batchItems, setBatchItems] = useState([]);
@@ -140,6 +140,7 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
     setCargaModo(null);
     setActiveStep(0);
     setFiles([]);
+    setPdfSplitPerPage(false);
     setContexto(initialContexto());
     setBatchItems([]);
     setAnalyzeError('');
@@ -198,11 +199,6 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
           clientesOptions: [...new Set(obras.map((o) => o.cliente).filter(Boolean))],
           perfiles: Array.isArray(perfiles) ? perfiles : [],
         });
-        if (user?.phone) {
-          setImportWizardData((prev) =>
-            prev.creadorDefaultPhone ? prev : { ...prev, creadorDefaultPhone: user.phone },
-          );
-        }
       } catch (e) {
         console.warn('CargaMasiva: catálogos', e);
       }
@@ -268,8 +264,9 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
       ...(textoCuestionario.trim()
         ? { contexto_cuestionario_texto: textoCuestionario.trim() }
         : {}),
+      ...(pdfSplitPerPage ? { pdf_split_per_page: true } : {}),
     }),
-    [contexto, textoCuestionario],
+    [contexto, textoCuestionario, pdfSplitPerPage],
   );
 
   const canConfirm = useMemo(() => {
@@ -293,6 +290,7 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
       setImportWizardData(initialImportWizardData());
     } else {
       setFiles([]);
+      setPdfSplitPerPage(false);
       setPreguntasGpt([]);
       setRespuestasGpt({});
       setPreguntasError('');
@@ -342,17 +340,23 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
         throw new Error(res.message || 'Error al analizar');
       }
       const rawItems = res.data?.items || [];
-      const mapped = rawItems.map((it, i) => ({
-        clientId: `cm-${i}-${(it.originalname || 'file').replace(/\s/g, '_')}`,
-        originalname: it.originalname || `archivo-${i}`,
-        url_imagen: it.url_imagen,
-        errorAnalisis: it.error || null,
-        omitido: false,
-        revisado: false,
-        form: it.extracted
-          ? mapExtractedToForm(it.extracted, contextoForMap)
-          : emptyForm(contextoForMap),
-      }));
+      const mapped = rawItems.map((it, i) => {
+        const safeName = (it.originalname || 'file').replace(/\s/g, '_');
+        const pageSuffix = it.page ? `-p${it.page}` : '';
+        return {
+          clientId: `cm-${i}-${safeName}${pageSuffix}`,
+          originalname: it.originalname || `archivo-${i}`,
+          url_imagen: it.url_imagen,
+          errorAnalisis: it.error || null,
+          page: it.page ?? null,
+          total_pages: it.total_pages ?? null,
+          omitido: false,
+          revisado: false,
+          form: it.extracted
+            ? mapExtractedToForm(it.extracted, contextoForMap)
+            : emptyForm(contextoForMap),
+        };
+      });
       setBatchItems(mapped);
       setActiveStep(2);
     } catch (e) {
@@ -472,6 +476,34 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
   const updateItem = useCallback((clientId, updater) => {
     setBatchItems((prev) => prev.map((it) => (it.clientId === clientId ? updater(it) : it)));
   }, []);
+
+  const handleCopyToSiblings = useCallback(
+    (sourceClientId, { overwrite = false } = {}) => {
+      const source = batchItems.find((it) => it.clientId === sourceClientId);
+      if (!source || !source.originalname || !source.page) return { copiedCount: 0 };
+      const siblingIds = new Set(
+        batchItems
+          .filter(
+            (it) =>
+              it.clientId !== sourceClientId &&
+              !it.omitido &&
+              it.originalname === source.originalname &&
+              it.page != null,
+          )
+          .map((it) => it.clientId),
+      );
+      if (siblingIds.size === 0) return { copiedCount: 0 };
+      setBatchItems((prev) =>
+        prev.map((it) =>
+          siblingIds.has(it.clientId)
+            ? { ...it, form: copyShareableFields(source.form, it.form, { overwrite }) }
+            : it,
+        ),
+      );
+      return { copiedCount: siblingIds.size };
+    },
+    [batchItems],
+  );
 
   const handleApplyProyectoToAll = useCallback(() => {
     if (!contexto.proyecto_id) return;
@@ -617,7 +649,6 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
             ref={aclaracionesRef}
             wizardData={importWizardData}
             updateWizardData={updateImportWizardData}
-            perfiles={drawerCatalogos.perfiles}
             onNext={() => {}}
             onBack={() => {}}
             hideNavigation
@@ -792,7 +823,12 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
                       </Typography>
                     </Stack>
                   )}
-                  <CargaArchivosStep files={files} onFilesChange={setFiles} />
+                  <CargaArchivosStep
+                    files={files}
+                    onFilesChange={setFiles}
+                    pdfSplitPerPage={pdfSplitPerPage}
+                    onPdfSplitPerPageChange={setPdfSplitPerPage}
+                  />
                 </Box>
               )}
               {activeStep === 1 && (
@@ -835,6 +871,7 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
                   obrasOptions={drawerCatalogos.obrasOptions}
                   clientesOptions={drawerCatalogos.clientesOptions}
                   onRequestConfirm={handleOpenConfirm}
+                  onCopyToSiblings={handleCopyToSiblings}
                 />
               )}
               {analyzeLoading && (

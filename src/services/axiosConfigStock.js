@@ -7,7 +7,7 @@ const isProduction = process.env.NODE_ENV === 'production';
 const apiUrl = process.env.NEXT_PUBLIC_STOCK_URL || 'https://api.sorbydata.com/materiales'
 // Crea una instancia de axios
 const api = axios.create({
-    baseURL: apiUrl,
+    baseURL: config.apiUrl,
     headers: {
         'Content-Type': 'application/json'
     }

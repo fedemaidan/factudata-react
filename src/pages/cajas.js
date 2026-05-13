@@ -23,6 +23,7 @@ import MoreVertIcon from '@mui/icons-material/MoreVert';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { useRouter } from 'next/router';
 import { getProyectosFromUser, recargarProyecto, updateProyecto } from 'src/services/proyectosService';
+import { getSheetConfigsByEmpresa, syncSheetConfig } from 'src/services/sheetConfigService';
 import movimientosService from 'src/services/movimientosService';
 import profileService from 'src/services/profileService';
 import Snackbar from '@mui/material/Snackbar';
@@ -1297,17 +1298,41 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
 
   const handleRecargarProyecto = async (proyecto_id) => {
     const resultado = await recargarProyecto(proyecto_id);
-    if (resultado) {
-      setAlert({
-        open: true,
-        message: 'Sheets recalculados con éxito',
-        severity: 'success',
-      });
-    } else {
+
+    let syncErrores = 0;
+    if (empresa?.id) {
+      try {
+        const configs = await getSheetConfigsByEmpresa(empresa.id);
+        const configsRelevantes = configs.filter(
+          (c) => c.activo !== false && (!c.proyecto_id || c.proyecto_id === proyecto_id)
+        );
+        const syncResults = await Promise.all(
+          configsRelevantes.map((c) => syncSheetConfig(c._id))
+        );
+        syncErrores = syncResults.filter((r) => r.error).length;
+      } catch (e) {
+        console.error('[RecalcularSheets] error al sincronizar planillas adicionales:', e);
+        syncErrores = -1;
+      }
+    }
+
+    if (!resultado) {
       setAlert({
         open: true,
         message: 'Error al recalcular sheets',
         severity: 'error',
+      });
+    } else if (syncErrores > 0) {
+      setAlert({
+        open: true,
+        message: `Sheets recalculados, pero falló la sincronización de ${syncErrores} planilla(s) adicional(es).`,
+        severity: 'warning',
+      });
+    } else {
+      setAlert({
+        open: true,
+        message: 'Sheets recalculados con éxito',
+        severity: 'success',
       });
     }
   };

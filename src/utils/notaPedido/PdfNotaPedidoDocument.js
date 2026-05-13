@@ -140,6 +140,38 @@ const baseStyles = (layout) => {
     muted: {
       color: MUTED,
     },
+    // ── Items table ──────────────────────────────
+    tableHead: {
+      flexDirection: 'row',
+      backgroundColor: SOFT,
+      borderBottomWidth: 1,
+      borderBottomColor: BORDER,
+      paddingVertical: 5,
+      paddingHorizontal: 8,
+    },
+    tableRow: {
+      flexDirection: 'row',
+      borderBottomWidth: 0.5,
+      borderBottomColor: BORDER,
+      paddingVertical: 5,
+      paddingHorizontal: 8,
+    },
+    tableRowLast: {
+      borderBottomWidth: 0,
+    },
+    colMaterial: { flex: 4 },
+    colCantidad: { flex: 1.2, textAlign: 'right' },
+    colUnidad:   { flex: 1.2, textAlign: 'center' },
+    colPrecio:   { flex: 1.8, textAlign: 'right' },
+    thText: {
+      fontSize: fs - 1.5,
+      fontWeight: 'bold',
+      color: MUTED,
+      textTransform: 'uppercase',
+      letterSpacing: 0.2,
+    },
+    tdText: { fontSize: fs - 0.4 },
+    tdMuted: { fontSize: fs - 0.4, color: MUTED },
   });
 };
 
@@ -166,12 +198,20 @@ function chunkPairs(list) {
   return out;
 }
 
+function formatPrecio(valor) {
+  if (valor == null || valor === '') return '—';
+  return Number(valor).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+}
+
 export function NotaPedidoPdfDocument({ nota, layout = {}, logoDataUrl, empresaNombre = '' }) {
   const styles = baseStyles(layout);
   const fechaStr = formatFechaNota(nota?.fechaCreacion);
   const observacionLines = Math.min(14, Math.max(4, Number(layout.observacionLines) || 8));
   const comentarios = Array.isArray(nota?.comentarios) ? nota.comentarios.filter((c) => (c.texto || '').trim() || c.url) : [];
   const codigo = String(nota?.codigo ?? '').padStart(5, '0');
+
+  const items = nota?.modo === 'items_estructurados' && Array.isArray(nota?.items) ? nota.items : [];
+  const hayPrecio = items.some((it) => it.precio_estimado != null && it.precio_estimado !== '');
 
   const infoItems = [
     ['Fecha', fechaStr || '—'],
@@ -233,6 +273,37 @@ export function NotaPedidoPdfDocument({ nota, layout = {}, logoDataUrl, empresaN
             ))}
           </View>
         </View>
+
+        {items.length > 0 && (
+          <View style={styles.sectionCard}>
+            <View style={styles.sectionHead}>
+              <Text style={styles.sectionHeadText}>Ítems del pedido</Text>
+            </View>
+            {/* Encabezado */}
+            <View style={styles.tableHead}>
+              <Text style={{ ...styles.thText, ...styles.colMaterial }}>Material</Text>
+              <Text style={{ ...styles.thText, ...styles.colCantidad }}>Cant.</Text>
+              <Text style={{ ...styles.thText, ...styles.colUnidad }}>Unidad</Text>
+              {hayPrecio && <Text style={{ ...styles.thText, ...styles.colPrecio }}>Precio est.</Text>}
+            </View>
+            {/* Filas */}
+            {items.map((it, idx) => (
+              <View
+                key={`item-${idx}`}
+                style={{ ...styles.tableRow, ...(idx === items.length - 1 ? styles.tableRowLast : {}) }}
+              >
+                <Text style={{ ...styles.tdText, ...styles.colMaterial }}>{it.material_nombre || '—'}</Text>
+                <Text style={{ ...styles.tdText, ...styles.colCantidad }}>{it.cantidad ?? '—'}</Text>
+                <Text style={{ ...styles.tdMuted, ...styles.colUnidad }}>{it.unidad || '—'}</Text>
+                {hayPrecio && (
+                  <Text style={{ ...styles.tdMuted, ...styles.colPrecio }}>
+                    {formatPrecio(it.precio_estimado)}
+                  </Text>
+                )}
+              </View>
+            ))}
+          </View>
+        )}
 
         <View style={styles.sectionCard}>
           <View style={styles.sectionHead}>
