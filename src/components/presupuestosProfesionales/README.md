@@ -13,6 +13,9 @@ usuario no tocó.
   y precio unitario (campo `monto`).
 - **Cantidad**: cantidad de unidades del subrubro. `null` o vacío equivale a
   `1` (compat con datos antiguos).
+- **Unidad** (`tarea.unidad`): unidad de medida descriptiva opcional (ej. "m²",
+  "hora", "kg"). Solo informativa, no afecta cálculos. Se renderiza en el PDF
+  junto a la cantidad: `(10 m² × $5.000)`.
 - **Valor unitario** (`monto` de la tarea): precio por unidad.
 - **Monto efectivo** de una tarea: `(cantidad || 1) × monto`.
 - **`incidencia_pct`** (derivada): porcentaje calculado a partir de los montos
@@ -71,6 +74,7 @@ Los handlers viven en `presupuestosHandlers.js` como funciones puras:
   recalcula `rubro.monto`. No toca `incidencia_objetivo_pct` de nadie.
 - `aplicarUpdateTareaCantidad(form, ri, ti, raw)` — análogo a monto.
 - `aplicarUpdateTareaDescripcion(form, ri, ti, value)` — solo descripción.
+- `aplicarUpdateTareaUnidad(form, ri, ti, value)` — solo unidad de medida.
 - `aplicarRemoveTarea(form, ri, ti)` — elimina y recalcula `rubro.monto`.
 - `aplicarUpdateRubro(form, idx, field, value, { modoDistribuir })` — para el
   campo `monto` solo actúa si `modoDistribuir = true`. En modo normal, el monto

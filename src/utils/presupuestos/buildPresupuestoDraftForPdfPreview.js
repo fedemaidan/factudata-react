@@ -18,9 +18,12 @@ export const buildPresupuestoDraftForPdfPreview = (form, empresaNombre = '') => 
           const tm = Number(t.monto) || 0;
           const montoRubro = Number(r.monto) || 0;
           const incidencia_pct = montoRubro > 0 ? (tm / montoRubro) * 100 : 0;
+          const unidad =
+            typeof t.unidad === 'string' && t.unidad.trim() ? t.unidad.trim() : null;
           return {
             descripcion: t.descripcion.trim(),
             monto: tm,
+            unidad,
             incidencia_pct,
           };
         }),
