@@ -52,7 +52,7 @@ import { TOOLTIP_MOVIMIENTOS } from 'src/constant/tooltipTexts';
 const ENABLE_HOJA_UPLOAD = false;  // activar cuando backend listo
 const ENABLE_HOJA_DELETE = false;  // activar cuando backend listo
 
-function DonutChart({ va, vd, pct, codigo }) {
+function DonutChart({ va, vd, pct, codigo, proveedor, proyecto }) {
   const r = 52;
   const cx = 70;
   const cy = 70;
@@ -62,9 +62,70 @@ function DonutChart({ va, vd, pct, codigo }) {
   const GAP = 2;
 
   const handleDownload = () => {
-    const svgEl = document.getElementById(`donut-${codigo}`);
-    const data = new XMLSerializer().serializeToString(svgEl);
-    const blob = new Blob([data], { type: 'image/svg+xml' });
+    const disponible = Math.max(0, va - vd);
+    const escapeXml = (s) =>
+      String(s ?? '—')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+
+    const W = 640;
+    const H = 460;
+    const colW = (W - 48) / 3;
+
+    const svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="Arial, Helvetica, sans-serif">
+  <rect width="100%" height="100%" fill="#ffffff"/>
+
+  <!-- Identificación: 3 columnas -->
+  <g transform="translate(24, 36)">
+    <text x="0" y="0" font-size="11" fill="#999">Código</text>
+    <text x="0" y="22" font-size="15" font-weight="bold" fill="#333">${escapeXml(codigo)}</text>
+    <text x="${colW}" y="0" font-size="11" fill="#999">Proveedor</text>
+    <text x="${colW}" y="22" font-size="15" font-weight="bold" fill="#333">${escapeXml(proveedor)}</text>
+    <text x="${colW * 2}" y="0" font-size="11" fill="#999">Proyecto</text>
+    <text x="${colW * 2}" y="22" font-size="15" font-weight="bold" fill="#333">${escapeXml(proyecto)}</text>
+  </g>
+
+  <line x1="24" y1="80" x2="${W - 24}" y2="80" stroke="#e0e0e0"/>
+
+  <text x="24" y="106" font-size="14" fill="#666">Resumen Financiero</text>
+
+  <!-- Donut -->
+  <g transform="translate(${(W - 140) / 2}, 124)">
+    <g transform="rotate(-90, 70, 70)">
+      <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#ef5350" stroke-width="16"
+        stroke-dasharray="${Math.max(0, desacLen - GAP)} ${circumference}" stroke-dashoffset="0"/>
+      <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#4caf50" stroke-width="16"
+        stroke-dasharray="${Math.max(0, dispLen - GAP)} ${circumference}" stroke-dashoffset="${-desacLen}"/>
+    </g>
+    <text x="70" y="64" text-anchor="middle" font-size="10" fill="#999">Disponible</text>
+    <text x="70" y="83" text-anchor="middle" font-size="19" font-weight="bold" fill="#333">${pct.toFixed(1)}%</text>
+  </g>
+
+  <!-- Leyenda -->
+  <g transform="translate(${W / 2 - 90}, 284)">
+    <circle cx="6" cy="6" r="5" fill="#ef5350"/>
+    <text x="18" y="10" font-size="11" fill="#666">Desacopiado</text>
+    <circle cx="100" cy="6" r="5" fill="#4caf50"/>
+    <text x="112" y="10" font-size="11" fill="#666">Disponible</text>
+  </g>
+
+  <!-- Datos financieros -->
+  <g transform="translate(24, 330)">
+    <text x="0"   y="0"  font-size="11" fill="#999">Acopiado</text>
+    <text x="0"   y="20" font-size="15" font-weight="bold" fill="#333">${escapeXml(formatCurrency(va))}</text>
+    <text x="${(W - 48) / 2}" y="0"  font-size="11" fill="#999">Desacopiado</text>
+    <text x="${(W - 48) / 2}" y="20" font-size="15" font-weight="bold" fill="#ef5350">${escapeXml(formatCurrency(vd))}</text>
+    <text x="0"   y="50" font-size="11" fill="#999">Disponible</text>
+    <text x="0"   y="70" font-size="15" font-weight="bold" fill="${vd > va ? '#ef5350' : '#4caf50'}">${escapeXml(formatCurrency(disponible))}</text>
+    <text x="${(W - 48) / 2}" y="50" font-size="11" fill="#999">% Disponible</text>
+    <text x="${(W - 48) / 2}" y="70" font-size="15" font-weight="bold" fill="${vd > va ? '#ef5350' : '#4caf50'}">${pct.toFixed(1)}%</text>
+  </g>
+</svg>`;
+
+    const blob = new Blob([svg], { type: 'image/svg+xml' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -1115,7 +1176,7 @@ const MovimientosAcopioPage = () => {
                         </Grid>
                       </Grid>
                       {vd > 0 && vd < va && (
-                        <DonutChart va={va} vd={vd} pct={porcentajeDisponible} codigo={acopio?.codigo} />
+                        <DonutChart va={va} vd={vd} pct={porcentajeDisponible} codigo={acopio?.codigo} proveedor={acopio?.proveedor} proyecto={acopio?.proyecto_nombre} />
                       )}
                     </Stack>
                   </Box>

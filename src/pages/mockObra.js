@@ -7,6 +7,7 @@ import {
   LinearProgress, Tabs, Tab, Button, Dialog, DialogTitle, DialogContent,
   DialogActions, TextField, MenuItem, Select, FormControl, InputLabel,
   Divider, IconButton, Paper, Alert, Stepper, Step, StepLabel, Tooltip,
+  ToggleButtonGroup, ToggleButton, Fab,
 } from '@mui/material';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
@@ -21,6 +22,20 @@ import FlagIcon from '@mui/icons-material/Flag';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import LinkIcon from '@mui/icons-material/Link';
 import DateRangeIcon from '@mui/icons-material/DateRange';
+import SendIcon from '@mui/icons-material/Send';
+import AttachFileIcon from '@mui/icons-material/AttachFile';
+import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
+import ThumbUpIcon from '@mui/icons-material/ThumbUp';
+import ThumbDownIcon from '@mui/icons-material/ThumbDown';
+import ForumIcon from '@mui/icons-material/Forum';
+import EngineeringIcon from '@mui/icons-material/Engineering';
+import BusinessIcon from '@mui/icons-material/Business';
+import ManageAccountsIcon from '@mui/icons-material/ManageAccounts';
+import TrendingUpIcon from '@mui/icons-material/TrendingUp';
+import TrendingDownIcon from '@mui/icons-material/TrendingDown';
+import AccessTimeIcon from '@mui/icons-material/AccessTime';
+import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
+import EditNoteIcon from '@mui/icons-material/EditNote';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -33,6 +48,8 @@ const fmtM = (n) => {
   return fmt(n);
 };
 
+const TOTAL_MESES = 10;
+
 // Calcula fecha real a partir de mes relativo (1-10) y fecha de inicio del proyecto
 const INICIO = new Date(2026, 2, 1); // Marzo 2026
 const mesAFecha = (mes) => {
@@ -41,12 +58,27 @@ const mesAFecha = (mes) => {
   return d.toLocaleDateString('es-AR', { month: 'short', year: 'numeric' });
 };
 
+// Convierte "DD/MM/YYYY" a mes relativo al proyecto (1–10). Pre-inicio → 1.
+const fechaToMes = (str) => {
+  if (!str) return null;
+  const [d, m, y] = str.split('/').map(Number);
+  const mes = (y - 2026) * 12 + (m - 3) + 1; // marzo 2026 = 1
+  return Math.max(1, Math.min(TOTAL_MESES, mes));
+};
+
+const hoy = new Date(2026, 4, 13); // 13/05/2026 — fecha mock del demo
+const diasDesde = (str) => {
+  if (!str) return null;
+  const [d, m, y] = str.split('/').map(Number);
+  return Math.round((hoy - new Date(y, m - 1, d)) / 86400000);
+};
+
 // ─── Mock Data ─────────────────────────────────────────────────────────────────
 
 const PROYECTO = {
-  nombre: 'Anexo Fuero Penal',
-  cliente: 'Ministerio de Justicia — Provincia',
-  direccion: 'Av. Independencia 1850, San Miguel de Tucumán',
+  nombre: 'Edificio Corporativo — Bloque A',
+  cliente: 'Desarrolladora Inmobiliaria SA',
+  direccion: 'Av. del Libertador 2400, CABA',
   fecha_inicio: 'Marzo 2026',
   duracion: '10 meses',
   total: 1_240_093_855,
@@ -333,19 +365,70 @@ const RUBROS = [
 const RUBROS_MAP = Object.fromEntries(RUBROS.map((r) => [r.id, r]));
 
 const CERTIFICADOS_INIT = [
-  { id: 'c1', numero: '001', fecha: '10/02/2026', rubro: 'Trabajos Preliminares',         rubro_id: 'r1', avance_pct: 100, monto: 34_629_353, notas: 'Demolición y acometidas completadas.' },
-  { id: 'c2', numero: '002', fecha: '28/02/2026', rubro: 'Excavaciones y Mov. de Suelos', rubro_id: 'r2', avance_pct: 100, monto: 39_506_537, notas: 'Relleno y compactación finalizados.' },
-  { id: 'c3', numero: '003', fecha: '31/03/2026', rubro: 'Estructuras',                   rubro_id: 'r3', avance_pct: 50,  monto: 39_543_152, notas: 'Bases, vigas fundación y encadenados terminados.' },
-  { id: 'c4', numero: '004', fecha: '15/04/2026', rubro: 'Cubiertas Metálicas',           rubro_id: 'r4', avance_pct: 20,  monto: 20_847_056, notas: 'Avance parcial cubierta existente.' },
-  { id: 'c5', numero: '005', fecha: '05/05/2026', rubro: 'Estructuras',                   rubro_id: 'r3', avance_pct: 68,  monto: 14_235_534, notas: 'Avance adicional vigas y losas visto.' },
+  {
+    id: 'c1', numero: '001', fecha: '10/02/2026', rubro: 'Trabajos Preliminares', rubro_id: 'r1',
+    avance_pct: 100, monto: 34_629_353, notas: 'Demolición y acometidas completadas.',
+    estado: 'aprobado', fecha_envio: '11/02/2026', fecha_aprobacion: '14/02/2026',
+    adjuntos: ['foto_demolicion_final.jpg', 'foto_acometida_electrica.jpg'],
+  },
+  {
+    id: 'c2', numero: '002', fecha: '28/02/2026', rubro: 'Excavaciones y Mov. de Suelos', rubro_id: 'r2',
+    avance_pct: 100, monto: 39_506_537, notas: 'Relleno y compactación finalizados.',
+    estado: 'aprobado', fecha_envio: '01/03/2026', fecha_aprobacion: '05/03/2026',
+    adjuntos: ['foto_relleno_compactado.jpg', 'informe_densidad.pdf'],
+  },
+  {
+    id: 'c3', numero: '003', fecha: '31/03/2026', rubro: 'Estructuras', rubro_id: 'r3',
+    avance_pct: 50, monto: 39_543_152, notas: 'Bases, vigas fundación y encadenados terminados.',
+    estado: 'aprobado', fecha_envio: '01/04/2026', fecha_aprobacion: '07/04/2026',
+    adjuntos: ['foto_bases_ha.jpg', 'foto_encadenados.jpg', 'acta_inspeccion.pdf'],
+  },
+  {
+    id: 'c4', numero: '004', fecha: '15/04/2026', rubro: 'Cubiertas Metálicas', rubro_id: 'r4',
+    avance_pct: 20, monto: 20_847_056, notas: 'Avance parcial cubierta existente — chapa y aislación sector norte.',
+    estado: 'enviado', fecha_envio: '16/04/2026', fecha_aprobacion: null,
+    adjuntos: ['foto_cubierta_norte.jpg', 'foto_aislacion_termica.jpg'],
+  },
+  {
+    id: 'c5', numero: '005', fecha: '05/05/2026', rubro: 'Estructuras', rubro_id: 'r3',
+    avance_pct: 68, monto: 14_235_534, notas: 'Avance adicional vigas y losas visto.',
+    estado: 'aprobado', fecha_envio: '06/05/2026', fecha_aprobacion: '09/05/2026',
+    adjuntos: ['foto_vigas_hav.jpg', 'foto_losas_ha.jpg'],
+  },
 ];
 
+// monto_liberado: desbloqueado según % certificado aprobado acumulado por rubro
+// q2 → r3 tiene 68% aprobado → 68% × $310M = $210.8M liberado
 const CUOTAS_INIT = [
-  { id: 'q1', numero: 1, tipo: 'fecha',       descripcion: 'Anticipo',               fecha: '01/03/2026', rubro_id: null, condicion: null,                              monto: 248_018_771, estado: 'cobrado'  },
-  { id: 'q2', numero: 2, tipo: 'certificado', descripcion: 'Avance estructural',      fecha: null,         rubro_id: 'r3', condicion: 'Estructuras al 100%',             monto: 310_023_463, estado: 'esperando'},
-  { id: 'q3', numero: 3, tipo: 'certificado', descripcion: 'Cerramiento de la obra',  fecha: null,         rubro_id: 'r5', condicion: 'Cubierta + Mampostería al 100%',  monto: 248_018_771, estado: 'bloqueada'},
-  { id: 'q4', numero: 4, tipo: 'hito',        descripcion: 'Habilitación municipal',  fecha: null,         rubro_id: null, condicion: 'Obtención de habilitación final',  monto: 186_014_078, estado: 'bloqueada'},
-  { id: 'q5', numero: 5, tipo: 'fecha',       descripcion: 'Final de obra',           fecha: '01/01/2027', rubro_id: null, condicion: null,                              monto: 248_018_772, estado: 'bloqueada'},
+  { id: 'q1', numero: 1, tipo: 'fecha',       descripcion: 'Anticipo',              fecha: '01/03/2026', rubro_id: null, condicion: null,                             monto: 248_018_771, monto_liberado: 248_018_771, monto_cobrado: 248_018_771, fecha_cobro: '15/03/2026', estado: 'cobrado'  },
+  { id: 'q2', numero: 2, tipo: 'certificado', descripcion: 'Avance estructural',     fecha: null,         rubro_id: 'r3', condicion: 'Estructuras certificadas',        monto: 310_023_463, monto_liberado: 210_815_955, monto_cobrado: 0,           fecha_cobro: null,         estado: 'esperando'},
+  { id: 'q3', numero: 3, tipo: 'certificado', descripcion: 'Cerramiento de obra',    fecha: null,         rubro_id: 'r5', condicion: 'Cubiertas + Mampostería al 100%', monto: 248_018_771, monto_liberado: 0,           monto_cobrado: 0,           fecha_cobro: null,         estado: 'bloqueada'},
+  { id: 'q4', numero: 4, tipo: 'hito',        descripcion: 'Habilitación municipal', fecha: null,         rubro_id: null, condicion: 'Obtención de habilitación final', monto: 186_014_078, monto_liberado: 0,           monto_cobrado: 0,           fecha_cobro: null,         estado: 'bloqueada'},
+  { id: 'q5', numero: 5, tipo: 'fecha',       descripcion: 'Final de obra',          fecha: '01/01/2027', rubro_id: null, condicion: null,                             monto: 248_018_772, monto_liberado: 0,           monto_cobrado: 0,           fecha_cobro: null,         estado: 'bloqueada'},
+];
+
+// Gastos con imputación a rubros (para columna "Gastado real" en ejecución)
+const GASTOS_INIT = [
+  // r1 — certificado $34.6M · gastado $26.0M · margen +$8.6M
+  { id: 'g1',  fecha: '05/02/2026', proveedor: 'Demoliciones Express SRL',  descripcion: 'Alquiler equipos demolición y retiro escombros',   categoria: 'contratista', monto: 12_500_000, imputaciones: [{ rubro_id: 'r1', monto_imputado: 12_500_000 }] },
+  { id: 'g2',  fecha: '08/02/2026', proveedor: 'Varios',                       descripcion: 'Jornales febrero — cuadrilla demolición',          categoria: 'jornales',    monto:  7_800_000, imputaciones: [{ rubro_id: 'r1', monto_imputado: 7_800_000  }] },
+  { id: 'g3',  fecha: '10/02/2026', proveedor: 'Empresa de Energía SA',                  descripcion: 'Acometida eléctrica + materiales',                 categoria: 'material',    monto:  5_700_000, imputaciones: [{ rubro_id: 'r1', monto_imputado: 5_700_000  }] },
+  // r2 — certificado $39.5M · gastado $35.2M · margen +$4.3M
+  { id: 'g4',  fecha: '18/02/2026', proveedor: 'Movimiento de Suelos SA',      descripcion: 'Excavaciones y relleno compactado',                categoria: 'contratista', monto: 28_000_000, imputaciones: [{ rubro_id: 'r2', monto_imputado: 28_000_000 }] },
+  { id: 'g5',  fecha: '25/02/2026', proveedor: 'Distribuidora de Áridos SA',      descripcion: 'Tierra negra y base estabilizada',                 categoria: 'material',    monto:  7_200_000, imputaciones: [{ rubro_id: 'r2', monto_imputado: 7_200_000  }] },
+  // r3 — certificado aprobado $53.8M · gastado $49.0M · margen +$4.8M
+  { id: 'g6',  fecha: '10/03/2026', proveedor: 'Hormigones Premix SA',           descripcion: 'H°A° elaborado H-21 — bases y vigas fundación',    categoria: 'material',    monto: 18_500_000, imputaciones: [{ rubro_id: 'r3', monto_imputado: 18_500_000 }] },
+  { id: 'g7',  fecha: '15/03/2026', proveedor: 'Aceromet SA',                     descripcion: 'Hierro Ø12 y Ø16 — armadura estructuras',          categoria: 'material',    monto: 14_000_000, imputaciones: [{ rubro_id: 'r3', monto_imputado: 14_000_000 }] },
+  { id: 'g8',  fecha: '20/03/2026', proveedor: 'Varios',                       descripcion: 'Jornales marzo–abril — cuadrilla estructuras',     categoria: 'jornales',    monto:  9_800_000, imputaciones: [{ rubro_id: 'r3', monto_imputado: 9_800_000  }] },
+  { id: 'g9',  fecha: '02/04/2026', proveedor: 'Hormigones Premix SA',           descripcion: 'H°A° H-21 — losas y vigas visto',                 categoria: 'material',    monto:  6_700_000, imputaciones: [{ rubro_id: 'r3', monto_imputado: 6_700_000  }] },
+  // r4 — cert enviado $20.8M (pendiente aprobación) · gastado $23.9M · margen ⚠️
+  { id: 'g10', fecha: '01/04/2026', proveedor: 'Chapas y Perfiles SA',               descripcion: 'Chapa galvanizada + aislación Thermolan',          categoria: 'material',    monto: 14_200_000, imputaciones: [{ rubro_id: 'r4', monto_imputado: 14_200_000 }] },
+  { id: 'g11', fecha: '10/04/2026', proveedor: 'Herrería Industrial SRL',       descripcion: 'Estructura metálica cubierta sector norte',        categoria: 'contratista', monto:  5_800_000, imputaciones: [{ rubro_id: 'r4', monto_imputado: 5_800_000  }] },
+  { id: 'g12', fecha: '12/04/2026', proveedor: 'Varios',                       descripcion: 'Jornales abril — cuadrilla cubierta',              categoria: 'jornales',    monto:  3_900_000, imputaciones: [{ rubro_id: 'r4', monto_imputado: 3_900_000  }] },
+  // Gastos generales sin imputar
+  { id: 'g13', fecha: '01/03/2026', proveedor: 'YPF',                          descripcion: 'Combustible maquinaria — marzo',                  categoria: 'combustible', monto:  1_200_000, imputaciones: [] },
+  { id: 'g14', fecha: '01/04/2026', proveedor: 'YPF',                          descripcion: 'Combustible maquinaria — abril',                  categoria: 'combustible', monto:    980_000, imputaciones: [] },
+  { id: 'g15', fecha: '15/03/2026', proveedor: 'ART Galeno',                   descripcion: 'ART + seguros de obra — Q1 2026',                 categoria: 'servicio',    monto:  2_400_000, imputaciones: [] },
 ];
 
 const ANEXOS_INIT = [
@@ -358,6 +441,17 @@ const ANEXOS_INIT = [
     cuota_vinculada: 'Cuota 3 — +$8.5M',
   },
 ];
+
+// ─── Helpers de datos ─────────────────────────────────────────────────────────
+
+const gastoRealPorRubro = (rubroId, gastos) =>
+  gastos.reduce((sum, g) => sum + g.imputaciones.filter(i => i.rubro_id === rubroId).reduce((s, i) => s + i.monto_imputado, 0), 0);
+
+const certMontoTotal = (rubroId, certs) =>
+  certs.filter(c => c.rubro_id === rubroId).reduce((s, c) => s + c.monto, 0);
+
+const certMontoAprobado = (rubroId, certs) =>
+  certs.filter(c => c.rubro_id === rubroId && c.estado === 'aprobado').reduce((s, c) => s + c.monto, 0);
 
 // ─── KPI Card ─────────────────────────────────────────────────────────────────
 
@@ -377,9 +471,16 @@ function KpiCard({ label, value, sub, color = 'text.primary', tooltip }) {
 // ─── Chip helpers ─────────────────────────────────────────────────────────────
 
 const ESTADO_CUOTA = {
-  cobrado:   { label: 'Cobrado',   color: 'success', icon: <CheckCircleIcon fontSize="small" /> },
-  esperando: { label: 'En espera', color: 'warning', icon: <HourglassEmptyIcon fontSize="small" /> },
-  bloqueada: { label: 'Bloqueada', color: 'default', icon: <LockIcon fontSize="small" /> },
+  cobrado:   { label: 'Cobrado',     color: 'success', icon: <CheckCircleIcon fontSize="small" /> },
+  esperando: { label: 'Por cobrar',  color: 'warning', icon: <HourglassEmptyIcon fontSize="small" /> },
+  bloqueada: { label: 'Bloqueada',   color: 'default', icon: <LockIcon fontSize="small" /> },
+};
+
+const ESTADO_CERT = {
+  borrador: { label: 'Borrador',    color: 'default', icon: <EditNoteIcon fontSize="small" /> },
+  enviado:  { label: 'En revisión', color: 'warning', icon: <AccessTimeIcon fontSize="small" /> },
+  aprobado: { label: 'Aprobado',    color: 'success', icon: <CheckCircleIcon fontSize="small" /> },
+  rechazado:{ label: 'Rechazado',   color: 'error',   icon: <ThumbDownIcon fontSize="small" /> },
 };
 
 const TIPO_CUOTA_ICON = {
@@ -395,58 +496,57 @@ const avanceBarColor = (p) => p === 100 ? 'success' : p > 0 ? 'warning' : 'inher
 
 // ─── Tab: Ejecución ───────────────────────────────────────────────────────────
 
-function TabEjecucion({ rubros, certificados }) {
+function TabEjecucion({ rubros, certificados, gastos }) {
   const [expandedR, setExpandedR]   = useState({});
   const [expandedSR, setExpandedSR] = useState({});
 
-  // Certificado = avance físico formalizado en documento. Son la misma cosa.
-  // La distinción real es certificado vs. cobrado (plata efectivamente recibida).
-  const totalPresupuestado = PROYECTO.total;
-  const montoCertificado   = certificados.reduce((s, c) => s + c.monto, 0);
-  const pctCertificado     = (montoCertificado / totalPresupuestado) * 100;
-  const montoCobrado       = CUOTAS_INIT.filter((q) => q.estado === 'cobrado').reduce((s, q) => s + q.monto, 0);
-  const porCobrar          = Math.max(montoCertificado - montoCobrado, 0);
-  const saldoObra          = totalPresupuestado - montoCertificado;
+  const totalPresupuestado  = PROYECTO.total;
+  const montoCertTot        = certificados.reduce((s, c) => s + c.monto, 0);
+  const montoCertAprobado   = certificados.filter(c => c.estado === 'aprobado').reduce((s, c) => s + c.monto, 0);
+  const montoEnviado        = montoCertTot - montoCertAprobado;
+  const pctCertificado      = (montoCertTot / totalPresupuestado) * 100;
+  const totalGastado        = gastos.reduce((s, g) => s + g.monto, 0);
+  const margenEjecutado     = montoCertAprobado - gastos.filter(g => g.imputaciones.length > 0).reduce((s, g) => s + g.monto, 0);
+  const certsPendientes     = certificados.filter(c => c.estado === 'enviado');
 
   return (
     <Box>
+      {/* Banner: certs esperando aprobación del cliente */}
+      {certsPendientes.length > 0 && (
+        <Alert
+          severity="warning"
+          icon={<AccessTimeIcon />}
+          sx={{ mb: 2 }}
+          action={
+            <Typography variant="caption" fontWeight={600} sx={{ alignSelf: 'center', mr: 1 }}>
+              {fmtM(montoEnviado)} sin cobrar
+            </Typography>
+          }
+        >
+          <strong>{certsPendientes.length} certificado{certsPendientes.length > 1 ? 's' : ''} esperando aprobación del cliente</strong>
+          {certsPendientes.map(c => {
+            const dias = diasDesde(c.fecha_envio);
+            return (
+              <Typography key={c.id} variant="caption" display="block" mt={0.25}>
+                Cert. #{c.numero} — {c.rubro} — enviado hace <strong>{dias} días</strong> ({fmtM(c.monto)})
+              </Typography>
+            );
+          })}
+        </Alert>
+      )}
+
       {/* KPIs */}
       <Stack direction="row" spacing={2} flexWrap="wrap" mb={3} useFlexGap>
+        <KpiCard label="Presupuesto total" value={fmtM(totalPresupuestado)} sub="22 rubros · contrato original" tooltip="Suma de todos los rubros del PP aceptado." />
+        <KpiCard label="Certificado" value={fmtM(montoCertTot)} sub={`${pctCertificado.toFixed(1)}% · ${montoCertAprobado < montoCertTot ? `${ fmtM(montoEnviado)} pend. aprobación` : 'todo aprobado'}`} color="warning.main" tooltip="Avance físico formalizado. Incluye enviados y aprobados." />
+        <KpiCard label="Gastado real" value={fmtM(totalGastado)} sub={`${gastos.filter(g => g.imputaciones.length === 0).length} gastos sin imputar`} tooltip="Suma de todos los gastos registrados en caja, con o sin imputación." />
         <KpiCard
-          label="Presupuesto total"
-          value={fmtM(totalPresupuestado)}
-          sub="22 rubros · contrato original"
-          tooltip="Suma de todos los rubros del presupuesto profesional aceptado."
+          label="Margen ejecutado"
+          value={fmtM(Math.abs(margenEjecutado))}
+          sub={margenEjecutado >= 0 ? `+${((margenEjecutado / montoCertAprobado) * 100).toFixed(1)}% sobre cert. aprobado` : 'Gastado > certificado aprobado'}
+          color={margenEjecutado >= 0 ? 'success.main' : 'error.main'}
+          tooltip="Certificado aprobado − gastos imputados. Margen bruto sobre la porción ya ejecutada."
         />
-        <KpiCard
-          label="Certificado"
-          value={fmtM(montoCertificado)}
-          sub={`${pctCertificado.toFixed(1)}% de avance físico`}
-          color="warning.main"
-          tooltip="Avance físico formalizado en certificados de obra. El % indica cuánto del contrato está hecho y documentado."
-        />
-        <KpiCard
-          label="Cobrado"
-          value={fmtM(montoCobrado)}
-          sub={`${((montoCobrado / totalPresupuestado) * 100).toFixed(1)}% del contrato`}
-          color="success.main"
-          tooltip="Dinero efectivamente recibido del cliente (cuotas cobradas del plan de cobro)."
-        />
-        <KpiCard
-          label="Saldo de obra"
-          value={fmtM(saldoObra)}
-          sub="pendiente de certificar"
-          tooltip="Monto que falta ejecutar y certificar para completar la obra."
-        />
-        {porCobrar > 0 && (
-          <KpiCard
-            label="Por cobrar"
-            value={fmtM(porCobrar)}
-            sub="certificado no cobrado aún"
-            color="warning.dark"
-            tooltip="Trabajo ya certificado que el cliente todavía no pagó."
-          />
-        )}
       </Stack>
 
       {/* Tabla 3 niveles */}
@@ -458,18 +558,23 @@ function TabEjecucion({ rubros, certificados }) {
               <TableCell>Rubro / Sub-rubro / Ítem</TableCell>
               <TableCell align="right">Presupuestado</TableCell>
               <TableCell>Cronograma</TableCell>
-              <TableCell>Certificado</TableCell>
-              <TableCell align="right">Saldo</TableCell>
+              <TableCell>Avance físico</TableCell>
+              <TableCell align="right">Certificado $</TableCell>
+              <TableCell align="right">Gastado real</TableCell>
+              <TableCell align="right">Margen</TableCell>
               <TableCell align="center">Estado</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {rubros.map((r) => {
-              const saldo  = r.monto * (1 - r.avance / 100);
-              const hasSub = r.sub_rubros?.length > 0;
+              const hasSub      = r.sub_rubros?.length > 0;
+              const certTotal   = certMontoTotal(r.id, certificados);
+              const certAprov   = certMontoAprobado(r.id, certificados);
+              const gastado     = gastoRealPorRubro(r.id, gastos);
+              const margen      = certTotal > 0 ? certTotal - gastado : null;
+              const hayEnviado  = certificados.some(c => c.rubro_id === r.id && c.estado === 'enviado');
               return (
                 <React.Fragment key={r.id}>
-                  {/* NIVEL 1 — Rubro */}
                   <TableRow
                     hover
                     sx={{ cursor: hasSub ? 'pointer' : 'default', bgcolor: 'neutral.50' }}
@@ -492,15 +597,11 @@ function TabEjecucion({ rubros, certificados }) {
                         )}
                       </Stack>
                     </TableCell>
-                    <TableCell align="right">
-                      <Typography variant="body2" fontWeight={600}>{fmt(r.monto)}</Typography>
-                    </TableCell>
+                    <TableCell align="right"><Typography variant="body2" fontWeight={600}>{fmt(r.monto)}</Typography></TableCell>
                     <TableCell>
                       <Stack direction="row" alignItems="center" spacing={0.5}>
                         <DateRangeIcon sx={{ fontSize: 13, color: 'text.disabled' }} />
-                        <Typography variant="caption" color="text.secondary">
-                          {mesAFecha(r.mes_inicio)} → {mesAFecha(r.mes_fin)}
-                        </Typography>
+                        <Typography variant="caption" color="text.secondary">{mesAFecha(r.mes_inicio)} → {mesAFecha(r.mes_fin)}</Typography>
                       </Stack>
                     </TableCell>
                     <TableCell>
@@ -510,14 +611,35 @@ function TabEjecucion({ rubros, certificados }) {
                       </Stack>
                     </TableCell>
                     <TableCell align="right">
-                      <Typography variant="body2" color="text.secondary">{fmt(saldo)}</Typography>
+                      {certTotal > 0 ? (
+                        <Stack alignItems="flex-end">
+                          <Typography variant="body2" fontWeight={600}>{fmt(certTotal)}</Typography>
+                          {hayEnviado && <Typography variant="caption" color="warning.main" sx={{ fontSize: 10 }}>⏳ pend. aprob.</Typography>}
+                        </Stack>
+                      ) : <Typography variant="body2" color="text.disabled">—</Typography>}
+                    </TableCell>
+                    <TableCell align="right">
+                      {gastado > 0
+                        ? <Typography variant="body2">{fmt(gastado)}</Typography>
+                        : <Typography variant="body2" color="text.disabled">—</Typography>}
+                    </TableCell>
+                    <TableCell align="right">
+                      {margen !== null && gastado > 0 ? (
+                        <Stack direction="row" alignItems="center" justifyContent="flex-end" spacing={0.5}>
+                          {margen >= 0
+                            ? <TrendingUpIcon sx={{ fontSize: 14, color: 'success.main' }} />
+                            : <TrendingDownIcon sx={{ fontSize: 14, color: 'error.main' }} />}
+                          <Typography variant="body2" fontWeight={600} color={margen >= 0 ? 'success.main' : 'error.main'}>
+                            {margen >= 0 ? '+' : ''}{fmtM(margen)}
+                          </Typography>
+                        </Stack>
+                      ) : <Typography variant="body2" color="text.disabled">—</Typography>}
                     </TableCell>
                     <TableCell align="center">
                       <Chip size="small" label={r.avance === 100 ? 'Completo' : r.avance > 0 ? 'En curso' : 'Pendiente'} color={avanceColor(r.avance)} />
                     </TableCell>
                   </TableRow>
 
-                  {/* NIVEL 2 — Sub-rubros (solo cuando expandido, sin Collapse ni tabla anidada) */}
                   {hasSub && expandedR[r.id] && r.sub_rubros.map((sr) => {
                     const hasTareas = sr.tareas?.length > 0;
                     const srKey = `${r.id}_${sr.id}`;
@@ -535,50 +657,31 @@ function TabEjecucion({ rubros, certificados }) {
                               </IconButton>
                             )}
                           </TableCell>
-                          <TableCell sx={{ pl: 4 }}>
-                            <Typography variant="body2" color="text.secondary">{sr.num} {sr.nombre}</Typography>
-                          </TableCell>
-                          <TableCell align="right">
-                            <Typography variant="body2" color="text.secondary">{fmt(sr.monto)}</Typography>
-                          </TableCell>
-                          <TableCell />
-                          <TableCell>
+                          <TableCell sx={{ pl: 4 }}><Typography variant="body2" color="text.secondary">{sr.num} {sr.nombre}</Typography></TableCell>
+                          <TableCell align="right"><Typography variant="body2" color="text.secondary">{fmt(sr.monto)}</Typography></TableCell>
+                          <TableCell /><TableCell>
                             <Stack direction="row" alignItems="center" spacing={1}>
                               <LinearProgress variant="determinate" value={sr.avance} color={avanceBarColor(sr.avance)} sx={{ flex: 1, height: 4, borderRadius: 3, bgcolor: 'neutral.100' }} />
                               <Typography variant="caption" width={32} textAlign="right">{sr.avance}%</Typography>
                             </Stack>
                           </TableCell>
-                          <TableCell align="right">
-                            <Typography variant="caption" color="text.disabled">{fmt(sr.monto * (1 - sr.avance / 100))}</Typography>
-                          </TableCell>
-                          <TableCell align="center">
-                            <Chip size="small" label={sr.avance === 100 ? 'Completo' : sr.avance > 0 ? 'En curso' : 'Pendiente'} color={avanceColor(sr.avance)} />
-                          </TableCell>
+                          <TableCell /><TableCell /><TableCell />
+                          <TableCell align="center"><Chip size="small" label={sr.avance === 100 ? 'Completo' : sr.avance > 0 ? 'En curso' : 'Pendiente'} color={avanceColor(sr.avance)} /></TableCell>
                         </TableRow>
 
-                        {/* NIVEL 3 — Ítems (solo cuando expandido) */}
                         {hasTareas && expandedSR[srKey] && sr.tareas.map((t, i) => (
                           <TableRow key={i} sx={{ bgcolor: 'neutral.50' }}>
                             <TableCell />
-                            <TableCell sx={{ pl: 7 }}>
-                              <Typography variant="caption" color="text.disabled">↳ {t.nombre}</Typography>
-                            </TableCell>
-                            <TableCell align="right">
-                              <Typography variant="caption" color="text.disabled">{fmt(t.monto)}</Typography>
-                            </TableCell>
-                            <TableCell />
-                            <TableCell>
+                            <TableCell sx={{ pl: 7 }}><Typography variant="caption" color="text.disabled">↳ {t.nombre}</Typography></TableCell>
+                            <TableCell align="right"><Typography variant="caption" color="text.disabled">{fmt(t.monto)}</Typography></TableCell>
+                            <TableCell /><TableCell>
                               <Stack direction="row" alignItems="center" spacing={1}>
                                 <LinearProgress variant="determinate" value={t.avance} color={avanceBarColor(t.avance)} sx={{ flex: 1, height: 3, borderRadius: 3, bgcolor: 'neutral.100' }} />
                                 <Typography variant="caption" width={32} textAlign="right">{t.avance}%</Typography>
                               </Stack>
                             </TableCell>
-                            <TableCell align="right">
-                              <Typography variant="caption" color="text.disabled">{fmt(t.monto * (1 - t.avance / 100))}</Typography>
-                            </TableCell>
-                            <TableCell align="center">
-                              <Chip size="small" label={t.avance === 100 ? 'Completo' : t.avance > 0 ? 'En curso' : 'Pend.'} color={avanceColor(t.avance)} />
-                            </TableCell>
+                            <TableCell /><TableCell /><TableCell />
+                            <TableCell align="center"><Chip size="small" label={t.avance === 100 ? 'Completo' : t.avance > 0 ? 'En curso' : 'Pend.'} color={avanceColor(t.avance)} /></TableCell>
                           </TableRow>
                         ))}
                       </React.Fragment>
@@ -588,21 +691,23 @@ function TabEjecucion({ rubros, certificados }) {
               );
             })}
 
-            {/* Total */}
             <TableRow sx={{ bgcolor: 'neutral.100' }}>
-              <TableCell />
-              <TableCell><Typography variant="body2" fontWeight={700}>TOTAL</Typography></TableCell>
+              <TableCell /><TableCell><Typography variant="body2" fontWeight={700}>TOTAL</Typography></TableCell>
               <TableCell align="right"><Typography variant="body2" fontWeight={700}>{fmt(PROYECTO.total)}</Typography></TableCell>
-              <TableCell>
-                <Typography variant="caption" color="text.secondary">{mesAFecha(1)} → {mesAFecha(10)}</Typography>
-              </TableCell>
+              <TableCell><Typography variant="caption" color="text.secondary">{mesAFecha(1)} → {mesAFecha(10)}</Typography></TableCell>
               <TableCell>
                 <Stack direction="row" alignItems="center" spacing={1}>
                   <LinearProgress variant="determinate" value={pctCertificado} color="warning" sx={{ flex: 1, height: 6, borderRadius: 3, bgcolor: 'neutral.100' }} />
                   <Typography variant="caption" width={32} textAlign="right">{pctCertificado.toFixed(1)}%</Typography>
                 </Stack>
               </TableCell>
-              <TableCell align="right"><Typography variant="body2" fontWeight={700}>{fmt(PROYECTO.total - montoCertificado)}</Typography></TableCell>
+              <TableCell align="right"><Typography variant="body2" fontWeight={700}>{fmt(montoCertTot)}</Typography></TableCell>
+              <TableCell align="right"><Typography variant="body2" fontWeight={700}>{fmt(totalGastado)}</Typography></TableCell>
+              <TableCell align="right">
+                <Typography variant="body2" fontWeight={700} color={margenEjecutado >= 0 ? 'success.main' : 'error.main'}>
+                  {margenEjecutado >= 0 ? '+' : ''}{fmtM(margenEjecutado)}
+                </Typography>
+              </TableCell>
               <TableCell />
             </TableRow>
           </TableBody>
@@ -614,23 +719,27 @@ function TabEjecucion({ rubros, certificados }) {
 
 // ─── Tab: Plan de Cobro ────────────────────────────────────────────────────────
 
-function TabPlanCobro({ cuotas, rubros, onAgregarCuota }) {
-  const totalCobrado   = cuotas.filter((q) => q.estado === 'cobrado').reduce((s, q) => s + q.monto, 0);
-  const totalPendiente = cuotas.filter((q) => q.estado !== 'cobrado').reduce((s, q) => s + q.monto, 0);
-  const proximaCuota   = cuotas.find((q) => q.estado === 'esperando');
+function TabPlanCobro({ cuotas, rubros, onAgregarCuota, onCobrar }) {
+  const totalCobrado    = cuotas.reduce((s, q) => s + q.monto_cobrado, 0);
+  const totalLiberado   = cuotas.reduce((s, q) => s + q.monto_liberado, 0);
+  const porCobrar       = totalLiberado - totalCobrado;
+  const proximaCuota    = cuotas.find(q => q.estado === 'esperando');
 
   return (
     <Box>
       <Stack direction="row" spacing={2} flexWrap="wrap" mb={3} useFlexGap>
         <KpiCard label="Cobrado" value={fmtM(totalCobrado)} sub={`${((totalCobrado / PROYECTO.total) * 100).toFixed(1)}% del contrato`} color="success.main" />
-        <KpiCard label="Por cobrar" value={fmtM(totalPendiente)} sub={`${cuotas.filter((q) => q.estado !== 'cobrado').length} cuotas pendientes`} />
-        <KpiCard label="Próxima cuota" value={proximaCuota ? fmtM(proximaCuota.monto) : '—'} sub={proximaCuota ? 'En espera de certificado' : 'Sin cuotas pendientes'} color="warning.main" />
+        <KpiCard label="Liberado por cobrar" value={fmtM(porCobrar)} sub="certificado aprobado, pendiente de cobro" color="warning.main" tooltip="Trabajo certificado y aprobado por el cliente que todavía no se cobró." />
+        <KpiCard label="Próxima cuota" value={proximaCuota ? fmtM(proximaCuota.monto_liberado) : '—'} sub={proximaCuota ? `de ${fmtM(proximaCuota.monto)} total` : 'Sin cuotas disponibles'} color="warning.main" />
       </Stack>
 
       <Stack spacing={2}>
         {cuotas.map((q) => {
           const est      = ESTADO_CUOTA[q.estado];
-          const rubroRef = rubros.find((r) => r.id === q.rubro_id);
+          const rubroRef = rubros.find(r => r.id === q.rubro_id);
+          const pctLib   = q.monto > 0 ? (q.monto_liberado / q.monto) * 100 : 0;
+          const pctCob   = q.monto > 0 ? (q.monto_cobrado  / q.monto) * 100 : 0;
+
           return (
             <Card key={q.id} variant="outlined" sx={{ borderLeft: 4, borderLeftColor: q.estado === 'cobrado' ? 'success.main' : q.estado === 'esperando' ? 'warning.main' : 'divider' }}>
               <CardContent sx={{ pb: '16px !important' }}>
@@ -645,30 +754,64 @@ function TabPlanCobro({ cuotas, rubros, onAgregarCuota }) {
                 <Typography variant="subtitle1" fontWeight={700} mt={1}>{q.descripcion}</Typography>
 
                 {q.tipo === 'fecha' && q.fecha && (
-                  <Typography variant="body2" color="text.secondary" mt={0.5}>Vencimiento: {q.fecha}</Typography>
+                  <Typography variant="body2" color="text.secondary" mt={0.5}>
+                    {q.estado === 'cobrado' ? `Cobrado el ${q.fecha_cobro}` : `Vencimiento: ${q.fecha}`}
+                  </Typography>
                 )}
+
                 {q.tipo === 'certificado' && (
-                  <Stack direction="row" alignItems="center" spacing={1} mt={0.5} flexWrap="wrap">
-                    <Typography variant="body2" color="text.secondary">Condición: {q.condicion}</Typography>
-                    {rubroRef && (
-                      <Chip size="small" label={`Avance actual: ${rubroRef.avance}%`} color={rubroRef.avance === 100 ? 'success' : 'warning'} />
+                  <Box mt={1}>
+                    <Stack direction="row" alignItems="center" spacing={1} mb={1} flexWrap="wrap">
+                      <Typography variant="body2" color="text.secondary">Condición: {q.condicion}</Typography>
+                      {rubroRef && <Chip size="small" label={`${rubroRef.nombre}: ${rubroRef.avance}% avanzado`} color={rubroRef.avance === 100 ? 'success' : 'warning'} />}
+                    </Stack>
+                    {/* Barra de liberado */}
+                    <Stack spacing={0.5}>
+                      <Stack direction="row" justifyContent="space-between">
+                        <Typography variant="caption" color="text.secondary">Liberado (cert. aprobado)</Typography>
+                        <Typography variant="caption" fontWeight={600}>{fmtM(q.monto_liberado)} de {fmtM(q.monto)}</Typography>
+                      </Stack>
+                      <LinearProgress variant="determinate" value={pctLib} color="warning" sx={{ height: 8, borderRadius: 4, bgcolor: 'neutral.100' }} />
+                    </Stack>
+                    {q.monto_cobrado > 0 && q.monto_cobrado < q.monto_liberado && (
+                      <Stack spacing={0.5} mt={1}>
+                        <Stack direction="row" justifyContent="space-between">
+                          <Typography variant="caption" color="text.secondary">Cobrado</Typography>
+                          <Typography variant="caption" fontWeight={600}>{fmtM(q.monto_cobrado)}</Typography>
+                        </Stack>
+                        <LinearProgress variant="determinate" value={pctCob} color="success" sx={{ height: 6, borderRadius: 4, bgcolor: 'neutral.100' }} />
+                      </Stack>
                     )}
-                  </Stack>
+                  </Box>
                 )}
+
                 {q.tipo === 'hito' && (
                   <Typography variant="body2" color="text.secondary" mt={0.5}>Hito: {q.condicion}</Typography>
                 )}
 
                 <Divider sx={{ my: 1.5 }} />
-                <Stack direction="row" justifyContent="space-between" alignItems="center">
-                  <Typography variant="h6" fontWeight={700}>{fmt(q.monto)}</Typography>
-                  {q.estado === 'esperando' && (
-                    <Button size="small" variant="contained" color="warning" startIcon={<VerifiedIcon />}>Registrar cobro</Button>
+                <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1}>
+                  <Box>
+                    <Typography variant="h6" fontWeight={700}>{fmt(q.monto)}</Typography>
+                    {q.tipo === 'certificado' && q.monto_liberado > 0 && q.monto_cobrado === 0 && (
+                      <Typography variant="caption" color="warning.main">Disponible para cobrar: {fmtM(q.monto_liberado)}</Typography>
+                    )}
+                    {q.estado === 'cobrado' && q.fecha_cobro && (
+                      <Typography variant="caption" color="success.main">Cobrado el {q.fecha_cobro}</Typography>
+                    )}
+                  </Box>
+                  {q.estado === 'esperando' && q.monto_liberado > 0 && (
+                    <Button size="small" variant="contained" color="warning" startIcon={<CheckCircleIcon />} onClick={() => onCobrar(q.id)}>
+                      Registrar cobro — {fmtM(q.monto_liberado)}
+                    </Button>
                   )}
                   {q.estado === 'bloqueada' && (
                     <Typography variant="caption" color="text.disabled" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                       <LockIcon fontSize="inherit" /> Bloqueada hasta cumplir condición
                     </Typography>
+                  )}
+                  {q.estado === 'cobrado' && (
+                    <Chip size="small" label="Pagado" color="success" icon={<CheckCircleIcon />} />
                   )}
                 </Stack>
               </CardContent>
@@ -684,78 +827,285 @@ function TabPlanCobro({ cuotas, rubros, onAgregarCuota }) {
   );
 }
 
-// ─── Dialog: Nuevo Certificado ────────────────────────────────────────────────
+// ─── Dialog: Nuevo Certificado (3 pasos) ──────────────────────────────────────
 
-function DialogNuevoCertificado({ open, onClose, rubros, onGuardar }) {
+const ADJUNTOS_MOCK = ['foto_avance_1.jpg', 'foto_avance_2.jpg', 'medicion_parcial.pdf'];
+
+function DialogNuevoCertificado({ open, onClose, rubros, cuotas, certificados, onGuardar }) {
+  const [step,    setStep]    = useState(0);
   const [rubroId, setRubroId] = useState('');
   const [avance,  setAvance]  = useState('');
   const [notas,   setNotas]   = useState('');
+  const [adjuntos,setAdjuntos]= useState([]);
 
-  const rubroSel       = rubros.find((r) => r.id === rubroId);
-  const avanceNum      = Number(avance);
-  const montoEstimado  = rubroSel ? rubroSel.monto * (Math.max(avanceNum - rubroSel.avance, 0) / 100) : 0;
-  const desbloquea     = avanceNum === 100 && rubroSel;
+  const rubroSel      = rubros.find(r => r.id === rubroId);
+  const avanceNum     = Number(avance);
+  const montoEstimado = rubroSel ? rubroSel.monto * (Math.max(avanceNum - rubroSel.avance, 0) / 100) : 0;
+
+  // Cuotas que se desbloquearían (proporcional)
+  const cuotasAfectadas = cuotas.filter(q => q.tipo === 'certificado' && q.rubro_id === rubroId && q.estado !== 'cobrado');
+
+  const reset = () => { setStep(0); setRubroId(''); setAvance(''); setNotas(''); setAdjuntos([]); };
 
   const handleGuardar = () => {
-    onGuardar({ rubroId, rubroNombre: rubroSel?.nombre, avance: avanceNum, monto: montoEstimado, notas });
-    setRubroId(''); setAvance(''); setNotas('');
-    onClose();
+    onGuardar({ rubroId, rubroNombre: rubroSel?.nombre, avance: avanceNum, monto: montoEstimado, notas, adjuntos, enviar: false });
+    reset(); onClose();
+  };
+
+  const steps = ['Avance', 'Adjuntos', 'Envío'];
+
+  return (
+    <Dialog open={open} onClose={() => { reset(); onClose(); }} maxWidth="sm" fullWidth>
+      <DialogTitle>Nuevo certificado de avance</DialogTitle>
+      <DialogContent>
+        <Stepper activeStep={step} sx={{ mb: 3, mt: 1 }}>
+          {steps.map(s => <Step key={s}><StepLabel>{s}</StepLabel></Step>)}
+        </Stepper>
+
+        {step === 0 && (
+          <Stack spacing={2.5}>
+            <FormControl fullWidth size="small">
+              <InputLabel>Rubro</InputLabel>
+              <Select value={rubroId} onChange={e => setRubroId(e.target.value)} label="Rubro">
+                {rubros.map(r => (
+                  <MenuItem key={r.id} value={r.id} disabled={r.avance === 100}>
+                    <Stack direction="row" justifyContent="space-between" width="100%">
+                      <span>{r.num}. {r.nombre}</span>
+                      <Typography variant="caption" color="text.secondary">Actual: {r.avance}%</Typography>
+                    </Stack>
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <TextField
+              label="% de avance certificado"
+              size="small" type="number" value={avance}
+              onChange={e => setAvance(e.target.value)}
+              inputProps={{ min: rubroSel?.avance ?? 0, max: 100 }}
+              helperText={rubroSel ? `Avance previo: ${rubroSel.avance}%. Monto adicional: ${fmt(montoEstimado)}` : ''}
+            />
+            <TextField label="Descripción del avance" size="small" multiline rows={2} value={notas} onChange={e => setNotas(e.target.value)} placeholder="Qué trabajo se completó..." />
+            {cuotasAfectadas.length > 0 && avanceNum > 0 && (
+              <Alert severity="info" icon={<VerifiedIcon />}>
+                Al aprobarse este certificado se liberará <strong>{fmtM(Math.round(cuotasAfectadas[0].monto * avanceNum / 100))}</strong> de la {cuotasAfectadas[0].descripcion}.
+              </Alert>
+            )}
+          </Stack>
+        )}
+
+        {step === 1 && (
+          <Stack spacing={2}>
+            <Typography variant="body2" color="text.secondary">
+              Adjuntá fotos del avance y cualquier documentación relevante para incluir en el informe al cliente.
+            </Typography>
+            <Paper variant="outlined" sx={{ p: 2, border: '2px dashed', borderColor: 'divider', textAlign: 'center', cursor: 'pointer', bgcolor: 'action.hover' }}>
+              <PhotoCameraIcon sx={{ fontSize: 32, color: 'text.disabled', mb: 1 }} />
+              <Typography variant="body2" color="text.secondary">Arrastrá fotos o hacé clic para seleccionar</Typography>
+              <Button size="small" sx={{ mt: 1 }} onClick={() => setAdjuntos(ADJUNTOS_MOCK)}>Simular selección de archivos</Button>
+            </Paper>
+            {adjuntos.length > 0 && (
+              <Stack spacing={0.5}>
+                {adjuntos.map(a => (
+                  <Stack key={a} direction="row" alignItems="center" spacing={1}>
+                    <AttachFileIcon fontSize="small" color="action" />
+                    <Typography variant="body2">{a}</Typography>
+                    <Button size="small" color="error" onClick={() => setAdjuntos(p => p.filter(x => x !== a))}>Quitar</Button>
+                  </Stack>
+                ))}
+              </Stack>
+            )}
+          </Stack>
+        )}
+
+        {step === 2 && (
+          <Stack spacing={2}>
+            <Card variant="outlined">
+              <CardContent sx={{ pb: '12px !important' }}>
+                <Typography variant="caption" color="text.secondary" display="block">Vista previa del informe</Typography>
+                <Typography variant="subtitle2" fontWeight={700} mt={0.5}>{PROYECTO.nombre} — Cert. #{String(certificados.length + 1).padStart(3, '0')}</Typography>
+                <Typography variant="body2" color="text.secondary">{rubroSel?.nombre} — {avance}% completado</Typography>
+                <Typography variant="body2" color="text.secondary">Monto: {fmt(montoEstimado)}</Typography>
+                {adjuntos.length > 0 && <Typography variant="caption" color="text.secondary">{adjuntos.length} adjunto{adjuntos.length > 1 ? 's' : ''}</Typography>}
+              </CardContent>
+            </Card>
+            <Button variant="outlined" startIcon={<PictureAsPdfIcon />} fullWidth size="large" color="error"
+              onClick={() => alert('PDF generado: Certificado_' + (certificados.length + 1).toString().padStart(3,'0') + '_' + rubroSel?.nombre?.replace(/ /g,'_') + '.pdf\n\n(En producción esto descarga el archivo real)')}>
+              Descargar informe PDF
+            </Button>
+            <Alert severity="info" icon={<SendIcon />}>
+              Descargá el PDF y envialo vos desde tu mail a <strong>{PROYECTO.cliente}</strong>. Cuando el cliente apruebe, marcalo como aprobado desde la lista de certificados.
+            </Alert>
+          </Stack>
+        )}
+      </DialogContent>
+      <DialogActions>
+        {step > 0 && <Button onClick={() => setStep(p => p - 1)}>Atrás</Button>}
+        <Button onClick={() => { reset(); onClose(); }}>Cancelar</Button>
+        {step < 2
+          ? <Button variant="contained" onClick={() => setStep(p => p + 1)} disabled={step === 0 && (!rubroId || !avanceNum)}>Siguiente</Button>
+          : <Button variant="contained" startIcon={<EditNoteIcon />} onClick={handleGuardar}>Guardar borrador</Button>
+        }
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+// ─── Dialog: Informe del Certificado (vista del cliente) ──────────────────────
+
+function DialogInformeCertificado({ open, onClose, cert, onAprobar, onRechazar }) {
+  if (!cert) return null;
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <PictureAsPdfIcon color="error" />
+        Informe de Certificado #{cert.numero}
+      </DialogTitle>
+      <DialogContent>
+        <Paper variant="outlined" sx={{ p: 2.5, mb: 2 }}>
+          {/* Cabecera */}
+          <Stack direction="row" justifyContent="space-between" mb={2}>
+            <Box>
+              <Typography variant="overline" color="text.secondary">Obra</Typography>
+              <Typography variant="subtitle1" fontWeight={700}>{PROYECTO.nombre}</Typography>
+              <Typography variant="body2" color="text.secondary">{PROYECTO.cliente}</Typography>
+            </Box>
+            <Box textAlign="right">
+              <Typography variant="overline" color="text.secondary">Certificado</Typography>
+              <Typography variant="h6" fontWeight={700}>#{cert.numero}</Typography>
+              <Typography variant="body2" color="text.secondary">{cert.fecha}</Typography>
+            </Box>
+          </Stack>
+          <Divider sx={{ mb: 2 }} />
+          {/* Detalle */}
+          <TableContainer>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Rubro</TableCell>
+                  <TableCell align="center">Avance</TableCell>
+                  <TableCell align="right">Monto certificado</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                <TableRow>
+                  <TableCell><Typography variant="body2" fontWeight={600}>{cert.rubro}</Typography></TableCell>
+                  <TableCell align="center"><Chip size="small" label={`${cert.avance_pct}%`} color={cert.avance_pct === 100 ? 'success' : 'warning'} /></TableCell>
+                  <TableCell align="right"><Typography variant="body2" fontWeight={700}>{fmt(cert.monto)}</Typography></TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </TableContainer>
+          {cert.notas && (
+            <Box mt={2}>
+              <Typography variant="caption" color="text.secondary">Observaciones</Typography>
+              <Typography variant="body2">{cert.notas}</Typography>
+            </Box>
+          )}
+          {cert.adjuntos?.length > 0 && (
+            <Box mt={2}>
+              <Typography variant="caption" color="text.secondary">Adjuntos ({cert.adjuntos.length})</Typography>
+              <Stack spacing={0.5} mt={0.5}>
+                {cert.adjuntos.map(a => (
+                  <Stack key={a} direction="row" alignItems="center" spacing={1}>
+                    <AttachFileIcon fontSize="small" color="action" />
+                    <Typography variant="body2">{a}</Typography>
+                  </Stack>
+                ))}
+              </Stack>
+            </Box>
+          )}
+        </Paper>
+
+        {cert.estado === 'enviado' && (
+          <Alert severity="warning" icon={<AccessTimeIcon />}>
+            Enviado el {cert.fecha_envio} · esperando aprobación del cliente · {diasDesde(cert.fecha_envio)} días
+          </Alert>
+        )}
+        {cert.estado === 'aprobado' && (
+          <Alert severity="success" icon={<CheckCircleIcon />}>Aprobado por el cliente el {cert.fecha_aprobacion}.</Alert>
+        )}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Cerrar</Button>
+        {cert.estado === 'enviado' && (
+          <>
+            <Button color="error" startIcon={<ThumbDownIcon />} onClick={() => { onRechazar(cert.id); onClose(); }}>Rechazar (simular)</Button>
+            <Button variant="contained" color="success" startIcon={<ThumbUpIcon />} onClick={() => { onAprobar(cert.id); onClose(); }}>Aprobar (simular)</Button>
+          </>
+        )}
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+// ─── Dialog: Simulador WhatsApp ───────────────────────────────────────────────
+
+const WA_STEPS = [
+  { from: 'director', text: 'certifico el 80% de mampostería y tabiques, adjunto foto' },
+  { from: 'director', img: true },
+  { from: 'bot', text: '✅ Entendí el mensaje. Esto es lo que voy a registrar:' },
+  { from: 'bot', preview: true },
+  { from: 'bot', text: 'Confirmás? Respondé *sí* para guardar como borrador o *enviar* para mandar al cliente.' },
+];
+
+function DialogWASimulator({ open, onClose, rubros, onGuardar }) {
+  const [paso, setPaso] = useState(0);
+
+  const r5 = rubros.find(r => r.id === 'r5');
+  const montoEst = r5 ? r5.monto * 0.80 : 0;
+
+  const handleConfirmar = () => {
+    onGuardar({ rubroId: 'r5', rubroNombre: r5?.nombre ?? 'Mampostería y Tabiques', avance: 80, monto: montoEst, notas: 'Cargado desde WhatsApp.', adjuntos: ['foto_wa_mamposteria.jpg'], enviar: false });
+    setPaso(0); onClose();
   };
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Nuevo certificado de avance</DialogTitle>
-      <DialogContent>
-        <Stack spacing={2.5} mt={1}>
-          <FormControl fullWidth size="small">
-            <InputLabel>Rubro</InputLabel>
-            <Select value={rubroId} onChange={(e) => setRubroId(e.target.value)} label="Rubro">
-              {rubros.map((r) => (
-                <MenuItem key={r.id} value={r.id} disabled={r.avance === 100}>
-                  <Stack direction="row" justifyContent="space-between" width="100%">
-                    <span>{r.num}. {r.nombre}</span>
-                    <Typography variant="caption" color="text.secondary">Actual: {r.avance}%</Typography>
-                  </Stack>
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+    <Dialog open={open} onClose={() => { setPaso(0); onClose(); }} maxWidth="xs" fullWidth>
+      <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, bgcolor: '#075e54', color: 'white' }}>
+        <ForumIcon /> Bot Sorbydata · WhatsApp
+      </DialogTitle>
+      <DialogContent sx={{ bgcolor: '#ece5dd', p: 1.5 }}>
+        <Stack spacing={1} mt={1}>
+          {WA_STEPS.slice(0, paso + 1).map((s, i) => (
+            <Box key={i} display="flex" justifyContent={s.from === 'director' ? 'flex-end' : 'flex-start'}>
+              <Paper elevation={1} sx={{
+                maxWidth: '80%', px: 1.5, py: 1, borderRadius: 2,
+                bgcolor: s.from === 'director' ? '#dcf8c6' : 'white',
+                borderTopRightRadius: s.from === 'director' ? 0 : 2,
+                borderTopLeftRadius:  s.from === 'bot'      ? 0 : 2,
+              }}>
+                {s.img && <Box sx={{ width: 140, height: 90, bgcolor: 'grey.300', borderRadius: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', mb: 0.5 }}><PhotoCameraIcon color="action" /></Box>}
+                {s.preview && r5 && (
+                  <Box sx={{ bgcolor: '#f0f0f0', p: 1, borderRadius: 1, mb: 0.5, borderLeft: 3, borderLeftColor: '#128c7e' }}>
+                    <Typography variant="caption" fontWeight={700} display="block">📋 Certificado de avance</Typography>
+                    <Typography variant="caption" display="block">Rubro: {r5.nombre}</Typography>
+                    <Typography variant="caption" display="block">Avance: 80%</Typography>
+                    <Typography variant="caption" display="block" fontWeight={600}>Monto: {fmtM(montoEst)}</Typography>
+                  </Box>
+                )}
+                {s.text && <Typography variant="body2" sx={{ fontSize: 13 }}>{s.text}</Typography>}
+                <Typography variant="caption" color="text.disabled" display="block" textAlign="right" sx={{ fontSize: 10, mt: 0.25 }}>13/05/26 10:4{i}</Typography>
+              </Paper>
+            </Box>
+          ))}
 
-          <TextField
-            label="% de avance certificado"
-            size="small"
-            type="number"
-            value={avance}
-            onChange={(e) => setAvance(e.target.value)}
-            inputProps={{ min: rubroSel?.avance ?? 0, max: 100 }}
-            helperText={rubroSel ? `Avance previo: ${rubroSel.avance}%. Monto a certificar: ${fmt(montoEstimado)}` : ''}
-          />
-
-          <TextField
-            label="Notas"
-            size="small"
-            multiline
-            rows={2}
-            value={notas}
-            onChange={(e) => setNotas(e.target.value)}
-            placeholder="Descripción del avance certificado..."
-          />
-
-          {desbloquea && (
-            <Alert severity="success" icon={<VerifiedIcon />}>
-              Al certificar al 100% se desbloqueará la <strong>Cuota 2 — Avance estructural</strong> ($310M).
-            </Alert>
-          )}
-          {avanceNum > 0 && avanceNum < 100 && rubroSel && (
-            <Alert severity="info">
-              Avance adicional de <strong>{avanceNum - rubroSel.avance}%</strong> en <strong>{rubroSel.nombre}</strong>.
-            </Alert>
+          {paso === WA_STEPS.length - 1 && (
+            <Stack direction="row" spacing={1} justifyContent="flex-end" mt={1}>
+              <Paper elevation={1} sx={{ px: 1.5, py: 1, borderRadius: 2, bgcolor: '#dcf8c6', cursor: 'pointer' }} onClick={handleConfirmar}>
+                <Typography variant="body2" sx={{ fontSize: 13 }}>sí</Typography>
+                <Typography variant="caption" color="text.disabled" sx={{ fontSize: 10 }}>13/05/26 10:4{WA_STEPS.length}</Typography>
+              </Paper>
+            </Stack>
           )}
         </Stack>
       </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose}>Cancelar</Button>
-        <Button variant="contained" onClick={handleGuardar} disabled={!rubroId || !avanceNum}>Guardar certificado</Button>
+      <DialogActions sx={{ bgcolor: '#f0f0f0' }}>
+        <Button onClick={() => { setPaso(0); onClose(); }}>Cerrar</Button>
+        {paso < WA_STEPS.length - 1 && (
+          <Button variant="contained" sx={{ bgcolor: '#128c7e', '&:hover': { bgcolor: '#075e54' } }} onClick={() => setPaso(p => p + 1)}>
+            Siguiente mensaje
+          </Button>
+        )}
       </DialogActions>
     </Dialog>
   );
@@ -763,16 +1113,25 @@ function DialogNuevoCertificado({ open, onClose, rubros, onGuardar }) {
 
 // ─── Tab: Certificados ────────────────────────────────────────────────────────
 
-function TabCertificados({ certificados, rubros, onNuevoCert }) {
-  const totalCert = certificados.reduce((s, c) => s + c.monto, 0);
+function TabCertificados({ certificados, rubros, onNuevoCert, onEnviar, onAprobar, onRechazar, onWA, readOnly }) {
+  const [certInforme, setCertInforme] = useState(null);
+  const totalCert   = certificados.reduce((s, c) => s + c.monto, 0);
+  const aprobados   = certificados.filter(c => c.estado === 'aprobado').length;
+  const pendientes  = certificados.filter(c => c.estado === 'enviado').length;
+
   return (
-    <Box>
+    <Box position="relative">
       <Stack direction="row" justifyContent="space-between" alignItems="center" mb={3}>
         <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap flex={1}>
-          <KpiCard label="Certificados emitidos" value={certificados.length} sub={`Total: ${fmtM(totalCert)}`} />
-          <KpiCard label="Último certificado" value={certificados.at(-1)?.fecha ?? '—'} sub={certificados.at(-1)?.rubro ?? ''} />
+          <KpiCard label="Emitidos" value={certificados.length} sub={`${aprobados} aprobados · ${pendientes} en revisión`} />
+          <KpiCard label="Total certificado" value={fmtM(totalCert)} sub="aprobados + enviados" color="warning.main" />
         </Stack>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={onNuevoCert} sx={{ ml: 2, flexShrink: 0 }}>Nuevo certificado</Button>
+        {!readOnly && (
+          <Stack direction="row" spacing={1} ml={2} flexShrink={0}>
+            <Button variant="outlined" startIcon={<ForumIcon />} onClick={onWA} size="small">Simular bot WA</Button>
+            <Button variant="contained" startIcon={<AddIcon />} onClick={onNuevoCert}>Nuevo certificado</Button>
+          </Stack>
+        )}
       </Stack>
 
       <TableContainer component={Paper} variant="outlined">
@@ -782,25 +1141,66 @@ function TabCertificados({ certificados, rubros, onNuevoCert }) {
               <TableCell>#</TableCell>
               <TableCell>Fecha</TableCell>
               <TableCell>Rubro</TableCell>
-              <TableCell align="center">% Avance</TableCell>
-              <TableCell align="right">Monto certificado</TableCell>
-              <TableCell>Notas</TableCell>
+              <TableCell align="center">Avance</TableCell>
+              <TableCell align="right">Monto</TableCell>
+              <TableCell align="center">Estado</TableCell>
+              <TableCell>Enviado</TableCell>
+              {!readOnly && <TableCell align="center">Acciones</TableCell>}
             </TableRow>
           </TableHead>
           <TableBody>
-            {[...certificados].reverse().map((c) => (
-              <TableRow key={c.id} hover>
-                <TableCell><Chip size="small" label={`#${c.numero}`} variant="outlined" /></TableCell>
-                <TableCell><Typography variant="body2">{c.fecha}</Typography></TableCell>
-                <TableCell><Typography variant="body2" fontWeight={500}>{c.rubro}</Typography></TableCell>
-                <TableCell align="center"><Chip size="small" label={`${c.avance_pct}%`} color={c.avance_pct === 100 ? 'success' : 'warning'} /></TableCell>
-                <TableCell align="right"><Typography variant="body2" fontWeight={600}>{fmt(c.monto)}</Typography></TableCell>
-                <TableCell><Typography variant="caption" color="text.secondary">{c.notas}</Typography></TableCell>
-              </TableRow>
-            ))}
+            {[...certificados].reverse().map(c => {
+              const est = ESTADO_CERT[c.estado];
+              const dias = c.fecha_envio ? diasDesde(c.fecha_envio) : null;
+              return (
+                <TableRow key={c.id} hover>
+                  <TableCell><Chip size="small" label={`#${c.numero}`} variant="outlined" /></TableCell>
+                  <TableCell><Typography variant="body2">{c.fecha}</Typography></TableCell>
+                  <TableCell>
+                    <Typography variant="body2" fontWeight={500}>{c.rubro}</Typography>
+                    {c.adjuntos?.length > 0 && (
+                      <Typography variant="caption" color="text.disabled"><AttachFileIcon sx={{ fontSize: 11, verticalAlign: 'middle' }} />{c.adjuntos.length}</Typography>
+                    )}
+                  </TableCell>
+                  <TableCell align="center"><Chip size="small" label={`${c.avance_pct}%`} color={c.avance_pct === 100 ? 'success' : 'warning'} /></TableCell>
+                  <TableCell align="right"><Typography variant="body2" fontWeight={600}>{fmt(c.monto)}</Typography></TableCell>
+                  <TableCell align="center"><Chip size="small" label={est.label} color={est.color} icon={est.icon} /></TableCell>
+                  <TableCell>
+                    {c.fecha_envio
+                      ? <Typography variant="caption" color={c.estado === 'enviado' && dias > 14 ? 'error.main' : 'text.secondary'}>
+                          {c.fecha_envio}{c.estado === 'enviado' ? ` · ${dias}d` : ''}
+                        </Typography>
+                      : <Typography variant="caption" color="text.disabled">—</Typography>}
+                  </TableCell>
+                  {!readOnly && (
+                    <TableCell align="center">
+                      <Stack direction="row" spacing={0.5} justifyContent="center">
+                        <Tooltip title="Ver informe"><IconButton size="small" onClick={() => setCertInforme(c)}><PictureAsPdfIcon fontSize="small" /></IconButton></Tooltip>
+                        {c.estado === 'borrador' && (
+                          <Tooltip title="Enviar al cliente"><IconButton size="small" color="primary" onClick={() => onEnviar(c.id)}><SendIcon fontSize="small" /></IconButton></Tooltip>
+                        )}
+                        {c.estado === 'enviado' && (
+                          <Tooltip title="Marcar aprobado (simular cliente)"><IconButton size="small" color="success" onClick={() => onAprobar(c.id)}><ThumbUpIcon fontSize="small" /></IconButton></Tooltip>
+                        )}
+                        {c.estado === 'enviado' && (
+                          <Tooltip title="Marcar rechazado (simular cliente)"><IconButton size="small" color="error" onClick={() => onRechazar(c.id)}><ThumbDownIcon fontSize="small" /></IconButton></Tooltip>
+                        )}
+                      </Stack>
+                    </TableCell>
+                  )}
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       </TableContainer>
+
+      <DialogInformeCertificado
+        open={!!certInforme} cert={certInforme}
+        onClose={() => setCertInforme(null)}
+        onAprobar={(id) => { onAprobar(id); setCertInforme(null); }}
+        onRechazar={(id) => { onRechazar(id); setCertInforme(null); }}
+      />
     </Box>
   );
 }
@@ -943,7 +1343,6 @@ function TabAnexos({ anexos, onNuevoAnexo }) {
 
 // ─── Tab: Cronograma (Gantt) ──────────────────────────────────────────────────
 
-const TOTAL_MESES = 10;
 
 function ganttColor(avance) {
   if (avance === 100) return '#4caf50';
@@ -1084,62 +1483,86 @@ function TabCronograma({ rubros }) {
 
 // ─── Tab: Flujo de Caja ───────────────────────────────────────────────────────
 
-function TabFlujoCaja({ rubros }) {
+function TabFlujoCaja({ rubros, certificados, cuotas }) {
   const labels = useMemo(() => Array.from({ length: TOTAL_MESES }, (_, i) => mesAFecha(i + 1)), []);
 
-  const monthlyTotals = useMemo(
-    () =>
-      Array.from({ length: TOTAL_MESES }, (_, i) => {
-        const mes = i + 1;
-        return Math.round(rubros.reduce((s, r) => s + r.monto * (r.dist_mensual[mes] || 0), 0) / 1_000_000);
-      }),
+  const planMensual = useMemo(
+    () => Array.from({ length: TOTAL_MESES }, (_, i) => {
+      const mes = i + 1;
+      return Math.round(rubros.reduce((s, r) => s + r.monto * (r.dist_mensual[mes] || 0), 0) / 1_000_000);
+    }),
     [rubros],
   );
 
-  const cumulative = useMemo(
-    () => monthlyTotals.reduce((acc, v, i) => { acc.push((i > 0 ? acc[i - 1] : 0) + v); return acc; }, []),
-    [monthlyTotals],
+  const planAcum = useMemo(
+    () => planMensual.reduce((acc, v, i) => { acc.push((i > 0 ? acc[i - 1] : 0) + v); return acc; }, []),
+    [planMensual],
   );
 
-  const picoMes     = Math.max(...monthlyTotals);
-  const picoLabel   = labels[monthlyTotals.indexOf(picoMes)];
-  const totalAcum   = cumulative[cumulative.length - 1];
+  // Certificado aprobado acumulado por mes (en $M)
+  const certAcum = useMemo(() => {
+    const porMes = Array(TOTAL_MESES).fill(0);
+    certificados.filter(c => c.estado === 'aprobado').forEach(c => {
+      const m = fechaToMes(c.fecha_aprobacion ?? c.fecha);
+      if (m) porMes[m - 1] += c.monto;
+    });
+    return porMes.reduce((acc, v, i) => { acc.push(Math.round(((i > 0 ? acc[i - 1] * 1_000_000 : 0) + v) / 1_000_000)); return acc; }, []);
+  }, [certificados]);
+
+  // Cobrado acumulado por mes (en $M)
+  const cobradoAcum = useMemo(() => {
+    const porMes = Array(TOTAL_MESES).fill(0);
+    cuotas.filter(q => q.monto_cobrado > 0).forEach(q => {
+      const m = fechaToMes(q.fecha_cobro ?? q.fecha);
+      if (m) porMes[m - 1] += q.monto_cobrado;
+    });
+    return porMes.reduce((acc, v, i) => { acc.push(Math.round(((i > 0 ? acc[i - 1] * 1_000_000 : 0) + v) / 1_000_000)); return acc; }, []);
+  }, [cuotas]);
+
+  const mesActual  = fechaToMes('13/05/2026') ?? 3;
+  const atraso     = planAcum[mesActual - 1] - certAcum[mesActual - 1];
+  const picoMes    = Math.max(...planMensual);
+  const picoLabel  = labels[planMensual.indexOf(picoMes)];
 
   return (
     <Box>
-      <Typography variant="h6" fontWeight={700} mb={0.5}>Flujo de caja proyectado</Typography>
+      <Typography variant="h6" fontWeight={700} mb={0.5}>Curva S — Plan vs. Ejecución real</Typography>
       <Typography variant="body2" color="text.secondary" mb={3}>
-        Distribución mensual del monto contratado según plan de trabajo. En millones de pesos.
+        Comparación entre lo planificado, lo certificado y lo cobrado. En millones de pesos acumulados.
       </Typography>
 
       <Stack direction="row" spacing={2} flexWrap="wrap" mb={3} useFlexGap>
-        <KpiCard label="Pico de inversión mensual" value={`$${picoMes}M`} sub={picoLabel} color="warning.main" />
-        <KpiCard label="Inversión total proyectada" value={`$${totalAcum}M`} sub="10 meses" />
-        <KpiCard
-          label="Mes con mayor actividad"
-          value={picoLabel}
-          sub={`$${picoMes}M — ${((picoMes / totalAcum) * 100).toFixed(1)}% del total`}
-        />
+        <KpiCard label="Planificado al mes actual" value={`$${planAcum[mesActual - 1]}M`} sub={labels[mesActual - 1]} />
+        <KpiCard label="Certificado al mes actual" value={`$${certAcum[mesActual - 1]}M`} sub="solo certs aprobados" color="warning.main" />
+        <KpiCard label="Atraso financiero" value={`$${atraso}M`} sub="plan − certificado" color={atraso > 50 ? 'error.main' : 'text.primary'} tooltip="Cuánto deberías haber certificado vs. lo que certificaste. Lluvia y burocracia explicada aquí." />
+        <KpiCard label="Cobrado" value={`$${cobradoAcum[mesActual - 1]}M`} sub="cuotas efectivamente cobradas" color="success.main" />
       </Stack>
 
       <Paper variant="outlined" sx={{ p: 2, mb: 3 }}>
-        <Typography variant="subtitle2" fontWeight={600} mb={1}>Inversión mensual ($M)</Typography>
+        <Typography variant="subtitle2" fontWeight={600} mb={1}>Inversión mensual planificada ($M)</Typography>
         <BarChart
-          series={[{ data: monthlyTotals, label: '$M por mes', color: '#1976d2' }]}
+          series={[{ data: planMensual, label: 'Plan mensual $M', color: '#90caf9' }]}
           xAxis={[{ data: labels, scaleType: 'band' }]}
           yAxis={[{ label: '$M' }]}
-          height={300}
+          height={260}
           margin={{ top: 10, bottom: 40, left: 55, right: 10 }}
         />
       </Paper>
 
       <Paper variant="outlined" sx={{ p: 2 }}>
-        <Typography variant="subtitle2" fontWeight={600} mb={1}>Avance financiero acumulado ($M)</Typography>
+        <Typography variant="subtitle2" fontWeight={600} mb={0.5}>Acumulado ($M) — Plan vs. Certificado vs. Cobrado</Typography>
+        <Typography variant="caption" color="text.secondary" display="block" mb={1}>
+          Azul = plan · Naranja = certificado aprobado · Verde = cobrado
+        </Typography>
         <LineChart
-          series={[{ data: cumulative, label: 'Acumulado $M', color: '#388e3c', area: true }]}
+          series={[
+            { data: planAcum,    label: 'Plan acumulado',        color: '#1976d2' },
+            { data: certAcum,    label: 'Certificado aprobado',  color: '#f57c00' },
+            { data: cobradoAcum, label: 'Cobrado',               color: '#388e3c' },
+          ]}
           xAxis={[{ data: labels, scaleType: 'band' }]}
           yAxis={[{ label: '$M' }]}
-          height={270}
+          height={300}
           margin={{ top: 10, bottom: 40, left: 60, right: 10 }}
         />
       </Paper>
@@ -1147,48 +1570,122 @@ function TabFlujoCaja({ rubros }) {
   );
 }
 
+// ─── Config de tabs por rol ───────────────────────────────────────────────────
+
+const TABS_CONFIG = [
+  { key: 'ejecucion',  label: 'Ejecución',     roles: ['admin', 'director'] },
+  { key: 'cobro',      label: 'Plan de cobro', roles: ['admin', 'comercial'] },
+  { key: 'certs',      label: 'Certificados',  roles: ['admin', 'director', 'comercial'] },
+  { key: 'anexos',     label: 'Anexos',        roles: ['admin', 'director'] },
+  { key: 'cronograma', label: 'Cronograma',    roles: ['admin', 'director'] },
+  { key: 'caja',       label: 'Flujo de caja', roles: ['admin', 'comercial'] },
+];
+
+const ROL_INFO = {
+  director:  { label: 'Director de obra', icon: <EngineeringIcon fontSize="small" /> },
+  comercial: { label: 'Comercial',        icon: <BusinessIcon fontSize="small" /> },
+  admin:     { label: 'Administrativo',   icon: <ManageAccountsIcon fontSize="small" /> },
+};
+
 // ─── Página principal ──────────────────────────────────────────────────────────
 
 function MockObraPage() {
   const [tab,          setTab]          = useState(0);
+  const [rol,          setRol]          = useState('admin');
   const [rubros,       setRubros]       = useState(RUBROS);
   const [certificados, setCertificados] = useState(CERTIFICADOS_INIT);
   const [cuotas,       setCuotas]       = useState(CUOTAS_INIT);
+  const [gastos]                        = useState(GASTOS_INIT);
   const [anexos,       setAnexos]       = useState(ANEXOS_INIT);
   const [dlgCert,      setDlgCert]      = useState(false);
   const [dlgAnexo,     setDlgAnexo]     = useState(false);
+  const [dlgWA,        setDlgWA]        = useState(false);
 
-  const handleGuardarCert = ({ rubroId, rubroNombre, avance, monto, notas }) => {
+  const visibleTabs = TABS_CONFIG.filter(t => t.roles.includes(rol));
+  const activeKey   = visibleTabs[tab]?.key;
+
+  const handleRolChange = (_, nuevoRol) => {
+    if (!nuevoRol) return;
+    setRol(nuevoRol);
+    setTab(0);
+  };
+
+  // Crear cert como borrador (o enviado si el usuario eligió enviar)
+  const handleGuardarCert = ({ rubroId, rubroNombre, avance, monto, notas, adjuntos, enviar }) => {
+    const numero = String(certificados.length + 1).padStart(3, '0');
+    const hoyStr = hoy.toLocaleDateString('es-AR');
     const nuevo = {
-      id: `c${certificados.length + 1}`,
-      numero: String(certificados.length + 1).padStart(3, '0'),
-      fecha: new Date().toLocaleDateString('es-AR'),
-      rubro: rubroNombre, rubro_id: rubroId, avance_pct: avance, monto, notas,
+      id: `c${certificados.length + 1}`, numero,
+      fecha: hoyStr, rubro: rubroNombre, rubro_id: rubroId,
+      avance_pct: avance, monto, notas, adjuntos: adjuntos ?? [],
+      estado: enviar ? 'enviado' : 'borrador',
+      fecha_envio: enviar ? hoyStr : null,
+      fecha_aprobacion: null,
     };
-    setCertificados((p) => [...p, nuevo]);
-    setRubros((prev) => prev.map((r) => r.id === rubroId ? { ...r, avance } : r));
-    if (avance === 100) {
-      setCuotas((prev) => prev.map((q) => q.rubro_id === rubroId && q.estado === 'esperando' ? { ...q, estado: 'cobrado' } : q));
-    }
+    setCertificados(p => [...p, nuevo]);
+    setRubros(prev => prev.map(r => r.id === rubroId ? { ...r, avance } : r));
+  };
+
+  const handleEnviarCert = (certId) => {
+    setCertificados(prev => prev.map(c =>
+      c.id === certId ? { ...c, estado: 'enviado', fecha_envio: hoy.toLocaleDateString('es-AR') } : c
+    ));
+  };
+
+  const handleAprobarCert = (certId) => {
+    const cert = certificados.find(c => c.id === certId);
+    if (!cert) return;
+    const hoyStr = hoy.toLocaleDateString('es-AR');
+    setCertificados(prev => prev.map(c => c.id === certId ? { ...c, estado: 'aprobado', fecha_aprobacion: hoyStr } : c));
+    // Desbloqueo proporcional: mayor avance aprobado para ese rubro entre todos los certs
+    const maxAvance = Math.max(
+      cert.avance_pct,
+      ...certificados.filter(c => c.rubro_id === cert.rubro_id && c.estado === 'aprobado').map(c => c.avance_pct)
+    );
+    setCuotas(prev => prev.map(q => {
+      if (q.tipo !== 'certificado' || q.rubro_id !== cert.rubro_id) return q;
+      const nuevoLiberado = Math.round(q.monto * maxAvance / 100);
+      return {
+        ...q,
+        monto_liberado: nuevoLiberado,
+        estado: nuevoLiberado > 0 && q.estado === 'bloqueada' ? 'esperando' : q.estado,
+      };
+    }));
+  };
+
+  const handleRechazarCert = (certId) => {
+    setCertificados(prev => prev.map(c => c.id === certId ? { ...c, estado: 'rechazado' } : c));
+  };
+
+  const handleCobrarCuota = (cuotaId) => {
+    setCuotas(prev => prev.map(q => {
+      if (q.id !== cuotaId) return q;
+      const montoCobrado = q.monto_liberado;
+      return {
+        ...q,
+        monto_cobrado: montoCobrado,
+        fecha_cobro: hoy.toLocaleDateString('es-AR'),
+        estado: montoCobrado >= q.monto ? 'cobrado' : 'esperando',
+      };
+    }));
   };
 
   const handleGuardarAnexo = ({ tipo, motivo, monto, accionCuota }) => {
     const numero = String(anexos.length + 1).padStart(3, '0');
-    setAnexos((p) => [...p, {
-      id: `a${p.length + 1}`, numero, fecha: new Date().toLocaleDateString('es-AR'),
+    setAnexos(p => [...p, {
+      id: `a${p.length + 1}`, numero, fecha: hoy.toLocaleDateString('es-AR'),
       tipo, motivo, detalle: '', monto_diferencia: monto, rubros_afectados: [],
       cuota_vinculada: accionCuota === 'crear' ? 'Nueva cuota creada' : accionCuota === 'modificar' ? 'Cuota modificada' : 'Sin cambios',
     }]);
     if (accionCuota === 'crear') {
-      setCuotas((p) => [...p, {
+      setCuotas(p => [...p, {
         id: `q${p.length + 1}`, numero: p.length + 1, tipo: 'hito',
         descripcion: motivo, fecha: null, rubro_id: null,
-        condicion: `Según Anexo #${numero}`, monto, estado: 'bloqueada',
+        condicion: `Según Anexo #${numero}`, monto,
+        monto_liberado: 0, monto_cobrado: 0, fecha_cobro: null, estado: 'bloqueada',
       }]);
     }
   };
-
-  const montoCertificado = certificados.reduce((s, c) => s + c.monto, 0);
 
   return (
     <>
@@ -1200,7 +1697,7 @@ function MockObraPage() {
               <Stack direction="row" alignItems="center" spacing={1} mb={0.5}>
                 <Chip size="small" label="En ejecución" color="warning" sx={{ fontWeight: 700 }} />
                 <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>
-                  Presupuesto Profesional · Actualizado a febrero 2026
+                  Presupuesto Profesional · Actualizado mayo 2026
                 </Typography>
               </Stack>
               <Typography variant="h5" fontWeight={700}>{PROYECTO.nombre}</Typography>
@@ -1208,11 +1705,19 @@ function MockObraPage() {
                 {PROYECTO.cliente} · {PROYECTO.direccion}
               </Typography>
             </Box>
-            <Stack alignItems="flex-end">
+            <Stack alignItems="flex-end" spacing={1}>
               <Typography variant="h4" fontWeight={700}>{fmt(PROYECTO.total)}</Typography>
               <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>
                 {PROYECTO.duracion} · {mesAFecha(1)} — {mesAFecha(10)}
               </Typography>
+              {/* Selector de rol */}
+              <ToggleButtonGroup value={rol} exclusive onChange={handleRolChange} size="small" sx={{ bgcolor: 'rgba(255,255,255,0.1)', borderRadius: 1 }}>
+                {Object.entries(ROL_INFO).map(([k, v]) => (
+                  <ToggleButton key={k} value={k} sx={{ color: 'rgba(255,255,255,0.7)', borderColor: 'rgba(255,255,255,0.2)', '&.Mui-selected': { bgcolor: 'rgba(255,255,255,0.25)', color: 'white' }, px: 1.5, py: 0.5, fontSize: 11 }}>
+                    <Stack direction="row" alignItems="center" spacing={0.5}>{v.icon}<span>{v.label}</span></Stack>
+                  </ToggleButton>
+                ))}
+              </ToggleButtonGroup>
             </Stack>
           </Stack>
         </Container>
@@ -1222,28 +1727,27 @@ function MockObraPage() {
       <Box sx={{ borderBottom: 1, borderColor: 'divider', bgcolor: 'background.paper' }}>
         <Container maxWidth="xl">
           <Tabs value={tab} onChange={(_, v) => setTab(v)}>
-            <Tab label="Ejecución" />
-            <Tab label={`Plan de cobro (${cuotas.length})`} />
-            <Tab label={`Certificados (${certificados.length})`} />
-            <Tab label={`Anexos (${anexos.length})`} />
-            <Tab label="Cronograma" />
-            <Tab label="Flujo de caja" />
+            {visibleTabs.map((t, i) => {
+              const count = t.key === 'cobro' ? cuotas.length : t.key === 'certs' ? certificados.length : t.key === 'anexos' ? anexos.length : null;
+              return <Tab key={t.key} label={count !== null ? `${t.label} (${count})` : t.label} />;
+            })}
           </Tabs>
         </Container>
       </Box>
 
       {/* Contenido */}
       <Container maxWidth="xl" sx={{ py: 3 }}>
-        {tab === 0 && <TabEjecucion rubros={rubros} certificados={certificados} />}
-        {tab === 1 && <TabPlanCobro cuotas={cuotas} rubros={rubros} onAgregarCuota={() => {}} />}
-        {tab === 2 && <TabCertificados certificados={certificados} rubros={rubros} onNuevoCert={() => setDlgCert(true)} />}
-        {tab === 3 && <TabAnexos anexos={anexos} onNuevoAnexo={() => setDlgAnexo(true)} />}
-        {tab === 4 && <TabCronograma rubros={rubros} />}
-        {tab === 5 && <TabFlujoCaja rubros={rubros} />}
+        {activeKey === 'ejecucion'  && <TabEjecucion rubros={rubros} certificados={certificados} gastos={gastos} />}
+        {activeKey === 'cobro'      && <TabPlanCobro cuotas={cuotas} rubros={rubros} onAgregarCuota={() => {}} onCobrar={handleCobrarCuota} />}
+        {activeKey === 'certs'      && <TabCertificados certificados={certificados} rubros={rubros} onNuevoCert={() => setDlgCert(true)} onEnviar={handleEnviarCert} onAprobar={handleAprobarCert} onRechazar={handleRechazarCert} onWA={() => setDlgWA(true)} readOnly={rol === 'comercial'} />}
+        {activeKey === 'anexos'     && <TabAnexos anexos={anexos} onNuevoAnexo={() => setDlgAnexo(true)} />}
+        {activeKey === 'cronograma' && <TabCronograma rubros={rubros} />}
+        {activeKey === 'caja'       && <TabFlujoCaja rubros={rubros} certificados={certificados} cuotas={cuotas} />}
       </Container>
 
-      <DialogNuevoCertificado open={dlgCert} onClose={() => setDlgCert(false)} rubros={rubros} onGuardar={handleGuardarCert} />
+      <DialogNuevoCertificado open={dlgCert} onClose={() => setDlgCert(false)} rubros={rubros} cuotas={cuotas} certificados={certificados} onGuardar={handleGuardarCert} />
       <DialogNuevoAnexo open={dlgAnexo} onClose={() => setDlgAnexo(false)} onGuardar={handleGuardarAnexo} />
+      <DialogWASimulator open={dlgWA} onClose={() => setDlgWA(false)} rubros={rubros} onGuardar={handleGuardarCert} />
     </>
   );
 }
