@@ -41,11 +41,15 @@ const RevisionFacturasPage = () => {
       setIsLoading(true);
       const empresa = await getEmpresaById(empresaId);
       setEmpresa(empresa);
+      if (!empresa) {
+        setIsLoading(false);
+        return;
+      }
       if (empresa.cuentas){
         setFiltroCuenta(empresa.cuentas[0]);
       }
       proveedorService.getNombres(empresa.id).then(setProveedoresNombres).catch(() => {});
-      
+
       const proyectosData = await getProyectosByEmpresa(empresa);
 
       const movimientosPendientes = [];
