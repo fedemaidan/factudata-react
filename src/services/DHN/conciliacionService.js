@@ -31,10 +31,11 @@ const conciliacionService = {
     return lista;
   },
 
-  async getConciliacionRows(id, { estado, text, limit, offset, sortField, sortDirection } = {}) {
+  async getConciliacionRows(id, { estado, text, tipo, limit, offset, sortField, sortDirection } = {}) {
     const params = {};
     if (estado) params.estado = estado;
     if (text) params.text = text;
+    if (tipo) params.tipo = tipo;
     if (limit != null) params.limit = limit;
     if (offset != null) params.offset = offset;
     if (sortField) params.sortField = sortField;
