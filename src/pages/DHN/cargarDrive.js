@@ -328,15 +328,14 @@ const CargarDrive = () => {
         <Box sx={{ py: 3 }}>
           <Box sx={{ display: "flex", gap: 2, mb: 2, justifyContent: "space-between" }}>
             <Box sx={{ display: "flex", gap: 2, alignItems: "flex-start" }}>
-              {canManageDhnSync && (
+  
                 <Button
                   variant="contained"
                   onClick={() => setSheetDialogOpen(true)}
                 >
                   Escribir en Google Sheet
                 </Button>
-              )}
-              {canManageDhnSync && (
+            
                 <Button
                   variant="contained"
                   onClick={() => setDriveDialogOpen(true)}
@@ -344,7 +343,7 @@ const CargarDrive = () => {
                 >
                   {isSyncing ? "Sincronizando..." : "Sincronizar"}
                 </Button>
-              )}
+              
               <Button
                 variant="outlined"
                 onClick={fetchSyncs}

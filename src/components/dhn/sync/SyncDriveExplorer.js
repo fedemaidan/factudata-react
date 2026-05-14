@@ -244,8 +244,9 @@ const DriveRow = ({ isFolder, isIndented, onClick, children }) => (
     onClick={onClick}
     sx={{
       display: "flex",
-      alignItems: "center",
+      alignItems: "flex-start",
       minHeight: ROW_HEIGHT,
+      py: 1,
       px: 2,
       pl: isIndented ? 5.5 : 2,
       gap: 1,
@@ -505,12 +506,13 @@ function SyncDriveExplorer({
           {hasObservacion && colByKey["observacion"] && (
             <Box
               sx={{
-                mt: 0.25,
+                mt: 0.5,
                 maxWidth: "100%",
-                overflow: "hidden",
-                maxHeight: 36,
-                "& *": { fontSize: "0.72rem !important", color: "text.secondary !important" },
-                "& .MuiChip-root": { height: "18px !important", fontSize: "0.68rem !important" },
+                "& .MuiChip-root": {
+                  height: "20px !important",
+                  fontSize: "0.68rem !important",
+                  "& .MuiChip-label": { px: 0.75 },
+                },
               }}
               onClick={(e) => e.stopPropagation()}
             >
