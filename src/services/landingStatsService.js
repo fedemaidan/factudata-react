@@ -3,11 +3,17 @@ import api from './axiosConfig';
 const landingStatsService = {
     /**
      * Devuelve métricas del funnel de la landing agrupadas por día.
-     * @param {number} dias - Cantidad de días hacia atrás (default 30, max 365)
-     * @returns {{ ok: boolean, rows: Array, totales: object, dias: number }}
+     * Acepta `dias` (últimos N días) o un rango exacto `desde`/`hasta` (YYYY-MM-DD).
      */
-    getStats: async (dias = 30) => {
-        const { data } = await api.get(`/agendar/stats?dias=${dias}`);
+    getStats: async ({ dias, desde, hasta } = {}) => {
+        const params = new URLSearchParams();
+        if (desde && hasta) {
+            params.set('desde', desde);
+            params.set('hasta', hasta);
+        } else {
+            params.set('dias', String(dias ?? 30));
+        }
+        const { data } = await api.get(`/agendar/stats?${params.toString()}`);
         return data;
     },
 };
