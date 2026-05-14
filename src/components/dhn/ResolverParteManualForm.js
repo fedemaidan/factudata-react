@@ -15,6 +15,7 @@ import {
 } from "@mui/material";
 import DeleteIcon from "@mui/icons-material/Delete";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import BlockIcon from "@mui/icons-material/Block";
 import dayjs from "dayjs";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
@@ -35,6 +36,7 @@ const ResolverParteManualForm = ({
   progreso,
   rowId = null,
   initialData = null,
+  onIgnorar = null,
 }) => {
   const [fecha, setFecha] = useState(dayjs());
   const [trabajadores, setTrabajadores] = useState([createEmptyTrabajo()]);
@@ -167,7 +169,31 @@ const ResolverParteManualForm = ({
             Corrección asistida: {progreso}
           </Typography>
         )}
-        <Typography variant="h6">Resolver parte manual</Typography>
+        <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
+          <Typography variant="h6">Resolver parte manual</Typography>
+          {onIgnorar && (
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={() => onIgnorar()}
+              disabled={isSaving}
+              startIcon={<BlockIcon />}
+              sx={{
+                textTransform: "none",
+                color: "grey.700",
+                borderColor: "grey.400",
+                borderStyle: "dashed",
+                whiteSpace: "nowrap",
+                "&:hover": {
+                  borderColor: "grey.700",
+                  backgroundColor: "grey.100",
+                },
+              }}
+            >
+              Ignorar archivo
+            </Button>
+          )}
+        </Stack>
         <Typography variant="body2" color="text.secondary">
           Asigná la fecha del parte y los trabajadores con sus horas
         </Typography>

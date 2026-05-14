@@ -157,6 +157,25 @@ const DhnDriveService = {
     return fetchUrlStoragePage(payload, { limit, offset });
   },
 
+  ignoreUrlStorage: async (urlStorageId) => {
+    if (!urlStorageId) {
+      return { ok: false, error: { code: 0, message: "urlStorageId es requerido" } };
+    }
+    try {
+      const response = await api.post(`/dhn/sync/url/${encodeURIComponent(urlStorageId)}/ignore`);
+      return response?.data;
+    } catch (error) {
+      const code = error?.response?.status ?? 0;
+      const message =
+        error?.response?.data?.error?.message ||
+        error?.response?.data?.message ||
+        error?.message ||
+        "Error de red";
+      console.error("Error ignoreUrlStorage:", message);
+      return { ok: false, error: { code, message } };
+    }
+  },
+
   resyncUrlStorageById: async (urlStorageId, extra = {}) => {
     if (!urlStorageId) {
       return { ok: false, error: { code: 0, message: "urlStorageId es requerido" } };

@@ -31,6 +31,7 @@ import RotateRightIcon from "@mui/icons-material/RotateRight";
 import RestartAltIcon from "@mui/icons-material/RestartAlt";
 import ZoomInIcon from "@mui/icons-material/ZoomIn";
 import ZoomOutIcon from "@mui/icons-material/ZoomOut";
+import BlockIcon from "@mui/icons-material/Block";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
@@ -532,6 +533,7 @@ const ResolverDuplicadoModal = ({
   progreso,
   onTrabajadorResuelto: onTrabajadorResueltoProp,
   onConfirmarYContinuar,
+  onIgnorar,
 }) => {
   const safeRow = row || {};
   const duplicateInfo = safeRow.duplicateInfo || {};
@@ -1396,6 +1398,27 @@ const ResolverDuplicadoModal = ({
           justifyContent: splitWizardActive ? "space-between" : "flex-end",
         }}
       >
+        {onIgnorar && !splitWizardActive && (
+          <Button
+            onClick={() => onIgnorar(row)}
+            disabled={loading || isLoadingTrabajo}
+            startIcon={<BlockIcon />}
+            sx={{
+              textTransform: "none",
+              color: "grey.700",
+              borderColor: "grey.400",
+              borderStyle: "dashed",
+              "&:hover": {
+                borderColor: "grey.700",
+                backgroundColor: "grey.100",
+              },
+              mr: "auto",
+            }}
+            variant="outlined"
+          >
+            Ignorar archivo
+          </Button>
+        )}
         {splitWizardActive ? (
           <>
             <Button onClick={onClose} disabled={loading} sx={{ textTransform: "none" }}>
