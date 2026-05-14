@@ -15,6 +15,7 @@ import {
 import PersonIcon from "@mui/icons-material/Person";
 import EditIcon from "@mui/icons-material/Edit";
 import AddIcon from "@mui/icons-material/Add";
+import BlockIcon from "@mui/icons-material/Block";
 import dayjs from "dayjs";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
@@ -83,7 +84,7 @@ const TrabajoItem = ({ trabajo, onEdit }) => {
   );
 };
 
-const TrabajosDetectadosList = ({ urlStorage, onUpdated, progreso }) => {
+const TrabajosDetectadosList = ({ urlStorage, onUpdated, progreso, onIgnorar = null }) => {
   const [trabajos, setTrabajos] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -324,7 +325,29 @@ const TrabajosDetectadosList = ({ urlStorage, onUpdated, progreso }) => {
             Corrección asistida: {progreso}
           </Typography>
         )}
-        <Typography variant="h6">Trabajos detectados</Typography>
+        <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
+          <Typography variant="h6">Trabajos detectados</Typography>
+          {onIgnorar && (
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={() => onIgnorar()}
+              startIcon={<BlockIcon />}
+              sx={{
+                textTransform: "none",
+                color: "grey.700",
+                borderColor: "grey.400",
+                borderStyle: "dashed",
+                "&:hover": {
+                  borderColor: "grey.700",
+                  backgroundColor: "grey.100",
+                },
+              }}
+            >
+              Ignorar archivo
+            </Button>
+          )}
+        </Stack>
 
         <Stack direction="row" spacing={1} alignItems="center">
           <LocalizationProvider dateAdapter={AdapterDayjs}>

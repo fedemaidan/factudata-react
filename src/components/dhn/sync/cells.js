@@ -5,6 +5,7 @@ import ReplayIcon from "@mui/icons-material/Replay";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import EditIcon from "@mui/icons-material/Edit";
 import MergeTypeIcon from "@mui/icons-material/MergeType";
+import BlockIcon from "@mui/icons-material/Block";
 import TrabajoRegistradoService from "src/services/dhn/TrabajoRegistradoService";
 import { getStatusChipConfig } from "src/utils/dhn/syncHelpers";
 import { buildFechaDetectadaPatch } from "src/utils/dhn/trabajoRegistradoHelpers";
@@ -18,6 +19,7 @@ export const StatusChip = ({ status }) => {
       sx={{
         display: "inline-block",
         border: "1px solid",
+        borderStyle: cfg.dashed ? "dashed" : "solid",
         borderColor: cfg.color,
         color: cfg.color,
         fontWeight: 500,
@@ -100,6 +102,7 @@ export const AccionesCell = ({
   handleOpenResolverLicencia,
   handleOpenResolverParte,
   handleOpenResolverDuplicado,
+  handleOpenIgnorar,
 }) => {
   const isError = row?.status === "error";
   const isIncompleto = row?.status === "incompleto";
@@ -240,6 +243,34 @@ export const AccionesCell = ({
               }}
             >
               <EditIcon fontSize="small" />
+            </IconButton>
+          </span>
+        </Tooltip>
+      )}
+      {(isErrorLike || isDuplicadoRow) && handleOpenIgnorar && (
+        <Tooltip title="Ignorar archivo" placement="top">
+          <span>
+            <IconButton
+              size="small"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleOpenIgnorar(row);
+              }}
+              disabled={Boolean(resyncingId) || isResyncing || isProcessing}
+              sx={{
+                p: 0.5,
+                border: "1px solid",
+                borderStyle: "dashed",
+                borderColor: "grey.500",
+                color: "grey.600",
+                "&:hover": {
+                  backgroundColor: "grey.100",
+                  borderColor: "grey.700",
+                  color: "grey.800",
+                },
+              }}
+            >
+              <BlockIcon fontSize="small" />
             </IconButton>
           </span>
         </Tooltip>
