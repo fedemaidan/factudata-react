@@ -818,6 +818,19 @@ const ControlPresupuestosPage = () => {
     return conv;
   }, [resumen]);
 
+  // Suma el ejecutado del bucket del backend (todas las monedas, convertido a la moneda de vista).
+  // Útil cuando hay presupuestos multi-cat o multi-proveedor: el backend divide el ejecutado real.
+  const ejecutadoBucketBackend = (bucketKey, valor) => {
+    let total = 0;
+    Object.entries(resumen?.egresosPorMoneda || {}).forEach(([mon, monedaData]) => {
+      const ejCrudo = monedaData[bucketKey]?.[valor]?.ejecutado || 0;
+      total += convertir(ejCrudo, mon);
+    });
+    return total;
+  };
+  const ejecutadoBucketCategoria = (catName) => ejecutadoBucketBackend('porCategoria', catName);
+  const ejecutadoBucketProveedor = (provNombre) => ejecutadoBucketBackend('porProveedor', provNombre);
+
   // Obtener presupuesto por agrupación.
   // Con N items matcheando devuelve la suma agregada (convertida a la moneda de vista)
   // y la lista en `items` para que el caller decida si abre drawer directo (N=1) o popover (N>1).
@@ -833,21 +846,27 @@ const ControlPresupuestosPage = () => {
       return false;
     });
 
+    // Para los buckets multi-clave (categoría, proveedor), el ejecutado real viene del backend
+    // ya agrupado por movimiento.categoria / movimiento.nombre_proveedor. Etapa es single, no aplica.
+    const ejecutadoDelBucket = () => {
+      if (tipoAgrupacion === 'categoria') return ejecutadoBucketCategoria(valor);
+      if (tipoAgrupacion === 'proveedor') return ejecutadoBucketProveedor(valor);
+      return null; // etapa u otros: cae al ejecutado del item
+    };
+
     if (items.length === 0) {
-      // Sin presupuesto, pero puede haber ejecutado (movimientos sin asignación de presupuesto puro)
-      let ejecutadoTotal = 0;
-      Object.entries(resumen?.egresosPorMoneda || {}).forEach(([mon, monedaData]) => {
-        const ejCrudo = monedaData.porCategoria?.[valor]?.ejecutado || 0;
-        ejecutadoTotal += convertir(ejCrudo, mon);
-      });
-      return { ...empty, ejecutado: ejecutadoTotal };
+      // Sin presupuesto, pero puede haber ejecutado (movimientos sin asignación)
+      const ej = ejecutadoDelBucket();
+      return { ...empty, ejecutado: ej || 0 };
     }
 
     if (items.length === 1) {
       const item = items[0];
+      const ej = ejecutadoDelBucket();
+      const ejecutadoReal = ej != null ? ej : (item.ejecutado || 0);
       return {
         presupuesto: item.monto,
-        ejecutado: item.ejecutado || 0,
+        ejecutado: ejecutadoReal,
         id: item.id,
         historial: item.historial || [],
         adicionales: item.adicionales || [],
@@ -870,7 +889,10 @@ const ControlPresupuestosPage = () => {
 
     // N > 1: agregar montos en la moneda de vista (cada item puede estar en moneda distinta)
     const presupuesto = items.reduce((s, i) => s + convertir(i.monto || 0, i.moneda || 'ARS', i.cac_tipo), 0);
-    const ejecutado = items.reduce((s, i) => s + convertir(i.ejecutado || 0, i.moneda || 'ARS', i.cac_tipo), 0);
+    const ejBucket = ejecutadoDelBucket();
+    const ejecutado = ejBucket != null
+      ? ejBucket
+      : items.reduce((s, i) => s + convertir(i.ejecutado || 0, i.moneda || 'ARS', i.cac_tipo), 0);
     return {
       presupuesto,
       ejecutado,
