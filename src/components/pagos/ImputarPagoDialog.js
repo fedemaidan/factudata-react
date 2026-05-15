@@ -87,6 +87,7 @@ export default function ImputarPagoDialog({ open, onClose, onSuccess, proveedor,
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [montoTotal, setMontoTotal] = useState('');
   const [fechaPago, setFechaPago] = useState('');
+  const [dolarReferencia, setDolarReferencia] = useState('');
   const [importes, setImportes] = useState({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -124,6 +125,7 @@ export default function ImputarPagoDialog({ open, onClose, onSuccess, proveedor,
       const iso = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
       setFechaPago(iso);
       setMontoTotal('');
+      setDolarReferencia('');
       setImportes({});
       setStep(1);
       setError(null);
@@ -172,6 +174,7 @@ export default function ImputarPagoDialog({ open, onClose, onSuccess, proveedor,
     setError(null);
     setLoading(true);
     const fechaTs = dateToTimestamp(fechaPago) || buildTodayTimestamp();
+    const dolarNum = normalizeAmount(dolarReferencia);
     try {
       const tareas = remitosFiltrados
         .map((rem) => {
@@ -179,6 +182,7 @@ export default function ImputarPagoDialog({ open, onClose, onSuccess, proveedor,
           const monto = normalizeAmount(importes[id]);
           if (!monto || monto <= 0) return null;
           const patch = buildPatch(rem, monto, fechaTs);
+          if (dolarNum) patch.dolar_referencia = dolarNum;
           return movimientosService.updateMovimiento(id, patch);
         })
         .filter(Boolean);
@@ -203,6 +207,7 @@ export default function ImputarPagoDialog({ open, onClose, onSuccess, proveedor,
     setError(null);
     setLoading(true);
     const fechaTs = dateToTimestamp(fechaPago) || buildTodayTimestamp();
+    const dolarNum = normalizeAmount(dolarReferencia);
     try {
       // Distribuir FIFO: cubrir la deuda de cada factura en orden
       let restante = montoTotalNum;
@@ -213,7 +218,9 @@ export default function ImputarPagoDialog({ open, onClose, onSuccess, proveedor,
         const asignar = Math.min(restante, deuda);
         if (asignar > 0) {
           const id = rem.id || rem._id;
-          tareas.push(movimientosService.updateMovimiento(id, buildPatch(rem, asignar, fechaTs)));
+          const patch = buildPatch(rem, asignar, fechaTs);
+          if (dolarNum) patch.dolar_referencia = dolarNum;
+          tareas.push(movimientosService.updateMovimiento(id, patch));
           restante -= asignar;
         }
       }
@@ -307,6 +314,15 @@ export default function ImputarPagoDialog({ open, onClose, onSuccess, proveedor,
               value={fechaPago}
               onChange={(e) => setFechaPago(e.target.value)}
               InputLabelProps={{ shrink: true }}
+              fullWidth
+            />
+            <TextField
+              label="Dólar de referencia (opcional)"
+              type="number"
+              value={dolarReferencia}
+              onChange={(e) => setDolarReferencia(e.target.value)}
+              InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment> }}
+              helperText="Si el pago es en ARS, indicá el dólar del día del pago para análisis financiero"
               fullWidth
             />
           </Stack>

@@ -11,6 +11,7 @@ import {
   Divider,
   IconButton,
   InputAdornment,
+  LinearProgress,
   Paper,
   Stack,
   Table,
@@ -31,6 +32,8 @@ import SearchIcon from '@mui/icons-material/Search';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useAuthContext } from 'src/contexts/auth-context';
 import movimientosService from 'src/services/movimientosService';
+import pretendidosService from 'src/services/pretendidosService';
+import proveedorService from 'src/services/proveedorService';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import { getProyectosFromUser } from 'src/services/proyectosService';
 import { dateToTimestamp, formatCurrencyWithCode, formatTimestamp } from 'src/utils/formatters';
@@ -416,6 +419,118 @@ function DetalleProveedor({ proveedor, remitos, loading, savingById, draftsById,
   );
 }
 
+// ─── Presupuesto de mano de obra ──────────────────────────────────────────────
+
+function PresupuestoManoObraBar({ presupuesto, movimientos }) {
+  if (!presupuesto) return null;
+
+  const montoPres = Number(presupuesto.monto_presupuestado || presupuesto.monto || 0);
+  const pagado = movimientos.reduce((acc, m) => acc + (Number(m.monto_pagado) || 0), 0);
+  const porcentaje = montoPres > 0 ? Math.min(100, Math.round((pagado / montoPres) * 100)) : 0;
+  const saldo = Math.max(0, montoPres - pagado);
+
+  return (
+    <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, mb: 2, bgcolor: 'primary.50' }}>
+      <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1.5 }}>Presupuesto acordado</Typography>
+      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3} sx={{ mb: 1.5 }}>
+        <Box>
+          <Typography variant="caption" color="text.secondary">Presupuestado</Typography>
+          <Typography variant="subtitle1" fontWeight={700}>{formatCurrencyWithCode(montoPres)}</Typography>
+        </Box>
+        <Box>
+          <Typography variant="caption" color="text.secondary">Pagado</Typography>
+          <Typography variant="subtitle1" fontWeight={700} color="success.main">{formatCurrencyWithCode(pagado)}</Typography>
+        </Box>
+        <Box>
+          <Typography variant="caption" color="text.secondary">Saldo disponible</Typography>
+          <Typography variant="subtitle1" fontWeight={700} color={saldo < montoPres * 0.1 ? 'error.main' : 'text.primary'}>{formatCurrencyWithCode(saldo)}</Typography>
+        </Box>
+      </Stack>
+      <LinearProgress
+        variant="determinate"
+        value={porcentaje}
+        color={porcentaje > 90 ? 'error' : porcentaje > 70 ? 'warning' : 'success'}
+        sx={{ height: 8, borderRadius: 1 }}
+      />
+      <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>{porcentaje}% ejecutado</Typography>
+    </Paper>
+  );
+}
+
+// ─── Panel de pretendidos en Cuenta Corriente ─────────────────────────────────
+
+function PretendidosCCPanel({ pretendidos, onCerrar, savingId, feedback }) {
+  const [montosCierre, setMontosCierre] = useState({});
+  const pendientes = pretendidos.filter((p) => p.estado === 'pendiente');
+
+  if (pretendidos.length === 0) return null;
+
+  return (
+    <Paper variant="outlined" sx={{ borderRadius: 2, mb: 2, overflow: 'hidden' }}>
+      <Box sx={{ px: 2, pt: 1.5, pb: 1, bgcolor: 'warning.50' }}>
+        <Typography variant="subtitle2" fontWeight={700}>Pretendidos ({pretendidos.length})</Typography>
+      </Box>
+      <TableContainer>
+        <Table size="small">
+          <TableHead>
+            <TableRow>
+              <TableCell sx={{ fontWeight: 600 }}>Semana</TableCell>
+              <TableCell sx={{ fontWeight: 600 }}>Obra</TableCell>
+              <TableCell align="right" sx={{ fontWeight: 600 }}>Pretendido</TableCell>
+              <TableCell sx={{ fontWeight: 600 }}>Estado</TableCell>
+              <TableCell align="right" sx={{ fontWeight: 600 }}>Aprobado</TableCell>
+              <TableCell align="center" sx={{ fontWeight: 600 }}>Acción</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {pretendidos.map((p) => {
+              const pid = p._id || p.id;
+              const isSaving = savingId === pid;
+              const isPendiente = p.estado === 'pendiente';
+              const montoInput = montosCierre[pid] ?? String(p.monto_pretendido);
+              return (
+                <TableRow key={pid} sx={{ opacity: isPendiente ? 1 : 0.65 }}>
+                  <TableCell>{formatTimestamp(p.semana, 'DIA/MES/ANO') || '-'}</TableCell>
+                  <TableCell>{p.proyecto_nombre}</TableCell>
+                  <TableCell align="right">{formatCurrencyWithCode(p.monto_pretendido)}</TableCell>
+                  <TableCell>
+                    <Chip
+                      size="small"
+                      label={isPendiente ? 'Pendiente' : p.monto_aprobado > 0 ? 'Aprobado' : 'Rechazado'}
+                      color={isPendiente ? 'warning' : p.monto_aprobado > 0 ? 'success' : 'default'}
+                      variant={p.monto_aprobado > 0 ? 'filled' : 'outlined'}
+                    />
+                  </TableCell>
+                  <TableCell align="right">{p.monto_aprobado != null ? formatCurrencyWithCode(p.monto_aprobado) : '—'}</TableCell>
+                  <TableCell align="center">
+                    {isPendiente ? (
+                      <Stack direction="row" spacing={0.5} justifyContent="center">
+                        <TextField
+                          size="small"
+                          type="number"
+                          value={montoInput}
+                          onChange={(e) => setMontosCierre((prev) => ({ ...prev, [pid]: e.target.value }))}
+                          disabled={isSaving}
+                          inputProps={{ min: 0 }}
+                          sx={{ width: 110 }}
+                        />
+                        <Button size="small" variant="contained" color="success" onClick={() => onCerrar(pid, Number(montoInput))} disabled={isSaving}>
+                          {isSaving ? <CircularProgress size={14} /> : 'OK'}
+                        </Button>
+                        <Button size="small" variant="outlined" color="error" onClick={() => onCerrar(pid, 0)} disabled={isSaving}>✕</Button>
+                      </Stack>
+                    ) : '—'}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </TableContainer>
+    </Paper>
+  );
+}
+
 // ─── Página principal ─────────────────────────────────────────────────────────
 
 export default function CuentaCorrienteProveedoresPage() {
@@ -444,11 +559,20 @@ export default function CuentaCorrienteProveedoresPage() {
 
   // Nivel 2
   const [selectedProveedor, setSelectedProveedor] = useState(null);
+  const [selectedProveedorData, setSelectedProveedorData] = useState(null);
   const [remitos, setRemitos] = useState([]);
   const [loadingRemitos, setLoadingRemitos] = useState(false);
   const [draftsById, setDraftsById] = useState({});
   const [savingById, setSavingById] = useState({});
   const [feedback, setFeedback] = useState(null);
+
+  // Datos unificados cuenta corriente (proveedor mano de obra)
+  const [presupuestoCC, setPresupuestoCC] = useState(null);
+  const [pretendidosCC, setPretendidosCC] = useState([]);
+  const [savingPretendidoId, setSavingPretendidoId] = useState(null);
+
+  // Lista de proveedores de la empresa (para lookup por nombre)
+  const [proveedoresEmpresa, setProveedoresEmpresa] = useState([]);
 
   // ImputarPagoDialog
   const [imputarOpen, setImputarOpen] = useState(false);
@@ -478,6 +602,16 @@ export default function CuentaCorrienteProveedoresPage() {
     }
   }, [user]);
 
+  const fetchProveedoresEmpresa = useCallback(async () => {
+    if (!empresa?.id) return;
+    try {
+      const lista = await proveedorService.getByEmpresa(empresa.id);
+      setProveedoresEmpresa(lista || []);
+    } catch (err) {
+      console.error('Error cargando proveedores:', err);
+    }
+  }, [empresa?.id]);
+
   const proyectoIds = useMemo(() => proyectos.map((p) => p.id).filter(Boolean), [proyectos]);
 
   // ── Nivel 1: resumen proveedores ───────────────────────────────────────────
@@ -500,11 +634,32 @@ export default function CuentaCorrienteProveedoresPage() {
   }, [empresa?.id, proyectoIds, fechaDesde, fechaHasta]);
 
   // ── Nivel 2: remitos del proveedor ─────────────────────────────────────────
-  const fetchRemitos = useCallback(async (proveedor) => {
+  const fetchRemitos = useCallback(async (proveedor, proveedorData = null) => {
     if (!empresa?.id || !proveedor) return;
     setLoadingRemitos(true);
     setRemitos([]);
+    setPresupuestoCC(null);
+    setPretendidosCC([]);
     setDraftsById({});
+
+    // Si tenemos el objeto completo del proveedor y tiene ID, usar endpoint unificado
+    const proveedorObj = proveedorData || selectedProveedorData;
+    if (proveedorObj?._id) {
+      try {
+        const cc = await pretendidosService.getCuentaCorriente(empresa.id, proveedorObj._id);
+        setRemitos(cc?.movimientos || []);
+        setPresupuestoCC(cc?.presupuesto || null);
+        setPretendidosCC(cc?.pretendidos || []);
+      } catch (err) {
+        console.error('Error cargando cuenta corriente unificada:', err);
+        setRemitos([]);
+      } finally {
+        setLoadingRemitos(false);
+      }
+      return;
+    }
+
+    // Fallback: buscar por nombre (proveedores sin ID en la BD)
     try {
       const params = {
         empresaId: empresa.id,
@@ -520,7 +675,6 @@ export default function CuentaCorrienteProveedoresPage() {
       if (fechaDesde) params.fechaDesde = fechaDesde;
       if (fechaHasta) params.fechaHasta = fechaHasta;
       const response = await movimientosService.getCajasDashboard(params);
-      // Misma lógica que flattenDashboardItems en control-pagos.js
       const items = (response?.items || []).flatMap((item) => {
         if (item?.tipo === 'grupo_prorrateo') return item.movimientos || [];
         return item?.data ? [item.data] : [];
@@ -532,11 +686,12 @@ export default function CuentaCorrienteProveedoresPage() {
     } finally {
       setLoadingRemitos(false);
     }
-  }, [empresa?.id, proyectoIds, fechaDesde, fechaHasta]);
+  }, [empresa?.id, proyectoIds, fechaDesde, fechaHasta, selectedProveedorData]);
 
   // ── Efectos ────────────────────────────────────────────────────────────────
   useEffect(() => { fetchScopeData(); }, [fetchScopeData]);
   useEffect(() => { fetchResumen(); }, [fetchResumen]);
+  useEffect(() => { fetchProveedoresEmpresa(); }, [fetchProveedoresEmpresa]);
   useEffect(() => {
     if (selectedProveedor) fetchRemitos(selectedProveedor);
   }, [selectedProveedor, fetchRemitos]);
@@ -584,12 +739,35 @@ export default function CuentaCorrienteProveedoresPage() {
     }
   }, [draftsById, user, fetchResumen]);
 
+  const handleSelectProveedor = useCallback((nombreProveedor) => {
+    const provObj = proveedoresEmpresa.find(
+      (p) => p.nombre?.toLowerCase() === nombreProveedor?.toLowerCase()
+    ) || null;
+    setSelectedProveedorData(provObj);
+    setSelectedProveedor(nombreProveedor);
+    // No llamamos fetchRemitos aquí: el effect de selectedProveedor lo dispara
+    // una vez que ambos estados están actualizados (React 18 batching).
+  }, [proveedoresEmpresa]);
+
   // ── Handle pago exitoso ───────────────────────────────────────────────────
   const handlePagoSuccess = useCallback(() => {
     setFeedback({ severity: 'success', message: 'Pago registrado correctamente.' });
     fetchRemitos(selectedProveedor);
     fetchResumen();
   }, [selectedProveedor, fetchRemitos, fetchResumen]);
+
+  const handleCerrarPretendidoCC = useCallback(async (pretendidoId, montoAprobado) => {
+    setSavingPretendidoId(pretendidoId);
+    try {
+      await pretendidosService.cerrar(pretendidoId, montoAprobado);
+      setFeedback({ severity: 'success', message: montoAprobado > 0 ? 'Pretendido aprobado y egreso generado.' : 'Pretendido cerrado sin pago.' });
+      fetchRemitos(selectedProveedor);
+    } catch (err) {
+      setFeedback({ severity: 'error', message: err?.response?.data?.error || 'Error al cerrar pretendido.' });
+    } finally {
+      setSavingPretendidoId(null);
+    }
+  }, [selectedProveedor, fetchRemitos]);
 
   const handlePagarUno = useCallback((rem) => {
     setRemitoInicial(rem);
@@ -635,7 +813,7 @@ export default function CuentaCorrienteProveedoresPage() {
           <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
             <Stack direction="row" alignItems="center" spacing={1}>
               {selectedProveedor && (
-                <IconButton onClick={() => { setSelectedProveedor(null); setFeedback(null); }}>
+                <IconButton onClick={() => { setSelectedProveedor(null); setSelectedProveedorData(null); setPresupuestoCC(null); setPretendidosCC([]); setFeedback(null); }}>
                   <ArrowBackIcon />
                 </IconButton>
               )}
@@ -714,26 +892,34 @@ export default function CuentaCorrienteProveedoresPage() {
             <ListaProveedores
               resumen={resumen}
               loading={loadingResumen}
-              onSelect={setSelectedProveedor}
+              onSelect={handleSelectProveedor}
               filtroProveedor={filtroProveedor}
               onFiltroProveedorChange={setFiltroProveedor}
               tieneMontoAprobado={tieneMontoAprobado}
             />
           ) : (
-            <DetalleProveedor
-              proveedor={selectedProveedor}
-              remitos={remitos}
-              loading={loadingRemitos}
-              savingById={savingById}
-              draftsById={draftsById}
-              onChangeDraft={handleChangeDraft}
-              onSaveDraft={handleSaveDraft}
-              tieneMontoAprobado={tieneMontoAprobado}
-              onPagarUno={handlePagarUno}
-              selectedForPago={selectedForPago}
-              onToggleForPago={handleToggleForPago}
-              onToggleAllForPago={handleToggleAllForPago}
-            />
+            <>
+              <PresupuestoManoObraBar presupuesto={presupuestoCC} movimientos={remitos} />
+              <PretendidosCCPanel
+                pretendidos={pretendidosCC}
+                onCerrar={handleCerrarPretendidoCC}
+                savingId={savingPretendidoId}
+              />
+              <DetalleProveedor
+                proveedor={selectedProveedor}
+                remitos={remitos}
+                loading={loadingRemitos}
+                savingById={savingById}
+                draftsById={draftsById}
+                onChangeDraft={handleChangeDraft}
+                onSaveDraft={handleSaveDraft}
+                tieneMontoAprobado={tieneMontoAprobado}
+                onPagarUno={handlePagarUno}
+                selectedForPago={selectedForPago}
+                onToggleForPago={handleToggleForPago}
+                onToggleAllForPago={handleToggleAllForPago}
+              />
+            </>
           )}
         </Container>
       </Box>

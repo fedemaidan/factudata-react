@@ -11,6 +11,7 @@ import {
   CircularProgress,
   Container,
   FormControlLabel,
+  InputAdornment,
   Paper,
   Popover,
   Stack,
@@ -25,8 +26,10 @@ import {
   TableSortLabel,
   Tabs,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
+import PaymentsIcon from '@mui/icons-material/Payments';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import SaveOutlinedIcon from '@mui/icons-material/SaveOutlined';
@@ -38,9 +41,242 @@ import profileService from 'src/services/profileService';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import { getProyectosFromUser } from 'src/services/proyectosService';
 import { formatCurrencyWithCode, formatTimestamp, dateToTimestamp } from 'src/utils/formatters';
-import { buildCompletarPagoUpdateFields, puedeCompletarPagoEgreso } from 'src/utils/movimientoPagoCompleto';
+import { puedeCompletarPagoEgreso } from 'src/utils/movimientoPagoCompleto';
+import pretendidosService from 'src/services/pretendidosService';
+import proveedorService from 'src/services/proveedorService';
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100];
+
+// ─── Panel de Pretendidos ─────────────────────────────────────────────────────
+
+const ESTADO_PRETENDIDO_COLOR = { pendiente: 'warning', cerrado: 'default' };
+
+function getLunesDeEstaSemana() {
+  const hoy = new Date();
+  const dia = hoy.getDay();
+  const diffLunes = dia === 0 ? -6 : 1 - dia;
+  const lunes = new Date(hoy);
+  lunes.setDate(hoy.getDate() + diffLunes);
+  return lunes.toISOString().split('T')[0];
+}
+
+function PretendidosPanel({ pretendidos, loading, proyectos, proveedoresManoObra, nuevoPretendido, onNuevoPretendidoChange, onCrear, creating, onCerrar, savingId }) {
+  const [montosCierre, setMontosCierre] = useState({});
+
+  const pendientes = pretendidos.filter((p) => p.estado === 'pendiente');
+  const cerrados = pretendidos.filter((p) => p.estado === 'cerrado');
+
+  const canCreate = !creating
+    && nuevoPretendido.proveedorId
+    && nuevoPretendido.proyectoId
+    && nuevoPretendido.semana
+    && nuevoPretendido.montoPretendido;
+
+  return (
+    <Stack spacing={2}>
+      {/* Formulario nuevo pretendido */}
+      <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 3 }}>
+        <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 2 }}>Cargar pretendido</Typography>
+        <Stack spacing={2}>
+          {/* Fila 1: Trabajador + Obra */}
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+            <Autocomplete
+              options={proveedoresManoObra}
+              value={proveedoresManoObra.find((p) => p._id === nuevoPretendido.proveedorId) || null}
+              onChange={(_, v) => onNuevoPretendidoChange('proveedorId', v?._id || '')}
+              getOptionLabel={(o) => o.nombre || ''}
+              isOptionEqualToValue={(o, v) => o._id === v._id}
+              renderOption={(props, o) => (
+                <li {...props}>
+                  <Box>
+                    <Typography variant="body2">{o.nombre}</Typography>
+                    {o.tipo === 'mano_de_obra' && (
+                      <Typography variant="caption" color="text.secondary">Mano de obra</Typography>
+                    )}
+                  </Box>
+                </li>
+              )}
+              renderInput={(params) => <TextField {...params} label="Trabajador" size="small" />}
+              sx={{ flex: 1 }}
+            />
+            <Autocomplete
+              options={proyectos}
+              value={proyectos.find((p) => p.id === nuevoPretendido.proyectoId) || null}
+              onChange={(_, v) => onNuevoPretendidoChange('proyectoId', v?.id || '')}
+              getOptionLabel={(o) => o.nombre || ''}
+              isOptionEqualToValue={(o, v) => o.id === v.id}
+              renderInput={(params) => <TextField {...params} label="Obra" size="small" />}
+              sx={{ flex: 1 }}
+            />
+          </Stack>
+          {/* Fila 2: Semana + Monto + Cargar */}
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems="flex-end">
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1 }}>
+              <TextField
+                label="Semana"
+                type="date"
+                size="small"
+                value={nuevoPretendido.semana}
+                onChange={(e) => onNuevoPretendidoChange('semana', e.target.value)}
+                InputLabelProps={{ shrink: true }}
+                fullWidth
+              />
+              <Tooltip title="Semana actual">
+                <Button
+                  size="small"
+                  variant="outlined"
+                  sx={{ whiteSpace: 'nowrap', minWidth: 'auto', px: 1.5 }}
+                  onClick={() => onNuevoPretendidoChange('semana', getLunesDeEstaSemana())}
+                >
+                  Hoy
+                </Button>
+              </Tooltip>
+            </Box>
+            <TextField
+              label="Monto"
+              type="number"
+              size="small"
+              value={nuevoPretendido.montoPretendido}
+              onChange={(e) => onNuevoPretendidoChange('montoPretendido', e.target.value)}
+              InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment> }}
+              sx={{ flex: 1 }}
+            />
+            <Button
+              variant="contained"
+              size="medium"
+              onClick={onCrear}
+              disabled={!canCreate}
+              sx={{ minWidth: 100, height: 40 }}
+            >
+              {creating ? <CircularProgress size={18} color="inherit" /> : 'Cargar'}
+            </Button>
+          </Stack>
+        </Stack>
+      </Paper>
+
+      {/* Lista pendientes */}
+      <Paper variant="outlined" sx={{ borderRadius: 3, overflow: 'hidden' }}>
+        <Box sx={{ px: 2, pt: 1.5, pb: 1 }}>
+          <Typography variant="subtitle2" fontWeight={700}>Pendientes ({pendientes.length})</Typography>
+        </Box>
+        {loading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}><CircularProgress size={24} /></Box>
+        ) : (
+          <TableContainer>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell sx={{ fontWeight: 700 }}>Trabajador</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>Obra</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>Semana</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 700 }}>Pretendido</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 700, minWidth: 160 }}>Monto a aprobar</TableCell>
+                  <TableCell align="center" sx={{ fontWeight: 700 }}>Acción</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {pendientes.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
+                      <Typography variant="body2" color="text.secondary">No hay pretendidos pendientes.</Typography>
+                    </TableCell>
+                  </TableRow>
+                )}
+                {pendientes.map((p) => {
+                  const isSaving = savingId === (p._id || p.id);
+                  const montoInput = montosCierre[p._id || p.id] ?? String(p.monto_pretendido);
+                  return (
+                    <TableRow key={p._id || p.id} hover>
+                      <TableCell>{p.proveedor_nombre}</TableCell>
+                      <TableCell>{p.proyecto_nombre}</TableCell>
+                      <TableCell>{formatTimestamp(p.semana, 'DIA/MES/ANO') || '-'}</TableCell>
+                      <TableCell align="right">{formatCurrencyWithCode(p.monto_pretendido)}</TableCell>
+                      <TableCell align="right">
+                        <TextField
+                          size="small"
+                          type="number"
+                          value={montoInput}
+                          onChange={(e) => setMontosCierre((prev) => ({ ...prev, [p._id || p.id]: e.target.value }))}
+                          disabled={isSaving}
+                          inputProps={{ min: 0 }}
+                          sx={{ width: 130 }}
+                        />
+                      </TableCell>
+                      <TableCell align="center">
+                        <Stack direction="row" spacing={0.5} justifyContent="center">
+                          <Button
+                            size="small"
+                            variant="contained"
+                            color="success"
+                            onClick={() => onCerrar(p._id || p.id, Number(montoInput))}
+                            disabled={isSaving}
+                          >
+                            {isSaving ? <CircularProgress size={14} /> : 'Aprobar'}
+                          </Button>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            color="error"
+                            onClick={() => onCerrar(p._id || p.id, 0)}
+                            disabled={isSaving}
+                          >
+                            Rechazar
+                          </Button>
+                        </Stack>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
+      </Paper>
+
+      {/* Historial cerrados */}
+      {cerrados.length > 0 && (
+        <Paper variant="outlined" sx={{ borderRadius: 3, overflow: 'hidden' }}>
+          <Box sx={{ px: 2, pt: 1.5, pb: 1 }}>
+            <Typography variant="subtitle2" fontWeight={700} color="text.secondary">Historial cerrados ({cerrados.length})</Typography>
+          </Box>
+          <TableContainer>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell sx={{ fontWeight: 600 }}>Trabajador</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Obra</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Semana</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 600 }}>Pretendido</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 600 }}>Aprobado</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Estado</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {cerrados.map((p) => (
+                  <TableRow key={p._id || p.id} sx={{ opacity: 0.7 }}>
+                    <TableCell>{p.proveedor_nombre}</TableCell>
+                    <TableCell>{p.proyecto_nombre}</TableCell>
+                    <TableCell>{formatTimestamp(p.semana, 'DIA/MES/ANO') || '-'}</TableCell>
+                    <TableCell align="right">{formatCurrencyWithCode(p.monto_pretendido)}</TableCell>
+                    <TableCell align="right">{p.monto_aprobado != null ? formatCurrencyWithCode(p.monto_aprobado) : '—'}</TableCell>
+                    <TableCell>
+                      <Chip
+                        size="small"
+                        label={p.monto_aprobado > 0 ? 'Aprobado' : p.monto_aprobado === 0 ? 'Rechazado' : 'Cerrado'}
+                        color={p.monto_aprobado > 0 ? 'success' : ESTADO_PRETENDIDO_COLOR[p.estado]}
+                        variant={p.monto_aprobado > 0 ? 'filled' : 'outlined'}
+                      />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Paper>
+      )}
+    </Stack>
+  );
+}
 const MIN_FREE_TEXT_LENGTH = 3;
 
 const ALL_TAB_OPTIONS = [
@@ -63,6 +299,11 @@ const ALL_TAB_OPTIONS = [
     value: 'todos',
     label: 'Todos',
     tooltip: 'Todos los egresos del alcance actual.',
+  },
+  {
+    value: 'pretendidos',
+    label: 'Pretendidos',
+    tooltip: 'Solicitudes de pago de mano de obra pendientes de aprobación.',
   },
 ];
 
@@ -233,7 +474,7 @@ const PagosAprobacionesPage = () => {
 
   const tabOptions = tieneMontoAprobado
     ? ALL_TAB_OPTIONS
-    : ALL_TAB_OPTIONS.filter((t) => t.value === 'porPagar' || t.value === 'pagados');
+    : ALL_TAB_OPTIONS.filter((t) => t.value === 'porPagar' || t.value === 'pagados' || t.value === 'pretendidos');
   const [proyectos, setProyectos] = useState([]);
   const [selectedProjects, setSelectedProjects] = useState([]);
   const [options, setOptions] = useState({});
@@ -260,8 +501,16 @@ const PagosAprobacionesPage = () => {
   const [draftsById, setDraftsById] = useState({});
   const [savingById, setSavingById] = useState({});
   const [selectedIds, setSelectedIds] = useState(new Set());
-  const [bulkPayLoading, setBulkPayLoading] = useState(false);
   const [bulkSaveLoading, setBulkSaveLoading] = useState(false);
+  const [imputarOpen, setImputarOpen] = useState(false);
+
+  // ── Pretendidos ──────────────────────────────────────────────────────────────
+  const [pretendidos, setPretendidos] = useState([]);
+  const [loadingPretendidos, setLoadingPretendidos] = useState(false);
+  const [proveedoresManoObra, setProveedoresManoObra] = useState([]);
+  const [nuevoPretendido, setNuevoPretendido] = useState({ proveedorId: '', proyectoId: '', semana: getLunesDeEstaSemana(), montoPretendido: '' });
+  const [savingPretendidoId, setSavingPretendidoId] = useState(null);
+  const [creatingPretendido, setCreatingPretendido] = useState(false);
   const [hiddenColumns, setHiddenColumns] = useState(() => {
     try {
       const stored = localStorage.getItem(COLUMNS_STORAGE_KEY);
@@ -623,48 +872,85 @@ const PagosAprobacionesPage = () => {
     }
   }, [dirtyMovimientos, fetchMovimientos, user]);
 
-  const handlePagarSeleccionados = useCallback(async () => {
+  const handlePagarSeleccionados = useCallback(() => {
     if (selectedPayableMovimientos.length === 0) return;
-    setBulkPayLoading(true);
-    setFeedback(null);
+    setImputarOpen(true);
+  }, [selectedPayableMovimientos]);
 
+  const handleImputarSuccess = useCallback(() => {
+    setFeedback({ severity: 'success', message: 'Pago registrado correctamente.' });
+    setSelectedIds(new Set());
+    fetchMovimientos();
+  }, [fetchMovimientos]);
+
+  const handleImputarClose = useCallback(() => {
+    setImputarOpen(false);
+  }, []);
+
+  const fetchPretendidos = useCallback(async () => {
+    if (!empresa?.id || activeTab !== 'pretendidos') return;
+    setLoadingPretendidos(true);
     try {
-      const nombreUsuario = getNombreUsuario(user);
-      const results = await Promise.all(selectedPayableMovimientos.map(async (movimiento) => {
-        const patch = buildCompletarPagoUpdateFields(movimiento);
-        const response = await movimientosService.updateMovimiento(
-          movimiento.id,
-          { ...movimiento, ...patch },
-          nombreUsuario
-        );
-
-        return {
-          id: movimiento.id,
-          ok: !response?.error,
-          patch,
-        };
-      }));
-
-      const successIds = results.filter((result) => result.ok).map((result) => result.id);
-      const patchMap = Object.fromEntries(results.filter((result) => result.ok).map((result) => [result.id, result.patch]));
-
-      setMovimientos((prev) => prev.map((movimiento) => (
-        patchMap[movimiento.id] ? { ...movimiento, ...patchMap[movimiento.id] } : movimiento
-      )));
-      setSelectedIds(new Set());
-
-      if (successIds.length === results.length) {
-        setFeedback({ severity: 'success', message: `Se pagaron ${successIds.length} movimiento(s).` });
-      } else {
-        setFeedback({ severity: 'warning', message: `Se pagaron ${successIds.length} de ${results.length} movimiento(s).` });
-      }
-    } catch (bulkError) {
-      console.error('Error en pago múltiple:', bulkError);
-      setFeedback({ severity: 'error', message: 'Error al pagar los movimientos seleccionados.' });
+      const proyectoIds = selectedProjectIds.length > 0 ? selectedProjectIds : null;
+      const items = await Promise.all(
+        (proyectoIds || [null]).map((pid) =>
+          pretendidosService.listar({ empresaId: empresa.id, proyectoId: pid || undefined })
+        )
+      );
+      setPretendidos(items.flat());
+    } catch (err) {
+      console.error('Error cargando pretendidos:', err);
     } finally {
-      setBulkPayLoading(false);
+      setLoadingPretendidos(false);
     }
-  }, [selectedPayableMovimientos, user]);
+  }, [empresa?.id, activeTab, selectedProjectIds]);
+
+  const fetchProveedoresManoObra = useCallback(async () => {
+    if (!empresa?.id) return;
+    try {
+      const todos = await proveedorService.getByEmpresa(empresa.id);
+      setProveedoresManoObra(todos || []);
+    } catch (err) {
+      console.error('Error cargando proveedores:', err);
+    }
+  }, [empresa?.id]);
+
+  const handleCrearPretendido = useCallback(async () => {
+    const { proveedorId, proyectoId, semana, montoPretendido } = nuevoPretendido;
+    if (!proveedorId || !proyectoId || !semana || !montoPretendido) return;
+    const proyecto = proyectos.find((p) => p.id === proyectoId);
+    setCreatingPretendido(true);
+    try {
+      await pretendidosService.crear({
+        empresaId: empresa.id,
+        proyectoId,
+        proyectoNombre: proyecto?.nombre || '',
+        proveedorId,
+        semana,
+        montoPretendido: Number(montoPretendido),
+      });
+      setNuevoPretendido((prev) => ({ ...prev, semana: getLunesDeEstaSemana(), montoPretendido: '' }));
+      setFeedback({ severity: 'success', message: 'Pretendido cargado.' });
+      fetchPretendidos();
+    } catch (err) {
+      setFeedback({ severity: 'error', message: err?.response?.data?.error || 'Error al crear pretendido.' });
+    } finally {
+      setCreatingPretendido(false);
+    }
+  }, [nuevoPretendido, empresa?.id, proyectos, fetchPretendidos]);
+
+  const handleCerrarPretendido = useCallback(async (pretendidoId, montoAprobado) => {
+    setSavingPretendidoId(pretendidoId);
+    try {
+      await pretendidosService.cerrar(pretendidoId, montoAprobado);
+      setFeedback({ severity: 'success', message: montoAprobado > 0 ? 'Pretendido aprobado y egreso generado.' : 'Pretendido cerrado sin pago.' });
+      fetchPretendidos();
+    } catch (err) {
+      setFeedback({ severity: 'error', message: err?.response?.data?.error || 'Error al cerrar pretendido.' });
+    } finally {
+      setSavingPretendidoId(null);
+    }
+  }, [fetchPretendidos]);
 
   useEffect(() => {
     fetchScopeData();
@@ -693,6 +979,14 @@ const PagosAprobacionesPage = () => {
   useEffect(() => {
     fetchMovimientos();
   }, [fetchMovimientos]);
+
+  useEffect(() => {
+    fetchPretendidos();
+  }, [fetchPretendidos]);
+
+  useEffect(() => {
+    fetchProveedoresManoObra();
+  }, [fetchProveedoresManoObra]);
 
   if (!user) {
     return (
@@ -830,8 +1124,23 @@ const PagosAprobacionesPage = () => {
             {error && <Alert severity="error">{error}</Alert>}
             {feedback && <Alert severity={feedback.severity}>{feedback.message}</Alert>}
 
+            {activeTab === 'pretendidos' && (
+              <PretendidosPanel
+                pretendidos={pretendidos}
+                loading={loadingPretendidos}
+                proyectos={proyectos}
+                proveedoresManoObra={proveedoresManoObra}
+                nuevoPretendido={nuevoPretendido}
+                onNuevoPretendidoChange={(field, value) => setNuevoPretendido((prev) => ({ ...prev, [field]: value }))}
+                onCrear={handleCrearPretendido}
+                creating={creatingPretendido}
+                onCerrar={handleCerrarPretendido}
+                savingId={savingPretendidoId}
+              />
+            )}
+
             {/* Métricas globales (sin filtros aplicados) */}
-            <Paper variant="outlined" sx={{ px: 2.5, py: 1.5, borderRadius: 3, bgcolor: 'background.neutral' }}>
+            {activeTab !== 'pretendidos' && <Paper variant="outlined" sx={{ px: 2.5, py: 1.5, borderRadius: 3, bgcolor: 'background.neutral' }}>
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3} flexWrap="wrap" alignItems="center">
                 <Typography variant="body1" color="text.secondary">
                   Saldo a pagar: <strong>{globalMetrics ? formatCurrencyWithCode(globalMetrics.currencies?.ARS?.egreso || 0, 'ARS') : '—'}</strong>
@@ -843,9 +1152,9 @@ const PagosAprobacionesPage = () => {
                   Pagado: <strong>{globalMetrics ? formatCurrencyWithCode(globalMetrics.egresosAprobacion?.totalMontoPagado || 0, 'ARS') : '—'}</strong>
                 </Typography>
               </Stack>
-            </Paper>
+            </Paper>}
 
-            <Paper variant="outlined" sx={{ borderRadius: 3, overflow: 'hidden' }}>
+            {activeTab !== 'pretendidos' && <Paper variant="outlined" sx={{ borderRadius: 3, overflow: 'hidden' }}>
               <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} justifyContent="space-between" alignItems={{ xs: 'flex-start', md: 'center' }} sx={{ p: 2 }}>
                 <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap">
                   <Chip label={`${selectedIds.size} seleccionado(s)`} size="small" variant="outlined" />
@@ -909,10 +1218,11 @@ const PagosAprobacionesPage = () => {
                     type="button"
                     variant="contained"
                     color="success"
+                    startIcon={<PaymentsIcon fontSize="small" />}
                     onClick={handlePagarSeleccionados}
-                    disabled={bulkPayLoading || selectedPayableMovimientos.length === 0}
+                    disabled={selectedPayableMovimientos.length === 0}
                   >
-                    {bulkPayLoading ? 'Pagando...' : 'Pagar seleccionados'}
+                    {`Pagar seleccionados (${selectedPayableMovimientos.length})`}
                   </Button>
                 </Stack>
               </Stack>
@@ -1178,12 +1488,29 @@ const PagosAprobacionesPage = () => {
                   setPage(0);
                 }}
               />
-            </Paper>
+            </Paper>}
           </Stack>
         </Container>
       </Box>
+
+      {imputarOpen && (
+        <ImputarPagoDialogLazy
+          open={imputarOpen}
+          onClose={handleImputarClose}
+          onSuccess={handleImputarSuccess}
+          proveedor={selectedPayableMovimientos[0]?.nombre_proveedor || 'Seleccionados'}
+          remitos={selectedPayableMovimientos}
+          selectedIdsInicial={[...selectedIds]}
+        />
+      )}
     </DashboardLayout>
   );
 };
+
+function ImputarPagoDialogLazy(props) {
+  // eslint-disable-next-line global-require
+  const ImputarPagoDialog = require('src/components/pagos/ImputarPagoDialog').default;
+  return <ImputarPagoDialog {...props} />;
+}
 
 export default PagosAprobacionesPage;
