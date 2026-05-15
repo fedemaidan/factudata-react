@@ -104,6 +104,7 @@ function emptyColumna() {
     operacion: 'sum',
     campo: 'total',
     formato: 'currency',
+    filtro_tipo: null,
   };
 }
 
@@ -563,7 +564,7 @@ function SummaryTableConfig({ block, onChange, excludeOptions = {} }) {
 
       {columnas.map((c, idx) => (
         <Box key={c.id || idx} sx={{ p: 1.5, border: 1, borderColor: 'divider', borderRadius: 1 }}>
-          <Stack direction="row" spacing={1} alignItems="center">
+          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
             <TextField
               label="Título"
               value={c.titulo || ''}
@@ -592,6 +593,18 @@ function SummaryTableConfig({ block, onChange, excludeOptions = {} }) {
               >
                 {CAMPOS.map((f) => (
                   <MenuItem key={f.value} value={f.value}>{f.label}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <FormControl size="small" sx={{ flex: 1, minWidth: 130 }}>
+              <InputLabel>Filtro tipo</InputLabel>
+              <Select
+                value={c.filtro_tipo || ''}
+                label="Filtro tipo"
+                onChange={(e) => updateColumna(idx, 'filtro_tipo', e.target.value || null)}
+              >
+                {FILTRO_TIPOS.map((ft) => (
+                  <MenuItem key={ft.value} value={ft.value}>{ft.label}</MenuItem>
                 ))}
               </Select>
             </FormControl>

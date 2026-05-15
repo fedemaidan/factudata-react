@@ -618,6 +618,7 @@ export function processSummaryTable(block, movimientos, _presupuestos, currencie
         titulo: isMulti && (ec.formato === 'currency' || !ec.formato) ? `${ec.titulo} (${ec.currency})` : ec.titulo,
         formato: ec.formato || defaultFmt,
         currency: ec.currency,
+        filtro_tipo: ec.filtro_tipo || null,
       };
     }),
     ...(block.mostrar_porcentaje ? [{ id: '_porcentaje', titulo: '%', formato: 'percentage' }] : []),
@@ -635,7 +636,10 @@ export function processSummaryTable(block, movimientos, _presupuestos, currencie
   for (const [grupo, items] of grouped) {
     const row = { grupo, _count: items.length, _movimientos: items };
     for (const ec of expandedCols) {
-      const values = items.map((m) => getAmount(m, ec.currency, ec.campo || 'total'));
+      const columnItems = ec.filtro_tipo
+        ? items.filter((m) => m.type === ec.filtro_tipo)
+        : items;
+      const values = columnItems.map((m) => getAmount(m, ec.currency, ec.campo || 'total'));
       row[ec._id] = aggregate(values, ec.operacion);
     }
     if (block.mostrar_porcentaje && totalGeneral > 0) {
@@ -652,9 +656,12 @@ export function processSummaryTable(block, movimientos, _presupuestos, currencie
     // Si la columna fue expandida, usar la versión de moneda primaria
     const orderKey = isMulti && rows[0] && !(campo in rows[0]) ? `${campo}__${primaryCurrency}` : campo;
     rows.sort((a, b) => {
-      const va = typeof a[orderKey] === 'number' ? a[orderKey] : 0;
-      const vb = typeof b[orderKey] === 'number' ? b[orderKey] : 0;
-      return (va - vb) * dir;
+      const va = a[orderKey];
+      const vb = b[orderKey];
+      if (typeof va === 'number' && typeof vb === 'number') {
+        return (va - vb) * dir;
+      }
+      return String(va ?? '').localeCompare(String(vb ?? ''), 'es', { numeric: true }) * dir;
     });
   } else {
     const firstId = expandedCols[0]?._id;

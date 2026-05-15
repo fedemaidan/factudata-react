@@ -17,8 +17,6 @@ import {
 import RestartAltRoundedIcon from '@mui/icons-material/RestartAltRounded';
 import SendRoundedIcon from '@mui/icons-material/SendRounded';
 import AutoAwesomeRoundedIcon from '@mui/icons-material/AutoAwesomeRounded';
-import AddRoundedIcon from '@mui/icons-material/AddRounded';
-import SearchRoundedIcon from '@mui/icons-material/SearchRounded';
 import EditRoundedIcon from '@mui/icons-material/EditRounded';
 import CheckCircleRoundedIcon from '@mui/icons-material/CheckCircleRounded';
 import CancelRoundedIcon from '@mui/icons-material/CancelRounded';
@@ -26,36 +24,9 @@ import TerminalRoundedIcon from '@mui/icons-material/TerminalRounded';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { AgentMessage, AgentTypingIndicator } from 'src/components/agent/AgentMessage';
 import { useAgentChat, useAgentDebugTrace } from 'src/hooks/useAgentChat';
-
-const QUICK_ACTIONS = [
-  {
-    label: 'Cargar un movimiento',
-    description: 'Registrá un ingreso o egreso por chat',
-    prefill: 'Quiero cargar un egreso de ',
-    icon: AddRoundedIcon,
-    tone: 'primary',
-  },
-  {
-    label: 'Buscar movimientos',
-    description: 'Filtrá por fecha, proyecto o monto',
-    prefill: 'Mostrame los últimos ',
-    icon: SearchRoundedIcon,
-    tone: 'success',
-  },
-  {
-    label: 'Editar un movimiento',
-    description: 'Corregí un dato cargado antes',
-    prefill: 'Quiero editar el movimiento ',
-    icon: EditRoundedIcon,
-    tone: 'warning',
-  },
-];
-
-const EXAMPLE_PROMPTS = [
-  '¿Cuánto gasté este mes?',
-  'Cargá un egreso de $50.000 para materiales',
-  'Mostrame los últimos 5 movimientos',
-];
+import { useAgenteSpecialists } from 'src/hooks/useAgenteSpecialists';
+import { pickQuickActions, pickExamplePrompts } from 'src/components/agent/agentQuickActions';
+import { useAuthContext } from 'src/contexts/auth-context';
 
 const AgentChatPage = () => {
   const theme = useTheme();
@@ -81,6 +52,11 @@ const AgentChatPage = () => {
     dismissError,
   } = useAgentChat();
   const { enabled: debugVisible, toggle: toggleDebugVisible } = useAgentDebugTrace();
+  const { originalUser } = useAuthContext();
+  const isAdmin = !!originalUser?.admin;
+  const { specialists } = useAgenteSpecialists();
+  const quickActions = useMemo(() => pickQuickActions(specialists), [specialists]);
+  const examplePrompts = useMemo(() => pickExamplePrompts(specialists), [specialists]);
 
   useEffect(() => {
     if (!hasLoadedHistory) loadHistory();
@@ -176,6 +152,7 @@ const AgentChatPage = () => {
   const showEmptyState = !isLoadingHistory && messages.length === 0 && !isSending;
 
   const headerActions = useMemo(() => {
+    if (!isAdmin) return null;
     if (confirmingReset) {
       return (
         <Stack direction="row" spacing={0.5} alignItems="center">
@@ -225,7 +202,7 @@ const AgentChatPage = () => {
         </Tooltip>
       </Stack>
     );
-  }, [confirmingReset, handleReset, messages.length, isSending, debugVisible, toggleDebugVisible]);
+  }, [isAdmin, confirmingReset, handleReset, messages.length, isSending, debugVisible, toggleDebugVisible]);
 
   const titleIcon = useMemo(
     () => (
@@ -300,6 +277,8 @@ const AgentChatPage = () => {
                 onQuickAction={handleQuickAction}
                 onPromptClick={handlePromptClick}
                 disabled={isSending}
+                quickActions={quickActions}
+                examplePrompts={examplePrompts}
               />
             ) : (
               <>
@@ -441,7 +420,15 @@ const AgentChatPage = () => {
   );
 };
 
-function EmptyState({ onQuickAction, onPromptClick, disabled }) {
+function EmptyState({ onQuickAction, onPromptClick, disabled, quickActions, examplePrompts }) {
+  const hasQuickActions = quickActions.length > 0;
+  const hasExamplePrompts = examplePrompts.length > 0;
+  const gridColumns = quickActions.length === 1
+    ? '1fr'
+    : quickActions.length === 2
+      ? { xs: '1fr', sm: 'repeat(2, 1fr)' }
+      : { xs: '1fr', sm: 'repeat(3, 1fr)' };
+
   return (
     <Stack spacing={4} sx={{ alignItems: 'center', py: { xs: 3, sm: 5 } }}>
       <Stack spacing={1.5} sx={{ alignItems: 'center', textAlign: 'center' }}>
@@ -480,48 +467,45 @@ function EmptyState({ onQuickAction, onPromptClick, disabled }) {
           ¿En qué te puedo ayudar?
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 460 }}>
-          Cargá movimientos, consultá tu caja o pedime un resumen de gastos. Lo que ya
-          hacés en WhatsApp, también acá.
+          Cargá movimientos, armá un presupuesto, generá un reporte o consultá el
+          estado de tus proyectos. Lo que hacés en el dashboard, también acá.
         </Typography>
       </Stack>
 
-      <Box sx={{ width: '100%', maxWidth: 640 }}>
-        <SectionLabel>Acciones rápidas</SectionLabel>
-        <Box
-          sx={{
-            display: 'grid',
-            gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, 1fr)' },
-            gap: 1.25,
-            mt: 1,
-          }}
-        >
-          {QUICK_ACTIONS.map((action) => (
-            <ActionCard
-              key={action.label}
-              icon={action.icon}
-              tone={action.tone}
-              title={action.label}
-              description={action.description}
-              disabled={disabled}
-              onClick={() => onQuickAction(action.prefill)}
-            />
-          ))}
+      {hasQuickActions ? (
+        <Box sx={{ width: '100%', maxWidth: 640 }}>
+          <SectionLabel>Acciones rápidas</SectionLabel>
+          <Box sx={{ display: 'grid', gridTemplateColumns: gridColumns, gap: 1.25, mt: 1 }}>
+            {quickActions.map((action) => (
+              <ActionCard
+                key={action.id}
+                icon={action.icon}
+                tone={action.tone}
+                title={action.label}
+                description={action.description}
+                disabled={disabled}
+                onClick={() => onQuickAction(action.prefill)}
+              />
+            ))}
+          </Box>
         </Box>
-      </Box>
+      ) : null}
 
-      <Box sx={{ width: '100%', maxWidth: 640 }}>
-        <SectionLabel>Probá preguntar</SectionLabel>
-        <Stack spacing={0.75} sx={{ mt: 1 }}>
-          {EXAMPLE_PROMPTS.map((prompt) => (
-            <PromptRow
-              key={prompt}
-              text={prompt}
-              disabled={disabled}
-              onClick={() => onPromptClick(prompt)}
-            />
-          ))}
-        </Stack>
-      </Box>
+      {hasExamplePrompts ? (
+        <Box sx={{ width: '100%', maxWidth: 640 }}>
+          <SectionLabel>Probá preguntar</SectionLabel>
+          <Stack spacing={0.75} sx={{ mt: 1 }}>
+            {examplePrompts.map((prompt) => (
+              <PromptRow
+                key={prompt.id}
+                text={prompt.text}
+                disabled={disabled}
+                onClick={() => onPromptClick(prompt.text)}
+              />
+            ))}
+          </Stack>
+        </Box>
+      ) : null}
     </Stack>
   );
 }

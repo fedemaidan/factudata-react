@@ -10,6 +10,21 @@ const SummaryTableBlock = ({ data, displayCurrency, onDrillDown }) => {
 
   const { headers, rows, totals } = data;
 
+  const getColumnTone = (header) => {
+    const title = String(header?.titulo || '').toLowerCase();
+    if (header?.filtro_tipo === 'egreso' || title.includes('egreso')) {
+      return {
+        color: 'error.main',
+      };
+    }
+    if (header?.filtro_tipo === 'ingreso' || title.includes('ingreso')) {
+      return {
+        color: 'success.main',
+      };
+    }
+    return null;
+  };
+
   const handleRowClick = (row) => {
     if (onDrillDown && row._movimientos?.length > 0) {
       onDrillDown(row._movimientos, row.grupo);
@@ -27,6 +42,7 @@ const SummaryTableBlock = ({ data, displayCurrency, onDrillDown }) => {
                 sx={{
                   fontWeight: 700,
                   backgroundColor: 'grey.100',
+                  color: getColumnTone(h)?.color || 'text.primary',
                   whiteSpace: 'nowrap',
                 }}
                 align={h.id === 'grupo' ? 'left' : 'right'}
@@ -86,7 +102,11 @@ const SummaryTableBlock = ({ data, displayCurrency, onDrillDown }) => {
                       </Box>
                     </Box>
                   ) : (
-                    <Typography variant="body2">
+                    <Typography
+                      variant="body2"
+                      color={getColumnTone(h)?.color || 'text.primary'}
+                      fontWeight={getColumnTone(h) ? 700 : 400}
+                    >
                       {formatValue(
                         row[h.id],
                         h.formato || 'currency',
@@ -106,7 +126,12 @@ const SummaryTableBlock = ({ data, displayCurrency, onDrillDown }) => {
                 <TableCell
                   key={h.id}
                   align={h.id === 'grupo' ? 'left' : 'right'}
-                  sx={{ fontWeight: 700, borderTop: 2, borderColor: 'divider' }}
+                  sx={{
+                    fontWeight: 700,
+                    borderTop: 2,
+                    borderColor: 'divider',
+                    color: getColumnTone(h)?.color || 'text.primary',
+                  }}
                 >
                   {h.id === 'grupo' ? (
                     <Typography variant="body2" fontWeight={700}>
