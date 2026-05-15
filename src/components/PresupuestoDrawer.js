@@ -122,6 +122,7 @@ const PresupuestoDrawer = ({
   // Crear
   tipoAgrupacion = null,
   valorAgrupacion = null,
+  preFill = null,
   tipoDefault = 'egreso',
   proveedoresEmpresa = [],
   // Editar
@@ -353,15 +354,36 @@ const PresupuestoDrawer = ({
 
       if (mode === 'crear') {
         setTipo(tipoDefault);
-        setMonto('');
+        // preFill.monto: sugerencia inicial del monto (ej: "Definir" presupuesto general
+        // pre-llena con la suma ya asignada en hijos).
+        setMonto(preFill?.monto != null && Number(preFill.monto) > 0 ? String(preFill.monto) : '');
         setMoneda('ARS');
         setIndexacion(null);
         setCacTipo('general');
         setBaseCalculo('total');
-        setProveedoresSel([]);
+        // Precarga del form en modo crear.
+        // 1) preFill (multi-dimension, viene de la selección multi-card de control-presupuestos)
+        //    tiene prioridad si está provisto.
+        // 2) tipoAgrupacion/valorAgrupacion (legacy/single-bucket): se usa si no hay preFill.
+        // El usuario puede editar libremente: la entrada precargada es solo una sugerencia.
+        if (preFill && (preFill.clasificaciones?.length || preFill.proveedores?.length || preFill.etapa)) {
+          setProveedoresSel(Array.isArray(preFill.proveedores) ? preFill.proveedores : []);
+          setClasificacionesSel(Array.isArray(preFill.clasificaciones) ? preFill.clasificaciones : []);
+          setEtapaSel(preFill.etapa || '');
+        } else {
+          setProveedoresSel(
+            tipoAgrupacion === 'proveedor' && valorAgrupacion
+              ? [{ id: null, nombre: valorAgrupacion }]
+              : []
+          );
+          setClasificacionesSel(
+            tipoAgrupacion === 'categoria' && valorAgrupacion
+              ? [{ categoria: valorAgrupacion, subcategorias: [] }]
+              : []
+          );
+          setEtapaSel(tipoAgrupacion === 'etapa' && valorAgrupacion ? valorAgrupacion : '');
+        }
         setProyectoSel(proyectoId || '');
-        setClasificacionesSel([]);
-        setEtapaSel('');
         setFechaPresupuesto(hoyStr);
         setCacFechaAplicada(calcularFechaCACAplicada(hoyStr));
         setPendingAdjuntosFiles([]);
@@ -390,7 +412,7 @@ const PresupuestoDrawer = ({
         setPendingAdjuntosFiles([]);
       }
     }
-  }, [open, mode, tipoDefault, presupuesto, drawerView]);
+  }, [open, mode, tipoDefault, presupuesto, drawerView, tipoAgrupacion, valorAgrupacion, preFill]);
 
   // === Fetch movimientos del proyecto (una sola vez al abrir, async) ===
   useEffect(() => {

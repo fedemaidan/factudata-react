@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Autocomplete, Chip, Stack, TextField, Typography } from '@mui/material';
 import StorefrontIcon from '@mui/icons-material/Storefront';
 
@@ -22,6 +22,7 @@ export default function ProveedoresMultiSelect({
   placeholder = 'Buscar o crear proveedor...',
 }) {
   const selectedNombres = useMemo(() => value.map((p) => p.nombre), [value]);
+  const [inputValue, setInputValue] = useState('');
 
   const handleChange = (_e, nuevosNombres) => {
     const seen = new Set();
@@ -36,14 +37,31 @@ export default function ProveedoresMultiSelect({
     onChange(next);
   };
 
+  // Commitea el texto pendiente como nuevo proveedor (freeSolo) si el usuario
+  // tipeó pero no presionó Enter antes de salir/submit.
+  const commitPendingInput = () => {
+    const nombre = inputValue.trim();
+    if (!nombre) return;
+    if (selectedNombres.includes(nombre)) {
+      setInputValue('');
+      return;
+    }
+    onChange([...value, { id: null, nombre }]);
+    setInputValue('');
+  };
+
   return (
     <Autocomplete
       multiple
       freeSolo
+      autoSelect
       size={size}
       options={options}
       value={selectedNombres}
       onChange={handleChange}
+      inputValue={inputValue}
+      onInputChange={(_e, val) => setInputValue(val)}
+      onBlur={commitPendingInput}
       getOptionLabel={(option) => option || ''}
       renderTags={(values, getTagProps) =>
         values.map((nombre, index) => (
