@@ -20,7 +20,6 @@ const HANDLERS = {
   INITIALIZE: 'INITIALIZE',
   SIGN_OUT: 'SIGN_OUT',
   UPDATE_USER: 'UPDATE_USER',
-  RETURN_TO_ORIGINAL_USER: 'RETURN_TO_ORIGINAL_USER',
 };
 
 const initialState = {
@@ -93,12 +92,6 @@ const handlers = {
       ...state,
       isAuthenticated: false,
       user: null,
-    };
-  },
-  [HANDLERS.RETURN_TO_ORIGINAL_USER]: (state, _action) => {
-    return {
-      ...state,
-      user: state.originalUser,
     };
   },
 };
@@ -505,8 +498,10 @@ export const AuthProvider = (props) => {
   };
 
   const returnToOriginalUser = () => {
+    if (!state.originalUser) return;
     dispatch({
-      type: HANDLERS.RETURN_TO_ORIGINAL_USER,
+      type: HANDLERS.UPDATE_USER,
+      payload: { user: state.originalUser, originalUser: state.originalUser },
     });
     window.location.reload();
   };
