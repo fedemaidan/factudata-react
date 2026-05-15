@@ -158,14 +158,16 @@ export const AccionesCell = ({
   const isIncompleto = row?.status === "incompleto";
   const isErrorLike = isError || isIncompleto;
   const isDuplicadoRow = row?.status === "duplicado";
-  const shouldShowButton = Boolean(isParte) || isErrorLike || isDuplicadoRow;
+  const rowTipo = String(row?.tipo || "").toLowerCase();
+  const isLicenciaRow = rowTipo === "licencia";
+  const isParteRow = rowTipo === "parte";
+  const isHorasRow = rowTipo === "horas";
+  const shouldShowButton = Boolean(isParte) || isErrorLike || isDuplicadoRow || isHorasRow;
   if (!shouldShowButton) return "-";
 
   const isResyncing = resyncingId === row?._id;
   const isProcessing = row?.status === "processing";
   const buttonColor = isErrorLike ? "error" : "primary";
-  const isLicenciaRow = String(row?.tipo || "").toLowerCase() === "licencia";
-  const isParteRow = String(row?.tipo || "").toLowerCase() === "parte";
   return (
     <Box component="span" sx={{ display: "inline-flex", gap: 0.5, alignItems: "center" }}>
       <Tooltip
