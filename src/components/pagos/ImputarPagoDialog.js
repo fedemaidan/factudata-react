@@ -30,7 +30,6 @@ import {
   TableHead,
   TableRow,
   TextField,
-  Tooltip,
   Typography,
 } from '@mui/material';
 import movimientosService from 'src/services/movimientosService';
@@ -109,10 +108,6 @@ export default function ImputarPagoDialog({ open, onClose, onSuccess, proveedor,
   };
 
   // Montos rápidos precalculados (sobre las facturas seleccionadas)
-  const totalAprobadoPendiente = useMemo(
-    () => remitosFiltrados.reduce((acc, r) => acc + Math.max(0, (Number(r.monto_aprobado) || 0) - (Number(r.monto_pagado) || 0)), 0),
-    [remitosFiltrados]
-  );
   const totalPedidoPendiente = useMemo(
     () => remitosFiltrados.reduce((acc, r) => acc + Math.max(0, (Number(r.total) || 0) - (Number(r.monto_pagado) || 0)), 0),
     [remitosFiltrados]
@@ -285,26 +280,14 @@ export default function ImputarPagoDialog({ open, onClose, onSuccess, proveedor,
               <Typography variant="caption" color="text.secondary" alignSelf="center" sx={{ mr: 0.5 }}>
                 Completar con:
               </Typography>
-              <Tooltip title="Suma del monto aprobado menos lo ya pagado">
-                <Button
-                  size="small"
-                  variant="outlined"
-                  disabled={totalAprobadoPendiente <= 0}
-                  onClick={() => setMontoTotal(String(totalAprobadoPendiente.toFixed(2)))}
-                >
-                  Deuda aprobada ({formatCurrencyWithCode(totalAprobadoPendiente)})
-                </Button>
-              </Tooltip>
-              <Tooltip title="Suma del saldo del proveedor menos lo ya pagado">
-                <Button
-                  size="small"
-                  variant="outlined"
-                  disabled={totalPedidoPendiente <= 0}
-                  onClick={() => setMontoTotal(String(totalPedidoPendiente.toFixed(2)))}
-                >
-                  Deuda pedida ({formatCurrencyWithCode(totalPedidoPendiente)})
-                </Button>
-              </Tooltip>
+              <Button
+                size="small"
+                variant="outlined"
+                disabled={totalPedidoPendiente <= 0}
+                onClick={() => setMontoTotal(String(totalPedidoPendiente.toFixed(2)))}
+              >
+                Deuda pendiente ({formatCurrencyWithCode(totalPedidoPendiente)})
+              </Button>
             </Stack>
 
             <Divider />

@@ -57,6 +57,17 @@ const proveedorService = {
   },
 
   /**
+   * Lista proveedores, opcionalmente incluyendo archivados.
+   * @param {string} empresaId
+   * @param {{ incluirArchivados?: boolean }} opts
+   */
+  async getByEmpresaFull(empresaId, { incluirArchivados = false } = {}) {
+    const params = incluirArchivados ? '?incluirArchivados=true' : '';
+    const { data } = await api.get(`/empresa/${empresaId}/proveedores${params}`);
+    return data;
+  },
+
+  /**
    * Devuelve solo los nombres de proveedores (para autocomplete).
    * @param {string} empresaId
    * @returns {Promise<string[]>}
@@ -64,6 +75,19 @@ const proveedorService = {
   async getNombres(empresaId) {
     const proveedores = await this.getByEmpresa(empresaId);
     return proveedores.map(p => p.nombre).sort();
+  },
+
+  /**
+   * Devuelve cuenta corriente completa de un proveedor:
+   * { proveedor, movimientos, presupuesto, pretendidos }
+   * @param {string} empresaId
+   * @param {string} proveedorId
+   * @param {string} [proyectoId]
+   */
+  async getCuentaCorriente(empresaId, proveedorId, proyectoId) {
+    const params = proyectoId ? `?proyectoId=${proyectoId}` : '';
+    const { data } = await api.get(`/empresa/${empresaId}/proveedores/${proveedorId}/cuenta-corriente${params}`);
+    return data;
   },
 };
 
