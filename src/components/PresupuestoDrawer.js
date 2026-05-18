@@ -34,7 +34,10 @@ import {
   List,
   ListItem,
   ListItemText,
+  Collapse,
 } from '@mui/material';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import TuneIcon from '@mui/icons-material/Tune';
 import CloseIcon from '@mui/icons-material/Close';
 import DeleteIcon from '@mui/icons-material/Delete';
 import HistoryIcon from '@mui/icons-material/History';
@@ -66,6 +69,13 @@ import {
   uploadPresupuestoAdjunto,
   deletePresupuestoAdjuntoStorage,
 } from 'src/utils/presupuestos/presupuestoAdjuntosFirebase';
+import {
+  getClasificacionesEfectivas,
+  normalizarClasificacionesUI,
+  coincideMovimientoConClasificaciones,
+} from 'src/utils/presupuestoLegacy';
+import ClasificacionesPicker from 'src/components/ClasificacionesPicker';
+import ProveedoresMultiSelect from 'src/components/ProveedoresMultiSelect';
 
 // Helper: calcular la fecha YYYY-MM del CAC aplicado (regla -2 meses)
 const calcularFechaCACAplicada = (fechaStr) => {
@@ -115,6 +125,7 @@ const PresupuestoDrawer = ({
   // Crear
   tipoAgrupacion = null,
   valorAgrupacion = null,
+  preFill = null,
   tipoDefault = 'egreso',
   proveedoresEmpresa = [],
   // Editar
@@ -128,19 +139,27 @@ const PresupuestoDrawer = ({
   proyectos = [],
   categorias = [],
   etapas = [],
+  // Cuando true, oculta el bloque de filtros (categorías/proveedores/etapa) detrás de un botón "Configuración avanzada".
+  // Útil cuando el usuario ya eligió los filtros fuera del drawer (p.ej. Control de presupuestos).
+  filtrosColapsados = false,
 }) => {
+  const [filtrosExpandidos, setFiltrosExpandidos] = useState(false);
   const router = useRouter();
 
   // === Estado: Crear ===
   const [tipo, setTipo] = useState(tipoDefault);
   const [monto, setMonto] = useState('');
   const [moneda, setMoneda] = useState('ARS');
-  const [proveedorInput, setProveedorInput] = useState('');
+  // proveedoresSel: array de objetos { id, nombre } (vacío = matchea cualquier proveedor).
+  // Soporta strings libres (proveedor nuevo) que se persisten sin id.
+  const [proveedoresSel, setProveedoresSel] = useState([]);
 
   // === Estado: Formulario completo ===
   const [proyectoSel, setProyectoSel] = useState(proyectoId || '');
-  const [categoriaSel, setCategoriaSel] = useState('');
-  const [subcategoriaSel, setSubcategoriaSel] = useState('');
+  // clasificacionesSel: array de { categoria, subcategorias: [] }
+  // - subcategorias vacío => "toda la categoría"
+  // - array vacío => "todo el proyecto" (sin filtro)
+  const [clasificacionesSel, setClasificacionesSel] = useState([]);
   const [etapaSel, setEtapaSel] = useState('');
 
   // === Estado: Editar ===
@@ -350,6 +369,7 @@ const PresupuestoDrawer = ({
       setAdicionalCacOverride('');
       setAdicionalDolarOverride('');
       setMostrarAdicional(drawerView === 'adicional');
+      setFiltrosExpandidos(false);
       setActiveTab(
         mode === 'editar' && (!drawerView || drawerView === 'full')
           ? (Array.isArray(presupuesto?.adjuntos) && presupuesto.adjuntos.length > 0 ? TAB_MAP.adjuntos : TAB_MAP.movimientos)
@@ -361,16 +381,36 @@ const PresupuestoDrawer = ({
 
       if (mode === 'crear') {
         setTipo(tipoDefault);
-        setMonto('');
+        // preFill.monto: sugerencia inicial del monto (ej: "Definir" presupuesto general
+        // pre-llena con la suma ya asignada en hijos).
+        setMonto(preFill?.monto != null && Number(preFill.monto) > 0 ? String(preFill.monto) : '');
         setMoneda('ARS');
         setIndexacion(null);
         setCacTipo('general');
         setBaseCalculo('total');
-        setProveedorInput('');
+        // Precarga del form en modo crear.
+        // 1) preFill (multi-dimension, viene de la selección multi-card de control-presupuestos)
+        //    tiene prioridad si está provisto.
+        // 2) tipoAgrupacion/valorAgrupacion (legacy/single-bucket): se usa si no hay preFill.
+        // El usuario puede editar libremente: la entrada precargada es solo una sugerencia.
+        if (preFill && (preFill.clasificaciones?.length || preFill.proveedores?.length || preFill.etapa)) {
+          setProveedoresSel(Array.isArray(preFill.proveedores) ? preFill.proveedores : []);
+          setClasificacionesSel(Array.isArray(preFill.clasificaciones) ? preFill.clasificaciones : []);
+          setEtapaSel(preFill.etapa || '');
+        } else {
+          setProveedoresSel(
+            tipoAgrupacion === 'proveedor' && valorAgrupacion
+              ? [{ id: null, nombre: valorAgrupacion }]
+              : []
+          );
+          setClasificacionesSel(
+            tipoAgrupacion === 'categoria' && valorAgrupacion
+              ? [{ categoria: valorAgrupacion, subcategorias: [] }]
+              : []
+          );
+          setEtapaSel(tipoAgrupacion === 'etapa' && valorAgrupacion ? valorAgrupacion : '');
+        }
         setProyectoSel(proyectoId || '');
-        setCategoriaSel('');
-        setSubcategoriaSel('');
-        setEtapaSel('');
         setFechaPresupuesto(hoyStr);
         setCacFechaAplicada(calcularFechaCACAplicada(hoyStr));
         setPendingAdjuntosFiles([]);
@@ -381,6 +421,9 @@ const PresupuestoDrawer = ({
         setNuevaIndexacion(presupuesto.indexacion || null);
         setNuevoCacTipo(presupuesto.cac_tipo || 'general');
         setNuevaBaseCalculo(presupuesto.base_calculo || 'total');
+        setClasificacionesSel(getClasificacionesEfectivas(presupuesto));
+        setEtapaSel(presupuesto.etapa || '');
+        setProveedoresSel(Array.isArray(presupuesto.proveedores) ? presupuesto.proveedores : []);
         setMotivo('');
         setMostrarHistorial(drawerView === 'historial' || presupuesto.historial?.length > 0);
         // Fecha del presupuesto: usar la guardada o hoy
@@ -396,7 +439,7 @@ const PresupuestoDrawer = ({
         setPendingAdjuntosFiles([]);
       }
     }
-  }, [open, mode, tipoDefault, presupuesto, drawerView]);
+  }, [open, mode, tipoDefault, presupuesto, drawerView, tipoAgrupacion, valorAgrupacion, preFill]);
 
   // === Fetch movimientos del proyecto (una sola vez al abrir, async) ===
   useEffect(() => {
@@ -436,10 +479,12 @@ const PresupuestoDrawer = ({
     return movimientosProyecto.filter(m => {
       if (m.type !== tipoMov) return false;
       if (m.es_conversion_moneda) return false;
-      if (presupuesto.proveedor && m.nombre_proveedor !== presupuesto.proveedor) return false;
+      if (Array.isArray(presupuesto.proveedores) && presupuesto.proveedores.length > 0) {
+        const nombres = presupuesto.proveedores.map((p) => p.nombre);
+        if (!nombres.includes(m.nombre_proveedor)) return false;
+      }
       if (presupuesto.etapa && m.etapa !== presupuesto.etapa) return false;
-      if (presupuesto.categoria && m.categoria !== presupuesto.categoria) return false;
-      if (presupuesto.subcategoria && m.subcategoria !== presupuesto.subcategoria) return false;
+      if (!coincideMovimientoConClasificaciones(presupuesto, { categoria: m.categoria, subcategoria: m.subcategoria })) return false;
       // Filtro por fechaInicio
       if (presupuesto.fechaInicio && m.fecha_factura) {
         const fechaIni = presupuesto.fechaInicio?._seconds
@@ -602,18 +647,21 @@ const PresupuestoDrawer = ({
 
       if (showFullForm) {
         // Formulario completo: asignar campos opcionales
-        if (proveedorInput) data.proveedor = proveedorInput;
+        if (proveedoresSel.length > 0) data.proveedores = proveedoresSel;
         if (etapaSel) data.etapa = etapaSel;
-        if (categoriaSel) data.categoria = categoriaSel;
-        if (subcategoriaSel) data.subcategoria = subcategoriaSel;
+        if (clasificacionesSel.length > 0) data.clasificaciones = normalizarClasificacionesUI(clasificacionesSel);
       } else {
         // Formulario simplificado (control-presupuestos)
-        if (tipoAgrupacion === 'categoria') data.categoria = valorAgrupacion;
-        else if (tipoAgrupacion === 'etapa') data.etapa = valorAgrupacion;
-        else if (tipoAgrupacion === 'proveedor') data.proveedor = valorAgrupacion || proveedorInput;
+        if (tipoAgrupacion === 'categoria') {
+          data.clasificaciones = [{ categoria: valorAgrupacion, subcategorias: [] }];
+        } else if (tipoAgrupacion === 'etapa') data.etapa = valorAgrupacion;
+        else if (tipoAgrupacion === 'proveedor') {
+          const fallback = valorAgrupacion ? [{ nombre: valorAgrupacion }] : proveedoresSel;
+          if (fallback.length > 0) data.proveedores = fallback;
+        }
 
-        if (!tipoAgrupacion && proveedorInput) {
-          data.proveedor = proveedorInput;
+        if (!tipoAgrupacion && proveedoresSel.length > 0) {
+          data.proveedores = proveedoresSel;
         }
       }
 
@@ -676,6 +724,9 @@ const PresupuestoDrawer = ({
         cac_tipo: nuevaMoneda === 'ARS' && nuevaIndexacion === 'CAC' ? (nuevoCacTipo || 'general') : null,
         nuevaBaseCalculo: nuevaBaseCalculo || 'total',
         fecha_presupuesto: fechaPresupuesto || null,
+        clasificaciones: normalizarClasificacionesUI(clasificacionesSel),
+        etapa: etapaSel || null,
+        proveedores: proveedoresSel,
       };
 
       // Si el usuario hizo override del índice, enviarlo al backend
@@ -863,9 +914,9 @@ const PresupuestoDrawer = ({
         fechaPresupuesto !== hoyStr ||
         moneda !== 'ARS' ||
         indexacion !== null ||
-        proveedorInput !== '' ||
+        proveedoresSel.length > 0 ||
         pendingAdjuntosFiles.length > 0 ||
-        (showFullForm && (proyectoSel !== (proyectoId || '') || categoriaSel !== '' || etapaSel !== ''))
+        (showFullForm && (proyectoSel !== (proyectoId || '') || clasificacionesSel.length > 0 || etapaSel !== ''))
       );
     }
     const originalMonto = String(presupuesto?.monto_ingresado || presupuesto?.monto || '');
@@ -1236,26 +1287,12 @@ const PresupuestoDrawer = ({
               {!showFullForm && tipoAgrupacion === 'proveedor' && !valorAgrupacion && (
                 <Box>
                   <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
-                    Proveedor
+                    Proveedores
                   </Typography>
-                  <Autocomplete
-                    freeSolo
+                  <ProveedoresMultiSelect
+                    value={proveedoresSel}
+                    onChange={setProveedoresSel}
                     options={proveedoresEmpresa}
-                    value={proveedorInput}
-                    onChange={(e, val) => setProveedorInput(val || '')}
-                    onInputChange={(e, val) => setProveedorInput(val || '')}
-                    getOptionLabel={(option) => option || ''}
-                    renderInput={(params) => (
-                      <TextField {...params} placeholder="Buscar o crear proveedor..." />
-                    )}
-                    renderOption={(props, option) => (
-                      <li {...props}>
-                        <Stack direction="row" spacing={1} alignItems="center">
-                          <StorefrontIcon fontSize="small" color="action" />
-                          <Typography>{option}</Typography>
-                        </Stack>
-                      </li>
-                    )}
                   />
                 </Box>
               )}
@@ -1284,80 +1321,68 @@ const PresupuestoDrawer = ({
                   {tipo !== 'ingreso' && (
                     <>
                       <Divider />
-                      <Typography variant="subtitle2" color="text.secondary">
-                        Opcional: ¿querés filtrar el seguimiento?
-                      </Typography>
-                      <Typography variant="caption" color="text.disabled" sx={{ mt: -1.5 }}>
-                        Asociá categoría, proveedor o etapa para un control más preciso
-                      </Typography>
-
-                      <FormControl fullWidth size="small">
-                        <InputLabel>Categoría</InputLabel>
-                        <Select
-                          value={categoriaSel}
-                          onChange={(e) => { setCategoriaSel(e.target.value); setSubcategoriaSel(''); }}
-                          label="Categoría"
-                        >
-                          <MenuItem value=""><em>Sin categoría</em></MenuItem>
-                          {categorias.map((cat, idx) => (
-                            <MenuItem key={idx} value={cat.name}>{cat.name}</MenuItem>
-                          ))}
-                        </Select>
-                      </FormControl>
-
-                      <Box>
-                        <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
-                          Proveedor
-                        </Typography>
-                        <Autocomplete
-                          freeSolo
-                          options={proveedoresEmpresa}
-                          value={proveedorInput}
-                          onChange={(e, val) => setProveedorInput(val || '')}
-                          onInputChange={(e, val) => setProveedorInput(val || '')}
-                          getOptionLabel={(option) => option || ''}
+                      {filtrosColapsados && !filtrosExpandidos ? (
+                        <Button
                           size="small"
-                          renderInput={(params) => (
-                            <TextField {...params} placeholder="Buscar o crear proveedor..." />
-                          )}
-                          renderOption={(props, option) => (
-                            <li {...props}>
-                              <Stack direction="row" spacing={1} alignItems="center">
-                                <StorefrontIcon fontSize="small" color="action" />
-                                <Typography>{option}</Typography>
-                              </Stack>
-                            </li>
-                          )}
-                        />
-                      </Box>
-
-                      <FormControl fullWidth size="small">
-                        <InputLabel>Etapa</InputLabel>
-                        <Select
-                          value={etapaSel}
-                          onChange={(e) => setEtapaSel(e.target.value)}
-                          label="Etapa"
+                          variant="text"
+                          startIcon={<TuneIcon fontSize="small" />}
+                          endIcon={<ExpandMoreIcon fontSize="small" />}
+                          onClick={() => setFiltrosExpandidos(true)}
+                          sx={{ alignSelf: 'flex-start', textTransform: 'none' }}
                         >
-                          <MenuItem value=""><em>Sin etapa</em></MenuItem>
-                          {etapas.map((et, idx) => (
-                            <MenuItem key={idx} value={et}>{et}</MenuItem>
-                          ))}
-                        </Select>
-                      </FormControl>
+                          Configuración avanzada
+                        </Button>
+                      ) : (
+                        <>
+                          <Typography variant="subtitle2" color="text.secondary">
+                            Opcional: ¿querés filtrar el seguimiento?
+                          </Typography>
+                          <Typography variant="caption" color="text.disabled" sx={{ mt: -1.5 }}>
+                            Asociá categoría, proveedor o etapa para un control más preciso
+                          </Typography>
+                        </>
+                      )}
 
-                      <FormControl fullWidth size="small" disabled={!categoriaSel}>
-                        <InputLabel>Subcategoría</InputLabel>
-                        <Select
-                          value={subcategoriaSel}
-                          onChange={(e) => setSubcategoriaSel(e.target.value)}
-                          label="Subcategoría"
-                        >
-                          <MenuItem value=""><em>Sin subcategoría</em></MenuItem>
-                          {(categorias.find(c => c.name === categoriaSel)?.subcategorias || []).map((sub, idx) => (
-                            <MenuItem key={idx} value={sub}>{sub}</MenuItem>
-                          ))}
-                        </Select>
-                      </FormControl>
+                      <Collapse in={!filtrosColapsados || filtrosExpandidos} unmountOnExit>
+                        <Stack spacing={2}>
+                          <Box>
+                            <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
+                              Categorías y subcategorías
+                            </Typography>
+                            <ClasificacionesPicker
+                              value={clasificacionesSel}
+                              onChange={setClasificacionesSel}
+                              categorias={categorias}
+                            />
+                          </Box>
+
+                          <Box>
+                            <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
+                              Proveedores
+                            </Typography>
+                            <ProveedoresMultiSelect
+                              value={proveedoresSel}
+                              onChange={setProveedoresSel}
+                              options={proveedoresEmpresa}
+                              size="small"
+                            />
+                          </Box>
+
+                          <FormControl fullWidth size="small">
+                            <InputLabel>Etapa</InputLabel>
+                            <Select
+                              value={etapaSel}
+                              onChange={(e) => setEtapaSel(e.target.value)}
+                              label="Etapa"
+                            >
+                              <MenuItem value=""><em>Sin etapa</em></MenuItem>
+                              {etapas.map((et, idx) => (
+                                <MenuItem key={idx} value={et}>{et}</MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+                        </Stack>
+                      </Collapse>
                     </>
                   )}
                 </>
@@ -1431,10 +1456,19 @@ const PresupuestoDrawer = ({
                       <> en <strong>{proyectos.find(p => p.id === proyectoSel)?.nombre}</strong></>
                     )}
                     {!showFullForm && label && <> para <strong>{label}</strong></>}
-                    {proveedorInput && <> · proveedor: <strong>{proveedorInput}</strong></>}
+                    {proveedoresSel.length > 0 && (
+                      <> · proveedor{proveedoresSel.length > 1 ? 'es' : ''}: <strong>{proveedoresSel.map((p) => p.nombre).join(', ')}</strong></>
+                    )}
                     {etapaSel && <> · etapa: <strong>{etapaSel}</strong></>}
-                    {categoriaSel && <> · categoría: <strong>{categoriaSel}</strong></>}
-                    {subcategoriaSel && <> / <strong>{subcategoriaSel}</strong></>}
+                    {clasificacionesSel.length === 1 && (
+                      <> · {clasificacionesSel[0].subcategorias.length === 0
+                        ? <>categoría completa: <strong>{clasificacionesSel[0].categoria}</strong></>
+                        : <>categoría: <strong>{clasificacionesSel[0].categoria}</strong> / <strong>{clasificacionesSel[0].subcategorias.join(', ')}</strong></>}
+                      </>
+                    )}
+                    {clasificacionesSel.length > 1 && (
+                      <> · <strong>{clasificacionesSel.length} clasificaciones</strong></>
+                    )}
                   </Typography>
                 </Alert>
               )}
@@ -1543,10 +1577,22 @@ const PresupuestoDrawer = ({
                         const params = new URLSearchParams();
                         params.set('proyectoId', proyectoId || presupuesto.proyecto_id);
                         if (presupuesto.tipo) params.set('tipo', presupuesto.tipo);
-                        if (presupuesto.proveedor) params.set('proveedores', presupuesto.proveedor);
-                        if (presupuesto.categoria) params.set('categorias', presupuesto.categoria);
-                        if (presupuesto.subcategoria) params.set('subcategorias', presupuesto.subcategoria);
+                        if (Array.isArray(presupuesto.proveedores) && presupuesto.proveedores.length > 0) {
+                          params.set('proveedores', presupuesto.proveedores.map((p) => p.nombre).filter(Boolean).join(','));
+                        }
                         if (presupuesto.etapa) params.set('etapa', presupuesto.etapa);
+                        const clasif = getClasificacionesEfectivas(presupuesto);
+                        // Pasamos los filtros a cajaProyecto solo cuando hay 1 sola entrada
+                        // (una sola categoría con 0 o más subs). Con múltiples categorías
+                        // el filtro no se puede expresar en un único par categoria/subcategoria.
+                        if (clasif.length === 1) {
+                          params.set('categorias', clasif[0].categoria);
+                          if (clasif[0].subcategorias.length === 1) {
+                            params.set('subcategorias', clasif[0].subcategorias[0]);
+                          } else if (clasif[0].subcategorias.length > 1) {
+                            params.set('subcategorias', clasif[0].subcategorias.join(','));
+                          }
+                        }
                         return `/cajaProyecto?${params.toString()}`;
                       })()}
                       passHref

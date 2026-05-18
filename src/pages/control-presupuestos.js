@@ -36,7 +36,12 @@ import {
   TableCell,
   TableHead,
   TableRow,
-  Autocomplete
+  Autocomplete,
+  Popover,
+  List,
+  ListItemButton,
+  ListItemText,
+  ListSubheader
 } from '@mui/material';
 import Drawer from '@mui/material/Drawer';
 import CircularProgress from '@mui/material/CircularProgress';
@@ -58,6 +63,29 @@ import { getEmpresaById, getEmpresaDetailsFromUser } from 'src/services/empresaS
 import proveedorService from 'src/services/proveedorService';
 import { getProyectosFromUser } from 'src/services/proyectosService';
 import { formatCurrency, formatTimestamp } from 'src/utils/formatters';
+import { getClasificacionesEfectivas, formatClasificacionesText } from 'src/utils/presupuestoLegacy';
+
+// ─── Helpers de item de presupuesto (multi-categoría / multi-proveedor) ──────
+const itemTieneCategorias = (item) =>
+  Array.isArray(item?.clasificaciones) && item.clasificaciones.length > 0;
+const itemTieneProveedores = (item) =>
+  Array.isArray(item?.proveedores) && item.proveedores.length > 0;
+const itemEsGeneral = (item) =>
+  !itemTieneCategorias(item) && !item?.etapa && !itemTieneProveedores(item);
+const itemMatcheaCategoria = (item, cat) =>
+  (item?.clasificaciones || []).some((c) => c.categoria === cat);
+const itemMatcheaProveedor = (item, nombre) =>
+  (item?.proveedores || []).some((p) => p.nombre === nombre);
+const itemNombresProveedores = (item) =>
+  (item?.proveedores || []).map((p) => p.nombre).filter(Boolean);
+const labelItem = (item, fallback = 'Ingreso general') => {
+  const partes = [];
+  if (itemTieneCategorias(item)) partes.push(formatClasificacionesText(item.clasificaciones));
+  if (item?.etapa) partes.push(item.etapa);
+  const provNombres = itemNombresProveedores(item);
+  if (provNombres.length > 0) partes.push(provNombres.join(', '));
+  return partes.length > 0 ? partes.join(' · ') : fallback;
+};
 import dayjs from 'dayjs';
 import PresupuestoDrawer from 'src/components/PresupuestoDrawer';
 import Tooltip from '@mui/material/Tooltip';
@@ -98,8 +126,8 @@ const calcularTotalesResumen = (resumen, tipoCambio = null, monedaVista = 'ARS')
   // Sumar items separando general (techo) de específicos (asignaciones)
   const sumarPorTipo = (porMoneda) => {
     const allItems = Object.values(porMoneda || {}).flatMap(m => m.items || []);
-    const generales = allItems.filter(i => !i.categoria && !i.etapa && !i.proveedor);
-    const especificos = allItems.filter(i => i.categoria || i.etapa || i.proveedor);
+    const generales = allItems.filter(itemEsGeneral);
+    const especificos = allItems.filter((i) => !itemEsGeneral(i));
     
     if (generales.length > 0) {
       let total = generales.reduce((s, i) => s + convertir(i.monto || 0, i.moneda || 'ARS', i.cac_tipo), 0);
@@ -227,7 +255,15 @@ const ProyectoCard = ({ proyecto, resumen, onSelect, formatMonto, tipoCambio, mo
 };
 
 // ============ COMPONENTE: ITEM DE PRESUPUESTO ============
-const PresupuestoItem = ({ label, presupuesto, ejecutado, formatMonto, onCrear, onClick, historial, moneda, indexacion, baseCalculo, cotizacionSnapshot, montoIngresado, cacIndiceActual: cacIdx, tipoCambioActual, cacTipo }) => {
+// Modo normal: click en la card abre el detalle (onEditar).
+// Modo selección (modoSeleccion=true): click toggle selección; checkbox visible.
+// Ícono editar (esquina sup. derecha) → abre drawer aunque esté en modo selección.
+const PresupuestoItem = ({
+  label, presupuesto, ejecutado, formatMonto, onEditar, onCrear, onToggleSeleccion, seleccionada = false,
+  historial, moneda, indexacion, baseCalculo, cotizacionSnapshot, montoIngresado,
+  cacIndiceActual: cacIdx, tipoCambioActual, cacTipo,
+  modoSeleccion = false,
+}) => {
   const tienePresupuesto = presupuesto !== null && presupuesto !== undefined;
   const ejec = ejecutado || 0;
   const porcentaje = tienePresupuesto && presupuesto > 0 ? (ejec / presupuesto) * 100 : 0;
@@ -244,31 +280,79 @@ const PresupuestoItem = ({ label, presupuesto, ejecutado, formatMonto, onCrear, 
   const presEnARS = esIndexado && indiceActual && presupuesto ? presupuesto * indiceActual : null;
   const ejEnARS = esIndexado && indiceActual && ejec ? ejec * indiceActual : null;
   const saldoEnARS = esIndexado && indiceActual ? (presupuesto - ejec) * indiceActual : null;
-  
+
+  const stylesSeleccion = seleccionada
+    ? { borderColor: 'primary.main', borderWidth: 2, bgcolor: 'action.selected' }
+    : { '&:hover': { bgcolor: 'action.hover', borderColor: 'primary.main' } };
+
+  // Handler unificado del click en la card.
+  // - Modo selección activo: toggle.
+  // - Modo normal: abrir detalle (onEditar) si lo hay; caso contrario, toggle (entra a selección con esta card).
+  const handleCardClick = (e) => {
+    if (modoSeleccion) return onToggleSeleccion?.(e);
+    if (onEditar) return onEditar(e);
+    if (onCrear) return onCrear(e);
+    // Sin presupuesto y sin handler de crear: no hacer nada (no debería seleccionarse fuera de modoSeleccion).
+  };
+
+  // Ícono editar visible solo si hay presupuesto que editar.
+  const renderEditarBtn = tienePresupuesto && onEditar ? (
+    <IconButton
+      size="small"
+      onClick={(e) => { e.stopPropagation(); onEditar(e); }}
+      sx={{ position: 'absolute', top: 6, right: 6, opacity: 0.6, '&:hover': { opacity: 1, bgcolor: 'action.hover' } }}
+      aria-label="Editar presupuesto"
+    >
+      <EditIcon fontSize="inherit" sx={{ fontSize: 16 }} />
+    </IconButton>
+  ) : null;
+
+  // Indicador visual de selección (checkbox a la izquierda del label).
+  const renderCheck = (
+    <Box
+      sx={{
+        width: 18, height: 18, minWidth: 18, borderRadius: '4px',
+        border: '1.5px solid',
+        borderColor: seleccionada ? 'primary.main' : 'divider',
+        bgcolor: seleccionada ? 'primary.main' : 'transparent',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        transition: 'all 0.15s',
+      }}
+    >
+      {seleccionada && (
+        <Box component="span" sx={{ color: 'primary.contrastText', fontSize: 14, lineHeight: 1, fontWeight: 700 }}>✓</Box>
+      )}
+    </Box>
+  );
+
   if (!tienePresupuesto) {
     return (
-      <Paper variant="outlined" sx={{ p: { xs: 1.5, md: 2 } }}>
+      <Paper
+        variant="outlined"
+        sx={{ p: { xs: 1.5, md: 2 }, cursor: 'pointer', position: 'relative', transition: 'all 0.15s', ...stylesSeleccion }}
+        onClick={handleCardClick}
+      >
         <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1}>
-          <Typography sx={{ fontSize: { xs: '0.875rem', md: '1rem' } }}>{label}</Typography>
-          <Stack direction="row" spacing={1} alignItems="center">
-            <Chip label="Sin presupuesto" size="small" variant="outlined" color="default" />
-            <Button size="small" variant="outlined" onClick={onCrear} startIcon={<AddCircleIcon />}>
-              Crear
-            </Button>
+          <Stack direction="row" spacing={1.25} alignItems="center">
+            {modoSeleccion && renderCheck}
+            <Typography sx={{ fontSize: { xs: '0.875rem', md: '1rem' } }}>{label}</Typography>
           </Stack>
+          <Chip label="Sin presupuesto" size="small" variant="outlined" color="default" />
         </Stack>
       </Paper>
     );
   }
-  
+
   return (
-    <Paper 
-      variant="outlined" 
-      sx={{ p: { xs: 1.5, md: 2 }, cursor: 'pointer', transition: 'all 0.15s', '&:hover': { bgcolor: 'action.hover', borderColor: 'primary.main' } }}
-      onClick={onClick}
+    <Paper
+      variant="outlined"
+      sx={{ p: { xs: 1.5, md: 2 }, cursor: 'pointer', position: 'relative', transition: 'all 0.15s', ...stylesSeleccion }}
+      onClick={handleCardClick}
     >
-      {/* Fila superior: label + badges */}
-      <Stack direction="row" spacing={0.5} alignItems="center" sx={{ minWidth: 0, mb: 0.5 }} flexWrap="wrap" useFlexGap>
+      {renderEditarBtn}
+      {/* Fila superior: check + label + badges */}
+      <Stack direction="row" spacing={0.75} alignItems="center" sx={{ minWidth: 0, mb: 0.5, pr: 3 }} flexWrap="wrap" useFlexGap>
+        {modoSeleccion && renderCheck}
         <Typography fontWeight={500} noWrap sx={{ fontSize: { xs: '0.85rem', md: '1rem' }, flex: { xs: '1 1 auto', sm: '0 1 auto' }, minWidth: 0 }}>{label}</Typography>
         {esIndexado && (
           <Chip label={`idx ${unidadIdx}`} size="small" color="secondary" variant="outlined" sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }} />
@@ -356,9 +440,62 @@ const ControlPresupuestosPage = () => {
     mode: 'crear', // 'crear' | 'editar'
     tipoAgrupacion: null,
     valorAgrupacion: null,
+    preFill: null,
     tipoDefault: 'egreso',
+    showFullForm: false,
     presupuesto: null,
   });
+
+  // Popover de bucket: cuando un bucket de agrupación tiene N>1 presupuestos matcheando,
+  // el ícono editar abre este popover para que el usuario elija cuál editar.
+  const [bucketPopover, setBucketPopover] = useState({
+    open: false,
+    anchorEl: null,
+    items: [],
+    tipoAgrupacion: null,
+    valorAgrupacion: null,
+  });
+
+  // Selección multi-card cross-tab: el usuario clickea cards de categoría/proveedor/etapa para
+  // acumular y luego crear un presupuesto que cubra todas las dimensiones seleccionadas.
+  // Etapa es single (modelo): al clickear una nueva etapa, reemplaza la anterior (o toggle si es la misma).
+  const [seleccionMulti, setSeleccionMulti] = useState({
+    clasificaciones: [], // string[] nombres de categoría
+    proveedores: [],     // string[] nombres
+    etapa: null,         // string | null
+  });
+  const totalSeleccionados =
+    seleccionMulti.clasificaciones.length +
+    seleccionMulti.proveedores.length +
+    (seleccionMulti.etapa ? 1 : 0);
+
+  const toggleSeleccionCategoria = (cat) => {
+    setSeleccionMulti(prev => ({
+      ...prev,
+      clasificaciones: prev.clasificaciones.includes(cat)
+        ? prev.clasificaciones.filter(c => c !== cat)
+        : [...prev.clasificaciones, cat],
+    }));
+  };
+  const toggleSeleccionProveedor = (prov) => {
+    setSeleccionMulti(prev => ({
+      ...prev,
+      proveedores: prev.proveedores.includes(prov)
+        ? prev.proveedores.filter(p => p !== prov)
+        : [...prev.proveedores, prov],
+    }));
+  };
+  const toggleSeleccionEtapa = (et) => {
+    setSeleccionMulti(prev => ({
+      ...prev,
+      etapa: prev.etapa === et ? null : et,
+    }));
+  };
+  const limpiarSeleccion = () => setSeleccionMulti({ clasificaciones: [], proveedores: [], etapa: null });
+
+  // Modo selección múltiple: cuando true, click en las cards toggle selección; cuando false, abre detalle.
+  const [modoSeleccion, setModoSeleccion] = useState(false);
+  const salirModoSeleccion = () => { setModoSeleccion(false); limpiarSeleccion(); };
   
   // Modal agregar proveedor (se mantiene como dialog simple)
   const [proveedorModal, setProveedorModal] = useState(false);
@@ -525,14 +662,19 @@ const ControlPresupuestosPage = () => {
       const result = await presupuestoService.obtenerResumenProyecto(proyectoSeleccionado, empresaId);
       if (result.success) {
         setResumen(result.resumen);
-        // Extraer proveedores únicos del resumen (de todas las monedas)
+        // Extraer proveedores únicos del resumen (de todas las monedas, egresos e ingresos).
+        // Soporta tanto el array nuevo `proveedores: [{id, nombre}]` como el legacy `proveedor` string.
         const proveedores = new Set();
-        const egresosPorMoneda = result.resumen.egresosPorMoneda || {};
-        Object.values(egresosPorMoneda).forEach(monedaData => {
-          (monedaData.items || []).forEach(item => {
-            if (item.proveedor) proveedores.add(item.proveedor);
-          });
+        const scan = (items) => (items || []).forEach((item) => {
+          if (Array.isArray(item.proveedores)) {
+            item.proveedores.forEach((p) => p?.nombre && proveedores.add(p.nombre));
+          }
+          if (typeof item.proveedor === 'string' && item.proveedor.trim()) {
+            proveedores.add(item.proveedor.trim());
+          }
         });
+        Object.values(result.resumen.egresosPorMoneda || {}).forEach(m => scan(m.items));
+        Object.values(result.resumen.ingresosPorMoneda || {}).forEach(m => scan(m.items));
         setProveedoresAgregados(Array.from(proveedores));
       }
     } catch (err) {
@@ -564,8 +706,8 @@ const ControlPresupuestosPage = () => {
     
     const sumarPorTipo = (obtenerItems) => {
       const items = obtenerItems();
-      const generales = items.filter(i => !i.categoria && !i.etapa && !i.proveedor);
-      const especificos = items.filter(i => i.categoria || i.etapa || i.proveedor);
+      const generales = items.filter(itemEsGeneral);
+      const especificos = items.filter((i) => !itemEsGeneral(i));
       
       if (generales.length > 0) {
         // Hay presupuesto general: usarlo como techo
@@ -692,55 +834,97 @@ const ControlPresupuestosPage = () => {
     return conv;
   }, [resumen]);
 
-  // Obtener presupuesto por agrupación
+  // Suma el ejecutado del bucket del backend (todas las monedas, convertido a la moneda de vista).
+  // Útil cuando hay presupuestos multi-cat o multi-proveedor: el backend divide el ejecutado real.
+  const ejecutadoBucketBackend = (bucketKey, valor) => {
+    let total = 0;
+    Object.entries(resumen?.egresosPorMoneda || {}).forEach(([mon, monedaData]) => {
+      const ejCrudo = monedaData[bucketKey]?.[valor]?.ejecutado || 0;
+      total += convertir(ejCrudo, mon);
+    });
+    return total;
+  };
+  const ejecutadoBucketCategoria = (catName) => ejecutadoBucketBackend('porCategoria', catName);
+  const ejecutadoBucketProveedor = (provNombre) => ejecutadoBucketBackend('porProveedor', provNombre);
+
+  // Obtener presupuesto por agrupación.
+  // Con N items matcheando devuelve la suma agregada (convertida a la moneda de vista)
+  // y la lista en `items` para que el caller decida si abre drawer directo (N=1) o popover (N>1).
   const getPresupuestoPorAgrupacion = (tipoAgrupacion, valor) => {
+    const empty = { presupuesto: null, ejecutado: 0, id: null, historial: [], moneda: 'ARS', items: [] };
     const allItems = obtenerTodosLosItemsEgresos();
-    if (allItems.length === 0) return { presupuesto: null, ejecutado: 0, id: null, historial: [], moneda: 'ARS' };
-    
+    if (allItems.length === 0) return empty;
+
     const items = allItems.filter(item => {
-      if (tipoAgrupacion === 'categoria') return item.categoria === valor && !item.etapa && !item.proveedor;
-      if (tipoAgrupacion === 'etapa') return item.etapa === valor && !item.categoria && !item.proveedor;
-      if (tipoAgrupacion === 'proveedor') return item.proveedor === valor && !item.categoria && !item.etapa;
+      if (tipoAgrupacion === 'categoria') return itemMatcheaCategoria(item, valor) && !item.etapa && !itemTieneProveedores(item);
+      if (tipoAgrupacion === 'etapa') return item.etapa === valor && !itemTieneCategorias(item) && !itemTieneProveedores(item);
+      if (tipoAgrupacion === 'proveedor') return itemMatcheaProveedor(item, valor) && !itemTieneCategorias(item) && !item.etapa;
       return false;
     });
-    
+
+    // Para los buckets multi-clave (categoría, proveedor), el ejecutado real viene del backend
+    // ya agrupado por movimiento.categoria / movimiento.nombre_proveedor. Etapa es single, no aplica.
+    const ejecutadoDelBucket = () => {
+      if (tipoAgrupacion === 'categoria') return ejecutadoBucketCategoria(valor);
+      if (tipoAgrupacion === 'proveedor') return ejecutadoBucketProveedor(valor);
+      return null; // etapa u otros: cae al ejecutado del item
+    };
+
     if (items.length === 0) {
-      // Buscar ejecutado aunque no haya presupuesto (buscar en porCategoria de cada moneda)
-      let ejecutadoTotal = 0;
-      Object.entries(resumen?.egresosPorMoneda || {}).forEach(([mon, monedaData]) => {
-        const ejCrudo = monedaData.porCategoria?.[valor]?.ejecutado || 0;
-        ejecutadoTotal += convertir(ejCrudo, mon);
-      });
-      return { presupuesto: null, ejecutado: ejecutadoTotal, id: null, historial: [], moneda: 'ARS' };
+      // Sin presupuesto, pero puede haber ejecutado (movimientos sin asignación)
+      const ej = ejecutadoDelBucket();
+      return { ...empty, ejecutado: ej || 0 };
     }
-    
-    const item = items[0];
-    return { 
-      presupuesto: item.monto, 
-      ejecutado: item.ejecutado || 0, 
-      id: item.id,
-      historial: item.historial || [],
-      adicionales: item.adicionales || [],
-      adjuntos: item.adjuntos || [],
-      moneda: item.moneda || 'ARS',
-      moneda_display: item.moneda_display || item.moneda || 'ARS',
-      indexacion: item.indexacion || null,
-      monto_ingresado: item.monto_ingresado || item.monto,
-      base_calculo: item.base_calculo || 'total',
-      cotizacion_snapshot: item.cotizacion_snapshot || null,
-      cac_tipo: item.cac_tipo || null,
-      fecha_presupuesto: item.fecha_presupuesto || null,
-      tipo: item.tipo || 'egreso',
-      proveedor: item.proveedor || null,
-      categoria: item.categoria || null,
-      subcategoria: item.subcategoria || null,
-      etapa: item.etapa || null,
+
+    if (items.length === 1) {
+      const item = items[0];
+      const ej = ejecutadoDelBucket();
+      const ejecutadoReal = ej != null ? ej : (item.ejecutado || 0);
+      return {
+        presupuesto: item.monto,
+        ejecutado: ejecutadoReal,
+        id: item.id,
+        historial: item.historial || [],
+        adicionales: item.adicionales || [],
+        adjuntos: item.adjuntos || [],
+        moneda: item.moneda || 'ARS',
+        moneda_display: item.moneda_display || item.moneda || 'ARS',
+        indexacion: item.indexacion || null,
+        monto_ingresado: item.monto_ingresado || item.monto,
+        base_calculo: item.base_calculo || 'total',
+        cotizacion_snapshot: item.cotizacion_snapshot || null,
+        cac_tipo: item.cac_tipo || null,
+        fecha_presupuesto: item.fecha_presupuesto || null,
+        tipo: item.tipo || 'egreso',
+        proveedores: Array.isArray(item.proveedores) ? item.proveedores : [],
+        clasificaciones: getClasificacionesEfectivas(item),
+        etapa: item.etapa || null,
+        items,
+      };
+    }
+
+    // N > 1: agregar montos en la moneda de vista (cada item puede estar en moneda distinta)
+    const presupuesto = items.reduce((s, i) => s + convertir(i.monto || 0, i.moneda || 'ARS', i.cac_tipo), 0);
+    const ejBucket = ejecutadoDelBucket();
+    const ejecutado = ejBucket != null
+      ? ejBucket
+      : items.reduce((s, i) => s + convertir(i.ejecutado || 0, i.moneda || 'ARS', i.cac_tipo), 0);
+    return {
+      presupuesto,
+      ejecutado,
+      moneda: moneda, // ya convertido a la moneda de vista
+      indexacion: null, // no aplica el chip de indexación cuando es agregado
+      id: null, // marca de "no es un item único" → el click abre popover
+      historial: [],
+      items,
     };
   };
 
   // Handler unificado: cuando el drawer completa una operación
   const handleDrawerSuccess = (message) => {
     setAlert({ open: true, message, severity: 'success' });
+    limpiarSeleccion();
+    setModoSeleccion(false);
     cargarResumen();
   };
 
@@ -759,15 +943,31 @@ const ControlPresupuestosPage = () => {
     }
   };
 
-  // Helper: abrir drawer para crear
-  const abrirDrawerCrear = (tipoAgrupacion, valor, tipoDefault = 'egreso') => {
+  // Helper: abrir drawer para crear. Siempre con form completo.
+  // - preFill: shape {clasificaciones, proveedores, etapa, monto?} para pre-cargar el form.
+  //   monto opcional: si viene, se usa como sugerencia inicial del monto.
+  const abrirDrawerCrear = ({ preFill = null, tipoDefault = 'egreso' } = {}) => {
     setDrawerPresupuesto({
       open: true,
       mode: 'crear',
-      tipoAgrupacion,
-      valorAgrupacion: valor,
+      tipoAgrupacion: null,
+      valorAgrupacion: null,
+      preFill: preFill || { clasificaciones: [], proveedores: [], etapa: null },
       tipoDefault,
+      showFullForm: true,
       presupuesto: null,
+    });
+  };
+
+  // Abre el drawer con la selección multi-card actual pre-cargada y limpia la selección al cerrar.
+  const crearDesdeSeleccion = (tipoDefault = 'egreso') => {
+    abrirDrawerCrear({
+      tipoDefault,
+      preFill: {
+        clasificaciones: seleccionMulti.clasificaciones.map(c => ({ categoria: c, subcategorias: [] })),
+        proveedores: seleccionMulti.proveedores.map(n => ({ id: null, nombre: n })),
+        etapa: seleccionMulti.etapa || null,
+      },
     });
   };
 
@@ -780,6 +980,7 @@ const ControlPresupuestosPage = () => {
       tipoAgrupacion: null,
       valorAgrupacion: null,
       tipoDefault: 'egreso',
+      showFullForm: true,
       presupuesto: {
         id: item.id,
         monto: item.monto || item.presupuesto,
@@ -797,9 +998,8 @@ const ControlPresupuestosPage = () => {
         cotizacion_snapshot: item.cotizacion_snapshot || null,
         cac_tipo: item.cac_tipo || null,
         fecha_presupuesto: item.fecha_presupuesto || null,
-        proveedor: item.proveedor || null,
-        categoria: item.categoria || null,
-        subcategoria: item.subcategoria || null,
+        proveedores: Array.isArray(item.proveedores) ? item.proveedores : [],
+        clasificaciones: getClasificacionesEfectivas(item),
         etapa: item.etapa || null,
         proyecto_id: item.proyecto_id || proyectoSeleccionado || null,
       },
@@ -824,9 +1024,8 @@ const ControlPresupuestosPage = () => {
     cotizacion_snapshot: item.cotizacion_snapshot || null,
     cac_tipo: item.cac_tipo || null,
     fecha_presupuesto: item.fecha_presupuesto || null,
-    proveedor: item.proveedor || null,
-    categoria: item.categoria || null,
-    subcategoria: item.subcategoria || null,
+    proveedores: Array.isArray(item.proveedores) ? item.proveedores : [],
+    clasificaciones: getClasificacionesEfectivas(item),
     etapa: item.etapa || null,
     proyecto_id: item.proyecto_id || proyectoSeleccionado || null,
   });
@@ -840,7 +1039,25 @@ const ControlPresupuestosPage = () => {
       tipoAgrupacion: null,
       valorAgrupacion: null,
       tipoDefault: 'egreso',
+      showFullForm: true,
       presupuesto: _buildPresupuestoPayload(item, label),
+    });
+  };
+
+  // Handler del ícono editar de un bucket.
+  // - 1 presupuesto matcheando → abre drawer editar directo.
+  // - N>1 → abre popover con la lista para elegir cuál editar.
+  const handleEditarBucket = (e, data, valor) => {
+    if (!data?.items || data.items.length === 0) return;
+    if (data.items.length === 1) {
+      abrirDrawerEditar(data.items[0], valor);
+      return;
+    }
+    setBucketPopover({
+      open: true,
+      anchorEl: e.currentTarget,
+      items: data.items,
+      valorAgrupacion: valor,
     });
   };
 
@@ -853,9 +1070,23 @@ const ControlPresupuestosPage = () => {
       tipoAgrupacion: null,
       valorAgrupacion: null,
       tipoDefault: 'egreso',
+      showFullForm: true,
       presupuesto: _buildPresupuestoPayload(item, label),
     });
   };
+
+  // Presupuestos que cubren múltiples categorías (sin etapa ni proveedor).
+  // Se muestran como cards combinadas (label "Cat A + Cat B") en vez de duplicarse
+  // en cada card de categoría individual.
+  const presupuestosMultiCategoria = useMemo(() => {
+    const items = obtenerTodosLosItemsEgresos();
+    return items.filter(
+      (i) => itemTieneCategorias(i)
+        && (i.clasificaciones || []).length > 1
+        && !i.etapa
+        && !itemTieneProveedores(i),
+    );
+  }, [resumen, moneda, tipoCambio, cacIndiceActual]);
 
   // Calcular sumas por cada agrupación (son 3 formas de ver el MISMO presupuesto)
   // Convierte cada item a la moneda de visualización antes de sumar
@@ -865,29 +1096,28 @@ const ControlPresupuestosPage = () => {
     const items = obtenerTodosLosItemsEgresos();
     const conv = (i) => convertir(i.monto || 0, i.moneda || 'ARS', i.cac_tipo);
     
-    // Presupuesto general (sin categoria, etapa ni proveedor)
+    // Presupuesto general (sin clasificaciones, etapa ni proveedor)
     const general = items
-      .filter(i => !i.categoria && !i.etapa && !i.proveedor)
+      .filter(itemEsGeneral)
       .reduce((sum, i) => sum + conv(i), 0);
-    
-    // ID del presupuesto general
-    const generalItem = items.find(i => !i.categoria && !i.etapa && !i.proveedor);
+
+    const generalItem = items.find(itemEsGeneral);
     const generalId = generalItem?.id || null;
     const generalHistorial = generalItem?.historial || [];
-    
-    // Suma de presupuestos por categoría
+
+    // Suma de presupuestos con clasificaciones (cada item cuenta una sola vez, aunque cubra N categorías)
     const porCategoria = items
-      .filter(i => i.categoria && !i.etapa && !i.proveedor)
+      .filter(i => itemTieneCategorias(i) && !i.etapa && !itemTieneProveedores(i))
       .reduce((sum, i) => sum + conv(i), 0);
-    
+
     // Suma de presupuestos por etapa
     const porEtapa = items
-      .filter(i => i.etapa && !i.categoria && !i.proveedor)
+      .filter(i => i.etapa && !itemTieneCategorias(i) && !itemTieneProveedores(i))
       .reduce((sum, i) => sum + conv(i), 0);
-    
-    // Suma de presupuestos por proveedor
+
+    // Suma de presupuestos por proveedor (cada item cuenta una sola vez, aunque cubra N proveedores)
     const porProveedor = items
-      .filter(i => i.proveedor && !i.categoria && !i.etapa)
+      .filter(i => itemTieneProveedores(i) && !itemTieneCategorias(i) && !i.etapa)
       .reduce((sum, i) => sum + conv(i), 0);
     
     return { porCategoria, porEtapa, porProveedor, general, generalId, generalHistorial, generalItem: generalItem || null };
@@ -1279,7 +1509,7 @@ const ControlPresupuestosPage = () => {
                           variant="outlined"
                           color="success"
                           startIcon={<AddCircleIcon />}
-                          onClick={() => abrirDrawerCrear(null, 'Ingreso', 'ingreso')}
+                          onClick={() => abrirDrawerCrear({ tipoDefault: 'ingreso' })}
                           sx={{ alignSelf: { xs: 'flex-start', sm: 'auto' } }}
                         >
                           <Box component="span" sx={{ display: { xs: 'none', sm: 'inline' } }}>Crear presupuesto de ingreso</Box>
@@ -1300,7 +1530,7 @@ const ControlPresupuestosPage = () => {
                             variant="contained"
                             color="success"
                             startIcon={<AddCircleIcon />}
-                            onClick={() => abrirDrawerCrear(null, 'Ingreso', 'ingreso')}
+                            onClick={() => abrirDrawerCrear({ tipoDefault: 'ingreso' })}
                           >
                             Crear presupuesto de ingreso
                           </Button>
@@ -1319,7 +1549,7 @@ const ControlPresupuestosPage = () => {
                             const saldoEnARS = esIdx && idxActual ? (item.monto - (item.ejecutado || 0)) * idxActual : null;
                             const fmtARS = (v) => v != null ? `$${Number(v).toLocaleString('es-AR', { maximumFractionDigits: 0 })}` : '';
                             const fmtUnidad = (v) => `${Number(v).toLocaleString('es-AR', { maximumFractionDigits: 2 })} ${unidadIdx}`;
-                            const label = [item.categoria, item.etapa, item.proveedor].filter(Boolean).join(' · ') || 'Ingreso general';
+                            const label = labelItem(item);
                             return (
                               <Paper key={item.id} variant="outlined" sx={{ p: { xs: 1.5, md: 2 } }}>
                                 {/* Fila 1: label + badges */}
@@ -1517,7 +1747,7 @@ const ControlPresupuestosPage = () => {
                                     size="small"
                                     sx={{ minWidth: 'auto', px: 0.5, fontSize: '0.7rem' }}
                                     onClick={() => {
-                                      const generalItem = obtenerTodosLosItemsEgresos().find(i => !i.categoria && !i.etapa && !i.proveedor);
+                                      const generalItem = obtenerTodosLosItemsEgresos().find(itemEsGeneral);
                                       if (generalItem) abrirDrawerEditar(generalItem, 'General');
                                     }}
                                   >
@@ -1530,7 +1760,7 @@ const ControlPresupuestosPage = () => {
                                       color="info" 
                                       variant="outlined"
                                       onClick={() => {
-                                        const generalItem = obtenerTodosLosItemsEgresos().find(i => !i.categoria && !i.etapa && !i.proveedor);
+                                        const generalItem = obtenerTodosLosItemsEgresos().find(itemEsGeneral);
                                         if (generalItem) abrirDrawerEditar(generalItem, 'General');
                                       }}
                                       sx={{ cursor: 'pointer', height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }}
@@ -1540,7 +1770,24 @@ const ControlPresupuestosPage = () => {
                               );
                             })()
                           ) : (
-                            <Button size="small" variant="outlined" onClick={() => abrirDrawerCrear(null, null, 'egreso')} sx={{ fontSize: { xs: '0.7rem', md: '0.8rem' } }}>
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              onClick={() => {
+                                // Sugerencia: monto = total asignado de la pestaña activa, así definir un techo
+                                // arranca desde lo que ya está distribuido en categorías/etapas/proveedores.
+                                const sugerido = tabActivo === 0
+                                  ? calcularSumas.porCategoria
+                                  : tabActivo === 1
+                                    ? calcularSumas.porEtapa
+                                    : calcularSumas.porProveedor;
+                                abrirDrawerCrear({
+                                  tipoDefault: 'egreso',
+                                  preFill: { clasificaciones: [], proveedores: [], etapa: null, monto: sugerido > 0 ? sugerido : null },
+                                });
+                              }}
+                              sx={{ fontSize: { xs: '0.7rem', md: '0.8rem' } }}
+                            >
                               Definir
                             </Button>
                           )}
@@ -1579,6 +1826,32 @@ const ControlPresupuestosPage = () => {
                   </Box>
                   
                   <Box sx={{ mt: 3 }}>
+                    {/* Toggle modo selección múltiple */}
+                    <Stack direction="row" justifyContent="flex-end" sx={{ mb: 1.5 }}>
+                      {modoSeleccion ? (
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          color="primary"
+                          onClick={salirModoSeleccion}
+                          sx={{ textTransform: 'none' }}
+                        >
+                          Cancelar selección
+                        </Button>
+                      ) : (
+                        <Button
+                          size="small"
+                          variant="text"
+                          color="primary"
+                          startIcon={<AddCircleIcon fontSize="small" />}
+                          onClick={() => setModoSeleccion(true)}
+                          sx={{ textTransform: 'none' }}
+                        >
+                          Crear agrupando varios
+                        </Button>
+                      )}
+                    </Stack>
+
                     {/* TAB: POR CATEGORÍA */}
                     {tabActivo === 0 && (
                       <Stack spacing={2}>
@@ -1591,30 +1864,91 @@ const ControlPresupuestosPage = () => {
                             </Typography>
                           </Box>
                         ) : (
-                          categorias.map((cat) => {
-                            const catName = cat.name || cat;
-                            const data = getPresupuestoPorAgrupacion('categoria', catName);
-                            return (
-                              <PresupuestoItem 
-                                key={catName}
-                                label={catName}
-                                presupuesto={data.presupuesto}
-                                ejecutado={data.ejecutado}
-                                formatMonto={formatMonto}
-                                historial={data.historial}
-                                moneda={data.moneda}
-                                indexacion={data.indexacion}
-                                baseCalculo={data.base_calculo}
-                                cotizacionSnapshot={data.cotizacion_snapshot}
-                                montoIngresado={data.monto_ingresado}
-                                cacIndiceActual={getCacIndice(data.cac_tipo)}
-                                tipoCambioActual={tipoCambio}
-                                cacTipo={data.cac_tipo}
-                                onCrear={() => abrirDrawerCrear('categoria', catName)}
-                                onClick={data.id ? () => abrirDrawerEditar(data, catName) : undefined}
-                              />
-                            );
-                          })
+                          <>
+                            {categorias.map((cat) => {
+                              const catName = cat.name || cat;
+                              const data = getPresupuestoPorAgrupacion('categoria', catName);
+                              // Sólo incluir presupuestos asignados exclusivamente a esta categoría.
+                              // Los multi-categoría se renderizan abajo como cards combinadas.
+                              const itemsSingle = (data.items || []).filter(
+                                (i) => (i.clasificaciones || []).length <= 1,
+                              );
+                              const nItems = itemsSingle.length;
+                              const presupuestoSingle = itemsSingle.reduce(
+                                (s, i) => s + convertir(i.monto || 0, i.moneda || 'ARS', i.cac_tipo),
+                                0,
+                              );
+                              const itemUnico = nItems === 1 ? itemsSingle[0] : null;
+                              const dataAjustada = nItems === 0
+                                ? { ...data, presupuesto: null, items: [], historial: [], moneda: 'ARS' }
+                                : nItems === 1
+                                ? {
+                                    ...data,
+                                    presupuesto: itemUnico.monto,
+                                    items: itemsSingle,
+                                    historial: itemUnico.historial || [],
+                                    moneda: itemUnico.moneda || 'ARS',
+                                    indexacion: itemUnico.indexacion || null,
+                                    base_calculo: itemUnico.base_calculo || 'total',
+                                    cotizacion_snapshot: itemUnico.cotizacion_snapshot || null,
+                                    monto_ingresado: itemUnico.monto_ingresado || itemUnico.monto,
+                                    cac_tipo: itemUnico.cac_tipo || null,
+                                  }
+                                : { ...data, presupuesto: presupuestoSingle, items: itemsSingle, indexacion: null };
+                              const labelConChip = nItems > 1 ? `${catName} · ${nItems} presupuestos` : catName;
+                              return (
+                                <PresupuestoItem
+                                  key={catName}
+                                  label={labelConChip}
+                                  presupuesto={dataAjustada.presupuesto}
+                                  ejecutado={dataAjustada.ejecutado}
+                                  formatMonto={formatMonto}
+                                  historial={dataAjustada.historial}
+                                  moneda={dataAjustada.moneda}
+                                  indexacion={dataAjustada.indexacion}
+                                  baseCalculo={dataAjustada.base_calculo}
+                                  cotizacionSnapshot={dataAjustada.cotizacion_snapshot}
+                                  montoIngresado={dataAjustada.monto_ingresado}
+                                  cacIndiceActual={getCacIndice(dataAjustada.cac_tipo)}
+                                  tipoCambioActual={tipoCambio}
+                                  cacTipo={dataAjustada.cac_tipo}
+                                  seleccionada={seleccionMulti.clasificaciones.includes(catName)}
+                                  modoSeleccion={modoSeleccion}
+                                  onToggleSeleccion={() => toggleSeleccionCategoria(catName)}
+                                  onEditar={nItems > 0 ? (e) => handleEditarBucket(e, dataAjustada, catName) : undefined}
+                                  onCrear={() => abrirDrawerCrear({
+                                    preFill: { clasificaciones: [{ categoria: catName, subcategorias: [] }], proveedores: [], etapa: null },
+                                  })}
+                                />
+                              );
+                            })}
+                            {presupuestosMultiCategoria.map((item) => {
+                              const cats = (item.clasificaciones || []).map((c) => c.categoria);
+                              const label = cats.join(' + ');
+                              return (
+                                <PresupuestoItem
+                                  key={`multi-${item.id}`}
+                                  label={label}
+                                  presupuesto={item.monto}
+                                  ejecutado={item.ejecutado || 0}
+                                  formatMonto={formatMonto}
+                                  historial={item.historial || []}
+                                  moneda={item.moneda || 'ARS'}
+                                  indexacion={item.indexacion || null}
+                                  baseCalculo={item.base_calculo || 'total'}
+                                  cotizacionSnapshot={item.cotizacion_snapshot || null}
+                                  montoIngresado={item.monto_ingresado || item.monto}
+                                  cacIndiceActual={getCacIndice(item.cac_tipo)}
+                                  tipoCambioActual={tipoCambio}
+                                  cacTipo={item.cac_tipo || null}
+                                  seleccionada={false}
+                                  modoSeleccion={false}
+                                  onToggleSeleccion={() => abrirDrawerEditar(item, label)}
+                                  onEditar={(e) => abrirDrawerEditar(item, label)}
+                                />
+                              );
+                            })}
+                          </>
                         )}
                       </Stack>
                     )}
@@ -1634,10 +1968,12 @@ const ControlPresupuestosPage = () => {
                           etapas.map((etapa) => {
                             const etapaName = etapa.nombre || etapa.name || etapa;
                             const data = getPresupuestoPorAgrupacion('etapa', etapaName);
+                            const nItems = data.items?.length || 0;
+                            const labelConChip = nItems > 1 ? `${etapaName} · ${nItems} presupuestos` : etapaName;
                             return (
-                              <PresupuestoItem 
+                              <PresupuestoItem
                                 key={etapaName}
-                                label={etapaName}
+                                label={labelConChip}
                                 presupuesto={data.presupuesto}
                                 ejecutado={data.ejecutado}
                                 formatMonto={formatMonto}
@@ -1650,8 +1986,13 @@ const ControlPresupuestosPage = () => {
                                 cacIndiceActual={getCacIndice(data.cac_tipo)}
                                 tipoCambioActual={tipoCambio}
                                 cacTipo={data.cac_tipo}
-                                onCrear={() => abrirDrawerCrear('etapa', etapaName)}
-                                onClick={data.id ? () => abrirDrawerEditar(data, etapaName) : undefined}
+                                seleccionada={seleccionMulti.etapa === etapaName}
+                                modoSeleccion={modoSeleccion}
+                                onToggleSeleccion={() => toggleSeleccionEtapa(etapaName)}
+                                onEditar={nItems > 0 ? (e) => handleEditarBucket(e, data, etapaName) : undefined}
+                                onCrear={() => abrirDrawerCrear({
+                                  preFill: { clasificaciones: [], proveedores: [], etapa: etapaName },
+                                })}
                               />
                             );
                           })
@@ -1692,10 +2033,12 @@ const ControlPresupuestosPage = () => {
                         ) : (
                           proveedoresAgregados.map((proveedor) => {
                             const data = getPresupuestoPorAgrupacion('proveedor', proveedor);
+                            const nItems = data.items?.length || 0;
+                            const labelConChip = nItems > 1 ? `${proveedor} · ${nItems} presupuestos` : proveedor;
                             return (
-                              <PresupuestoItem 
+                              <PresupuestoItem
                                 key={proveedor}
-                                label={proveedor}
+                                label={labelConChip}
                                 presupuesto={data.presupuesto}
                                 ejecutado={data.ejecutado}
                                 formatMonto={formatMonto}
@@ -1708,8 +2051,13 @@ const ControlPresupuestosPage = () => {
                                 cacIndiceActual={getCacIndice(data.cac_tipo)}
                                 tipoCambioActual={tipoCambio}
                                 cacTipo={data.cac_tipo}
-                                onCrear={() => abrirDrawerCrear('proveedor', proveedor)}
-                                onClick={data.id ? () => abrirDrawerEditar(data, proveedor) : undefined}
+                                seleccionada={seleccionMulti.proveedores.includes(proveedor)}
+                                modoSeleccion={modoSeleccion}
+                                onToggleSeleccion={() => toggleSeleccionProveedor(proveedor)}
+                                onEditar={nItems > 0 ? (e) => handleEditarBucket(e, data, proveedor) : undefined}
+                                onCrear={() => abrirDrawerCrear({
+                                  preFill: { clasificaciones: [], proveedores: [{ id: null, nombre: proveedor }], etapa: null },
+                                })}
                               />
                             );
                           })
@@ -1723,7 +2071,132 @@ const ControlPresupuestosPage = () => {
 
           </Stack>
         </Container>
+
+        {/* Sticky bar de selección multi-card: aparece cuando hay >=1 selección cross-tab. */}
+        {totalSeleccionados > 0 && (
+          <Paper
+            elevation={8}
+            sx={{
+              position: 'sticky',
+              bottom: 16,
+              mx: { xs: 1.5, sm: 3, md: 4 },
+              mt: 2,
+              p: { xs: 1.5, md: 2 },
+              borderRadius: 2,
+              borderLeft: '4px solid',
+              borderColor: 'primary.main',
+              zIndex: (theme) => theme.zIndex.appBar - 1,
+            }}
+          >
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ sm: 'center' }} justifyContent="space-between">
+              <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap sx={{ minWidth: 0 }}>
+                <Chip label={`${totalSeleccionados} seleccionada${totalSeleccionados > 1 ? 's' : ''}`} color="primary" size="small" />
+                {seleccionMulti.clasificaciones.map((c) => (
+                  <Chip
+                    key={`c-${c}`}
+                    icon={<CategoryIcon sx={{ fontSize: 14 }} />}
+                    label={c}
+                    size="small"
+                    variant="outlined"
+                    onDelete={() => toggleSeleccionCategoria(c)}
+                  />
+                ))}
+                {seleccionMulti.etapa && (
+                  <Chip
+                    icon={<TimelineIcon sx={{ fontSize: 14 }} />}
+                    label={seleccionMulti.etapa}
+                    size="small"
+                    variant="outlined"
+                    onDelete={() => toggleSeleccionEtapa(seleccionMulti.etapa)}
+                  />
+                )}
+                {seleccionMulti.proveedores.map((p) => (
+                  <Chip
+                    key={`p-${p}`}
+                    icon={<StorefrontIcon sx={{ fontSize: 14 }} />}
+                    label={p}
+                    size="small"
+                    variant="outlined"
+                    onDelete={() => toggleSeleccionProveedor(p)}
+                  />
+                ))}
+              </Stack>
+              <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>
+                <Button size="small" variant="text" onClick={salirModoSeleccion}>Limpiar</Button>
+                <Button
+                  size="small"
+                  variant="contained"
+                  startIcon={<AddCircleIcon />}
+                  onClick={() => crearDesdeSeleccion('egreso')}
+                >
+                  Crear presupuesto
+                </Button>
+              </Stack>
+            </Stack>
+          </Paper>
+        )}
       </Box>
+
+      {/* Popover de bucket con N>1 presupuestos: lista compacta para elegir cuál editar */}
+      <Popover
+        open={bucketPopover.open}
+        anchorEl={bucketPopover.anchorEl}
+        onClose={() => setBucketPopover(prev => ({ ...prev, open: false }))}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+        slotProps={{ paper: { sx: { width: 360, maxWidth: '90vw', maxHeight: 480 } } }}
+      >
+        <List
+          dense
+          subheader={
+            <ListSubheader sx={{ bgcolor: 'background.paper', lineHeight: '32px', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.04em', color: 'text.secondary' }}>
+              {bucketPopover.items.length} presupuestos en {bucketPopover.valorAgrupacion}
+            </ListSubheader>
+          }
+          sx={{ py: 0 }}
+        >
+          {bucketPopover.items.map((it) => {
+            const detalle = labelItem(it, 'Sin detalle');
+            return (
+              <ListItemButton
+                key={it.id}
+                onClick={() => {
+                  setBucketPopover(prev => ({ ...prev, open: false }));
+                  abrirDrawerEditar(it, detalle);
+                }}
+              >
+                <ListItemText
+                  primary={
+                    <Stack direction="row" justifyContent="space-between" spacing={1} alignItems="center">
+                      <Typography variant="body2" noWrap sx={{ flex: 1, minWidth: 0 }}>{detalle}</Typography>
+                      <Typography variant="body2" fontWeight={600} sx={{ whiteSpace: 'nowrap' }}>
+                        {formatMonto(it.monto, it.moneda)}
+                      </Typography>
+                    </Stack>
+                  }
+                  secondary={
+                    <Typography variant="caption" color="text.secondary">
+                      Ejecutado: {formatMonto(it.ejecutado || 0, it.moneda)}
+                      {it.indexacion ? ` · ${it.indexacion}` : ''}
+                    </Typography>
+                  }
+                />
+              </ListItemButton>
+            );
+          })}
+          <Divider />
+          <ListItemButton
+            onClick={() => {
+              setBucketPopover(prev => ({ ...prev, open: false }));
+              abrirDrawerCrear({ tipoDefault: 'egreso' });
+            }}
+            sx={{ color: 'primary.main' }}
+          >
+            <AddCircleIcon fontSize="small" sx={{ mr: 1 }} />
+            <ListItemText primary={<Typography variant="body2" color="primary">Crear nuevo presupuesto</Typography>} />
+          </ListItemButton>
+        </List>
+      </Popover>
 
       {/* Drawer de Presupuesto (crear/editar/adicional/historial) */}
       <PresupuestoDrawer
@@ -1736,10 +2209,16 @@ const ControlPresupuestosPage = () => {
         userId={user?.uid}
         tipoAgrupacion={drawerPresupuesto.tipoAgrupacion}
         valorAgrupacion={drawerPresupuesto.valorAgrupacion}
+        preFill={drawerPresupuesto.preFill}
         tipoDefault={drawerPresupuesto.tipoDefault}
         proveedoresEmpresa={proveedoresEmpresa}
+        proyectos={proyectos}
+        categorias={categorias}
+        etapas={etapas}
+        showFullForm={drawerPresupuesto.showFullForm}
         presupuesto={drawerPresupuesto.presupuesto}
         drawerView={drawerPresupuesto.drawerView || 'full'}
+        filtrosColapsados
         onRecalcular={async (id) => {
           try {
             const { success } = await presupuestoService.recalcularPresupuesto(id, empresaId);
