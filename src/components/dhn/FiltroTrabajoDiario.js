@@ -1,6 +1,7 @@
 import React, { useMemo, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { Paper, Stack, Chip } from '@mui/material';
+import { safeRouterPush } from 'src/utils/safeRouter';
 
 
 const FiltroTrabajoDiario = ({ stats = {}, onChange, excludeKeys = [] }) => {
@@ -28,7 +29,7 @@ const FiltroTrabajoDiario = ({ stats = {}, onChange, excludeKeys = [] }) => {
       }
     }
 
-    router.push({ pathname: router.pathname, query: nextQuery }, undefined, { shallow: true });
+    safeRouterPush(router, { pathname: router.pathname, query: nextQuery }, undefined, { shallow: true });
     if (onChange) onChange(nuevo);
   }, [router, onChange]);
   const chips = useMemo(() => (

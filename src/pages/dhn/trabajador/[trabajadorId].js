@@ -7,6 +7,7 @@ import { Container, Stack, Alert, Box, TextField, InputAdornment, IconButton, Ty
 import BackButton from 'src/components/shared/BackButton';
 import ClearIcon from '@mui/icons-material/Clear';
 import TableComponent from 'src/components/TableComponent';
+import { safeRouterReplace } from 'src/utils/safeRouter';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
@@ -49,7 +50,8 @@ const TrabajadorPage = () => {
     if (!router.isReady) return;
     if (!trabajadorId) return;
     if (mesParam) return;
-    router.replace(
+    safeRouterReplace(
+      router,
       { pathname: router.pathname, query: { ...router.query, mes: DEFAULT_MES } },
       undefined,
       { shallow: true }
@@ -60,7 +62,7 @@ const TrabajadorPage = () => {
     const nextMes = (nv || dayjs()).format('YYYY-MM');
     const nextQuery = { ...router.query, mes: nextMes };
     delete nextQuery.page;
-    router.replace({ pathname: router.pathname, query: nextQuery }, undefined, { shallow: true });
+    safeRouterReplace(router, { pathname: router.pathname, query: nextQuery }, undefined, { shallow: true });
   }, [router]);
 
   const [modalUrl, setModalUrl] = useState("");

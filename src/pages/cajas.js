@@ -37,6 +37,7 @@ import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import { getProyectosByEmpresa } from 'src/services/proyectosService';
 import { formatTimestamp } from 'src/utils/formatters';
 import { parseQueryParamList, FILTER_ARRAY_KEYS, FILTER_DATE_KEYS } from 'src/utils/parseData';
+import { safeRouterReplace } from 'src/utils/safeRouter';
 import { useMovimientosFilters } from 'src/hooks/useMovimientosFilters';
 import { FilterBarCajaProyecto } from 'src/components/FilterBarCajaProyecto';
 import ErrorBoundary from 'src/components/ErrorBoundary';
@@ -789,7 +790,7 @@ const CajasPage = () => {
 
     if (currentSingle === nextSingle && currentMulti === nextMulti) return;
 
-    r.replace({ pathname: '/cajas', query: nextQuery }, undefined, { shallow: true });
+    safeRouterReplace(r, { pathname: '/cajas', query: nextQuery }, undefined, { shallow: true });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectScopeMode, selectedProjectIds, loadingPage]);
 
@@ -1751,6 +1752,16 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
     if (!empresa?.id || cajasVirtuales.length === 0) return;
     fetchTotalsForCajas(cajasVirtuales);
   }, [cajasVirtuales, empresa?.id, fetchTotalsForCajas]);
+
+  // Garantiza que siempre haya una caja seleccionada: si por cualquier flujo
+  // (eliminar caja, llegar a /cajas sin param, restablecer filtros) `filters.caja`
+  // queda null, seleccionamos automáticamente la primera disponible.
+  useEffect(() => {
+    if (loadingPage) return;
+    if (filters.caja) return;
+    if (!cajasVirtuales || cajasVirtuales.length === 0) return;
+    applyCajaSelection(cajasVirtuales[0]);
+  }, [filters.caja, cajasVirtuales, loadingPage, applyCajaSelection]);
   
   const formatCurrency = (amount) => {
     if (amount)

@@ -4,6 +4,7 @@ import { useConversationsFetch } from "src/hooks/useConversationsFetch";
 import { useMessagesFetch } from "src/hooks/useMessagesFetch";
 import { useMessageScroll } from "src/hooks/useMessageScroll";
 import { useInsightNavigation } from "src/hooks/useErrorNavigation";
+import { safeRouterPush, safeRouterReplace } from "src/utils/safeRouter";
 import { addNoteToMessage, fetchRecentMessages, fetchRecentConversations, fetchConversations, searchMessages as searchMessagesApi } from "src/services/conversacionService";
 import {
   cacheConversations,
@@ -443,7 +444,7 @@ export function ConversationsProvider({ children }) {
         const newQuery = { ...router.query, conversationId };
         // Usamos push en lugar de replace para mantener el historial de navegación
         // Esto permite volver atrás con el botón del navegador en mobile
-        router.push({ pathname: router.pathname, query: newQuery }, undefined, { shallow: true });
+        safeRouterPush(router, { pathname: router.pathname, query: newQuery }, undefined, { shallow: true });
       }
         cacheConversation(conversation).catch(() => {});
     },
@@ -486,7 +487,7 @@ export function ConversationsProvider({ children }) {
         }
         if (conversationId) {
           const newQuery = { ...router.query, conversationId };
-          router.push({ pathname: router.pathname, query: newQuery }, undefined, { shallow: true });
+          safeRouterPush(router, { pathname: router.pathname, query: newQuery }, undefined, { shallow: true });
         }
 
         await loadMessageById(conversationId, targetMessageId, conversation);
@@ -580,7 +581,7 @@ export function ConversationsProvider({ children }) {
         newQuery.msgFechaHasta !== router.query.msgFechaHasta;
 
       if (isDifferent) {
-        router.replace({ pathname: router.pathname, query: newQuery }, undefined, { shallow: true });
+        safeRouterReplace(router, { pathname: router.pathname, query: newQuery }, undefined, { shallow: true });
       } else {
         // If URL is same, maybe force search? 
         // performSearch relies on router state in our updated hook, so we might need to wait for router update if we used push/replace.
@@ -754,7 +755,7 @@ export function ConversationsProvider({ children }) {
         dispatch({ type: ACTIONS.SET_HIGHLIGHTED_MESSAGE_ID, payload: null });
       }
 
-      router.replace({ pathname: router.pathname, query: newQuery }, undefined, { shallow: true });
+      safeRouterReplace(router, { pathname: router.pathname, query: newQuery }, undefined, { shallow: true });
       const query = search || "";
       await runCachedFilters(normalizedFilters);
     },
