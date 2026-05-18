@@ -112,6 +112,15 @@ export default function RegistrarPagoDialog({
   );
   const montoNetoProveedor = Math.max(0, montoBrutoNum - totalRetenciones);
 
+  // Deuda total de las facturas pendientes (lo que debería pagar para quedar al día)
+  const deudaPendienteTotal = useMemo(
+    () => (remitos || []).reduce(
+      (acc, r) => acc + Math.max(0, (Number(r.total) || 0) - (Number(r.monto_pagado) || 0)),
+      0
+    ),
+    [remitos]
+  );
+
   const remitosSeleccionados = useMemo(
     () => remitos.filter((r) => selectedIds.has(r.id || r._id)),
     [remitos, selectedIds]
@@ -379,6 +388,26 @@ export default function RegistrarPagoDialog({
                 <MenuItem value="USD">USD</MenuItem>
               </TextField>
             </Stack>
+
+            {/* Atajo: deuda pendiente del proveedor */}
+            {deudaPendienteTotal > 0.005 && (
+              <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: 'wrap', gap: 0.5 }}>
+                <Typography variant="caption" color="text.secondary">
+                  Deuda actual del proveedor:
+                </Typography>
+                <Chip
+                  size="small"
+                  color="warning"
+                  variant={montoBrutoNum === deudaPendienteTotal ? 'filled' : 'outlined'}
+                  label={`Pagar todo (${formatCurrencyWithCode(deudaPendienteTotal)})`}
+                  onClick={() => setMontoBruto(String(deudaPendienteTotal.toFixed(2)))}
+                  sx={{ cursor: 'pointer' }}
+                />
+                <Typography variant="caption" color="text.secondary">
+                  · {remitos.length} factura{remitos.length !== 1 ? 's' : ''} pendiente{remitos.length !== 1 ? 's' : ''}
+                </Typography>
+              </Stack>
+            )}
 
             {moneda === 'USD' && (
               <TextField

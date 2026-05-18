@@ -11,7 +11,6 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  Divider,
   FormControl,
   InputAdornment,
   InputLabel,
@@ -19,11 +18,13 @@ import {
   Paper,
   Select,
   Stack,
+  Tab,
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableRow,
+  Tabs,
   TextField,
   Tooltip,
   Typography,
@@ -33,7 +34,6 @@ import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import SearchIcon from '@mui/icons-material/Search';
 import StarIcon from '@mui/icons-material/Star';
-import StarBorderIcon from '@mui/icons-material/StarBorder';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import Papa from 'papaparse';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
@@ -41,6 +41,24 @@ import { useAuthContext } from 'src/contexts/auth-context';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import proveedorService from 'src/services/proveedorService';
 import { ProveedorDrawerProvider, useProveedorDrawer } from 'src/components/ProveedorDrawer';
+import { formatCurrencyWithCode, formatTimestamp } from 'src/utils/formatters';
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const TABS = [
+  { key: 'favoritos',  label: 'Favoritos'  },
+  { key: 'recientes',  label: 'Recientes'  },
+  { key: 'con_deuda',  label: 'Con deuda'  },
+  { key: 'todos',      label: 'Todos'      },
+  { key: 'archivados', label: 'Archivados' },
+];
+
+const renderEstadoCC = (resumen) => {
+  if (!resumen) return <Chip size="small" label="—" variant="outlined" />;
+  if (resumen.tiene_vencidas) return <Chip size="small" label="Vencida" color="error" />;
+  if ((resumen.deuda_actual || 0) > 0.005) return <Chip size="small" label="Con deuda" color="warning" />;
+  return <Chip size="small" label="Al día" color="success" variant="outlined" />;
+};
 
 // ─── Componente interno (necesita el contexto del drawer) ──────────────────────
 
@@ -49,14 +67,14 @@ function ProveedoresContent({ empresa, refreshKey }) {
   const empresaId = empresa?.id;
 
   const [proveedores, setProveedores] = useState([]);
+  const [resumenMap, setResumenMap] = useState({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // Filtros
+  // Tabs y filtros secundarios — default "Todos" para no ocultar proveedores al entrar
+  const [tab, setTab] = useState('todos');
   const [busqueda, setBusqueda] = useState('');
   const [filtroTipo, setFiltroTipo] = useState('todos'); // 'todos' | 'materiales' | 'mano_de_obra'
-  const [soloFavoritos, setSoloFavoritos] = useState(false);
-  const [verArchivados, setVerArchivados] = useState(false);
 
   // CSV
   const csvInputRef = useRef(null);
@@ -70,13 +88,20 @@ function ProveedoresContent({ empresa, refreshKey }) {
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
 
-  const fetchProveedores = useCallback(async (incluirArchivados = false) => {
+  // ── Fetch ──────────────────────────────────────────────────────────────────
+  const fetchData = useCallback(async (incluirArchivados = false) => {
     if (!empresaId) return;
     setLoading(true);
     setError('');
     try {
-      const data = await proveedorService.getByEmpresaFull(empresaId, { incluirArchivados });
-      setProveedores(data);
+      const [provs, resumen] = await Promise.all([
+        proveedorService.getByEmpresaFull(empresaId, { incluirArchivados: true }),
+        proveedorService.getResumenFinanciero(empresaId).catch(() => []),
+      ]);
+      setProveedores(provs);
+      const map = {};
+      (resumen || []).forEach((r) => { map[r.proveedor_id] = r; });
+      setResumenMap(map);
     } catch {
       setError('Error al cargar proveedores');
     } finally {
@@ -84,33 +109,89 @@ function ProveedoresContent({ empresa, refreshKey }) {
     }
   }, [empresaId]);
 
-  useEffect(() => { fetchProveedores(verArchivados); }, [fetchProveedores, verArchivados]);
-  // Refetch cuando el drawer guarda/archiva un proveedor
-  useEffect(() => { if (refreshKey > 0) fetchProveedores(verArchivados); }, [refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => { if (refreshKey > 0) fetchData(); }, [refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Filtrado por tab + búsqueda + tipo ─────────────────────────────────────
   const filtrados = useMemo(() => {
     const q = busqueda.toLowerCase().trim();
-    return proveedores.filter(p => {
-      if (soloFavoritos && !p.favorito) return false;
+    return proveedores.filter((p) => {
+      const id = p._id || p.id;
+      const r = resumenMap[id];
+      const archivado = !!p.archivado;
+      const enDeuda = (r?.deuda_actual || 0) > 0.005;
+
+      // Filtro por tab
+      if (tab === 'favoritos'  && (!p.favorito || archivado)) return false;
+      if (tab === 'recientes'  && (archivado || !r?.ultimo_movimiento)) return false;
+      if (tab === 'con_deuda'  && (!enDeuda || archivado)) return false;
+      if (tab === 'todos'      && archivado) return false;
+      if (tab === 'archivados' && !archivado) return false;
+
+      // Filtro tipo
       if (filtroTipo !== 'todos' && p.tipo !== filtroTipo) return false;
+
+      // Búsqueda
       if (q) {
         const matchNombre = (p.nombre || '').toLowerCase().includes(q);
         const matchCuit = (p.cuit || '').includes(q);
-        const matchAlias = (p.alias || []).some(a => a.toLowerCase().includes(q));
+        const matchAlias = (p.alias || []).some((a) => a.toLowerCase().includes(q));
         if (!matchNombre && !matchCuit && !matchAlias) return false;
       }
       return true;
     });
-  }, [proveedores, busqueda, filtroTipo, soloFavoritos]);
+  }, [proveedores, resumenMap, tab, busqueda, filtroTipo]);
 
-  // Favoritos primero → activos → archivados al final
+  // ── Orden según tab ────────────────────────────────────────────────────────
   const ordenados = useMemo(() => {
-    const favs    = filtrados.filter(p =>  p.favorito && !p.archivado);
-    const activos = filtrados.filter(p => !p.favorito && !p.archivado);
-    const archivados = filtrados.filter(p => p.archivado);
-    return [...favs, ...activos, ...archivados];
-  }, [filtrados]);
+    const arr = [...filtrados];
+    if (tab === 'recientes') {
+      // Por fecha del último movimiento (factura) — el más reciente primero
+      arr.sort((a, b) => {
+        const ra = resumenMap[a._id || a.id]?.ultimo_movimiento;
+        const rb = resumenMap[b._id || b.id]?.ultimo_movimiento;
+        const da = ra ? new Date(ra).getTime() : 0;
+        const db = rb ? new Date(rb).getTime() : 0;
+        return db - da;
+      });
+    } else if (tab === 'con_deuda') {
+      // Por deuda actual descendente
+      arr.sort((a, b) => {
+        const da = resumenMap[a._id || a.id]?.deuda_actual || 0;
+        const db = resumenMap[b._id || b.id]?.deuda_actual || 0;
+        return db - da;
+      });
+    } else if (tab === 'todos' || tab === 'favoritos') {
+      // Favoritos primero, después alfabético
+      arr.sort((a, b) => {
+        if (!!a.favorito !== !!b.favorito) return a.favorito ? -1 : 1;
+        return (a.nombre || '').localeCompare(b.nombre || '');
+      });
+    } else {
+      arr.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
+    }
+    return arr;
+  }, [filtrados, tab, resumenMap]);
 
+  // ── Contadores por tab ─────────────────────────────────────────────────────
+  const counts = useMemo(() => {
+    const c = { favoritos: 0, recientes: 0, con_deuda: 0, todos: 0, archivados: 0 };
+    proveedores.forEach((p) => {
+      const id = p._id || p.id;
+      const r = resumenMap[id];
+      const archivado = !!p.archivado;
+      if (archivado) c.archivados += 1;
+      else {
+        c.todos += 1;
+        if (r?.ultimo_movimiento) c.recientes += 1;
+        if (p.favorito) c.favoritos += 1;
+        if ((r?.deuda_actual || 0) > 0.005) c.con_deuda += 1;
+      }
+    });
+    return c;
+  }, [proveedores, resumenMap]);
+
+  // ── Crear ──────────────────────────────────────────────────────────────────
   const handleCrear = async () => {
     if (!nuevoNombre.trim()) { setCreateError('El nombre es obligatorio'); return; }
     setCreating(true);
@@ -123,8 +204,7 @@ function ProveedoresContent({ empresa, refreshKey }) {
       setDialogOpen(false);
       setNuevoNombre('');
       setNuevoTipo('materiales');
-      await fetchProveedores(verArchivados);
-      // Abrir el drawer del proveedor recién creado
+      await fetchData();
       const id = result.proveedor_id || result._id || result.id;
       if (id) openDrawer(id);
     } catch {
@@ -134,8 +214,7 @@ function ProveedoresContent({ empresa, refreshKey }) {
     }
   };
 
-  // ── CSV Import ──────────────────────────────────────────────────────────────
-
+  // ── CSV Import / Export ────────────────────────────────────────────────────
   const handleImportCSV = async (e) => {
     const archivo = e.target.files[0];
     if (!archivo) return;
@@ -145,31 +224,31 @@ function ProveedoresContent({ empresa, refreshKey }) {
     try {
       const texto = await archivo.text();
       const { data: rows } = Papa.parse(texto, { header: true, skipEmptyLines: true });
-      const categoriasEmpresa = (empresa?.categorias || []).flatMap(cat => [
+      const categoriasEmpresa = (empresa?.categorias || []).flatMap((cat) => [
         cat.name,
-        ...(cat.subcategorias || []).map(sub => `${cat.name} - ${sub}`),
+        ...(cat.subcategorias || []).map((sub) => `${cat.name} - ${sub}`),
       ]);
       const categoriasSet = new Set(categoriasEmpresa);
 
       const nuevos = rows
-        .map(row => ({
+        .map((row) => ({
           nombre: row.Nombre?.trim() ?? '',
           cuit: row.CUIT?.trim() ?? '',
           razon_social: row['Razon Social']?.trim() ?? '',
           direccion: row.Direccion?.trim() ?? '',
-          alias: row.Alias ? row.Alias.split(',').map(a => a.trim()).filter(Boolean) : [],
+          alias: row.Alias ? row.Alias.split(',').map((a) => a.trim()).filter(Boolean) : [],
           categorias: row.Categorias
-            ? row.Categorias.split(',').map(c => c.trim()).filter(c => categoriasSet.has(c))
+            ? row.Categorias.split(',').map((c) => c.trim()).filter((c) => categoriasSet.has(c))
             : [],
         }))
-        .filter(p => p.nombre);
+        .filter((p) => p.nombre);
 
       if (!nuevos.length) {
         setImportMsg('No se encontraron filas válidas en el archivo.');
         return;
       }
       await proveedorService.importar(empresaId, nuevos);
-      await fetchProveedores();
+      await fetchData();
       setImportMsg(`${nuevos.length} proveedor${nuevos.length !== 1 ? 'es' : ''} importado${nuevos.length !== 1 ? 's' : ''}.`);
     } catch {
       setImportMsg('Error al importar el CSV.');
@@ -180,7 +259,7 @@ function ProveedoresContent({ empresa, refreshKey }) {
 
   const handleExportCSV = () => {
     if (!proveedores.length) return;
-    const rows = proveedores.map(p => ({
+    const rows = proveedores.map((p) => ({
       Nombre: p.nombre,
       CUIT: p.cuit || '',
       'Razon Social': p.razon_social || '',
@@ -212,44 +291,33 @@ function ProveedoresContent({ empresa, refreshKey }) {
 
   // ─────────────────────────────────────────────────────────────────────────────
 
-  const totalMateriales = proveedores.filter(p => p.tipo === 'materiales' && !p.archivado).length;
-  const totalManoObra = proveedores.filter(p => p.tipo === 'mano_de_obra' && !p.archivado).length;
-  const totalFavoritos = proveedores.filter(p => p.favorito && !p.archivado).length;
-  const totalArchivados = proveedores.filter(p => p.archivado).length;
+  const tabsVisibles = TABS.filter((t) => t.key !== 'archivados' || counts.archivados > 0);
 
   return (
-    <Container maxWidth="lg" sx={{ py: 3 }}>
+    <Container maxWidth="xl" sx={{ py: 3 }}>
       {/* ── Header ── */}
-      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 3 }}>
+      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
         <Box>
           <Typography variant="h5" fontWeight={600}>Proveedores</Typography>
           {!loading && (
             <Typography variant="body2" color="text.secondary">
-              {proveedores.filter(p => !p.archivado).length} proveedor{proveedores.filter(p => !p.archivado).length !== 1 ? 'es' : ''}
-              {totalFavoritos > 0 && ` · ${totalFavoritos} favorito${totalFavoritos !== 1 ? 's' : ''}`}
-              {totalArchivados > 0 && ` · ${totalArchivados} archivado${totalArchivados !== 1 ? 's' : ''}`}
+              {counts.todos} activo{counts.todos !== 1 ? 's' : ''}
+              {counts.con_deuda > 0 && ` · ${counts.con_deuda} con deuda`}
+              {counts.favoritos > 0 && ` · ${counts.favoritos} favorito${counts.favoritos !== 1 ? 's' : ''}`}
             </Typography>
           )}
         </Box>
         <Stack direction="row" spacing={1} flexWrap="wrap" gap={1}>
           <Tooltip title="Actualizar">
             <span>
-              <Button
-                variant="outlined" size="small"
-                onClick={() => fetchProveedores(verArchivados)} disabled={loading}
-                sx={{ minWidth: 0, px: 1 }}
-              >
+              <Button variant="outlined" size="small" onClick={() => fetchData()} disabled={loading} sx={{ minWidth: 0, px: 1 }}>
                 <RefreshIcon fontSize="small" />
               </Button>
             </span>
           </Tooltip>
           <Tooltip title="Exportar CSV">
             <span>
-              <Button
-                variant="outlined" size="small"
-                onClick={handleExportCSV} disabled={!proveedores.length}
-                sx={{ minWidth: 0, px: 1 }}
-              >
+              <Button variant="outlined" size="small" onClick={handleExportCSV} disabled={!proveedores.length} sx={{ minWidth: 0, px: 1 }}>
                 <FileDownloadIcon fontSize="small" />
               </Button>
             </span>
@@ -262,10 +330,7 @@ function ProveedoresContent({ empresa, refreshKey }) {
           >
             {importando ? 'Importando…' : 'Importar CSV'}
           </Button>
-          <input
-            ref={csvInputRef} type="file" accept=".csv"
-            hidden onChange={handleImportCSV}
-          />
+          <input ref={csvInputRef} type="file" accept=".csv" hidden onChange={handleImportCSV} />
           <Button
             variant="contained" startIcon={<AddIcon />}
             onClick={() => { setNuevoNombre(''); setNuevoTipo('materiales'); setCreateError(''); setDialogOpen(true); }}
@@ -275,42 +340,49 @@ function ProveedoresContent({ empresa, refreshKey }) {
         </Stack>
       </Stack>
 
-      {/* ── Filtros ── */}
-      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mb: 2 }}>
-        <TextField
-          size="small"
-          placeholder="Buscar por nombre, CUIT o alias…"
-          value={busqueda}
-          onChange={e => setBusqueda(e.target.value)}
-          InputProps={{
-            startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment>,
-          }}
-          sx={{ flex: 1 }}
-        />
-        <FormControl size="small" sx={{ minWidth: 160 }}>
-          <InputLabel>Tipo</InputLabel>
-          <Select value={filtroTipo} label="Tipo" onChange={e => setFiltroTipo(e.target.value)}>
-            <MenuItem value="todos">Todos ({proveedores.length})</MenuItem>
-            <MenuItem value="materiales">Materiales ({totalMateriales})</MenuItem>
-            <MenuItem value="mano_de_obra">Mano de obra ({totalManoObra})</MenuItem>
-          </Select>
-        </FormControl>
-        <Chip
-          icon={soloFavoritos ? <StarIcon fontSize="small" /> : <StarBorderIcon fontSize="small" />}
-          label={`Favoritos${totalFavoritos > 0 ? ` (${totalFavoritos})` : ''}`}
-          onClick={() => setSoloFavoritos(v => !v)}
-          color={soloFavoritos ? 'warning' : 'default'}
-          variant={soloFavoritos ? 'filled' : 'outlined'}
-          sx={{ height: 40, cursor: 'pointer' }}
-        />
-        <Chip
-          label={`Archivados${totalArchivados > 0 ? ` (${totalArchivados})` : ''}`}
-          onClick={() => { setVerArchivados(v => !v); setSoloFavoritos(false); }}
-          color={verArchivados ? 'default' : 'default'}
-          variant={verArchivados ? 'filled' : 'outlined'}
-          sx={{ height: 40, cursor: 'pointer', opacity: totalArchivados === 0 && !verArchivados ? 0.4 : 1 }}
-        />
-      </Stack>
+      {/* ── Tabs ── */}
+      <Paper variant="outlined" sx={{ mb: 2 }}>
+        <Tabs
+          value={tab}
+          onChange={(_, v) => setTab(v)}
+          variant="scrollable"
+          scrollButtons="auto"
+          sx={{ borderBottom: 1, borderColor: 'divider', px: 1 }}
+        >
+          {tabsVisibles.map((t) => (
+            <Tab
+              key={t.key}
+              value={t.key}
+              label={
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <span>{t.label}</span>
+                  <Chip size="small" label={counts[t.key]} sx={{ height: 18, fontSize: 11 }} />
+                </Stack>
+              }
+            />
+          ))}
+        </Tabs>
+
+        {/* ── Filtros secundarios ── */}
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ p: 1.5 }}>
+          <TextField
+            size="small"
+            placeholder="Buscar por nombre, CUIT o alias…"
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+            InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
+            sx={{ flex: 1 }}
+          />
+          <FormControl size="small" sx={{ minWidth: 160 }}>
+            <InputLabel>Tipo</InputLabel>
+            <Select value={filtroTipo} label="Tipo" onChange={(e) => setFiltroTipo(e.target.value)}>
+              <MenuItem value="todos">Todos</MenuItem>
+              <MenuItem value="materiales">Materiales</MenuItem>
+              <MenuItem value="mano_de_obra">Mano de obra</MenuItem>
+            </Select>
+          </FormControl>
+        </Stack>
+      </Paper>
 
       {/* ── Mensajes import ── */}
       {importMsg && (
@@ -330,7 +402,6 @@ function ProveedoresContent({ empresa, refreshKey }) {
         </Alert>
       )}
 
-      {/* ── Error ── */}
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
       {/* ── Tabla ── */}
@@ -342,9 +413,9 @@ function ProveedoresContent({ empresa, refreshKey }) {
         ) : ordenados.length === 0 ? (
           <Box sx={{ p: 4, textAlign: 'center' }}>
             <Typography color="text.secondary">
-              {busqueda || filtroTipo !== 'todos' || soloFavoritos
-                ? 'Sin resultados para los filtros seleccionados'
-                : 'No hay proveedores cargados'}
+              {busqueda || filtroTipo !== 'todos'
+                ? 'Sin resultados para los filtros aplicados'
+                : 'No hay proveedores en esta vista'}
             </Typography>
           </Box>
         ) : (
@@ -353,109 +424,70 @@ function ProveedoresContent({ empresa, refreshKey }) {
               <TableRow sx={{ bgcolor: 'background.neutral' }}>
                 <TableCell sx={{ width: 32 }} />
                 <TableCell>Nombre</TableCell>
-                <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>CUIT</TableCell>
-                <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>Razón Social</TableCell>
                 <TableCell>Tipo</TableCell>
-                <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Cta. cte.</TableCell>
-                <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>Categorías</TableCell>
+                <TableCell align="right">Deuda actual</TableCell>
+                <TableCell align="right">Facturas abiertas</TableCell>
+                <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>Último movimiento</TableCell>
+                <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>Último pago</TableCell>
+                <TableCell>Estado</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {ordenados.map((prov, idx) => {
+              {ordenados.map((prov) => {
                 const id = prov._id || prov.id;
-                const prevProv = ordenados[idx - 1];
-                // Divisor después de favoritos, y antes del primer archivado
-                const showDividerFav = idx > 0 && !prov.favorito && !prov.archivado && prevProv?.favorito === true;
-                const showDividerArch = idx > 0 && prov.archivado && !prevProv?.archivado;
+                const r = resumenMap[id];
                 return (
-                  <>
-                    {showDividerFav && (
-                      <TableRow key={`div-fav-${id}`}>
-                        <TableCell colSpan={7} sx={{ p: 0 }}><Divider /></TableCell>
-                      </TableRow>
-                    )}
-                    {showDividerArch && (
-                      <TableRow key={`div-arch-${id}`}>
-                        <TableCell colSpan={7} sx={{ p: 0, pt: 0.5 }}>
-                          <Stack direction="row" alignItems="center" spacing={1} sx={{ px: 2, py: 0.5, bgcolor: 'action.hover' }}>
-                            <Typography variant="caption" color="text.disabled" fontWeight={600} sx={{ textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                              Archivados
-                            </Typography>
-                          </Stack>
-                        </TableCell>
-                      </TableRow>
-                    )}
-                    <TableRow
-                      key={id}
-                      hover
-                      onClick={() => openDrawer(id)}
-                      sx={{ cursor: 'pointer', opacity: prov.archivado ? 0.5 : 1 }}
-                    >
-                      {/* Favorito */}
-                      <TableCell sx={{ width: 32, pr: 0 }}>
-                        {prov.favorito && (
-                          <StarIcon fontSize="small" sx={{ color: 'warning.main', display: 'block' }} />
-                        )}
-                      </TableCell>
-
-                      {/* Nombre */}
-                      <TableCell>
-                        <Typography variant="body2" fontWeight={prov.favorito ? 600 : 400}>
-                          {prov.nombre}
+                  <TableRow
+                    key={id}
+                    hover
+                    onClick={() => openDrawer(id)}
+                    sx={{ cursor: 'pointer', opacity: prov.archivado ? 0.55 : 1 }}
+                  >
+                    <TableCell sx={{ width: 32, pr: 0 }}>
+                      {prov.favorito && <StarIcon fontSize="small" sx={{ color: 'warning.main', display: 'block' }} />}
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2" fontWeight={prov.favorito ? 600 : 400}>
+                        {prov.nombre}
+                      </Typography>
+                      {prov.alias?.length > 0 && (
+                        <Typography variant="caption" color="text.secondary">{prov.alias.join(', ')}</Typography>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        label={prov.tipo === 'mano_de_obra' ? 'Mano de obra' : 'Materiales'}
+                        size="small"
+                        variant="outlined"
+                        color={prov.tipo === 'mano_de_obra' ? 'primary' : 'default'}
+                      />
+                    </TableCell>
+                    <TableCell align="right">
+                      {(r?.deuda_actual || 0) > 0.005 ? (
+                        <Typography variant="body2" fontWeight={600} color={r.tiene_vencidas ? 'error.main' : 'warning.main'}>
+                          {formatCurrencyWithCode(r.deuda_actual)}
                         </Typography>
-                        {prov.alias?.length > 0 && (
-                          <Typography variant="caption" color="text.secondary">
-                            {prov.alias.join(', ')}
-                          </Typography>
-                        )}
-                      </TableCell>
-
-                      {/* CUIT */}
-                      <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
-                        <Typography variant="body2" color="text.secondary">
-                          {prov.cuit || '—'}
-                        </Typography>
-                      </TableCell>
-
-                      {/* Razón Social */}
-                      <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
-                        <Typography variant="body2" color="text.secondary">
-                          {prov.razon_social || '—'}
-                        </Typography>
-                      </TableCell>
-
-                      {/* Tipo */}
-                      <TableCell>
-                        <Chip
-                          label={prov.tipo === 'mano_de_obra' ? 'Mano de obra' : 'Materiales'}
-                          size="small"
-                          variant="outlined"
-                          color={prov.tipo === 'mano_de_obra' ? 'primary' : 'default'}
-                        />
-                      </TableCell>
-
-                      {/* Cuenta corriente */}
-                      <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
-                        {prov.tiene_cuenta_corriente !== false ? (
-                          <Chip label="Activa" size="small" color="success" variant="outlined" />
-                        ) : (
-                          <Chip label="Sin cta." size="small" variant="outlined" />
-                        )}
-                      </TableCell>
-
-                      {/* Categorías */}
-                      <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
-                        <Stack direction="row" spacing={0.5} flexWrap="wrap" gap={0.5}>
-                          {(prov.categorias || []).slice(0, 2).map((c, i) => (
-                            <Chip key={i} label={c} size="small" />
-                          ))}
-                          {(prov.categorias || []).length > 2 && (
-                            <Chip label={`+${prov.categorias.length - 2}`} size="small" variant="outlined" />
-                          )}
-                        </Stack>
-                      </TableCell>
-                    </TableRow>
-                  </>
+                      ) : (
+                        <Typography variant="body2" color="text.disabled">—</Typography>
+                      )}
+                    </TableCell>
+                    <TableCell align="right">
+                      {(r?.cantidad_facturas_abiertas || 0) > 0
+                        ? <Chip size="small" label={r.cantidad_facturas_abiertas} variant="outlined" />
+                        : <Typography variant="body2" color="text.disabled">—</Typography>}
+                    </TableCell>
+                    <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
+                      <Typography variant="body2" color="text.secondary">
+                        {r?.ultimo_movimiento ? formatTimestamp(r.ultimo_movimiento) : '—'}
+                      </Typography>
+                    </TableCell>
+                    <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
+                      <Typography variant="body2" color="text.secondary">
+                        {r?.ultimo_pago ? formatTimestamp(r.ultimo_pago) : '—'}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>{renderEstadoCC(r)}</TableCell>
+                  </TableRow>
                 );
               })}
             </TableBody>
@@ -464,30 +496,19 @@ function ProveedoresContent({ empresa, refreshKey }) {
       </Paper>
 
       {/* ── Dialog: Nuevo proveedor ── */}
-      <Dialog
-        open={dialogOpen}
-        onClose={() => !creating && setDialogOpen(false)}
-        maxWidth="xs"
-        fullWidth
-      >
+      <Dialog open={dialogOpen} onClose={() => !creating && setDialogOpen(false)} maxWidth="xs" fullWidth>
         <DialogTitle>Nuevo proveedor</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
             <TextField
-              autoFocus
-              fullWidth
-              label="Nombre"
+              autoFocus fullWidth label="Nombre"
               value={nuevoNombre}
-              onChange={e => setNuevoNombre(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') handleCrear(); }}
+              onChange={(e) => setNuevoNombre(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleCrear(); }}
             />
             <FormControl fullWidth>
               <InputLabel>Tipo</InputLabel>
-              <Select
-                value={nuevoTipo}
-                label="Tipo"
-                onChange={e => setNuevoTipo(e.target.value)}
-              >
+              <Select value={nuevoTipo} label="Tipo" onChange={(e) => setNuevoTipo(e.target.value)}>
                 <MenuItem value="materiales">Materiales</MenuItem>
                 <MenuItem value="mano_de_obra">Mano de obra</MenuItem>
               </Select>
