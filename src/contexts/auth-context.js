@@ -136,12 +136,20 @@ export const AuthProvider = (props) => {
       } catch (_) {}
     }
 
-    // Fallback: si Firebase no responde en 5s, desbloquear la app con lo que haya en localStorage
+    // Fallback: si Firebase no responde en 5s, desbloquear la app con lo que haya en localStorage.
+    // Sin esto, isLoading queda en true y SplashScreen (null) muestra pantalla en blanco indefinidamente.
     const authReadyTimeout = setTimeout(() => {
       if (!authReadyRef.current) {
         console.warn('[Auth] Timeout esperando onAuthStateChanged, desbloqueando con estado actual');
         setAuthReady(true);
         authReadyRef.current = true;
+        // Forzar isLoading=false. Si hay user en state (restaurado de localStorage) lo mantiene;
+        // si no, marca como no autenticado para que la app renderice el login.
+        const currentUser = stateRef.current?.user || null;
+        dispatch({
+          type: HANDLERS.INITIALIZE,
+          payload: { user: currentUser, originalUser: stateRef.current?.originalUser || currentUser, clearStorage: false },
+        });
       }
     }, 5000);
 
