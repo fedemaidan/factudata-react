@@ -75,18 +75,29 @@
         }).catch(function () {});
       }
 
+      var redirected = false;
+      function go() {
+        if (redirected) return;
+        redirected = true;
+        location.replace('/?reset=' + Date.now());
+      }
+      // Hard timeout: pase lo que pase, salir en 3.5s. IndexedDB.deleteDatabase
+      // puede colgarse indefinidamente en Safari si hay conexiones abiertas o si
+      // onblocked nunca dispara.
+      setTimeout(go, 3500);
+
       log('Borrando storage…');
       clearStorage();
       log('Borrando service workers…');
-      clearSW()
-        .then(function () { log('Borrando caches…'); return clearCaches(); })
-        .then(function () { log('Borrando IndexedDB…'); return clearIndexedDB(); })
-        .then(function () {
-          log('Listo, recargando…');
-          setTimeout(function () {
-            location.replace('/?reset=' + Date.now());
-          }, 400);
-        });
+      Promise.race([
+        clearSW()
+          .then(function () { log('Borrando caches…'); return clearCaches(); })
+          .then(function () { log('Borrando IndexedDB…'); return clearIndexedDB(); }),
+        new Promise(function (res) { setTimeout(res, 2500); })
+      ]).then(function () {
+        log('Listo, recargando…');
+        setTimeout(go, 300);
+      });
     })();
   </script>
 </body>
