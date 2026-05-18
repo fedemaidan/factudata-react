@@ -57,6 +57,41 @@ const proveedorService = {
   },
 
   /**
+   * Lista proveedores, opcionalmente incluyendo archivados.
+   * @param {string} empresaId
+   * @param {{ incluirArchivados?: boolean }} opts
+   */
+  async getByEmpresaFull(empresaId, { incluirArchivados = false } = {}) {
+    const params = incluirArchivados ? '?incluirArchivados=true' : '';
+    const { data } = await api.get(`/empresa/${empresaId}/proveedores${params}`);
+    return data;
+  },
+
+  /**
+   * Resumen financiero por proveedor:
+   * [{ proveedor_id, deuda_actual, cantidad_facturas_abiertas, tiene_vencidas,
+   *    ultimo_movimiento, ultimo_pago }]
+   */
+  async getResumenFinanciero(empresaId) {
+    const { data } = await api.get(`/empresa/${empresaId}/proveedores/resumen-financiero`);
+    return data;
+  },
+
+  /**
+   * Combina dos proveedores. `sourceId` se elimina y todos sus datos
+   * (movimientos, pagos, presupuestos, pretendidos) pasan a `targetId`.
+   * El nombre del source queda como alias del target.
+   * @returns {Promise<{ ok, target, source, movimientos_actualizados, pagos_actualizados, presupuestos_actualizados, pretendidos_actualizados }>}
+   */
+  async mergear(empresaId, targetId, sourceId) {
+    const { data } = await api.post(
+      `/empresa/${empresaId}/proveedores/${targetId}/merge`,
+      { sourceId }
+    );
+    return data;
+  },
+
+  /**
    * Devuelve solo los nombres de proveedores (para autocomplete).
    * @param {string} empresaId
    * @returns {Promise<string[]>}
@@ -64,6 +99,19 @@ const proveedorService = {
   async getNombres(empresaId) {
     const proveedores = await this.getByEmpresa(empresaId);
     return proveedores.map(p => p.nombre).sort();
+  },
+
+  /**
+   * Devuelve cuenta corriente completa de un proveedor:
+   * { proveedor, movimientos, presupuesto, pretendidos }
+   * @param {string} empresaId
+   * @param {string} proveedorId
+   * @param {string} [proyectoId]
+   */
+  async getCuentaCorriente(empresaId, proveedorId, proyectoId) {
+    const params = proyectoId ? `?proyectoId=${proyectoId}` : '';
+    const { data } = await api.get(`/empresa/${empresaId}/proveedores/${proveedorId}/cuenta-corriente${params}`);
+    return data;
   },
 };
 

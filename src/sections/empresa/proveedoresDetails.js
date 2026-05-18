@@ -22,7 +22,11 @@ import {
   Snackbar,
   Alert,
   Chip,
-  Autocomplete
+  Autocomplete,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
 } from '@mui/material';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
@@ -68,7 +72,8 @@ export const ProveedoresDetails = ({ empresa }) => {
       cuit: '',
       direccion: '',
       alias: [],
-      categorias: []
+      categorias: [],
+      tipo: 'materiales',
     },
     enableReinitialize: true,
     validationSchema: Yup.object({
@@ -85,6 +90,7 @@ export const ProveedoresDetails = ({ empresa }) => {
             direccion: values.direccion.trim(),
             alias: values.alias,
             categorias: values.categorias,
+            tipo: values.tipo,
           });
           setSnackbarMessage('Proveedor actualizado');
         } else {
@@ -95,6 +101,7 @@ export const ProveedoresDetails = ({ empresa }) => {
             direccion: values.direccion.trim(),
             alias: values.alias,
             categorias: values.categorias,
+            tipo: values.tipo,
           });
           setSnackbarMessage('Proveedor agregado');
         }
@@ -155,7 +162,8 @@ export const ProveedoresDetails = ({ empresa }) => {
       cuit: prov.cuit ?? '',
       direccion: prov.direccion ?? '',
       alias: prov.alias ?? [],
-      categorias: prov.categorias ?? []
+      categorias: prov.categorias ?? [],
+      tipo: prov.tipo ?? 'materiales',
     });
     setOpenModal(true);
   };
@@ -294,6 +302,18 @@ export const ProveedoresDetails = ({ empresa }) => {
             <TextField fullWidth name="cuit" label="CUIT" value={formik.values.cuit} onChange={formik.handleChange} sx={{ mt: 2 }} />
             <TextField fullWidth name="razon_social" label="Razón Social" value={formik.values.razon_social} onChange={formik.handleChange} sx={{ mt: 2 }} />
             <TextField fullWidth name="direccion" label="Dirección" value={formik.values.direccion} onChange={formik.handleChange} sx={{ mt: 2 }} />
+            <FormControl fullWidth sx={{ mt: 2 }}>
+              <InputLabel>Tipo de proveedor</InputLabel>
+              <Select
+                name="tipo"
+                value={formik.values.tipo}
+                label="Tipo de proveedor"
+                onChange={formik.handleChange}
+              >
+                <MenuItem value="materiales">Materiales</MenuItem>
+                <MenuItem value="mano_de_obra">Mano de obra</MenuItem>
+              </Select>
+            </FormControl>
             <Box sx={{ mt: 2 }}>
               <Typography variant="subtitle2">Alias</Typography>
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
