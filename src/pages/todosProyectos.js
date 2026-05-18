@@ -1032,7 +1032,7 @@ const TodosProyectosPage = () => {
                     Carga masiva
                   </Button>
                     <div>
-                      {user.admin && (
+                      {user?.admin && (
                         <Button
                           variant="contained"
                           color="secondary"

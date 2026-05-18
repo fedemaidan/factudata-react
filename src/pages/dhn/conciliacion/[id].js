@@ -19,14 +19,10 @@ import HorasRawModal from 'src/components/dhn/HorasRawModal';
 import CorreccionConciliacionModal from 'src/components/dhn/CorreccionConciliacionModal';
 import { getHourChipSx } from 'src/components/dhn/hourChipStyles';
 import { useExportTrabajoDiarioPdf, getTrabajoFromConciliacionRow } from 'src/hooks/dhn/useExportTrabajoDiarioPdf';
+import useDHNDocTypePermissions from 'src/hooks/dhn/useDHNDocTypePermissions';
 
 const DEFAULT_PAGE_SIZE = 200;
-const TIPO_OPTIONS = [
-  { value: '', label: 'Todos' },
-  { value: 'parte', label: 'Parte' },
-  { value: 'horas', label: 'Horas' },
-  { value: 'licencia', label: 'Licencia' },
-];
+const TIPO_LABEL = { parte: 'Parte', horas: 'Horas', licencia: 'Licencia' };
 const HORAS_EXCEL_FIELDS = [
   "horasNormales",
   "horas50",
@@ -56,6 +52,14 @@ const INITIAL_STATS = {
 const ConciliacionDetallePage = () => {
   const router = useRouter();
   const { id } = router.query;
+  const docPerms = useDHNDocTypePermissions();
+  const { allowedTypes, canSeeAll, hasAny, loading: permsLoading } = docPerms;
+
+  const TIPO_OPTIONS = useMemo(() => {
+    const opts = allowedTypes.map((t) => ({ value: t, label: TIPO_LABEL[t] || t }));
+    if (canSeeAll) opts.unshift({ value: '', label: 'Todos' });
+    return opts;
+  }, [allowedTypes, canSeeAll]);
 
   const [rows, setRows] = useState([]);
   const [stats, setStats] = useState(INITIAL_STATS);
@@ -72,6 +76,7 @@ const ConciliacionDetallePage = () => {
   const [sortField, setSortField] = useState('fecha');
   const [sortDirection, setSortDirection] = useState('desc');
   const [tipo, setTipo] = useState('');
+  const [tipoInicializado, setTipoInicializado] = useState(false);
   const [filtersAnchorEl, setFiltersAnchorEl] = useState(null);
   const [editOpen, setEditOpen] = useState(false);
   const [rowToEdit, setRowToEdit] = useState(null);
@@ -207,6 +212,14 @@ const ConciliacionDetallePage = () => {
   );
 
   useEffect(() => {
+    if (permsLoading) return;
+    if (!tipoInicializado) {
+      const inicial = canSeeAll ? '' : (allowedTypes[0] || '');
+      setTipo(inicial);
+      setTipoInicializado(true);
+      return;
+    }
+    if (!hasAny) return;
     fetchRows({
       page,
       rowsPerPage,
@@ -216,7 +229,7 @@ const ConciliacionDetallePage = () => {
       sortField,
       sortDirection,
     });
-  }, [fetchRows, page, rowsPerPage, appliedSearchTerm, estadoFiltro, tipo, searchTrigger, sortField, sortDirection]);
+  }, [fetchRows, page, rowsPerPage, appliedSearchTerm, estadoFiltro, tipo, searchTrigger, sortField, sortDirection, permsLoading, tipoInicializado, canSeeAll, allowedTypes, hasAny]);
 
   const handleApplySearch = useCallback(() => {
     const trimmed = (searchTerm || '').trim();
@@ -644,15 +657,27 @@ const ConciliacionDetallePage = () => {
   }, []);
 
   const handleClearFilters = useCallback(() => {
-    handleTipoChange('');
+    handleTipoChange(canSeeAll ? '' : (allowedTypes[0] || ''));
     setFiltersAnchorEl(null);
-  }, [handleTipoChange]);
+  }, [handleTipoChange, canSeeAll, allowedTypes]);
 
   const tipoLabel = useMemo(() => {
     const found = TIPO_OPTIONS.find((opt) => opt.value === tipo);
     return found?.label || '';
-  }, [tipo]);
+  }, [tipo, TIPO_OPTIONS]);
   const filtersOpen = Boolean(filtersAnchorEl);
+
+  if (!permsLoading && !hasAny) {
+    return (
+      <DashboardLayout title="Conciliación">
+        <Container maxWidth="xl">
+          <Alert severity="warning" sx={{ mt: 3 }}>
+            No tenés permisos para ver ningún tipo de documento (partes, licencias u horas). Contactá al administrador.
+          </Alert>
+        </Container>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout title={`Conciliación - ${periodoInfo}`}>
@@ -801,7 +826,7 @@ const ConciliacionDetallePage = () => {
                 label={`Tipo: ${tipoLabel}`}
                 size="small"
                 variant="outlined"
-                onDelete={() => handleTipoChange('')}
+                onDelete={canSeeAll ? () => handleTipoChange('') : undefined}
               />
             </Stack>
           )}

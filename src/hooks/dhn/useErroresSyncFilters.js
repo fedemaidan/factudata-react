@@ -10,10 +10,10 @@ const DEFAULT_FILTERS = {
   estado: "",
 };
 
-const useErroresSyncFilters = ({ onSearchApply } = {}) => {
+const useErroresSyncFilters = ({ onSearchApply, initialTipo = '' } = {}) => {
   const searchInputRef = useRef(null);
   const isSearchTriggeredByInputRef = useRef(false);
-  const [filters, setFilters] = useState(DEFAULT_FILTERS);
+  const [filters, setFilters] = useState({ ...DEFAULT_FILTERS, tipo: initialTipo });
   const [searchVersion, setSearchVersion] = useState(0);
   const [filtersAnchorEl, setFiltersAnchorEl] = useState(null);
 
@@ -56,10 +56,10 @@ const useErroresSyncFilters = ({ onSearchApply } = {}) => {
   );
 
   const handleClearFilters = useCallback(() => {
-    setFilters({ ...DEFAULT_FILTERS });
+    setFilters({ ...DEFAULT_FILTERS, tipo: initialTipo });
     handleCloseFilters();
     applySearch("");
-  }, [applySearch, handleCloseFilters]);
+  }, [applySearch, handleCloseFilters, initialTipo]);
 
   const activeFilters = useMemo(() => {
     const active = [];

@@ -8,6 +8,7 @@ import FiltroTrabajoDiario from 'src/components/dhn/FiltroTrabajoDiario';
 import TableComponent from 'src/components/TableComponent';
 import HistorialModal from 'src/components/dhn/HistorialModal';
 import useTrabajoDiarioPage from 'src/hooks/dhn/useTrabajoDiarioPage';
+import useDHNDocTypePermissions from 'src/hooks/dhn/useDHNDocTypePermissions';
 import ImagenModal from 'src/components/ImagenModal';
 import HorasRawModal from 'src/components/dhn/HorasRawModal';
 import TrabajosDetectadosList from 'src/components/dhn/TrabajosDetectadosList';
@@ -70,6 +71,8 @@ const ControlDiaPage = () => {
     setRawModalUrl('');
   }, []);
 
+  const { allowedTypes, hasAny, loading: permsLoading } = useDHNDocTypePermissions();
+
   const {
     isError,
     isLoading,
@@ -81,11 +84,12 @@ const ControlDiaPage = () => {
     filters,
     edit,
   } = useTrabajoDiarioPage({
-    enabled: router.isReady,
+    enabled: router.isReady && !permsLoading && hasAny,
     diaISO,
     incluirTrabajador: true,
     defaultLimit: 200,
     onOpenComprobante: handleOpenComprobante,
+    allowedTypes,
   });
 
   const formatters = {
@@ -103,6 +107,18 @@ const ControlDiaPage = () => {
     console.log('[controlQuincenal/diario] row click _id:', item?._id, item);
   }, []);
 
+  if (!permsLoading && !hasAny) {
+    return (
+      <DashboardLayout title={`Control Diario - ${diaLabel}`}>
+        <Container maxWidth="xl">
+          <Alert severity="warning" sx={{ mt: 3 }}>
+            No tenés permisos para ver ningún tipo de documento (partes, licencias u horas). Contactá al administrador.
+          </Alert>
+        </Container>
+      </DashboardLayout>
+    );
+  }
+
   return (
     <DashboardLayout title={`Control Diario - ${diaLabel}`}>
       <Container maxWidth="xl">
@@ -110,7 +126,7 @@ const ControlDiaPage = () => {
           <BackButton onClick={handleVolver} sx={{ mb: 3 }} />
           
           <Stack spacing={3}>
-            <FiltroTrabajoDiario stats={stats} />
+            <FiltroTrabajoDiario stats={stats} allowedTypes={allowedTypes} />
 
             <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
               <TextField

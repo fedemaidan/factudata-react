@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { Container, Box, Snackbar, Alert, Button, Stack, Typography } from "@mui/material";
 import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
 import TableComponent from "src/components/TableComponent";
@@ -21,6 +21,7 @@ import useCorreccionAsistida from "src/hooks/dhn/useCorreccionAsistida";
 import CorreccionModalNavigator from "src/components/dhn/sync/CorreccionModalNavigator";
 import useErroresSyncFilters from "src/hooks/dhn/useErroresSyncFilters";
 import FiltroErrores from "src/components/dhn/sync/FiltroErrores";
+import useDHNDocTypePermissions from "src/hooks/dhn/useDHNDocTypePermissions";
 
 const DEFAULT_PAGE_LIMIT = 50;
 
@@ -36,6 +37,7 @@ const SyncErrorsPage = () => {
   });
   const [resolvedPayloads, setResolvedPayloads] = useState({});
   const { limit: paginationLimit, offset: paginationOffset } = pagination;
+  const { allowedTypes, canSeeAll, hasAny, loading: permsLoading } = useDHNDocTypePermissions();
   const filterContext = useErroresSyncFilters({
     onSearchApply: () =>
       setPagination((prev) => ({
@@ -43,6 +45,16 @@ const SyncErrorsPage = () => {
         offset: 0,
       })),
   });
+  const { setFilter: setFilterCtx } = filterContext;
+  const tipoInicializadoRef = useRef(false);
+  useEffect(() => {
+    if (permsLoading) return;
+    if (tipoInicializadoRef.current) return;
+    if (!canSeeAll && allowedTypes.length > 0) {
+      setFilterCtx('tipo', allowedTypes[0]);
+    }
+    tipoInicializadoRef.current = true;
+  }, [permsLoading, canSeeAll, allowedTypes, setFilterCtx]);
   const { filtersPayload, searchVersion, isSearchTriggeredByInputRef } = filterContext;
 
   const [imageModalOpen, setImageModalOpen] = useState(false);
@@ -150,10 +162,11 @@ const SyncErrorsPage = () => {
   }, [filtersPayload, paginationLimit]);
 
   useEffect(() => {
+    if (permsLoading || !tipoInicializadoRef.current || !hasAny) return;
     const showLoading = !isSearchTriggeredByInputRef.current;
     fetchDetails({ showLoading });
     isSearchTriggeredByInputRef.current = false;
-  }, [fetchDetails, searchVersion]);
+  }, [fetchDetails, searchVersion, permsLoading, hasAny]);
 
   const openImageModal = (url, fileName, row) => {
     if (!url) return;
@@ -628,6 +641,18 @@ const SyncErrorsPage = () => {
       ? `Página ${currentPage} de ${totalPages} (${pagination.total} errores)`
       : "Sin registros";
 
+  if (!permsLoading && !hasAny) {
+    return (
+      <DashboardLayout title="Errores de sincronización">
+        <Container maxWidth="xl">
+          <Alert severity="warning" sx={{ mt: 3 }}>
+            No tenés permisos para ver ningún tipo de documento (partes, licencias u horas). Contactá al administrador.
+          </Alert>
+        </Container>
+      </DashboardLayout>
+    );
+  }
+
   return (
     <DashboardLayout title="Errores de sincronización">
       <Container maxWidth="xl">
@@ -650,6 +675,8 @@ const SyncErrorsPage = () => {
             isLoading={isLoading}
             isCargandoCorreccion={isCargandoCorreccion}
             totalDisponibles={totalDisponibles}
+            allowedTypes={allowedTypes}
+            canSeeAll={canSeeAll}
           />
           <Box>
             <Box

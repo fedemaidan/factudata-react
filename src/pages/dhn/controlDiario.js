@@ -14,6 +14,7 @@ import FiltroTrabajoDiario from 'src/components/dhn/FiltroTrabajoDiario';
 import HistorialModal from 'src/components/dhn/HistorialModal';
 import HorasRawModal from 'src/components/dhn/HorasRawModal';
 import useTrabajoDiarioPage from 'src/hooks/dhn/useTrabajoDiarioPage';
+import useDHNDocTypePermissions from 'src/hooks/dhn/useDHNDocTypePermissions';
 import ImagenModal from 'src/components/ImagenModal';
 import TrabajosDetectadosList from 'src/components/dhn/TrabajosDetectadosList';
 import { parseDDMMYYYYAnyToISO, formatDateDDMMYYYY } from 'src/utils/handleDates';
@@ -105,6 +106,8 @@ const ControlDiarioPage = () => {
     setRawModalUrl('');
   }, []);
 
+  const { allowedTypes, hasAny, loading: permsLoading } = useDHNDocTypePermissions();
+
   const {
     data,
     stats,
@@ -117,11 +120,12 @@ const ControlDiarioPage = () => {
     logs,
     edit,
   } = useTrabajoDiarioPage({
-    enabled: router.isReady,
+    enabled: router.isReady && !permsLoading && hasAny,
     diaISO,
     incluirTrabajador: true,
     defaultLimit: 200,
     onOpenComprobante: handleOpenComprobante,
+    allowedTypes,
   });
 
   const formatters = useMemo(() => ({
@@ -173,7 +177,7 @@ const ControlDiarioPage = () => {
             </Box>
           </LocalizationProvider>
 
-          <FiltroTrabajoDiario stats={stats} />
+          <FiltroTrabajoDiario stats={stats} allowedTypes={allowedTypes} />
 
           {isError && (
             <Alert severity="error">

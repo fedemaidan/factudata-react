@@ -3,7 +3,13 @@ import { useRouter } from 'next/router';
 import { Paper, Stack, Chip } from '@mui/material';
 
 
-const FiltroTrabajoDiario = ({ stats = {}, onChange, excludeKeys = [] }) => {
+const TYPE_TO_FILTER_KEYS = {
+  parte: ['sinParte'],
+  horas: ['sinHoras'],
+  licencia: ['conLicencia'],
+};
+
+const FiltroTrabajoDiario = ({ stats = {}, onChange, excludeKeys = [], allowedTypes }) => {
   const router = useRouter();
 
   const selectedKey = useMemo(() => {
@@ -31,6 +37,15 @@ const FiltroTrabajoDiario = ({ stats = {}, onChange, excludeKeys = [] }) => {
     router.push({ pathname: router.pathname, query: nextQuery }, undefined, { shallow: true });
     if (onChange) onChange(nuevo);
   }, [router, onChange]);
+  const permExcludeKeys = useMemo(() => {
+    if (!Array.isArray(allowedTypes)) return [];
+    const denied = [];
+    Object.entries(TYPE_TO_FILTER_KEYS).forEach(([tipo, keys]) => {
+      if (!allowedTypes.includes(tipo)) denied.push(...keys);
+    });
+    return denied;
+  }, [allowedTypes]);
+
   const chips = useMemo(() => (
     [
       { key: 'todos', label: `Todos (${stats.total || 0})`, color: selectedKey === 'todos' ? 'primary' : undefined, variant: undefined },
@@ -40,8 +55,8 @@ const FiltroTrabajoDiario = ({ stats = {}, onChange, excludeKeys = [] }) => {
       { key: 'sinParte', label: `Sin parte (${stats.sinParte || 0})`, color: undefined, variant: 'outlined' },
       { key: 'sinHoras', label: `Sin horas (${stats.sinHoras || 0})`, color: undefined, variant: 'outlined' },
       { key: 'conLicencia', label: `Con licencia (${stats.conLicencia || 0})`, color: undefined, variant: 'outlined' },
-    ].filter((chip) => !excludeKeys.includes(chip.key))
-  ), [stats, selectedKey, excludeKeys]);
+    ].filter((chip) => !excludeKeys.includes(chip.key) && !permExcludeKeys.includes(chip.key))
+  ), [stats, selectedKey, excludeKeys, permExcludeKeys]);
 
   return (
     <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>

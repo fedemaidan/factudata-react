@@ -61,6 +61,7 @@ export default function useTrabajoDiarioPage(options = {}) {
     defaultLimit = 200,
     defaultSort,
     onOpenComprobante,
+    allowedTypes,
   } = options || {};
 
   const {
@@ -181,9 +182,10 @@ export default function useTrabajoDiarioPage(options = {}) {
           />
         ),
         incluirTrabajador,
-        onOpenComprobante
+        onOpenComprobante,
+        allowedTypes
       ),
-    [incluirTrabajador, onOpenComprobante, handleExportPdf, exportingRowId]
+    [incluirTrabajador, onOpenComprobante, handleExportPdf, exportingRowId, allowedTypes]
   );
 
   const pagination = {
