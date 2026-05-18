@@ -6,6 +6,7 @@ export const STATUS_MAP = {
   error: { color: "#d32f2f", label: "Error" },
   duplicado: { color: "#ed6c02", label: "Duplicado" },
   incompleto: { color: "#ed6c02", label: "Incompleto" },
+  ignored: { color: "#9e9e9e", label: "Ignorado", dashed: true },
 };
 
 export const getStatusChipConfig = (status) => {

@@ -2,12 +2,14 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import Alerts from 'src/components/alerts';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
-import { Container, Stack, Alert, Box, TextField, InputAdornment, IconButton, Chip, Button, Typography, CircularProgress } from '@mui/material';
+import { Container, Stack, Alert, Box, TextField, InputAdornment, IconButton, Chip, Button, Typography, CircularProgress, MenuItem, Popover, Divider } from '@mui/material';
 import ClearIcon from '@mui/icons-material/Clear';
 import SickIcon from '@mui/icons-material/Sick';
 import EditIcon from '@mui/icons-material/Edit';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
+import FilterListIcon from '@mui/icons-material/FilterList';
+import CloseIcon from '@mui/icons-material/Close';
 import TableSelectComponent from 'src/components/TableSelectComponent';
 import FiltroTrabajoDiario from 'src/components/dhn/FiltroTrabajoDiario';
 import conciliacionService from 'src/services/dhn/conciliacionService';
@@ -19,6 +21,12 @@ import { getHourChipSx } from 'src/components/dhn/hourChipStyles';
 import { useExportTrabajoDiarioPdf, getTrabajoFromConciliacionRow } from 'src/hooks/dhn/useExportTrabajoDiarioPdf';
 
 const DEFAULT_PAGE_SIZE = 200;
+const TIPO_OPTIONS = [
+  { value: '', label: 'Todos' },
+  { value: 'parte', label: 'Parte' },
+  { value: 'horas', label: 'Horas' },
+  { value: 'licencia', label: 'Licencia' },
+];
 const HORAS_EXCEL_FIELDS = [
   "horasNormales",
   "horas50",
@@ -63,6 +71,8 @@ const ConciliacionDetallePage = () => {
   const [totalRows, setTotalRows] = useState(0);
   const [sortField, setSortField] = useState('fecha');
   const [sortDirection, setSortDirection] = useState('desc');
+  const [tipo, setTipo] = useState('');
+  const [filtersAnchorEl, setFiltersAnchorEl] = useState(null);
   const [editOpen, setEditOpen] = useState(false);
   const [rowToEdit, setRowToEdit] = useState(null);
   const [selectedRowsMap, setSelectedRowsMap] = useState(() => new Map());
@@ -142,7 +152,7 @@ const ConciliacionDetallePage = () => {
   }, [router.query.estado]);
 
   const fetchRows = useCallback(
-    async ({ page: targetPage = 0, rowsPerPage: limit = DEFAULT_PAGE_SIZE, text, estado, sortField: sortKey, sortDirection: sortDir } = {}) => {
+    async ({ page: targetPage = 0, rowsPerPage: limit = DEFAULT_PAGE_SIZE, text, estado, tipo: tipoParam, sortField: sortKey, sortDirection: sortDir } = {}) => {
       if (!id) return;
       setIsLoading(true);
       try {
@@ -158,6 +168,9 @@ const ConciliacionDetallePage = () => {
         }
         if (text && text.trim()) {
           params.text = text.trim();
+        }
+        if (tipoParam) {
+          params.tipo = tipoParam;
         }
         if (sortKey) {
           params.sortField = sortKey;
@@ -199,10 +212,11 @@ const ConciliacionDetallePage = () => {
       rowsPerPage,
       text: appliedSearchTerm,
       estado: estadoFiltro,
+      tipo,
       sortField,
       sortDirection,
     });
-  }, [fetchRows, page, rowsPerPage, appliedSearchTerm, estadoFiltro, searchTrigger, sortField, sortDirection]);
+  }, [fetchRows, page, rowsPerPage, appliedSearchTerm, estadoFiltro, tipo, searchTrigger, sortField, sortDirection]);
 
   const handleApplySearch = useCallback(() => {
     const trimmed = (searchTerm || '').trim();
@@ -239,10 +253,11 @@ const ConciliacionDetallePage = () => {
       rowsPerPage,
       text: appliedSearchTerm,
       estado: estadoFiltro,
+      tipo,
       sortField,
       sortDirection,
     });
-  }, [fetchRows, page, rowsPerPage, appliedSearchTerm, estadoFiltro, sortField, sortDirection]);
+  }, [fetchRows, page, rowsPerPage, appliedSearchTerm, estadoFiltro, tipo, sortField, sortDirection]);
 
   const buildSheetSelectionPayload = useCallback((row) => {
     if (!row) return null;
@@ -613,7 +628,31 @@ const ConciliacionDetallePage = () => {
 
   useEffect(() => {
     setSelectedRowsMap(new Map());
-  }, [id, appliedSearchTerm, estadoFiltro, sortField, sortDirection]);
+  }, [id, appliedSearchTerm, estadoFiltro, tipo, sortField, sortDirection]);
+
+  const handleTipoChange = useCallback((value) => {
+    setPage(0);
+    setTipo(value);
+  }, []);
+
+  const handleOpenFilters = useCallback((event) => {
+    setFiltersAnchorEl(event.currentTarget);
+  }, []);
+
+  const handleCloseFilters = useCallback(() => {
+    setFiltersAnchorEl(null);
+  }, []);
+
+  const handleClearFilters = useCallback(() => {
+    handleTipoChange('');
+    setFiltersAnchorEl(null);
+  }, [handleTipoChange]);
+
+  const tipoLabel = useMemo(() => {
+    const found = TIPO_OPTIONS.find((opt) => opt.value === tipo);
+    return found?.label || '';
+  }, [tipo]);
+  const filtersOpen = Boolean(filtersAnchorEl);
 
   return (
     <DashboardLayout title={`Conciliación - ${periodoInfo}`}>
@@ -666,6 +705,20 @@ const ConciliacionDetallePage = () => {
                 }}
                 onBlur={handleApplySearch}
               />
+              <IconButton
+                aria-label="Filtros"
+                size="small"
+                onClick={handleOpenFilters}
+                sx={{
+                  borderRadius: 2,
+                  border: '1px solid',
+                  borderColor: filtersOpen || tipo ? 'primary.main' : 'divider',
+                  color: filtersOpen || tipo ? 'primary.main' : 'text.primary',
+                  '&:hover': { backgroundColor: 'action.hover' },
+                }}
+              >
+                <FilterListIcon fontSize="small" />
+              </IconButton>
               {selectedRows.length > 0 && (
                 <Stack direction="row" spacing={1} useFlexGap flexWrap>
                   <Button
@@ -706,6 +759,52 @@ const ConciliacionDetallePage = () => {
               </Button>
             ) : null}
           </Stack>
+
+          <Popover
+            open={filtersOpen}
+            onClose={handleCloseFilters}
+            anchorEl={filtersAnchorEl}
+            anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+            transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+            PaperProps={{ sx: { p: 1.5, minWidth: 280, maxWidth: 320 } }}
+          >
+            <Stack spacing={1.25}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Typography variant="subtitle2" fontWeight={600}>Filtros</Typography>
+                <IconButton size="small" onClick={handleCloseFilters} sx={{ p: 0.5 }}>
+                  <CloseIcon fontSize="small" />
+                </IconButton>
+              </Box>
+              <TextField
+                select
+                label="Tipo de documento"
+                value={tipo}
+                onChange={(e) => handleTipoChange(e.target.value)}
+                size="small"
+                fullWidth
+              >
+                {TIPO_OPTIONS.map((opt) => (
+                  <MenuItem key={opt.value || 'todos'} value={opt.value}>{opt.label}</MenuItem>
+                ))}
+              </TextField>
+              <Divider />
+              <Stack direction="row" spacing={1}>
+                <Button size="small" variant="outlined" fullWidth onClick={handleClearFilters}>Limpiar</Button>
+                <Button size="small" variant="contained" fullWidth onClick={handleCloseFilters}>Cerrar</Button>
+              </Stack>
+            </Stack>
+          </Popover>
+
+          {tipo && (
+            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+              <Chip
+                label={`Tipo: ${tipoLabel}`}
+                size="small"
+                variant="outlined"
+                onDelete={() => handleTipoChange('')}
+              />
+            </Stack>
+          )}
 
           <FiltroTrabajoDiario stats={stats} excludeKeys={['sinParte', 'sinHoras', 'conLicencia']} />
 

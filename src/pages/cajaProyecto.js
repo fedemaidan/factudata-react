@@ -5,6 +5,7 @@ import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import Head from 'next/head';
+import { safeRouterReplace } from 'src/utils/safeRouter';
 import { Box, Container, Stack, Chip, Typography, TextField, InputAdornment, Paper, Card, CardContent, Button, Select, MenuItem, FormControl, InputLabel, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, useMediaQuery, IconButton, Menu, Table, TableBody, TableCell, TableHead, TableRow, TableContainer, Tooltip, MenuItem as MenuOption, Divider, TablePagination, Drawer, List, ListItem, ListItemText, Badge, Fab } from '@mui/material';
 
 import { Checkbox, Popover, FormControlLabel, Switch, CircularProgress, Backdrop } from '@mui/material';
@@ -474,7 +475,7 @@ const ProyectoMovimientosPage = () => {
 
   useEffect(() => {
     if (!router.isReady) return;
-    router.replace({ pathname: '/cajas', query: router.query });
+    safeRouterReplace(router, { pathname: '/cajas', query: router.query });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router.isReady]);
 

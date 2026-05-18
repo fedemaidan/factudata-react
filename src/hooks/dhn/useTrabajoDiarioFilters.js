@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
+import { safeRouterReplace } from 'src/utils/safeRouter';
 
 const readQueryString = (value) => (Array.isArray(value) ? value[0] : value);
 
@@ -69,7 +70,7 @@ export default function useTrabajoDiarioFilters(options = {}) {
     if (resetPage) {
       delete nextQuery.page;
     }
-    router.replace({ pathname: router.pathname, query: nextQuery }, undefined, { shallow: true });
+    safeRouterReplace(router, { pathname: router.pathname, query: nextQuery }, undefined, { shallow: true });
   }, [router]);
 
   const setEstado = (nextEstado) => {

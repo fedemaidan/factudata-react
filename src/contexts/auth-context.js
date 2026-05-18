@@ -20,7 +20,6 @@ const HANDLERS = {
   INITIALIZE: 'INITIALIZE',
   SIGN_OUT: 'SIGN_OUT',
   UPDATE_USER: 'UPDATE_USER',
-  RETURN_TO_ORIGINAL_USER: 'RETURN_TO_ORIGINAL_USER',
 };
 
 const initialState = {
@@ -95,12 +94,6 @@ const handlers = {
       user: null,
     };
   },
-  [HANDLERS.RETURN_TO_ORIGINAL_USER]: (state, _action) => {
-    return {
-      ...state,
-      user: state.originalUser,
-    };
-  },
 };
 
 const reducer = (state, action) =>
@@ -143,12 +136,20 @@ export const AuthProvider = (props) => {
       } catch (_) {}
     }
 
-    // Fallback: si Firebase no responde en 5s, desbloquear la app con lo que haya en localStorage
+    // Fallback: si Firebase no responde en 5s, desbloquear la app con lo que haya en localStorage.
+    // Sin esto, isLoading queda en true y SplashScreen (null) muestra pantalla en blanco indefinidamente.
     const authReadyTimeout = setTimeout(() => {
       if (!authReadyRef.current) {
         console.warn('[Auth] Timeout esperando onAuthStateChanged, desbloqueando con estado actual');
         setAuthReady(true);
         authReadyRef.current = true;
+        // Forzar isLoading=false. Si hay user en state (restaurado de localStorage) lo mantiene;
+        // si no, marca como no autenticado para que la app renderice el login.
+        const currentUser = stateRef.current?.user || null;
+        dispatch({
+          type: HANDLERS.INITIALIZE,
+          payload: { user: currentUser, originalUser: stateRef.current?.originalUser || currentUser, clearStorage: false },
+        });
       }
     }, 5000);
 
@@ -165,8 +166,25 @@ export const AuthProvider = (props) => {
         for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
           try {
             const idToken = await user.getIdToken(attempt === 1);
-            const updatedUser = await getPayloadUserByUid(user.uid, idToken);
-            dispatch({ type: HANDLERS.UPDATE_USER, payload: updatedUser });
+            const freshAdmin = await getPayloadUserByUid(user.uid, idToken);
+
+            const current = stateRef.current;
+            const spying =
+              !!current.user &&
+              !!current.originalUser &&
+              current.user.id !== current.originalUser.id;
+
+            if (spying) {
+              dispatch({
+                type: HANDLERS.UPDATE_USER,
+                payload: {
+                  user: { ...current.user, token: idToken },
+                  originalUser: freshAdmin,
+                },
+              });
+            } else {
+              dispatch({ type: HANDLERS.UPDATE_USER, payload: freshAdmin });
+            }
             lastError = null;
             break;
           } catch (error) {
@@ -216,12 +234,28 @@ export const AuthProvider = (props) => {
       try {
         console.log('🔄 [Auth] Refrescando datos de usuario...');
         const idToken = await currentUser.getIdToken(true);
-        const freshUser = await getPayloadUserByUid(currentUser.uid, idToken);
+        const freshAdmin = await getPayloadUserByUid(currentUser.uid, idToken);
 
-        dispatch({
-          type: HANDLERS.UPDATE_USER,
-          payload: { user: freshUser, originalUser: state.originalUser || freshUser },
-        });
+        const current = stateRef.current;
+        const spying =
+          !!current.user &&
+          !!current.originalUser &&
+          current.user.id !== current.originalUser.id;
+
+        if (spying) {
+          dispatch({
+            type: HANDLERS.UPDATE_USER,
+            payload: {
+              user: { ...current.user, token: idToken },
+              originalUser: freshAdmin,
+            },
+          });
+        } else {
+          dispatch({
+            type: HANDLERS.UPDATE_USER,
+            payload: { user: freshAdmin, originalUser: freshAdmin },
+          });
+        }
         console.log('✅ [Auth] Usuario actualizado correctamente');
       } catch (error) {
         console.error('❌ [Auth] Error refrescando usuario:', error);
@@ -472,8 +506,10 @@ export const AuthProvider = (props) => {
   };
 
   const returnToOriginalUser = () => {
+    if (!state.originalUser) return;
     dispatch({
-      type: HANDLERS.RETURN_TO_ORIGINAL_USER,
+      type: HANDLERS.UPDATE_USER,
+      payload: { user: state.originalUser, originalUser: state.originalUser },
     });
     window.location.reload();
   };

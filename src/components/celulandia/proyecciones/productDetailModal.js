@@ -90,12 +90,13 @@ const TabCalculoContent = ({ producto, calculo, formatDateDDMMYYYY, theme }) => 
   const stockInicial = Number(inputs.stockInicial) || 0;
   const horizonte90 = Number(inputs.horizonte90) || 90;
   const demanda90 = Number(intermedios.demanda90) || 0;
-  const demanda200 = Number(intermedios.demanda200) || 0;
-  const oferta200 = Number(intermedios.oferta200) || 0;
+  const demandaCompra = Number(intermedios.demandaCompra) || 0;
+  const ofertaCompra = Number(intermedios.ofertaCompra) || 0;
   const faltanteNeto = Number(intermedios.faltanteNeto) || 0;
   const stockAlDia90 = Number(intermedios.stockAlDia90) ?? 0;
   const diaAgotamiento = intermedios.diaAgotamiento;
-  const diasAnticipacion = Number(inputs.diasAnticipacion100) || 100;
+  const horizonteCompra = Number(inputs.horizonteCompra) || 100;
+  const diasAnticipacion = Number(inputs.diasAnticipacion) || 100;
   const fechaBase = inputs.fechaBase ? new Date(inputs.fechaBase) : null;
 
   const ventasProyectadas = producto?.ventasProyectadas ?? Math.round(demanda90);
@@ -103,6 +104,7 @@ const TabCalculoContent = ({ producto, calculo, formatDateDDMMYYYY, theme }) => 
   const stockProyectado = producto?.stockProyectado ?? Math.round(stockAlDia90);
   const fechaAgotamiento = producto?.fechaAgotamientoStock;
   const cantidadCompra = producto?.cantidadCompraSugerida ?? faltanteNeto;
+  const cantidadCompraTitle = `5. Cantidad a comprar (${horizonteCompra} días)`;
   const fechaCompraSugerida = producto?.fechaCompraSugerida;
 
   const cardSx = {
@@ -179,14 +181,14 @@ const TabCalculoContent = ({ producto, calculo, formatDateDDMMYYYY, theme }) => 
       <Card sx={cardSx}>
         <CardContent sx={{ p: 2 }}>
           <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
-            5. Cantidad a comprar (200 días)
+            {cantidadCompraTitle}
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-            Ventas que proyectamos en 200 días menos lo que ya tenés (stock + pedidos en camino).
+            Ventas que proyectamos en {horizonteCompra} días menos lo que ya tenés (stock + pedidos en camino).
           </Typography>
           <Box sx={{ p: 1.5, bgcolor: theme.palette.action.hover, borderRadius: 1 }}>
             <Typography variant="body2" component="span">
-              {formatNum(demanda200)} (Ventas proyectadas) − {formatNum(oferta200)} (Stock + pedidos en camino) = {formatNum(faltanteNeto)} → sugerir comprar {formatNum(cantidadCompra)}
+              {formatNum(demandaCompra)} (Ventas proyectadas) − {formatNum(ofertaCompra)} (Stock + pedidos en camino) = {formatNum(faltanteNeto)} → sugerir comprar {formatNum(cantidadCompra)}
             </Typography>
           </Box>
         </CardContent>

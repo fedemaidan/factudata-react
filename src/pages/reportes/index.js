@@ -111,7 +111,8 @@ const TEMPLATES = [
         titulo: 'Evolución Mensual',
         agrupar_por: 'mes',
         columnas: [
-          { id: 'total', titulo: 'Monto Total', operacion: 'sum', campo: 'total', formato: 'currency' },
+          { id: 'total_egresos', titulo: 'Total Egresos', operacion: 'sum', campo: 'total', formato: 'currency', filtro_tipo: 'egreso' },
+          { id: 'total_ingresos', titulo: 'Total Ingresos', operacion: 'sum', campo: 'total', formato: 'currency', filtro_tipo: 'ingreso' },
           { id: 'cantidad', titulo: 'Movimientos', operacion: 'count', campo: 'total', formato: 'number' },
         ],
         mostrar_total: true,

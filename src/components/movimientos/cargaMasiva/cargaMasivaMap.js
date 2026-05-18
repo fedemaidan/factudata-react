@@ -83,3 +83,51 @@ export function mapExtractedToForm(extracted, ctx) {
 export function emptyForm(ctx) {
   return mapExtractedToForm(null, ctx);
 }
+
+/**
+ * Campos de un formulario de comprobante que TÍPICAMENTE comparten todas las páginas
+ * de un mismo PDF cuando se splittea con "una página = un comprobante" (mismo proveedor,
+ * misma fecha de factura, mismo proyecto, etc.). Los importes y números de factura NO
+ * están acá porque son específicos de cada comprobante.
+ */
+export const SHAREABLE_FIELDS = [
+  'type',
+  'moneda',
+  'nombre_proveedor',
+  'fecha_factura',
+  'categoria',
+  'subcategoria',
+  'proyecto_id',
+  'proyecto_nombre',
+  'medio_pago',
+  'etapa',
+];
+
+function isFieldEmpty(value) {
+  if (value === undefined || value === null) return true;
+  if (typeof value === 'string') return value.trim() === '';
+  if (Array.isArray(value)) return value.length === 0;
+  return false;
+}
+
+/**
+ * Copia los campos compartibles de `source` a `target`. Pure (no muta).
+ * @param {object} source - form del comprobante origen.
+ * @param {object} target - form del comprobante destino.
+ * @param {object} [opts]
+ * @param {boolean} [opts.overwrite=false] - si true, pisa valores ya cargados en target.
+ * @returns {object} nuevo form combinado.
+ */
+export function copyShareableFields(source, target, { overwrite = false } = {}) {
+  if (!source || typeof source !== 'object') return target;
+  if (!target || typeof target !== 'object') return target;
+  const out = { ...target };
+  SHAREABLE_FIELDS.forEach((key) => {
+    const srcVal = source[key];
+    if (isFieldEmpty(srcVal)) return;
+    if (overwrite || isFieldEmpty(target[key])) {
+      out[key] = srcVal;
+    }
+  });
+  return out;
+}

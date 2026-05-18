@@ -11,25 +11,15 @@ import {
   useTheme,
 } from '@mui/material';
 import AutoAwesomeRoundedIcon from '@mui/icons-material/AutoAwesomeRounded';
-import AddRoundedIcon from '@mui/icons-material/AddRounded';
-import SearchRoundedIcon from '@mui/icons-material/SearchRounded';
-import EditRoundedIcon from '@mui/icons-material/EditRounded';
-import ChatBubbleOutlineRoundedIcon from '@mui/icons-material/ChatBubbleOutlineRounded';
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
 import KeyboardReturnRoundedIcon from '@mui/icons-material/KeyboardReturnRounded';
 import { useDashboardNavGroups } from 'src/hooks/useDashboardNavGroups';
-
-const QUICK_ACTIONS = [
-  { label: 'Cargar un movimiento', prefill: 'Quiero cargar un egreso de ', icon: AddRoundedIcon },
-  { label: 'Buscar últimos movimientos', prefill: 'Mostrame los últimos ', icon: SearchRoundedIcon },
-  { label: 'Editar un movimiento', prefill: 'Quiero editar el movimiento ', icon: EditRoundedIcon },
-];
-
-const EXAMPLE_PROMPTS = [
-  '¿Cuánto gasté este mes?',
-  'Cargá un egreso de $50.000 para materiales',
-  'Mostrame los últimos 5 movimientos',
-];
+import { useAgenteSpecialists } from 'src/hooks/useAgenteSpecialists';
+import {
+  pickQuickActions,
+  pickExamplePrompts,
+  EXAMPLE_PROMPT_ICON,
+} from 'src/components/agent/agentQuickActions';
 
 const normalize = (s) =>
   (s || '').toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
@@ -63,17 +53,20 @@ export function AgentLauncherDialog({ open, onClose }) {
   const [value, setValue] = useState('');
   const [highlightIndex, setHighlightIndex] = useState(-1);
   const { groups, navType } = useDashboardNavGroups();
+  const { specialists } = useAgenteSpecialists();
 
   const modules = useMemo(() => flattenModules(groups), [groups]);
+  const quickActions = useMemo(() => pickQuickActions(specialists), [specialists]);
+  const examplePrompts = useMemo(() => pickExamplePrompts(specialists), [specialists]);
 
   const query = value.trim();
   const isSearching = query.length > 0;
   const normalizedQuery = useMemo(() => normalize(query), [query]);
 
   const filteredQuickActions = useMemo(() => {
-    if (!isSearching) return QUICK_ACTIONS;
-    return QUICK_ACTIONS.filter((a) => normalize(a.label).includes(normalizedQuery));
-  }, [isSearching, normalizedQuery]);
+    if (!isSearching) return quickActions;
+    return quickActions.filter((a) => normalize(a.label).includes(normalizedQuery));
+  }, [quickActions, isSearching, normalizedQuery]);
 
   const filteredModules = useMemo(() => {
     if (!isSearching) return modules;
@@ -231,7 +224,7 @@ export function AgentLauncherDialog({ open, onClose }) {
                 const Icon = action.icon;
                 return (
                   <SuggestionRow
-                    key={action.label}
+                    key={action.id}
                     icon={<Icon fontSize="small" />}
                     text={action.label}
                     onClick={() => handleQuickAction(action.prefill)}
@@ -264,16 +257,16 @@ export function AgentLauncherDialog({ open, onClose }) {
           </>
         )}
 
-        {showExamples && (
+        {showExamples && examplePrompts.length > 0 && (
           <>
             <SectionLabel>Probá preguntar</SectionLabel>
             <Stack spacing={0.25}>
-              {EXAMPLE_PROMPTS.map((prompt) => (
+              {examplePrompts.map((prompt) => (
                 <SuggestionRow
-                  key={prompt}
-                  icon={<ChatBubbleOutlineRoundedIcon fontSize="small" />}
-                  text={prompt}
-                  onClick={() => submit(prompt)}
+                  key={prompt.id}
+                  icon={<EXAMPLE_PROMPT_ICON fontSize="small" />}
+                  text={prompt.text}
+                  onClick={() => submit(prompt.text)}
                 />
               ))}
             </Stack>

@@ -202,8 +202,11 @@ const PresupuestoDrawer = ({
   const [movimientosProyecto, setMovimientosProyecto] = useState([]);
   const [movimientosLoading, setMovimientosLoading] = useState(false);
   const [movimientosFetched, setMovimientosFetched] = useState(false);
-  const [equivToggles, setEquivToggles] = useState({ ars: true, usd: false, cac: false });
+  const [equivToggles, setEquivToggles] = useState({ ars: true, usd: false, cac: false, arsActualizado: false, diferencia: false });
+  const [cacActual, setCacActual] = useState(null);
+  const [cacActualSubindices, setCacActualSubindices] = useState({ general: null, mano_obra: null, materiales: null });
   const [movOrdenAsc, setMovOrdenAsc] = useState(true); // true = antiguos primero, false = recientes primero
+  const [exportandoMovimientos, setExportandoMovimientos] = useState(false);
 
   // === Estado: UI ===
   const [loading, setLoading] = useState(false);
@@ -247,6 +250,11 @@ const PresupuestoDrawer = ({
   // Valor efectivo de CAC/dólar (override o el cargado automáticamente)
   const cacTipoActivo = mode === 'crear' ? cacTipo : nuevoCacTipo;
   const cacEfectivo = cacOverride ? parseFloat(cacOverride) : (cacSubindices[cacTipoActivo] || cacIndice);
+  // CAC actual (hoy) para mostrar valores actualizados — usa cac_tipo del presupuesto visualizado
+  const cacActualEfectivo = (() => {
+    const tipo = presupuesto?.cac_tipo || 'general';
+    return cacActualSubindices[tipo] || cacActual;
+  })();
   const dolarEfectivo = dolarOverride ? parseFloat(dolarOverride) : dolarRate;
 
   // Valor efectivo para adicionales (hereda cac_tipo del principal, con override propio)
@@ -314,6 +322,17 @@ const PresupuestoDrawer = ({
     if (!open) return;
     cargarCotizacionesPorFecha(fechaPresupuesto, 'principal');
   }, [open, fechaPresupuesto]);
+
+  // Cargar CAC actual (hoy) para mostrar valores actualizados
+  useEffect(() => {
+    if (!open) return;
+    MonedasService.listarCAC({ limit: 1 }).then(data => {
+      if (data?.[0]) {
+        setCacActual(data[0].general || data[0].valor || null);
+        setCacActualSubindices({ general: data[0].general || data[0].valor || null, mano_obra: data[0].mano_obra || null, materiales: data[0].materiales || null });
+      }
+    }).catch(() => {});
+  }, [open]);
 
   // Cargar cotizaciones para el adicional cuando cambia su fecha
   useEffect(() => {
@@ -437,8 +456,10 @@ const PresupuestoDrawer = ({
       setMovimientosProyecto([]);
       setMovimientosFetched(false);
       setMovimientosLoading(false);
-      setEquivToggles({ ars: true, usd: false, cac: false });
+      setEquivToggles({ ars: true, usd: false, cac: false, arsActualizado: false, diferencia: false });
       setMovOrdenAsc(true);
+      setCacActual(null);
+      setCacActualSubindices({ general: null, mano_obra: null, materiales: null });
       setConfirmSalir(false);
     }
   }, [open]);
@@ -1459,13 +1480,19 @@ const PresupuestoDrawer = ({
                   <Stack direction="row" spacing={2} justifyContent="space-between">
                     <Box sx={{ flex: 1 }}>
                       <Typography variant="caption" color="text.secondary">Presupuestado</Typography>
-                      <Typography variant="body2" fontWeight={600}>
+                      <Tooltip
+                        title={presupuesto.indexacion === 'CAC' && presupuesto.monto_ingresado ? `Al crear: ${formatCurrency(presupuesto.monto_ingresado)}` : ''}
+                        arrow
+                        disableHoverListener={presupuesto.indexacion !== 'CAC'}
+                      >
+                      <Typography variant="body2" fontWeight={600} sx={{ cursor: presupuesto.indexacion === 'CAC' ? 'help' : 'default' }}>
                         {presupuesto.indexacion ? (() => {
-                          const cotiz = presupuesto.indexacion === 'CAC' ? cacEfectivo : dolarEfectivo;
+                          const cotiz = presupuesto.indexacion === 'CAC' ? (cacActualEfectivo || cacEfectivo) : dolarEfectivo;
                           if (cotiz && presupuesto.monto != null) return formatCurrency(presupuesto.monto * cotiz);
                           return formatMonto(presupuesto.monto_ingresado || presupuesto.monto, presupuesto.moneda_display || 'ARS');
                         })() : formatMonto(presupuesto.monto, presupuesto.moneda)}
                       </Typography>
+                      </Tooltip>
                       {presupuesto.indexacion && (
                         <Typography variant="caption" color="text.secondary">
                           {presupuesto.indexacion === 'CAC'
@@ -1477,13 +1504,31 @@ const PresupuestoDrawer = ({
                     </Box>
                     <Box sx={{ flex: 1, textAlign: 'center' }}>
                       <Typography variant="caption" color="text.secondary">{presupuesto.tipo === 'ingreso' ? 'Cobrado' : 'Ejecutado'}</Typography>
-                      <Typography variant="body2" fontWeight={600}>
+                      <Tooltip
+                        title={presupuesto.indexacion === 'CAC' && movimientosFiltrados.length > 0 ? (() => {
+                          const campo = presupuesto.base_calculo === 'subtotal' ? 'subtotal' : 'total';
+                          const nominalARS = movimientosFiltrados.reduce((sum, m) => sum + ((m.moneda !== 'USD' ? ((campo === 'subtotal' ? (m.subtotal || m.total) : m.total) || 0) : 0)), 0);
+                          return `Nominal pagado: ${formatCurrency(nominalARS)}`;
+                        })() : ''}
+                        arrow
+                        disableHoverListener={presupuesto.indexacion !== 'CAC'}
+                      >
+                      <Typography variant="body2" fontWeight={600} sx={{ cursor: presupuesto.indexacion === 'CAC' ? 'help' : 'default' }}>
                         {presupuesto.indexacion ? (() => {
-                          const cotiz = presupuesto.indexacion === 'CAC' ? cacEfectivo : dolarEfectivo;
+                          const cotiz = presupuesto.indexacion === 'CAC' ? (cacActualEfectivo || cacEfectivo) : dolarEfectivo;
                           if (cotiz && presupuesto.ejecutado != null) return formatCurrency(presupuesto.ejecutado * cotiz);
                           return formatMonto(presupuesto.ejecutado, presupuesto.moneda);
                         })() : formatMonto(presupuesto.ejecutado, presupuesto.moneda)}
                       </Typography>
+                      </Tooltip>
+                      {presupuesto.indexacion && (
+                        <Typography variant="caption" color="text.secondary">
+                          {presupuesto.indexacion === 'CAC'
+                            ? `${Number(presupuesto.ejecutado).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} CAC${presupuesto.cac_tipo === 'mano_obra' ? ' MO' : presupuesto.cac_tipo === 'materiales' ? ' MAT' : ''}`
+                            : `USD ${Number(presupuesto.ejecutado).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                          }
+                        </Typography>
+                      )}
                     </Box>
                     <Box sx={{ flex: 1, textAlign: 'right' }}>
                       <Typography variant="caption" color="text.secondary">Avance</Typography>
@@ -2367,6 +2412,10 @@ const PresupuestoDrawer = ({
                       { key: 'ars', label: 'ARS', color: 'primary' },
                       { key: 'usd', label: 'USD', color: 'success' },
                       { key: 'cac', label: 'CAC', color: 'secondary' },
+                      ...(presupuesto?.indexacion === 'CAC' ? [
+                        { key: 'arsActualizado', label: '$ act.', color: 'warning' },
+                        { key: 'diferencia', label: 'Δ', color: 'info' },
+                      ] : []),
                     ].map(eq => (
                       <Chip
                         key={eq.key}
@@ -2390,6 +2439,29 @@ const PresupuestoDrawer = ({
                         sx={{ cursor: 'pointer', fontSize: '0.65rem', height: 22, ml: 'auto' }}
                       />
                     </Tooltip>
+                    {presupuesto?.id && (
+                      <Tooltip title="Exportar a Excel con equivalencias" arrow>
+                        <Chip
+                          label={exportandoMovimientos ? 'Exportando…' : '↓ Excel'}
+                          size="small"
+                          variant="outlined"
+                          color="primary"
+                          disabled={exportandoMovimientos || !movimientosFetched}
+                          onClick={async () => {
+                            setExportandoMovimientos(true);
+                            try {
+                              const nombre = `movimientos-${presupuesto.nombre || presupuesto.categoria || presupuesto.id}`;
+                              await presupuestoService.exportarMovimientos(presupuesto.id, nombre);
+                            } catch (e) {
+                              console.error('Error exportando movimientos:', e);
+                            } finally {
+                              setExportandoMovimientos(false);
+                            }
+                          }}
+                          sx={{ cursor: 'pointer', fontSize: '0.65rem', height: 22 }}
+                        />
+                      </Tooltip>
+                    )}
                   </Stack>
 
                   {movimientosLoading ? (
@@ -2416,6 +2488,8 @@ const PresupuestoDrawer = ({
                             <TableCell align="right">Acumulado</TableCell>
                             {equivToggles.usd && <TableCell align="right" sx={{ color: 'success.main' }}>USD</TableCell>}
                             {equivToggles.cac && <TableCell align="right" sx={{ color: 'secondary.main' }}>CAC</TableCell>}
+                            {equivToggles.arsActualizado && <TableCell align="right" sx={{ color: 'warning.dark' }}>$ act.</TableCell>}
+                            {equivToggles.diferencia && <TableCell align="right" sx={{ color: 'info.main' }}>Δ nominal</TableCell>}
                           </TableRow>
                         </TableHead>
                         <TableBody>
@@ -2500,10 +2574,26 @@ const PresupuestoDrawer = ({
                                         {eq.cac != null ? Number(eq.cac).toLocaleString('es-AR', { maximumFractionDigits: 2 }) : '—'}
                                       </TableCell>
                                     )}
+                                    {equivToggles.arsActualizado && (
+                                      <TableCell align="right" sx={{ whiteSpace: 'nowrap', color: 'warning.dark' }}>
+                                        {eq.cac != null && cacActualEfectivo
+                                          ? `$${Number(eq.cac * cacActualEfectivo).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
+                                          : '—'}
+                                      </TableCell>
+                                    )}
+                                    {equivToggles.diferencia && (
+                                      <TableCell align="right" sx={{ whiteSpace: 'nowrap', color: 'info.main' }}>
+                                        {eq.cac != null && cacActualEfectivo ? (() => {
+                                          const arsNominal = eq.ars != null ? Number(eq.ars) : montoNativo;
+                                          const diff = Number(eq.cac * cacActualEfectivo) - arsNominal;
+                                          return `(+$${Number(diff).toLocaleString('es-AR', { maximumFractionDigits: 0 })})`;
+                                        })() : '—'}
+                                      </TableCell>
+                                    )}
                                   </TableRow>
                                   {obs && (
                                     <TableRow>
-                                      <TableCell colSpan={5 + (equivToggles.usd ? 1 : 0) + (equivToggles.cac ? 1 : 0)} sx={{ pt: 0, pb: 0.5, borderBottom: 0 }}>
+                                      <TableCell colSpan={5 + (equivToggles.usd ? 1 : 0) + (equivToggles.cac ? 1 : 0) + (equivToggles.arsActualizado ? 1 : 0) + (equivToggles.diferencia ? 1 : 0)} sx={{ pt: 0, pb: 0.5, borderBottom: 0 }}>
                                         <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.6rem', fontStyle: 'italic', pl: 0.5 }}>
                                           💬 {obs}
                                         </Typography>
@@ -2536,6 +2626,8 @@ const PresupuestoDrawer = ({
                                 <TableCell />
                                 {equivToggles.usd && <TableCell />}
                                 {equivToggles.cac && <TableCell />}
+                                {equivToggles.arsActualizado && <TableCell />}
+                                {equivToggles.diferencia && <TableCell />}
                               </TableRow>
                             );
                           })()}

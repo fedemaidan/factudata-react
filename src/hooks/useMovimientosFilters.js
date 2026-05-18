@@ -4,6 +4,7 @@ import { useRouter } from 'next/router';
 import { toJsDate } from 'src/utils/dateSerde';
 
 import { parseQueryParamList, FILTER_ARRAY_KEYS, FILTER_DATE_KEYS, defaultMovimientosFilters } from 'src/utils/parseData';
+import { safeRouterReplace } from 'src/utils/safeRouter';
 
 const DEBUG_CAJA_FILTERS = process.env.NODE_ENV !== 'production';
 
@@ -98,22 +99,53 @@ export function useMovimientosFilters({
     return out;
   };
 
-  const stableStringify = (obj) => {
-    const sorted = Object.keys(obj || {})
-      .sort()
-      .reduce((acc, k) => {
-        acc[k] = obj[k];
+  // Serialización canónica con ordenamiento profundo de keys.
+  // Necesario porque dos objetos equivalentes pero con distinto orden de keys
+  // (típico cuando `filters.caja` se rehidrata desde `empresa.cajas_virtuales`
+  // vs. desde el query string) producirían JSONs distintos y dispararían
+  // navegaciones a la misma URL.
+  const stableStringify = (value) => {
+    const seen = new WeakSet();
+    const normalize = (v) => {
+      if (v === null || typeof v !== 'object') return v;
+      if (seen.has(v)) return null;
+      seen.add(v);
+      if (Array.isArray(v)) return v.map(normalize);
+      return Object.keys(v).sort().reduce((acc, k) => {
+        acc[k] = normalize(v[k]);
         return acc;
       }, {});
-    return JSON.stringify(sorted);
+    };
+    return JSON.stringify(normalize(value));
   };
+
+  // JSON.stringify con orden de keys determinístico para objetos anidados.
+  // Se usa al escribir valores complejos (ej. `caja`) en el query string.
+  const canonicalJSONStringify = (value) => stableStringify(value);
 
   // Extrae solo los params de filtros (PERSIST_KEYS) del query para el hash.
   // Si se incluye el query completo, cambios de scope (proyectoId/proyectoIds)
   // hacen que los effects de filtros se disparen innecesariamente.
+  // Para keys cuyo valor es un JSON serializado (ej. `caja`), normaliza el
+  // orden de keys internas para evitar false-positives en la comparación.
+  const JSON_VALUE_KEYS = new Set(['caja']);
+  const normalizeQueryValue = (k, raw) => {
+    if (raw == null) return raw;
+    const v = Array.isArray(raw) ? raw[0] : raw;
+    if (JSON_VALUE_KEYS.has(k) && typeof v === 'string') {
+      try {
+        return canonicalJSONStringify(JSON.parse(v));
+      } catch {
+        return v;
+      }
+    }
+    return v;
+  };
   const filterParamsSubset = (query) => {
     const out = {};
-    PERSIST_KEYS.forEach((k) => { if (k in (query || {})) out[k] = query[k]; });
+    PERSIST_KEYS.forEach((k) => {
+      if (k in (query || {})) out[k] = normalizeQueryValue(k, query[k]);
+    });
     return out;
   };
 
@@ -147,7 +179,7 @@ export function useMovimientosFilters({
       } else if (v instanceof Date) {
         out[k] = v.toISOString().slice(0, 10);
       } else if (typeof v === 'object') {
-        out[k] = JSON.stringify(v);
+        out[k] = canonicalJSONStringify(v);
       } else {
         out[k] = String(v);
       }
@@ -192,7 +224,12 @@ export function useMovimientosFilters({
       nextQuery,
     });
     lastQueryHashRef.current = qHash;
-    routerRef.current.replace({ pathname: routerRef.current.pathname, query: nextQuery }, undefined, { shallow: true, scroll: false });
+    safeRouterReplace(
+      routerRef.current,
+      { pathname: routerRef.current.pathname, query: nextQuery },
+      undefined,
+      { shallow: true, scroll: false }
+    );
   // router se lee via routerRef para no re-disparar este effect en cada render.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters]);

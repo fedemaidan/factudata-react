@@ -58,6 +58,10 @@ const CorreccionModalNavigator = ({
     />
   );
 
+  const onIgnorarRow = handlers.handleOpenIgnorar
+    ? () => handlers.handleOpenIgnorar(row)
+    : null;
+
   if (tipoModal === "duplicado") {
     return (
       <>
@@ -72,6 +76,7 @@ const CorreccionModalNavigator = ({
           progreso={textoProgreso}
           onConfirmarYContinuar={onConfirmarYContinuar}
         onTrabajadorResuelto={handlers.handleTrabajadorResuelto}
+        onIgnorar={handlers.handleOpenIgnorar}
         />
       </>
     );
@@ -104,6 +109,7 @@ const CorreccionModalNavigator = ({
                 initialData={initialData}
                 onUpdated={handlers.handleTrabajadorResuelto}
                 progreso={textoProgreso}
+                onIgnorar={onIgnorarRow}
               />
             ) : null
           }
@@ -124,6 +130,7 @@ const CorreccionModalNavigator = ({
                 onCancel={handlers.handleCloseResolverLicenciaFromModal}
                 onAutoClose={handlers.handleCloseResolverLicenciaAuto}
                 progreso={textoProgreso}
+                onIgnorar={onIgnorarRow}
               />
             ) : null
           }
@@ -144,6 +151,7 @@ const CorreccionModalNavigator = ({
                 onCancel={handlers.handleCloseResolverParteFromModal}
                 onAutoClose={handlers.handleCloseResolverParteAuto}
                 progreso={textoProgreso}
+                onIgnorar={onIgnorarRow}
               />
             ) : null
           }

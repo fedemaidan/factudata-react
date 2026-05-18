@@ -212,6 +212,46 @@ const notaPedidoService = {
     }
   },
 
+  resolverItem: async (notaId, itemId, body) => {
+    try {
+      const res = await api.post(`nota-pedido/${notaId}/items/${itemId}/resolver`, body);
+      return res.status === 200 ? res.data : null;
+    } catch (e) {
+      console.error('resolverItem', e);
+      throw e;
+    }
+  },
+
+  deshacerResolucion: async (notaId, itemId, resolucionId) => {
+    try {
+      const res = await api.delete(`nota-pedido/${notaId}/items/${itemId}/resoluciones/${resolucionId}`);
+      return res.status === 200 ? res.data : null;
+    } catch (e) {
+      console.error('deshacerResolucion', e);
+      throw e;
+    }
+  },
+
+  cancelarItem: async (notaId, itemId) => {
+    try {
+      const res = await api.patch(`nota-pedido/${notaId}/items/${itemId}/cancelar`);
+      return res.status === 200 ? res.data : null;
+    } catch (e) {
+      console.error('cancelarItem', e);
+      throw e;
+    }
+  },
+
+  confirmarEntrega: async (notaId, itemId, resolucionId, datosExtra = {}) => {
+    try {
+      const res = await api.post(`nota-pedido/${notaId}/items/${itemId}/resoluciones/${resolucionId}/entregar`, datosExtra);
+      return res.status === 200 ? res.data : null;
+    } catch (e) {
+      console.error('confirmarEntrega', e);
+      throw e;
+    }
+  },
+
   subirArchivo: async (notaId, archivo) => {
     try {
       const formData = new FormData();

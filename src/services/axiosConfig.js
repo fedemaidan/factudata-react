@@ -51,12 +51,15 @@ api.interceptors.response.use(
 
         // Si la solicitud falla por un problema de autenticación y no se ha reintentado aún
         if ([401, 403].includes(error?.response?.status) && !originalRequest._retry) {
-            originalRequest._retry = true; // Marcar la solicitud como ya reintentada
+            originalRequest._retry = true;
             try {
-                const token = await auth.currentUser.getIdToken(true); // Forzar la actualización del token
-                window.localStorage.setItem('authToken', token); // Opcional: Guardar el nuevo token
+                await waitForAuthReady();
+                const user = auth.currentUser || await waitForUser().catch(() => null);
+                if (!user) return Promise.reject(error);
+                const token = await user.getIdToken(true);
+                window.localStorage.setItem('authToken', token);
                 originalRequest.headers['Authorization'] = `Bearer ${token}`;
-                return api(originalRequest); // Reenviar la solicitud original con el nuevo token
+                return api(originalRequest);
             } catch (refreshError) {
                 console.error("Error refreshing token:", refreshError);
                 return Promise.reject(refreshError);

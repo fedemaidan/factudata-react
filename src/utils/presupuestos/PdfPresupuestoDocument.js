@@ -232,9 +232,10 @@ const renderRubros = (rubros = [], currency, totalNeto, costoM2Data, tieneAnexos
         ? (efectiveMonto / monto) * 100
         : 0;
       const mostrarDetalle = efectiveMonto > 0 || (Number(tarea.incidencia_pct) || 0) > 0;
+      const unidadStr = typeof tarea.unidad === 'string' ? tarea.unidad.trim() : '';
       const descripcionPdf =
         cantidadNum > 1 && efectiveMonto > 0
-          ? `${capitalize(tarea.descripcion || 'Tarea')}  (${cantidadNum} × ${formatCurrency(valorUnitario, currency)})`
+          ? `${capitalize(tarea.descripcion || 'Tarea')}  (${cantidadNum}${unidadStr ? ` ${unidadStr}` : ''} × ${formatCurrency(valorUnitario, currency)})`
           : capitalize(tarea.descripcion || 'Tarea');
       rows.push(
         <View style={[styles.tableRow, styles.taskRow]} key={`tarea-${idx}-${tareaIdx}`}>

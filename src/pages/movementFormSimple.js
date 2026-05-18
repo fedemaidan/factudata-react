@@ -19,6 +19,7 @@ import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import movimientosService from 'src/services/movimientosService';
 import { useRouter } from 'next/router';
 import { dateToTimestamp, formatTimestamp } from 'src/utils/formatters';
+import { safeRouterReplace } from 'src/utils/safeRouter';
 import { getProyectosByEmpresa } from 'src/services/proyectosService';
 import { Select, MenuItem, FormControl, InputLabel } from '@mui/material';
 
@@ -177,7 +178,7 @@ const MovementFormSimplePage = () => {
         const savedId = isEditMode ? movimientoId : getMovimientoIdFromResponse(res);
         if (!isEditMode && savedId) {
           // redirige a edición del recién creado
-          router.replace({ pathname: router.pathname, query: { movimientoId: savedId } });
+          safeRouterReplace(router, { pathname: router.pathname, query: { movimientoId: savedId } });
         }
 
         setLastSavedAt(new Date());
@@ -189,7 +190,7 @@ const MovementFormSimplePage = () => {
          clearComprobante()
          // opcional: limpiar form al instante
          setTimeout(() => formik.resetForm({ values: { ...initialValues } }), 0);
-         router.replace({ pathname: router.pathname, query: {} }, undefined, { shallow: true });
+         safeRouterReplace(router, { pathname: router.pathname, query: {} }, undefined, { shallow: true });
 
        }
       } catch (e) {

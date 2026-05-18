@@ -76,9 +76,10 @@ const buildRubroRows = (rubros = [], totalNeto) => {
         ? (efectiveMonto / monto) * 100
         : 0;
       const mostrar = efectiveMonto > 0 || (Number(tarea.incidencia_pct) || 0) > 0;
+      const unidadStr = typeof tarea.unidad === 'string' ? tarea.unidad.trim() : '';
       const desc =
         cantidadNum > 1 && efectiveMonto > 0
-          ? `  ${tarea.descripcion || 'Tarea sin descripción'}  (${cantidadNum} × ${formatCurrency(valorUnitario, rubro.moneda || 'ARS')})`
+          ? `  ${tarea.descripcion || 'Tarea sin descripción'}  (${cantidadNum}${unidadStr ? ` ${unidadStr}` : ''} × ${formatCurrency(valorUnitario, rubro.moneda || 'ARS')})`
           : `  ${tarea.descripcion || 'Tarea sin descripción'}`;
       body.push([
         taskIndex,

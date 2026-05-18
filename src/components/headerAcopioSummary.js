@@ -1,12 +1,12 @@
-// src/components/HeaderAcopioSummary.js
-import React from 'react';
+import React, { useState } from 'react';
 import {
-  Box, Stack, Typography, Chip, Button, LinearProgress, Tooltip
+  Box, Stack, Typography, Chip, Button, LinearProgress, Tooltip,
+  IconButton, Menu, MenuItem,
 } from '@mui/material';
-import UploadFileIcon from '@mui/icons-material/UploadFile';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
 import TooltipHelp from 'src/components/TooltipHelp';
 import { TOOLTIP_MOVIMIENTOS } from 'src/constant/tooltipTexts';
 
@@ -21,20 +21,22 @@ export default function HeaderAcopioSummary({
   porcentajeDisponible,
   onVolver,
   onEditar,
-  onUploadClick,
   onRecalibrarImagenes,
   onRefrescar,
-  isAdmin
+  isAdmin,
 }) {
+  const [moreAnchor, setMoreAnchor] = useState(null);
+
   return (
     <Box sx={{ mb: 2 }}>
+      {/* Fila de título + acciones */}
       <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1, flexWrap: 'wrap' }}>
-        <Button variant="text" startIcon={<ArrowBackIcon />} onClick={onVolver}>
+        <Button variant="text" startIcon={<ArrowBackIcon />} onClick={onVolver} size="small">
           Volver
         </Button>
 
         <Typography variant="h6" sx={{ fontWeight: 700 }}>
-          Acopio {acopio?.codigo ? `• ${acopio.codigo}` : ''}
+          {acopio?.codigo || 'Acopio'}
         </Typography>
 
         <Chip
@@ -44,41 +46,38 @@ export default function HeaderAcopioSummary({
           variant="outlined"
         />
 
-        {acopio?.proyecto_nombre && (
-          <Chip size="small" label={`Proyecto: ${acopio.proyecto_nombre}`} />
-        )}
-        {acopio?.proveedor && (
-          <Chip size="small" label={`Proveedor: ${acopio.proveedor}`} />
-        )}
-
         <Box sx={{ flex: 1 }} />
 
-        <Stack direction="row" spacing={1}>
+        <Stack direction="row" spacing={1} alignItems="center">
           <TooltipHelp {...TOOLTIP_MOVIMIENTOS.editar}>
             <Button variant="outlined" size="small" startIcon={<EditOutlinedIcon />} onClick={onEditar}>
               Editar
             </Button>
           </TooltipHelp>
-          <TooltipHelp {...TOOLTIP_MOVIMIENTOS.subirHojas}>
-            <Button variant="outlined" size="small" startIcon={<UploadFileIcon />} onClick={onUploadClick}>
-              Subir hojas
-            </Button>
-          </TooltipHelp>
+
+          <Tooltip title="Actualizar datos">
+            <IconButton size="small" onClick={onRefrescar}>
+              <RefreshIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+
+          {/* Acciones secundarias en menú */}
           {isAdmin && (
-            <TooltipHelp {...TOOLTIP_MOVIMIENTOS.recalibrar}>
-              <span>
-                <Button variant="outlined" size="small" onClick={onRecalibrarImagenes}>
-                  Recalibrar
-                </Button>
-              </span>
-            </TooltipHelp>
+            <>
+              <IconButton size="small" onClick={(e) => setMoreAnchor(e.currentTarget)}>
+                <MoreVertIcon fontSize="small" />
+              </IconButton>
+              <Menu anchorEl={moreAnchor} open={Boolean(moreAnchor)} onClose={() => setMoreAnchor(null)}>
+                <MenuItem onClick={() => { onRecalibrarImagenes?.(); setMoreAnchor(null); }}>
+                  Recalibrar imágenes
+                </MenuItem>
+              </Menu>
+            </>
           )}
-          <Button variant="outlined" size="small" startIcon={<RefreshIcon />} onClick={onRefrescar}>
-            Actualizar
-          </Button>
         </Stack>
       </Stack>
 
+      {/* Fila de KPIs */}
       <Stack
         direction={{ xs: 'column', md: 'row' }}
         spacing={2}
@@ -87,18 +86,27 @@ export default function HeaderAcopioSummary({
           border: '1px solid',
           borderColor: 'divider',
           borderRadius: 2,
-          bgcolor: 'background.paper'
+          bgcolor: 'background.paper',
+          flexWrap: 'wrap',
         }}
       >
-        <Kpi label="Proyecto" value={acopio?.proyecto_nombre || 'Sin asignar'} highlight />
-        <Kpi label="Proveedor" value={acopio?.proveedor || '-'} />
-        <Kpi label="Valor Acopiado" value={fmtCurrency(acopio?.valor_acopio)} />
+        <Kpi label="Proyecto"          value={acopio?.proyecto_nombre || 'Sin asignar'} />
+        <Kpi label="Proveedor"         value={acopio?.proveedor || '—'} />
+        <Kpi label="Valor Acopiado"    value={fmtCurrency(acopio?.valor_acopio)} />
         <Kpi label="Valor Desacopiado" value={fmtCurrency(acopio?.valor_desacopio)} />
-        <Box sx={{ minWidth: 280 }}>
+        <Box sx={{ minWidth: 240, flex: 1 }}>
           <Typography variant="caption" color="text.secondary">Disponible</Typography>
-          <LinearProgress variant="determinate" value={porcentajeDisponible} sx={{ my: 0.5 }} />
+          <LinearProgress
+            variant="determinate"
+            value={Math.max(0, Math.min(100, porcentajeDisponible))}
+            sx={{ my: 0.5 }}
+            color={porcentajeDisponible < 10 ? 'error' : porcentajeDisponible < 20 ? 'warning' : 'primary'}
+          />
           <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-            {fmtCurrency((Number(acopio?.valor_acopio) || 0) - (Number(acopio?.valor_desacopio) || 0))} ({porcentajeDisponible.toFixed(2)}%)
+            {fmtCurrency((Number(acopio?.valor_acopio) || 0) - (Number(acopio?.valor_desacopio) || 0))}{' '}
+            <Typography component="span" variant="caption" color="text.secondary">
+              ({porcentajeDisponible.toFixed(1)}%)
+            </Typography>
           </Typography>
         </Box>
         <Kpi label="Tipo" value={(acopio?.tipo || 'materiales').replace('_', ' ')} />
@@ -109,25 +117,12 @@ export default function HeaderAcopioSummary({
 
 function Kpi({ label, value, highlight = false }) {
   return (
-    <Box sx={{ 
-      minWidth: 200,
-      ...(highlight && {
-        bgcolor: 'primary.50',
-        borderRadius: 1,
-        px: 1.5,
-        py: 0.5,
-        border: '1px solid',
-        borderColor: 'primary.200'
-      })
+    <Box sx={{
+      minWidth: 160,
+      ...(highlight && { bgcolor: 'primary.50', borderRadius: 1, px: 1.5, py: 0.5, border: '1px solid', borderColor: 'primary.200' })
     }}>
       <Typography variant="caption" color="text.secondary">{label}</Typography>
-      <Typography 
-        variant="subtitle1" 
-        sx={{ 
-          fontWeight: 700,
-          ...(highlight && { color: 'primary.main' })
-        }}
-      >
+      <Typography variant="subtitle1" sx={{ fontWeight: 700, ...(highlight && { color: 'primary.main' }) }}>
         {value}
       </Typography>
     </Box>

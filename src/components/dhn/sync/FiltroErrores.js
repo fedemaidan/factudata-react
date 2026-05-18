@@ -185,6 +185,7 @@ const FiltroErrores = ({
             <MenuItem value="incompleto">Incompleto</MenuItem>
             <MenuItem value="error">Error</MenuItem>
             <MenuItem value="duplicado">Duplicado</MenuItem>
+            <MenuItem value="ignored">Ignorado</MenuItem>
           </TextField>
           <Divider />
           <Stack direction="row" spacing={1}>

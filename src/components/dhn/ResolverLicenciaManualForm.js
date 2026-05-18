@@ -24,6 +24,7 @@ import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import TrabajoRegistradoService from "src/services/dhn/TrabajoRegistradoService";
 import TrabajadorSelector from "src/components/dhn/TrabajadorSelector";
 import tiposLicenciaService from "src/services/dhn/tiposLicenciaService";
+import BlockIcon from "@mui/icons-material/Block";
 
 const trimValue = (value) =>
   value === null || value === undefined
@@ -86,6 +87,7 @@ const ResolverLicenciaManualForm = ({
   suppressActions = false,
   /** Notifica borrador para armar manualPatch en el padre sin guardar aún. */
   onDraftChange = null,
+  onIgnorar = null,
 }) => {
   const [formState, setFormState] = useState(INITIAL_FORM_STATE);
   const [isSaving, setIsSaving] = useState(false);
@@ -326,7 +328,31 @@ const ResolverLicenciaManualForm = ({
             Corrección asistida: {progreso}
           </Typography>
         )}
-        <Typography variant="h6">Resolver licencia manual</Typography>
+        <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
+          <Typography variant="h6">Resolver licencia manual</Typography>
+          {onIgnorar && (
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={() => onIgnorar()}
+              disabled={isSaving}
+              startIcon={<BlockIcon />}
+              sx={{
+                textTransform: "none",
+                color: "grey.700",
+                borderColor: "grey.400",
+                borderStyle: "dashed",
+                whiteSpace: "nowrap",
+                "&:hover": {
+                  borderColor: "grey.700",
+                  backgroundColor: "grey.100",
+                },
+              }}
+            >
+              Ignorar archivo
+            </Button>
+          )}
+        </Stack>
         {trabajadorDetectadoValido && (
           <Box>
             <Typography variant="body2" color="text.secondary">

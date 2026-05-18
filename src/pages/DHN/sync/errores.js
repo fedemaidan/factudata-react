@@ -15,6 +15,7 @@ import {
   StatusChip,
 } from "src/components/dhn/sync/cells";
 import ResolverDuplicadoModal from "src/components/dhn/sync/ResolverDuplicadoModal";
+import ConfirmarIgnorarDialog from "src/components/dhn/sync/ConfirmarIgnorarDialog";
 import { formatDateToDDMMYYYY } from "src/utils/handleDates";
 import useCorreccionAsistida from "src/hooks/dhn/useCorreccionAsistida";
 import CorreccionModalNavigator from "src/components/dhn/sync/CorreccionModalNavigator";
@@ -58,6 +59,9 @@ const SyncErrorsPage = () => {
   const [resolverDuplicadoRow, setResolverDuplicadoRow] = useState(null);
   const [resolverDuplicadoLoading, setResolverDuplicadoLoading] = useState(false);
   const [resolverDuplicadoAction, setResolverDuplicadoAction] = useState(null);
+
+  const [ignorarDialogRow, setIgnorarDialogRow] = useState(null);
+  const [ignorarLoading, setIgnorarLoading] = useState(false);
 
   const [resolverModalOpen, setResolverModalOpen] = useState(false);
   const [trabajadorSeleccionado, setTrabajadorSeleccionado] = useState(null);
@@ -342,6 +346,52 @@ const SyncErrorsPage = () => {
     }
   };
 
+  const handleOpenIgnorar = useCallback((row) => {
+    if (!row?._id) return;
+    setIgnorarDialogRow(row);
+  }, []);
+
+  const handleCloseIgnorar = useCallback(() => {
+    if (ignorarLoading) return;
+    setIgnorarDialogRow(null);
+  }, [ignorarLoading]);
+
+  const handleConfirmarIgnorar = useCallback(async () => {
+    if (!ignorarDialogRow?._id) return;
+    setIgnorarLoading(true);
+    try {
+      const resp = await DhnDriveService.ignoreUrlStorage(ignorarDialogRow._id);
+      if (!resp?.ok) {
+        throw new Error(resp?.error?.message || "No se pudo ignorar el archivo");
+      }
+      setAlert({
+        open: true,
+        severity: "success",
+        message: "Archivo ignorado",
+      });
+      setIgnorarDialogRow(null);
+      handleCloseResolverLicencia();
+      handleCloseResolverParte();
+      handleCloseResolverDuplicado();
+      await fetchDetails();
+      if (correccionActiva) {
+        const nextRow = confirmarYAvanzar();
+        if (!nextRow) {
+          setCorreccionItems([]);
+        }
+      }
+    } catch (error) {
+      console.error("Error ignorando archivo:", error);
+      setAlert({
+        open: true,
+        severity: "error",
+        message: error?.message || "No se pudo ignorar el archivo",
+      });
+    } finally {
+      setIgnorarLoading(false);
+    }
+  }, [ignorarDialogRow, fetchDetails, correccionActiva, confirmarYAvanzar]);
+
   const handleCloseCorreccionOnCancel = useCallback(() => {
     if (correccionActiva) {
       detenerCorreccion();
@@ -418,6 +468,7 @@ const SyncErrorsPage = () => {
     handleCloseResolverParteAuto,
     resolverDuplicadoLoading,
     resolverDuplicadoAction,
+    handleOpenIgnorar,
   };
 
   const handleIniciarCorreccion = useCallback(async () => {
@@ -534,6 +585,7 @@ const SyncErrorsPage = () => {
             handleOpenResolverLicencia={handleOpenResolverLicencia}
             handleOpenResolverParte={handleOpenResolverParte}
             handleOpenResolverDuplicado={handleOpenResolverDuplicado}
+            handleOpenIgnorar={handleOpenIgnorar}
           />
         ),
       },
@@ -563,6 +615,7 @@ const SyncErrorsPage = () => {
     handleOpenResolverLicencia,
     handleOpenResolverParte,
     handleOpenResolverDuplicado,
+    handleOpenIgnorar,
     openImageModal,
   ]);
 
@@ -752,6 +805,7 @@ const SyncErrorsPage = () => {
                     urlStorage={imageModalRow.url_storage}
                     onUpdated={handleTrabajadorResuelto}
                     progreso={correccionActiva ? textoProgreso : null}
+                    onIgnorar={imageModalRow ? () => handleOpenIgnorar(imageModalRow) : null}
                   />
                 ) : null
               }
@@ -769,6 +823,7 @@ const SyncErrorsPage = () => {
                     onCancel={handleCloseResolverLicenciaFromModal}
                     onAutoClose={handleCloseResolverLicenciaAuto}
                     progreso={correccionActiva ? textoProgreso : null}
+                    onIgnorar={() => handleOpenIgnorar(resolverLicenciaRow)}
                   />
                 ) : null
               }
@@ -786,6 +841,7 @@ const SyncErrorsPage = () => {
                     onCancel={handleCloseResolverParteFromModal}
                     onAutoClose={handleCloseResolverParteAuto}
                     progreso={correccionActiva ? textoProgreso : null}
+                    onIgnorar={() => handleOpenIgnorar(resolverParteRow)}
                   />
                 ) : null
               }
@@ -798,6 +854,7 @@ const SyncErrorsPage = () => {
               loading={resolverDuplicadoLoading}
               actionInProgress={resolverDuplicadoAction}
               progreso={correccionActiva ? textoProgreso : null}
+              onIgnorar={handleOpenIgnorar}
             />
             <ResolverTrabajadorModal
               open={resolverModalOpen}
@@ -808,6 +865,13 @@ const SyncErrorsPage = () => {
             />
           </>
         )}
+        <ConfirmarIgnorarDialog
+          open={Boolean(ignorarDialogRow)}
+          row={ignorarDialogRow}
+          onClose={handleCloseIgnorar}
+          onConfirm={handleConfirmarIgnorar}
+          loading={ignorarLoading}
+        />
       </Container>
     </DashboardLayout>
   );

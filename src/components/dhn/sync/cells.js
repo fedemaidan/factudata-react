@@ -5,10 +5,61 @@ import ReplayIcon from "@mui/icons-material/Replay";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import EditIcon from "@mui/icons-material/Edit";
 import MergeTypeIcon from "@mui/icons-material/MergeType";
+import BlockIcon from "@mui/icons-material/Block";
 import TrabajoRegistradoService from "src/services/dhn/TrabajoRegistradoService";
 import { getStatusChipConfig } from "src/utils/dhn/syncHelpers";
 import { buildFechaDetectadaPatch } from "src/utils/dhn/trabajoRegistradoHelpers";
-import { parsearTrabajadoresNoIdentificados } from "src/utils/dhn/trabajadoresHelpers";
+import { parsearTrabajadoresNoIdentificados, parsearConteoIdentificados } from "src/utils/dhn/trabajadoresHelpers";
+
+const ConteoIdentificadosBadge = ({ conteo }) => {
+  const { encontrados, total, noEncontrados } = conteo;
+  return (
+    <Stack direction="row" spacing={0.5} alignItems="center">
+      <Box
+        component="span"
+        sx={{
+          display: "inline-flex",
+          alignItems: "center",
+          fontSize: "0.7rem",
+          fontWeight: 600,
+          letterSpacing: "0.02em",
+          color: "success.dark",
+          px: 0.75,
+          py: "1px",
+          border: "1px solid",
+          borderColor: "success.light",
+          borderRadius: 0.75,
+          backgroundColor: "rgba(46, 125, 50, 0.06)",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {`${encontrados}/${total} identificados`}
+      </Box>
+      {noEncontrados > 0 && (
+        <Box
+          component="span"
+          sx={{
+            display: "inline-flex",
+            alignItems: "center",
+            fontSize: "0.7rem",
+            fontWeight: 600,
+            letterSpacing: "0.02em",
+            color: "warning.dark",
+            px: 0.75,
+            py: "1px",
+            border: "1px solid",
+            borderColor: "warning.light",
+            borderRadius: 0.75,
+            backgroundColor: "rgba(237, 108, 2, 0.06)",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {`${noEncontrados} sin identificar`}
+        </Box>
+      )}
+    </Stack>
+  );
+};
 
 export const StatusChip = ({ status }) => {
   const cfg = getStatusChipConfig(status);
@@ -18,6 +69,7 @@ export const StatusChip = ({ status }) => {
       sx={{
         display: "inline-block",
         border: "1px solid",
+        borderStyle: cfg.dashed ? "dashed" : "solid",
         borderColor: cfg.color,
         color: cfg.color,
         fontWeight: 500,
@@ -100,19 +152,22 @@ export const AccionesCell = ({
   handleOpenResolverLicencia,
   handleOpenResolverParte,
   handleOpenResolverDuplicado,
+  handleOpenIgnorar,
 }) => {
   const isError = row?.status === "error";
   const isIncompleto = row?.status === "incompleto";
   const isErrorLike = isError || isIncompleto;
   const isDuplicadoRow = row?.status === "duplicado";
-  const shouldShowButton = Boolean(isParte) || isErrorLike || isDuplicadoRow;
+  const rowTipo = String(row?.tipo || "").toLowerCase();
+  const isLicenciaRow = rowTipo === "licencia";
+  const isParteRow = rowTipo === "parte";
+  const isHorasRow = rowTipo === "horas";
+  const shouldShowButton = Boolean(isParte) || isErrorLike || isDuplicadoRow || isHorasRow;
   if (!shouldShowButton) return "-";
 
   const isResyncing = resyncingId === row?._id;
   const isProcessing = row?.status === "processing";
   const buttonColor = isErrorLike ? "error" : "primary";
-  const isLicenciaRow = String(row?.tipo || "").toLowerCase() === "licencia";
-  const isParteRow = String(row?.tipo || "").toLowerCase() === "parte";
   return (
     <Box component="span" sx={{ display: "inline-flex", gap: 0.5, alignItems: "center" }}>
       <Tooltip
@@ -240,6 +295,34 @@ export const AccionesCell = ({
               }}
             >
               <EditIcon fontSize="small" />
+            </IconButton>
+          </span>
+        </Tooltip>
+      )}
+      {(isErrorLike || isDuplicadoRow) && handleOpenIgnorar && (
+        <Tooltip title="Ignorar archivo" placement="top">
+          <span>
+            <IconButton
+              size="small"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleOpenIgnorar(row);
+              }}
+              disabled={Boolean(resyncingId) || isResyncing || isProcessing}
+              sx={{
+                p: 0.5,
+                border: "1px solid",
+                borderStyle: "dashed",
+                borderColor: "grey.500",
+                color: "grey.600",
+                "&:hover": {
+                  backgroundColor: "grey.100",
+                  borderColor: "grey.700",
+                  color: "grey.800",
+                },
+              }}
+            >
+              <BlockIcon fontSize="small" />
             </IconButton>
           </span>
         </Tooltip>
@@ -386,38 +469,71 @@ export const FechaDetectadaCell = ({
 export const ObservacionCell = ({ row, handleResolverTrabajador }) => {
   const observacion = row?.observacion || "-";
   const trabajadoresNoIdentificados = parsearTrabajadoresNoIdentificados(observacion);
+  const conteo = parsearConteoIdentificados(observacion);
 
   if (trabajadoresNoIdentificados.length > 0) {
+    const MAX_CHIPS_INLINE = 10;
+    const showChips = trabajadoresNoIdentificados.length <= MAX_CHIPS_INLINE;
+
     return (
-      <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5, maxWidth: "600px" }}>
-        <Box component="span" sx={{ fontSize: "0.8rem", color: "text.secondary", mr: 0.5 }}>
-          Trabajadores no identificados:
-        </Box>
-        {trabajadoresNoIdentificados.map((trabajador, idx) => (
-          <Chip
-            key={idx}
-            label={`${trabajador.nombre} ${trabajador.apellido} (${trabajador.dni})`}
-            size="small"
-            variant="outlined"
-            color="primary"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleResolverTrabajador(trabajador, row?.url_storage, row);
-            }}
+      <Stack spacing={0.5} sx={{ maxWidth: "600px" }}>
+        {conteo && <ConteoIdentificadosBadge conteo={conteo} />}
+        {showChips && (
+          <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5, alignItems: "center" }}>
+            <Box component="span" sx={{ fontSize: "0.75rem", color: "text.secondary" }}>
+              No identificados:
+            </Box>
+            {trabajadoresNoIdentificados.map((trabajador, idx) => (
+              <Chip
+                key={idx}
+                label={`${trabajador.nombre} ${trabajador.apellido} (${trabajador.dni})`}
+                size="small"
+                variant="outlined"
+                color="primary"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleResolverTrabajador(trabajador, row?.url_storage, row);
+                }}
+                sx={{
+                  cursor: "pointer",
+                  borderColor: "primary.main",
+                  color: "primary.main",
+                  transition: "all .2s ease",
+                  "&:hover": {
+                    backgroundColor: "rgba(25, 118, 210, 0.12)",
+                    color: "primary.dark",
+                    borderColor: "primary.dark",
+                  },
+                }}
+              />
+            ))}
+          </Box>
+        )}
+      </Stack>
+    );
+  }
+
+  if (conteo) {
+    const resto = observacion
+      .replace(/(?:Trabajadores\s+)?[Ii]dentificados:\s*\d+\s*\/\s*\d+\.?\s*/, "")
+      .trim();
+    return (
+      <Stack spacing={0.5} sx={{ maxWidth: "420px" }}>
+        <ConteoIdentificadosBadge conteo={conteo} />
+        {resto && (
+          <Box
             sx={{
-              cursor: "pointer",
-              borderColor: "primary.main",
-              color: "primary.main",
-              transition: "all .2s ease",
-              "&:hover": {
-                backgroundColor: "rgba(25, 118, 210, 0.12)",
-                color: "primary.dark",
-                borderColor: "primary.dark",
-              },
+              fontSize: "0.8rem",
+              color: "text.secondary",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
             }}
-          />
-        ))}
-      </Box>
+          >
+            {resto}
+          </Box>
+        )}
+      </Stack>
     );
   }
 
@@ -438,12 +554,11 @@ export const ObservacionCell = ({ row, handleResolverTrabajador }) => {
 export const ResyncSyncCell = ({ row, resyncingId, onResync, getId }) => {
   const id = getId ? getId(row) : row?.id || row?._id || row?.sync_id || null;
   const isResyncing = resyncingId === id;
-  const isDone = row?.status === "done";
   const hasUrlDrive = Boolean(row?.url_drive);
 
   return (
     <Tooltip title="Resincronizar" placement="top" arrow>
-      <span>
+      <span onClick={(e) => e.stopPropagation()} style={{ display: "inline-flex" }}>
         {isResyncing ? (
           <IconButton
             size="small"
@@ -461,7 +576,7 @@ export const ResyncSyncCell = ({ row, resyncingId, onResync, getId }) => {
               e.stopPropagation();
               onResync(row);
             }}
-            disabled={!hasUrlDrive || Boolean(resyncingId) || isDone}
+            disabled={!hasUrlDrive || Boolean(resyncingId)}
             sx={{
               p: 0.5,
               "&:hover": {
