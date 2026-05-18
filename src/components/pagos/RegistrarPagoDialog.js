@@ -1,18 +1,20 @@
 /**
- * RegistrarPagoDialog — registra un nuevo pago a proveedor con stepper de 3 pasos:
- *   Paso 0: Datos del pago (fecha, monto, método, retenciones)
- *   Paso 1: Imputar a facturas (opcional, distribución FIFO)
- *   Paso 2: Adjuntar comprobantes (opcional)
+ * RegistrarPagoDialog — registra un Pago a proveedor con retenciones,
+ * imputaciones a movimientos y comprobantes adjuntos.
+ *
+ * Flujo en 3 pasos con Stepper:
+ *   0. Datos del pago (fecha, monto, moneda, método, retenciones)
+ *   1. Imputación a facturas pendientes (opcional)
+ *   2. Comprobantes adjuntos (opcional)
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Accordion,
-  AccordionDetails,
-  AccordionSummary,
   Alert,
   Box,
   Button,
+  Checkbox,
+  Chip,
   CircularProgress,
   Dialog,
   DialogActions,
@@ -23,7 +25,6 @@ import {
   InputAdornment,
   MenuItem,
   Paper,
-  Select,
   Stack,
   Step,
   StepLabel,
@@ -35,27 +36,30 @@ import {
   TableHead,
   TableRow,
   TextField,
-  Tooltip,
   Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
+import AttachFileIcon from '@mui/icons-material/AttachFile';
+import CloseIcon from '@mui/icons-material/Close';
 import DeleteIcon from '@mui/icons-material/Delete';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import pagoProveedorService from 'src/services/pagoProveedorService';
 import monedasService from 'src/services/monedasService';
 import { formatCurrencyWithCode, formatTimestamp } from 'src/utils/formatters';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const getTodayString = () => {
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, '0');
-  const d = String(now.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
+const normalizeAmount = (v) => {
+  if (v === null || v === undefined || v === '') return null;
+  const parsed = parseFloat(String(v).replace(',', '.'));
+  return Number.isFinite(parsed) ? parsed : null;
 };
 
-const PASOS = ['Datos del pago', 'Imputar a facturas', 'Comprobantes'];
+const todayISO = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+const STEPS = ['Datos del pago', 'Imputar a facturas', 'Comprobantes'];
 
 const METODOS = [
   { value: 'transferencia', label: 'Transferencia' },
@@ -64,29 +68,9 @@ const METODOS = [
   { value: 'otro', label: 'Otro' },
 ];
 
-const MONEDAS = [
-  { value: 'ARS', label: 'ARS' },
-  { value: 'USD', label: 'USD' },
-];
-
-/**
- * Distribuye el monto total entre los remitos seleccionados de forma FIFO.
- * Devuelve un array { movimiento_id, monto_imputado }.
- */
-const distribuirFIFO = (remitosSeleccionados, montoTotal) => {
-  let restante = montoTotal;
-  return remitosSeleccionados.map((rem) => {
-    const id = rem._id || rem.id;
-    const deuda = Math.max(0, (rem.total || 0) - (rem.monto_pagado || 0));
-    const asignado = Math.min(deuda, restante);
-    restante = Math.max(0, restante - asignado);
-    return { movimiento_id: id, monto_imputado: asignado };
-  });
-};
-
 // ─── Componente ───────────────────────────────────────────────────────────────
 
-const RegistrarPagoDialog = ({
+export default function RegistrarPagoDialog({
   open,
   onClose,
   onSuccess,
@@ -95,131 +79,126 @@ const RegistrarPagoDialog = ({
   proveedorId,
   remitos = [],
   remitoInicial = null,
-}) => {
-  const [paso, setPaso] = useState(0);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+}) {
+  const [activeStep, setActiveStep] = useState(0);
 
-  // ── Paso 0: Datos del pago ─────────────────────────────────────────────────
-  const [fechaPago, setFechaPago] = useState(getTodayString);
-  const [metodo, setMetodo] = useState('transferencia');
-  const [nroComprobante, setNroComprobante] = useState('');
+  // Paso 0
+  const [fechaPago, setFechaPago] = useState(todayISO());
   const [montoBruto, setMontoBruto] = useState('');
   const [moneda, setMoneda] = useState('ARS');
   const [tipoCambio, setTipoCambio] = useState('');
+  const [tipoCambioDelDia, setTipoCambioDelDia] = useState(null);
   const [tipoCambioEsManual, setTipoCambioEsManual] = useState(false);
-  const [tipoCambioDia, setTipoCambioDia] = useState(null);
+  const [metodo, setMetodo] = useState('transferencia');
+  const [nroComprobante, setNroComprobante] = useState('');
   const [notas, setNotas] = useState('');
-  const [retencionesOpen, setRetencionesOpen] = useState(false);
   const [retenciones, setRetenciones] = useState([]);
 
-  // ── Paso 1: Imputaciones ───────────────────────────────────────────────────
-  const remitosPendientes = useMemo(() => remitos.filter((r) => r.estado !== 'Pagado'), [remitos]);
-  const [seleccionados, setSeleccionados] = useState(() => new Set());
-  const [imputaciones, setImputaciones] = useState([]);
+  // Paso 1 — Imputaciones
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [importes, setImportes] = useState({});
 
-  // ── Paso 2: Comprobantes ───────────────────────────────────────────────────
+  // Paso 2 — Comprobantes
   const [archivos, setArchivos] = useState([]);
 
-  // ── Reiniciar estado al abrir ──────────────────────────────────────────────
+  // Submit
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const montoBrutoNum = normalizeAmount(montoBruto) || 0;
+  const totalRetenciones = useMemo(
+    () => retenciones.reduce((sum, r) => sum + (normalizeAmount(r.monto) || 0), 0),
+    [retenciones]
+  );
+  const montoNetoProveedor = Math.max(0, montoBrutoNum - totalRetenciones);
+
+  const remitosSeleccionados = useMemo(
+    () => remitos.filter((r) => selectedIds.has(r.id || r._id)),
+    [remitos, selectedIds]
+  );
+  const sumaImputado = useMemo(
+    () => Object.values(importes).reduce((acc, v) => acc + (normalizeAmount(v) || 0), 0),
+    [importes]
+  );
+  const montoSinImputar = Math.max(0, montoBrutoNum - sumaImputado);
+
+  // ── Reset al abrir ────────────────────────────────────────────────────────
   useEffect(() => {
     if (!open) return;
-    setPaso(0);
-    setLoading(false);
-    setError(null);
-    setFechaPago(getTodayString());
-    setMetodo('transferencia');
-    setNroComprobante('');
+    setActiveStep(0);
+    setFechaPago(todayISO());
     setMontoBruto('');
     setMoneda('ARS');
     setTipoCambio('');
+    setTipoCambioDelDia(null);
     setTipoCambioEsManual(false);
-    setTipoCambioDia(null);
+    setMetodo('transferencia');
+    setNroComprobante('');
     setNotas('');
-    setRetencionesOpen(false);
     setRetenciones([]);
+    setImportes({});
     setArchivos([]);
+    setError(null);
 
-    // Pre-seleccionar remito inicial si existe
+    // Selección inicial de remitos
     if (remitoInicial) {
-      const id = remitoInicial._id || remitoInicial.id;
-      setSeleccionados(new Set([id]));
+      const rid = remitoInicial.id || remitoInicial._id;
+      setSelectedIds(new Set([rid]));
     } else {
-      const ids = remitosPendientes.map((r) => r._id || r.id);
-      setSeleccionados(new Set(ids));
+      setSelectedIds(new Set(remitos.map((r) => r.id || r._id)));
     }
-  }, [open]);  // eslint-disable-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
-  // ── Cargar tipo de cambio del día cuando moneda = USD ─────────────────────
+  // ── Cotización del día al cambiar a USD ────────────────────────────────────
   useEffect(() => {
-    if (!open || moneda !== 'USD') return;
-    let cancelled = false;
-    const cargarTC = async () => {
+    if (!open) return;
+    if (moneda !== 'USD') return;
+    if (tipoCambioEsManual) return;
+
+    const cargarCotizacion = async () => {
       try {
-        const resultado = await monedasService.obtenerDolar(fechaPago);
-        if (cancelled) return;
-        const valor = resultado?.oficial || resultado?.blue || resultado?.mep || null;
-        setTipoCambioDia(valor);
-        if (!tipoCambioEsManual && valor) {
+        const dolar = await monedasService.obtenerDolar(fechaPago);
+        const valor = dolar?.blue?.venta ?? dolar?.oficial?.venta ?? dolar?.mep?.venta ?? null;
+        if (valor) {
+          setTipoCambioDelDia(valor);
           setTipoCambio(String(valor));
         }
       } catch (_) {
-        // silencio — no hay cotización disponible
+        // sin cotización del día — el usuario carga manualmente
       }
     };
-    cargarTC();
-    return () => { cancelled = true; };
-  }, [open, moneda, fechaPago]); // eslint-disable-line react-hooks/exhaustive-deps
+    cargarCotizacion();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [moneda, fechaPago, open]);
 
-  // ── Calcular totales de retenciones ───────────────────────────────────────
-  const totalRetenciones = useMemo(
-    () => retenciones.reduce((sum, r) => sum + (parseFloat(r.monto) || 0), 0),
-    [retenciones]
-  );
-
-  const montoNeto = useMemo(
-    () => (parseFloat(montoBruto) || 0) - totalRetenciones,
-    [montoBruto, totalRetenciones]
-  );
-
-  // ── Calcular sin imputar ──────────────────────────────────────────────────
-  const totalImputado = useMemo(
-    () => imputaciones.reduce((sum, i) => sum + (parseFloat(i.monto_imputado) || 0), 0),
-    [imputaciones]
-  );
-
-  const sinImputar = useMemo(
-    () => (parseFloat(montoBruto) || 0) - totalImputado,
-    [montoBruto, totalImputado]
-  );
-
-  // ── Handlers retenciones ──────────────────────────────────────────────────
-  const handleAgregarRetencion = useCallback(() => {
-    setRetenciones((prev) => [...prev, { descripcion: '', porcentaje: '', monto: '' }]);
-  }, []);
-
-  const handleEliminarRetencion = useCallback((idx) => {
-    setRetenciones((prev) => prev.filter((_, i) => i !== idx));
-  }, []);
-
-  const handleCambiarRetencion = useCallback((idx, field, value) => {
-    setRetenciones((prev) => {
-      const next = [...prev];
-      next[idx] = { ...next[idx], [field]: value };
-      if (field === 'porcentaje' && value !== '') {
-        const pct = parseFloat(value);
-        const base = parseFloat(montoBruto) || 0;
-        if (Number.isFinite(pct) && base > 0) {
-          next[idx].monto = String(Math.round(base * pct / 100 * 100) / 100);
-        }
+  // ── Distribución FIFO automática al entrar al paso 1 ──────────────────────
+  useEffect(() => {
+    if (activeStep !== 1) return;
+    if (Object.keys(importes).length > 0) return; // no sobreescribir
+    let restante = montoBrutoNum;
+    const nuevo = {};
+    for (const rem of remitosSeleccionados) {
+      if (restante <= 0) break;
+      const deuda = Math.max(0, (Number(rem.total) || 0) - (Number(rem.monto_pagado) || 0));
+      const asignar = Math.min(restante, deuda);
+      if (asignar > 0) {
+        nuevo[rem.id || rem._id] = String(asignar.toFixed(2));
+        restante -= asignar;
       }
-      return next;
-    });
-  }, [montoBruto]);
+    }
+    setImportes(nuevo);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeStep]);
 
-  // ── Handlers selección imputaciones ───────────────────────────────────────
-  const handleToggleSeleccion = useCallback((id) => {
-    setSeleccionados((prev) => {
+  // ── Handlers ──────────────────────────────────────────────────────────────
+  const handleTipoCambioChange = (e) => {
+    setTipoCambio(e.target.value);
+    setTipoCambioEsManual(true);
+  };
+
+  const handleToggleRemito = useCallback((id) => {
+    setSelectedIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -227,474 +206,487 @@ const RegistrarPagoDialog = ({
     });
   }, []);
 
-  // ── Auto-distribuir FIFO ──────────────────────────────────────────────────
-  const handleAutoDistribuir = useCallback(() => {
-    const selArr = remitosPendientes.filter((r) => seleccionados.has(r._id || r.id));
-    const distribuidas = distribuirFIFO(selArr, parseFloat(montoBruto) || 0);
-    setImputaciones(distribuidas);
-  }, [remitosPendientes, seleccionados, montoBruto]);
+  const handleImporteChange = (id, value) => {
+    setImportes((prev) => ({ ...prev, [id]: value }));
+  };
 
-  const handleCambiarImputacion = useCallback((idx, valor) => {
-    setImputaciones((prev) => {
-      const next = [...prev];
-      next[idx] = { ...next[idx], monto_imputado: valor };
-      return next;
-    });
-  }, []);
-
-  // ── Entrar al paso 1: auto-distribuir ────────────────────────────────────
-  const handleAvanzarAPaso1 = useCallback(() => {
-    const selArr = remitosPendientes.filter((r) => seleccionados.has(r._id || r.id));
-    const distribuidas = distribuirFIFO(selArr, parseFloat(montoBruto) || 0);
-    setImputaciones(distribuidas);
-    setPaso(1);
-  }, [remitosPendientes, seleccionados, montoBruto]);
-
-  // ── Navegación ────────────────────────────────────────────────────────────
-  const handleSiguiente = useCallback(() => {
-    if (paso === 0) {
-      handleAvanzarAPaso1();
-    } else {
-      setPaso((p) => p + 1);
+  const handleAutoDistribuir = () => {
+    let restante = montoBrutoNum;
+    const nuevo = {};
+    for (const rem of remitosSeleccionados) {
+      if (restante <= 0) break;
+      const deuda = Math.max(0, (Number(rem.total) || 0) - (Number(rem.monto_pagado) || 0));
+      const asignar = Math.min(restante, deuda);
+      if (asignar > 0) {
+        nuevo[rem.id || rem._id] = String(asignar.toFixed(2));
+        restante -= asignar;
+      }
     }
-  }, [paso, handleAvanzarAPaso1]);
+    setImportes(nuevo);
+  };
 
-  const handleAtras = useCallback(() => {
-    setPaso((p) => p - 1);
-  }, []);
+  // Retenciones
+  const handleAddRetencion = () => {
+    setRetenciones((prev) => [...prev, { descripcion: '', porcentaje: '', monto: '' }]);
+  };
+  const handleRemoveRetencion = (idx) => {
+    setRetenciones((prev) => prev.filter((_, i) => i !== idx));
+  };
+  const handleRetencionChange = (idx, field, value) => {
+    setRetenciones((prev) => prev.map((r, i) => {
+      if (i !== idx) return r;
+      const updated = { ...r, [field]: value };
+      // si cambian el porcentaje, recalcular monto
+      if (field === 'porcentaje' && montoBrutoNum > 0) {
+        const pct = normalizeAmount(value);
+        if (pct != null) {
+          updated.monto = ((montoBrutoNum * pct) / 100).toFixed(2);
+        }
+      }
+      return updated;
+    }));
+  };
 
-  const handleSaltarImputacion = useCallback(() => {
-    setImputaciones([]);
-    setPaso(2);
-  }, []);
+  // Archivos
+  const handleAddArchivos = (e) => {
+    const files = Array.from(e.target.files || []);
+    setArchivos((prev) => [...prev, ...files]);
+    e.target.value = ''; // permite re-seleccionar el mismo archivo
+  };
+  const handleRemoveArchivo = (idx) => {
+    setArchivos((prev) => prev.filter((_, i) => i !== idx));
+  };
 
-  // ── Validación paso 0 ─────────────────────────────────────────────────────
-  const paso0Valido = useMemo(() => {
-    const mb = parseFloat(montoBruto);
-    return Number.isFinite(mb) && mb > 0 && !!fechaPago;
-  }, [montoBruto, fechaPago]);
+  // Navegación
+  const canProceedStep0 = montoBrutoNum > 0 && fechaPago && (moneda === 'ARS' || normalizeAmount(tipoCambio));
 
-  // ── Confirmar ─────────────────────────────────────────────────────────────
-  const handleConfirmar = useCallback(async () => {
-    setLoading(true);
+  const handleNext = () => setActiveStep((s) => Math.min(s + 1, STEPS.length - 1));
+  const handleBack = () => setActiveStep((s) => Math.max(s - 1, 0));
+
+  // Submit final
+  const handleConfirmar = async () => {
     setError(null);
+    setLoading(true);
     try {
-      const retencionesLimpias = retenciones.map((r) => ({
-        descripcion: r.descripcion || null,
-        porcentaje: r.porcentaje !== '' ? parseFloat(r.porcentaje) : null,
-        monto: parseFloat(r.monto) || 0,
-      }));
+      const imputaciones = remitosSeleccionados
+        .map((rem) => {
+          const id = rem.id || rem._id;
+          const monto = normalizeAmount(importes[id]);
+          if (!monto || monto <= 0) return null;
+          return { movimiento_id: id, monto_imputado: monto };
+        })
+        .filter(Boolean);
 
-      const imputacionesLimpias = imputaciones
-        .filter((i) => parseFloat(i.monto_imputado) > 0)
-        .map((i) => ({
-          movimiento_id: i.movimiento_id,
-          monto_imputado: parseFloat(i.monto_imputado) || 0,
-        }));
+      const retencionesPayload = retenciones
+        .map((r) => ({
+          descripcion: r.descripcion?.trim() || null,
+          porcentaje: normalizeAmount(r.porcentaje),
+          monto: normalizeAmount(r.monto) || 0,
+        }))
+        .filter((r) => r.monto > 0);
 
-      const pagoData = {
+      const payload = {
         proveedor_id: proveedorId,
         fecha_pago: fechaPago,
-        monto_bruto: parseFloat(montoBruto),
+        monto_bruto: montoBrutoNum,
         moneda,
-        tipo_cambio: tipoCambio !== '' ? parseFloat(tipoCambio) : null,
-        tipo_cambio_es_manual: tipoCambioEsManual,
+        tipo_cambio: moneda === 'USD' ? normalizeAmount(tipoCambio) : null,
+        tipo_cambio_es_manual: moneda === 'USD' ? tipoCambioEsManual : false,
         metodo,
-        nro_comprobante: nroComprobante || null,
-        notas: notas || null,
-        retenciones: retencionesLimpias,
-        imputaciones: imputacionesLimpias,
+        nro_comprobante: nroComprobante.trim() || null,
+        notas: notas.trim() || null,
+        retenciones: retencionesPayload,
+        imputaciones,
       };
 
-      const pago = await pagoProveedorService.registrar(empresaId, pagoData);
+      const pago = await pagoProveedorService.registrar(empresaId, payload);
 
       if (archivos.length > 0) {
         await pagoProveedorService.subirComprobantes(empresaId, pago._id, archivos);
       }
 
-      onSuccess(pago);
-      onClose();
+      onSuccess?.(pago);
+      onClose?.();
     } catch (err) {
-      setError(err?.response?.data?.error || err.message || 'Error al registrar el pago');
+      console.error('Error registrando pago:', err);
+      setError(err.response?.data?.error || 'Ocurrió un error al registrar el pago.');
     } finally {
       setLoading(false);
     }
-  }, [
-    retenciones, imputaciones, proveedorId, fechaPago, montoBruto,
-    moneda, tipoCambio, tipoCambioEsManual, metodo, nroComprobante,
-    notas, archivos, empresaId, onSuccess, onClose,
-  ]);
-
-  // ── Render ────────────────────────────────────────────────────────────────
-
-  const renderPaso0 = () => (
-    <Stack spacing={2.5}>
-      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-        <TextField
-          label="Fecha del pago"
-          type="date"
-          size="small"
-          fullWidth
-          value={fechaPago}
-          onChange={(e) => setFechaPago(e.target.value)}
-          InputLabelProps={{ shrink: true }}
-          required
-        />
-        <TextField
-          label="Método de pago"
-          select
-          size="small"
-          fullWidth
-          value={metodo}
-          onChange={(e) => setMetodo(e.target.value)}
-        >
-          {METODOS.map((m) => (
-            <MenuItem key={m.value} value={m.value}>{m.label}</MenuItem>
-          ))}
-        </TextField>
-      </Stack>
-
-      <TextField
-        label="N° comprobante (opcional)"
-        size="small"
-        fullWidth
-        value={nroComprobante}
-        onChange={(e) => setNroComprobante(e.target.value)}
-      />
-
-      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-        <TextField
-          label="Monto bruto"
-          type="number"
-          size="small"
-          fullWidth
-          required
-          value={montoBruto}
-          onChange={(e) => setMontoBruto(e.target.value)}
-          InputProps={{
-            startAdornment: <InputAdornment position="start">$</InputAdornment>,
-          }}
-          inputProps={{ min: 0, step: '0.01' }}
-        />
-        <TextField
-          label="Moneda"
-          select
-          size="small"
-          sx={{ minWidth: 100 }}
-          value={moneda}
-          onChange={(e) => {
-            setMoneda(e.target.value);
-            setTipoCambioEsManual(false);
-          }}
-        >
-          {MONEDAS.map((m) => (
-            <MenuItem key={m.value} value={m.value}>{m.label}</MenuItem>
-          ))}
-        </TextField>
-      </Stack>
-
-      {moneda === 'USD' && (
-        <TextField
-          label="Tipo de cambio"
-          type="number"
-          size="small"
-          fullWidth
-          value={tipoCambio}
-          onChange={(e) => {
-            setTipoCambio(e.target.value);
-            setTipoCambioEsManual(true);
-          }}
-          helperText={
-            tipoCambioEsManual
-              ? '(Manual)'
-              : tipoCambioDia
-                ? `(Del día: $${tipoCambioDia})`
-                : 'Sin cotización disponible para esta fecha'
-          }
-          inputProps={{ min: 0, step: '0.01' }}
-        />
-      )}
-
-      {/* Retenciones */}
-      <Accordion
-        expanded={retencionesOpen}
-        onChange={(_, exp) => setRetencionesOpen(exp)}
-        variant="outlined"
-        sx={{ boxShadow: 'none', '&:before': { display: 'none' } }}
-      >
-        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-          <Typography variant="body2" fontWeight={600}>
-            Retenciones {retenciones.length > 0 && `(${retenciones.length})`}
-          </Typography>
-        </AccordionSummary>
-        <AccordionDetails>
-          <Stack spacing={1.5}>
-            {retenciones.map((ret, idx) => (
-              <Stack key={idx} direction="row" spacing={1} alignItems="center">
-                <TextField
-                  label="Descripción"
-                  size="small"
-                  value={ret.descripcion}
-                  onChange={(e) => handleCambiarRetencion(idx, 'descripcion', e.target.value)}
-                  sx={{ flex: 2 }}
-                />
-                <TextField
-                  label="% (opc.)"
-                  type="number"
-                  size="small"
-                  value={ret.porcentaje}
-                  onChange={(e) => handleCambiarRetencion(idx, 'porcentaje', e.target.value)}
-                  inputProps={{ min: 0, max: 100, step: '0.01' }}
-                  sx={{ flex: 1 }}
-                />
-                <TextField
-                  label="Monto"
-                  type="number"
-                  size="small"
-                  value={ret.monto}
-                  onChange={(e) => handleCambiarRetencion(idx, 'monto', e.target.value)}
-                  InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment> }}
-                  inputProps={{ min: 0, step: '0.01' }}
-                  sx={{ flex: 1 }}
-                />
-                <Tooltip title="Eliminar retención">
-                  <IconButton size="small" onClick={() => handleEliminarRetencion(idx)}>
-                    <DeleteIcon fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-              </Stack>
-            ))}
-            <Button
-              size="small"
-              startIcon={<AddIcon />}
-              onClick={handleAgregarRetencion}
-              variant="outlined"
-              sx={{ alignSelf: 'flex-start' }}
-            >
-              Agregar retención
-            </Button>
-          </Stack>
-        </AccordionDetails>
-      </Accordion>
-
-      {/* Resumen */}
-      <Paper variant="outlined" sx={{ p: 1.5 }}>
-        <Stack direction="row" spacing={2} flexWrap="wrap">
-          <Typography variant="body2">
-            Bruto: <strong>{formatCurrencyWithCode(parseFloat(montoBruto) || 0)}</strong>
-          </Typography>
-          {totalRetenciones > 0 && (
-            <Typography variant="body2">
-              Retenciones: <strong>{formatCurrencyWithCode(totalRetenciones)}</strong>
-            </Typography>
-          )}
-          <Typography variant="body2">
-            Neto al proveedor: <strong>{formatCurrencyWithCode(montoNeto)}</strong>
-          </Typography>
-        </Stack>
-      </Paper>
-
-      <TextField
-        label="Notas (opcional)"
-        multiline
-        rows={2}
-        size="small"
-        fullWidth
-        value={notas}
-        onChange={(e) => setNotas(e.target.value)}
-      />
-    </Stack>
-  );
-
-  const renderPaso1 = () => {
-    const remitosDisp = remitosPendientes;
-    return (
-      <Stack spacing={2}>
-        <Paper variant="outlined" sx={{ p: 1.5 }}>
-          <Stack direction="row" spacing={2} flexWrap="wrap">
-            <Typography variant="body2">
-              Monto disponible: <strong>{formatCurrencyWithCode(parseFloat(montoBruto) || 0)}</strong>
-            </Typography>
-            <Typography variant="body2">
-              Imputado: <strong>{formatCurrencyWithCode(totalImputado)}</strong>
-            </Typography>
-            <Typography variant="body2" color={sinImputar > 0.005 ? 'warning.main' : 'success.main'}>
-              Sin imputar: <strong>{formatCurrencyWithCode(sinImputar)}</strong>
-            </Typography>
-          </Stack>
-        </Paper>
-
-        {remitosDisp.length === 0 ? (
-          <Typography variant="body2" color="text.secondary">
-            No hay facturas pendientes para este proveedor.
-          </Typography>
-        ) : (
-          <>
-            <Stack direction="row" justifyContent="flex-end">
-              <Button size="small" variant="outlined" onClick={handleAutoDistribuir}>
-                Auto-distribuir (FIFO)
-              </Button>
-            </Stack>
-            <TableContainer component={Paper} variant="outlined">
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell sx={{ fontWeight: 600 }}>Fecha</TableCell>
-                    <TableCell sx={{ fontWeight: 600 }}>Categoría</TableCell>
-                    <TableCell align="right" sx={{ fontWeight: 600 }}>Deuda</TableCell>
-                    <TableCell align="right" sx={{ fontWeight: 600 }}>A imputar</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {imputaciones.map((imp, idx) => {
-                    const rem = remitosDisp.find((r) => (r._id || r.id) === imp.movimiento_id);
-                    if (!rem) return null;
-                    const deuda = Math.max(0, (rem.total || 0) - (rem.monto_pagado || 0));
-                    return (
-                      <TableRow key={imp.movimiento_id}>
-                        <TableCell>{formatTimestamp(rem.fecha_factura)}</TableCell>
-                        <TableCell>{rem.categoria || '—'}</TableCell>
-                        <TableCell align="right">{formatCurrencyWithCode(deuda)}</TableCell>
-                        <TableCell align="right" sx={{ width: 140 }}>
-                          <TextField
-                            type="number"
-                            size="small"
-                            value={imp.monto_imputado}
-                            onChange={(e) => handleCambiarImputacion(idx, e.target.value)}
-                            InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment> }}
-                            inputProps={{ min: 0, max: deuda, step: '0.01' }}
-                            sx={{ width: 130 }}
-                          />
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                  {imputaciones.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={4} align="center">
-                        <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
-                          Seleccioná facturas y hacé clic en Auto-distribuir
-                        </Typography>
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          </>
-        )}
-      </Stack>
-    );
   };
 
-  const renderPaso2 = () => (
-    <Stack spacing={2}>
-      <Typography variant="body2" color="text.secondary">
-        Podés adjuntar comprobantes ahora o más tarde.
-      </Typography>
-      <Button
-        variant="outlined"
-        component="label"
-        size="small"
-        sx={{ alignSelf: 'flex-start' }}
-      >
-        Adjuntar archivos
-        <input
-          type="file"
-          hidden
-          multiple
-          accept="image/*,.pdf"
-          onChange={(e) => {
-            const nuevos = Array.from(e.target.files || []);
-            setArchivos((prev) => [...prev, ...nuevos]);
-            e.target.value = '';
-          }}
-        />
-      </Button>
-      {archivos.length > 0 && (
-        <Stack spacing={0.5}>
-          {archivos.map((f, idx) => (
-            <Stack key={idx} direction="row" alignItems="center" spacing={1}>
-              <Typography variant="body2" sx={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {f.name} ({(f.size / 1024).toFixed(1)} KB)
-              </Typography>
-              <IconButton
-                size="small"
-                onClick={() => setArchivos((prev) => prev.filter((_, i) => i !== idx))}
-              >
-                <DeleteIcon fontSize="small" />
-              </IconButton>
-            </Stack>
-          ))}
-        </Stack>
-      )}
-    </Stack>
-  );
-
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <Dialog open={open} onClose={loading ? undefined : onClose} maxWidth="md" fullWidth>
       <DialogTitle>
-        Registrar pago — {proveedor}
+        Registrar pago — <Typography component="span" fontWeight={700}>{proveedor}</Typography>
       </DialogTitle>
+
       <DialogContent dividers>
-        <Stepper activeStep={paso} sx={{ mb: 3 }}>
-          {PASOS.map((label) => (
+        <Stepper activeStep={activeStep} sx={{ mb: 3 }}>
+          {STEPS.map((label) => (
             <Step key={label}>
               <StepLabel>{label}</StepLabel>
             </Step>
           ))}
         </Stepper>
 
-        {error && (
-          <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
-            {error}
-          </Alert>
+        {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+
+        {/* ───── PASO 0: Datos del pago ─────────────────────────────────────── */}
+        {activeStep === 0 && (
+          <Stack spacing={2}>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+              <TextField
+                label="Fecha del pago"
+                type="date"
+                value={fechaPago}
+                onChange={(e) => setFechaPago(e.target.value)}
+                InputLabelProps={{ shrink: true }}
+                fullWidth
+              />
+              <TextField
+                select
+                label="Método"
+                value={metodo}
+                onChange={(e) => setMetodo(e.target.value)}
+                fullWidth
+              >
+                {METODOS.map((m) => (
+                  <MenuItem key={m.value} value={m.value}>{m.label}</MenuItem>
+                ))}
+              </TextField>
+            </Stack>
+
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+              <TextField
+                label="Monto bruto"
+                type="number"
+                value={montoBruto}
+                onChange={(e) => setMontoBruto(e.target.value)}
+                InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment> }}
+                fullWidth
+                autoFocus
+              />
+              <TextField
+                select
+                label="Moneda"
+                value={moneda}
+                onChange={(e) => setMoneda(e.target.value)}
+                sx={{ minWidth: 120 }}
+              >
+                <MenuItem value="ARS">ARS</MenuItem>
+                <MenuItem value="USD">USD</MenuItem>
+              </TextField>
+            </Stack>
+
+            {moneda === 'USD' && (
+              <TextField
+                label="Tipo de cambio"
+                type="number"
+                value={tipoCambio}
+                onChange={handleTipoCambioChange}
+                InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment> }}
+                helperText={
+                  tipoCambioEsManual
+                    ? `Manual${tipoCambioDelDia ? ` (Cotización del día: $${tipoCambioDelDia})` : ''}`
+                    : tipoCambioDelDia
+                      ? `Cotización del día`
+                      : 'Cargá manualmente — no hay cotización del día disponible'
+                }
+                fullWidth
+              />
+            )}
+
+            <TextField
+              label="Nro de comprobante"
+              value={nroComprobante}
+              onChange={(e) => setNroComprobante(e.target.value)}
+              helperText="CBU, nro de cheque, transferencia, etc."
+              fullWidth
+            />
+
+            <TextField
+              label="Notas"
+              value={notas}
+              onChange={(e) => setNotas(e.target.value)}
+              multiline
+              rows={2}
+              fullWidth
+            />
+
+            {/* Retenciones */}
+            <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 2 }}>
+              <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+                <Typography variant="subtitle2" fontWeight={600}>
+                  Retenciones {retenciones.length > 0 && `(${retenciones.length})`}
+                </Typography>
+                <Button size="small" startIcon={<AddIcon />} onClick={handleAddRetencion}>
+                  Agregar
+                </Button>
+              </Stack>
+
+              {retenciones.length === 0 && (
+                <Typography variant="body2" color="text.secondary">
+                  Sin retenciones aplicadas.
+                </Typography>
+              )}
+
+              {retenciones.map((r, idx) => (
+                <Stack key={idx} direction="row" spacing={1} sx={{ mb: 1 }} alignItems="center">
+                  <TextField
+                    size="small"
+                    placeholder="Descripción"
+                    value={r.descripcion}
+                    onChange={(e) => handleRetencionChange(idx, 'descripcion', e.target.value)}
+                    sx={{ flex: 2 }}
+                  />
+                  <TextField
+                    size="small"
+                    type="number"
+                    placeholder="%"
+                    value={r.porcentaje}
+                    onChange={(e) => handleRetencionChange(idx, 'porcentaje', e.target.value)}
+                    InputProps={{ endAdornment: <InputAdornment position="end">%</InputAdornment> }}
+                    sx={{ width: 100 }}
+                  />
+                  <TextField
+                    size="small"
+                    type="number"
+                    placeholder="Monto"
+                    value={r.monto}
+                    onChange={(e) => handleRetencionChange(idx, 'monto', e.target.value)}
+                    InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment> }}
+                    sx={{ width: 130 }}
+                  />
+                  <IconButton size="small" onClick={() => handleRemoveRetencion(idx)}>
+                    <CloseIcon fontSize="small" />
+                  </IconButton>
+                </Stack>
+              ))}
+            </Box>
+
+            {/* Resumen */}
+            <Paper variant="outlined" sx={{ p: 2, bgcolor: 'grey.50' }}>
+              <Stack direction="row" justifyContent="space-between">
+                <Typography variant="body2" color="text.secondary">Bruto</Typography>
+                <Typography variant="body2" fontWeight={500}>{formatCurrencyWithCode(montoBrutoNum)}</Typography>
+              </Stack>
+              <Stack direction="row" justifyContent="space-between">
+                <Typography variant="body2" color="text.secondary">Retenciones</Typography>
+                <Typography variant="body2" fontWeight={500}>− {formatCurrencyWithCode(totalRetenciones)}</Typography>
+              </Stack>
+              <Divider sx={{ my: 1 }} />
+              <Stack direction="row" justifyContent="space-between">
+                <Typography variant="body2" fontWeight={700}>Neto al proveedor</Typography>
+                <Typography variant="body2" fontWeight={700} color="primary.main">
+                  {formatCurrencyWithCode(montoNetoProveedor)}
+                </Typography>
+              </Stack>
+            </Paper>
+          </Stack>
         )}
 
-        {paso === 0 && renderPaso0()}
-        {paso === 1 && renderPaso1()}
-        {paso === 2 && renderPaso2()}
+        {/* ───── PASO 1: Imputaciones ───────────────────────────────────────── */}
+        {activeStep === 1 && (
+          <Stack spacing={2}>
+            {remitos.length === 0 ? (
+              <Alert severity="info">
+                Este proveedor no tiene facturas pendientes. El pago quedará sin imputar — podés imputarlo más tarde.
+              </Alert>
+            ) : (
+              <>
+                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                  <Typography variant="body2" color="text.secondary">
+                    Monto del pago: <strong>{formatCurrencyWithCode(montoBrutoNum)}</strong>
+                  </Typography>
+                  <Button size="small" variant="outlined" onClick={handleAutoDistribuir}>
+                    Auto-distribuir
+                  </Button>
+                </Stack>
+
+                <TableContainer component={Paper} variant="outlined">
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell padding="checkbox" />
+                        <TableCell>Fecha</TableCell>
+                        <TableCell>Categoría</TableCell>
+                        <TableCell align="right">Deuda</TableCell>
+                        <TableCell align="right" sx={{ minWidth: 140 }}>A imputar</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {remitos.map((rem) => {
+                        const id = rem.id || rem._id;
+                        const isSelected = selectedIds.has(id);
+                        const deuda = Math.max(0, (Number(rem.total) || 0) - (Number(rem.monto_pagado) || 0));
+                        return (
+                          <TableRow key={id} hover>
+                            <TableCell padding="checkbox">
+                              <Checkbox
+                                size="small"
+                                checked={isSelected}
+                                onChange={() => handleToggleRemito(id)}
+                              />
+                            </TableCell>
+                            <TableCell>{formatTimestamp(rem.fecha_factura)}</TableCell>
+                            <TableCell>{rem.categoria || '—'}</TableCell>
+                            <TableCell align="right">{formatCurrencyWithCode(deuda)}</TableCell>
+                            <TableCell align="right">
+                              <TextField
+                                size="small"
+                                type="number"
+                                value={importes[id] ?? ''}
+                                onChange={(e) => handleImporteChange(id, e.target.value)}
+                                disabled={!isSelected}
+                                InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment> }}
+                                sx={{ width: 130 }}
+                              />
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+
+                <Stack direction="row" justifyContent="space-between">
+                  <Typography variant="body2" color="text.secondary">
+                    Imputado: <strong>{formatCurrencyWithCode(sumaImputado)}</strong>
+                  </Typography>
+                  <Typography
+                    variant="body2"
+                    color={montoSinImputar > 0.005 ? 'warning.main' : 'success.main'}
+                    fontWeight={600}
+                  >
+                    Sin imputar: {formatCurrencyWithCode(montoSinImputar)}
+                  </Typography>
+                </Stack>
+
+                {montoSinImputar > 0.005 && (
+                  <Alert severity="info" sx={{ mt: 1 }}>
+                    El monto sin imputar quedará registrado en el pago. Podés imputarlo más tarde.
+                  </Alert>
+                )}
+              </>
+            )}
+          </Stack>
+        )}
+
+        {/* ───── PASO 2: Comprobantes ───────────────────────────────────────── */}
+        {activeStep === 2 && (
+          <Stack spacing={2}>
+            <Box>
+              <Button
+                component="label"
+                variant="outlined"
+                startIcon={<AttachFileIcon />}
+              >
+                Adjuntar archivos
+                <input
+                  type="file"
+                  hidden
+                  multiple
+                  accept="image/*,.pdf"
+                  onChange={handleAddArchivos}
+                />
+              </Button>
+              <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
+                Imágenes (JPG, PNG, WEBP) o PDF. Podés adjuntarlos más tarde si querés.
+              </Typography>
+            </Box>
+
+            {archivos.length > 0 && (
+              <Stack spacing={1}>
+                {archivos.map((file, idx) => (
+                  <Paper key={idx} variant="outlined" sx={{ p: 1.5 }}>
+                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                      <Box>
+                        <Typography variant="body2" fontWeight={500}>{file.name}</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {(file.size / 1024).toFixed(1)} KB
+                        </Typography>
+                      </Box>
+                      <IconButton size="small" onClick={() => handleRemoveArchivo(idx)}>
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    </Stack>
+                  </Paper>
+                ))}
+              </Stack>
+            )}
+
+            {/* Resumen final */}
+            <Paper variant="outlined" sx={{ p: 2, bgcolor: 'grey.50', mt: 2 }}>
+              <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>Resumen</Typography>
+              <Stack direction="row" justifyContent="space-between">
+                <Typography variant="body2" color="text.secondary">Proveedor</Typography>
+                <Typography variant="body2">{proveedor}</Typography>
+              </Stack>
+              <Stack direction="row" justifyContent="space-between">
+                <Typography variant="body2" color="text.secondary">Fecha</Typography>
+                <Typography variant="body2">{fechaPago}</Typography>
+              </Stack>
+              <Stack direction="row" justifyContent="space-between">
+                <Typography variant="body2" color="text.secondary">Monto bruto</Typography>
+                <Typography variant="body2">{formatCurrencyWithCode(montoBrutoNum)} {moneda}</Typography>
+              </Stack>
+              <Stack direction="row" justifyContent="space-between">
+                <Typography variant="body2" color="text.secondary">Retenciones</Typography>
+                <Typography variant="body2">− {formatCurrencyWithCode(totalRetenciones)}</Typography>
+              </Stack>
+              <Stack direction="row" justifyContent="space-between">
+                <Typography variant="body2" fontWeight={700}>Neto al proveedor</Typography>
+                <Typography variant="body2" fontWeight={700} color="primary.main">
+                  {formatCurrencyWithCode(montoNetoProveedor)}
+                </Typography>
+              </Stack>
+              <Divider sx={{ my: 1 }} />
+              <Stack direction="row" justifyContent="space-between">
+                <Typography variant="body2" color="text.secondary">Imputado</Typography>
+                <Typography variant="body2">{formatCurrencyWithCode(sumaImputado)}</Typography>
+              </Stack>
+              <Stack direction="row" justifyContent="space-between">
+                <Typography variant="body2" color="text.secondary">Sin imputar</Typography>
+                <Typography variant="body2" color={montoSinImputar > 0.005 ? 'warning.main' : 'text.primary'}>
+                  {formatCurrencyWithCode(montoSinImputar)}
+                </Typography>
+              </Stack>
+              <Stack direction="row" justifyContent="space-between">
+                <Typography variant="body2" color="text.secondary">Comprobantes</Typography>
+                <Chip size="small" label={archivos.length} />
+              </Stack>
+            </Paper>
+          </Stack>
+        )}
       </DialogContent>
 
-      <DialogActions sx={{ px: 3, py: 2, justifyContent: 'space-between' }}>
-        <Box>
-          {paso === 1 && (
-            <Button size="small" variant="text" color="inherit" onClick={handleSaltarImputacion}>
-              Saltar — no imputar ahora
-            </Button>
-          )}
-        </Box>
-        <Stack direction="row" spacing={1}>
-          {paso > 0 && (
-            <Button onClick={handleAtras} disabled={loading}>
-              Atrás
-            </Button>
-          )}
-          <Button variant="outlined" onClick={onClose} disabled={loading}>
-            Cancelar
+      <DialogActions>
+        <Button onClick={onClose} disabled={loading}>Cancelar</Button>
+        {activeStep > 0 && (
+          <Button onClick={handleBack} disabled={loading}>Atrás</Button>
+        )}
+        {activeStep < STEPS.length - 1 && (
+          <Button
+            variant="contained"
+            onClick={handleNext}
+            disabled={activeStep === 0 && !canProceedStep0}
+          >
+            Siguiente
           </Button>
-          {paso < PASOS.length - 1 ? (
-            <Button
-              variant="contained"
-              onClick={handleSiguiente}
-              disabled={paso === 0 && !paso0Valido}
-            >
-              Siguiente
-            </Button>
-          ) : (
-            <Button
-              variant="contained"
-              onClick={handleConfirmar}
-              disabled={loading}
-              startIcon={loading ? <CircularProgress size={16} /> : null}
-            >
-              {loading ? 'Guardando…' : 'Confirmar pago'}
-            </Button>
-          )}
-        </Stack>
+        )}
+        {activeStep === STEPS.length - 1 && (
+          <Button
+            variant="contained"
+            onClick={handleConfirmar}
+            disabled={loading || !canProceedStep0}
+            startIcon={loading ? <CircularProgress size={16} /> : null}
+          >
+            Confirmar pago
+          </Button>
+        )}
       </DialogActions>
     </Dialog>
   );
-};
-
-export default RegistrarPagoDialog;
+}

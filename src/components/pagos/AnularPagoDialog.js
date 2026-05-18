@@ -1,146 +1,164 @@
 /**
- * AnularPagoDialog — permite anular un PagoProveedor con motivo opcional
- * y elección de qué hacer con los movimientos imputados.
+ * AnularPagoDialog — anula un Pago a proveedor preguntando qué hacer con
+ * las facturas imputadas.
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Alert,
+  Box,
   Button,
   CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
-  Divider,
+  FormControl,
   FormControlLabel,
+  Paper,
   Radio,
   RadioGroup,
   Stack,
   TextField,
   Typography,
 } from '@mui/material';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import pagoProveedorService from 'src/services/pagoProveedorService';
 import { formatCurrencyWithCode, formatTimestamp } from 'src/utils/formatters';
 
-const AnularPagoDialog = ({ open, onClose, onSuccess, empresaId, pago }) => {
-  const [accionMovimientos, setAccionMovimientos] = useState('revertir_a_pendiente');
+export default function AnularPagoDialog({
+  open,
+  onClose,
+  onSuccess,
+  empresaId,
+  pago,
+  proveedorNombre,
+}) {
+  const [accion, setAccion] = useState('revertir_a_pendiente');
   const [motivo, setMotivo] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    if (!open) return;
-    setAccionMovimientos('revertir_a_pendiente');
-    setMotivo('');
-    setLoading(false);
-    setError(null);
-  }, [open]);
-
-  const handleConfirmar = useCallback(async () => {
-    if (!pago) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const pagoAnulado = await pagoProveedorService.anular(empresaId, pago._id, {
-        motivo: motivo || null,
-        accion_movimientos: accionMovimientos,
-      });
-      onSuccess(pagoAnulado);
-      onClose();
-    } catch (err) {
-      setError(err?.response?.data?.error || err.message || 'Error al anular el pago');
-    } finally {
-      setLoading(false);
+    if (open) {
+      setAccion('revertir_a_pendiente');
+      setMotivo('');
+      setError(null);
     }
-  }, [pago, empresaId, motivo, accionMovimientos, onSuccess, onClose]);
+  }, [open]);
 
   if (!pago) return null;
 
+  const cantidadImputaciones = pago.imputaciones?.length || 0;
+
+  const handleConfirmar = async () => {
+    setError(null);
+    setLoading(true);
+    try {
+      await pagoProveedorService.anular(empresaId, pago._id, {
+        motivo: motivo.trim() || null,
+        accion_movimientos: accion,
+      });
+      onSuccess?.();
+      onClose?.();
+    } catch (err) {
+      console.error('Error anulando pago:', err);
+      setError(err.response?.data?.error || 'No se pudo anular el pago.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <Dialog open={open} onClose={loading ? undefined : onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Anular pago</DialogTitle>
-      <DialogContent dividers>
-        <Stack spacing={2.5}>
-          {error && (
-            <Alert severity="error" onClose={() => setError(null)}>
-              {error}
-            </Alert>
-          )}
-
-          {/* Resumen del pago */}
-          <Stack spacing={0.5}>
-            <Typography variant="body2" color="text.secondary">Proveedor</Typography>
-            <Typography variant="body1" fontWeight={600}>{pago.proveedor_nombre || pago.proveedor_id}</Typography>
-          </Stack>
-          <Stack direction="row" spacing={3}>
-            <Stack spacing={0.5}>
-              <Typography variant="body2" color="text.secondary">Fecha</Typography>
-              <Typography variant="body1">{formatTimestamp(pago.fecha_pago)}</Typography>
-            </Stack>
-            <Stack spacing={0.5}>
-              <Typography variant="body2" color="text.secondary">Monto bruto</Typography>
-              <Typography variant="body1" fontWeight={600}>
-                {formatCurrencyWithCode(pago.monto_bruto)}
-              </Typography>
-            </Stack>
-          </Stack>
-
-          <Divider />
-
-          {/* Acción sobre movimientos */}
-          <Stack spacing={1}>
-            <Typography variant="body2" fontWeight={600}>
-              ¿Qué hacer con las facturas imputadas?
-            </Typography>
-            <RadioGroup
-              value={accionMovimientos}
-              onChange={(e) => setAccionMovimientos(e.target.value)}
-            >
-              <FormControlLabel
-                value="revertir_a_pendiente"
-                control={<Radio size="small" />}
-                label={
-                  <Stack>
-                    <Typography variant="body2" fontWeight={500}>Revertir a pendiente</Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      Los montos pagados se descontarán de las facturas imputadas.
-                    </Typography>
-                  </Stack>
-                }
-              />
-              <FormControlLabel
-                value="mantener_pagados"
-                control={<Radio size="small" />}
-                label={
-                  <Stack>
-                    <Typography variant="body2" fontWeight={500}>Mantener como pagadas</Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      Las facturas conservan su estado actual.
-                    </Typography>
-                  </Stack>
-                }
-              />
-            </RadioGroup>
-          </Stack>
-
-          {/* Motivo */}
-          <TextField
-            label="Motivo (opcional)"
-            multiline
-            rows={2}
-            size="small"
-            fullWidth
-            value={motivo}
-            onChange={(e) => setMotivo(e.target.value)}
-          />
+      <DialogTitle>
+        <Stack direction="row" spacing={1} alignItems="center">
+          <WarningAmberIcon color="warning" />
+          <span>Anular pago</span>
         </Stack>
+      </DialogTitle>
+
+      <DialogContent dividers>
+        {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+
+        <Paper variant="outlined" sx={{ p: 2, mb: 2, bgcolor: 'grey.50' }}>
+          <Stack direction="row" justifyContent="space-between">
+            <Typography variant="body2" color="text.secondary">Proveedor</Typography>
+            <Typography variant="body2" fontWeight={600}>{proveedorNombre || '—'}</Typography>
+          </Stack>
+          <Stack direction="row" justifyContent="space-between">
+            <Typography variant="body2" color="text.secondary">Fecha</Typography>
+            <Typography variant="body2">{formatTimestamp(pago.fecha_pago)}</Typography>
+          </Stack>
+          <Stack direction="row" justifyContent="space-between">
+            <Typography variant="body2" color="text.secondary">Monto bruto</Typography>
+            <Typography variant="body2" fontWeight={600}>
+              {formatCurrencyWithCode(pago.monto_bruto)} {pago.moneda}
+            </Typography>
+          </Stack>
+          <Stack direction="row" justifyContent="space-between">
+            <Typography variant="body2" color="text.secondary">Facturas imputadas</Typography>
+            <Typography variant="body2">{cantidadImputaciones}</Typography>
+          </Stack>
+        </Paper>
+
+        {cantidadImputaciones > 0 ? (
+          <Box>
+            <Typography variant="body2" sx={{ mb: 1.5 }}>
+              Este pago tiene <strong>{cantidadImputaciones} factura{cantidadImputaciones !== 1 ? 's' : ''}</strong> imputada{cantidadImputaciones !== 1 ? 's' : ''}. ¿Qué hacés con ellas?
+            </Typography>
+
+            <FormControl>
+              <RadioGroup
+                value={accion}
+                onChange={(e) => setAccion(e.target.value)}
+              >
+                <FormControlLabel
+                  value="revertir_a_pendiente"
+                  control={<Radio />}
+                  label={
+                    <Box>
+                      <Typography variant="body2" fontWeight={600}>Volver a pendiente</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Las facturas se descuentan y vuelven a aparecer como deuda.
+                      </Typography>
+                    </Box>
+                  }
+                />
+                <FormControlLabel
+                  value="mantener_pagados"
+                  control={<Radio />}
+                  label={
+                    <Box>
+                      <Typography variant="body2" fontWeight={600}>Mantener como pagadas</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        El pago se marca como anulado por cuestión contable pero las facturas siguen cerradas.
+                      </Typography>
+                    </Box>
+                  }
+                />
+              </RadioGroup>
+            </FormControl>
+          </Box>
+        ) : (
+          <Alert severity="info" sx={{ mb: 2 }}>
+            Este pago no tiene facturas imputadas. Se marcará como anulado sin afectar movimientos.
+          </Alert>
+        )}
+
+        <TextField
+          label="Motivo de anulación"
+          value={motivo}
+          onChange={(e) => setMotivo(e.target.value)}
+          multiline
+          rows={2}
+          fullWidth
+          sx={{ mt: 2 }}
+        />
       </DialogContent>
 
-      <DialogActions sx={{ px: 3, py: 2 }}>
-        <Button onClick={onClose} disabled={loading}>
-          Cancelar
-        </Button>
+      <DialogActions>
+        <Button onClick={onClose} disabled={loading}>Cancelar</Button>
         <Button
           variant="contained"
           color="error"
@@ -148,11 +166,9 @@ const AnularPagoDialog = ({ open, onClose, onSuccess, empresaId, pago }) => {
           disabled={loading}
           startIcon={loading ? <CircularProgress size={16} /> : null}
         >
-          {loading ? 'Anulando…' : 'Confirmar anulación'}
+          Confirmar anulación
         </Button>
       </DialogActions>
     </Dialog>
   );
-};
-
-export default AnularPagoDialog;
+}
