@@ -127,8 +127,8 @@ const FiltroErrores = ({
         PaperProps={{
           sx: {
             p: 1.5,
-            minWidth: 300,
-            maxWidth: 360,
+            minWidth: 360,
+            maxWidth: 420,
           },
         }}
       >
@@ -147,18 +147,40 @@ const FiltroErrores = ({
               <CloseIcon fontSize="small" />
             </IconButton>
           </Box>
-          <DatePicker
-            label="Desde"
-            value={filters.fechaDesde}
-            onChange={(value) => setFilter("fechaDesde", value)}
-            slotProps={{ textField: { size: "small", fullWidth: true } }}
-          />
-          <DatePicker
-            label="Hasta"
-            value={filters.fechaHasta}
-            onChange={(value) => setFilter("fechaHasta", value)}
-            slotProps={{ textField: { size: "small", fullWidth: true } }}
-          />
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
+            Fecha detectada
+          </Typography>
+          <Stack direction="row" spacing={1}>
+            <DatePicker
+              label="Desde"
+              value={filters.fechaDetectadaDesde}
+              onChange={(value) => setFilter("fechaDetectadaDesde", value)}
+              slotProps={{ textField: { size: "small", fullWidth: true } }}
+            />
+            <DatePicker
+              label="Hasta"
+              value={filters.fechaDetectadaHasta}
+              onChange={(value) => setFilter("fechaDetectadaHasta", value)}
+              slotProps={{ textField: { size: "small", fullWidth: true } }}
+            />
+          </Stack>
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
+            Fecha de sincronizacion
+          </Typography>
+          <Stack direction="row" spacing={1}>
+            <DatePicker
+              label="Desde"
+              value={filters.fechaDocumentoDesde}
+              onChange={(value) => setFilter("fechaDocumentoDesde", value)}
+              slotProps={{ textField: { size: "small", fullWidth: true } }}
+            />
+            <DatePicker
+              label="Hasta"
+              value={filters.fechaDocumentoHasta}
+              onChange={(value) => setFilter("fechaDocumentoHasta", value)}
+              slotProps={{ textField: { size: "small", fullWidth: true } }}
+            />
+          </Stack>
           <TextField
             select
             label="Tipo de documento"
