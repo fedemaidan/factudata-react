@@ -45,15 +45,55 @@ const App = (props) => {
 
   useNProgress();
 
-  // Recuperar de errores de carga de chunks tras un deploy
+  // Recuperar de errores de carga de chunks tras un deploy.
+  // Firebase Hosting sirve index.html (HTML) cuando se pide un chunk viejo que ya no existe en /out,
+  // y el browser revienta con "Unexpected token '<'" al parsearlo como JS.
   useEffect(() => {
+    const RELOAD_FLAG = 'sorby-chunk-reloaded-at';
+    const isChunkError = (msg, filename) => {
+      if (!msg) return false;
+      const m = String(msg);
+      if (m.includes('ChunkLoadError') || m.includes('Loading chunk') || m.includes('Loading CSS chunk')) {
+        return true;
+      }
+      // SyntaxError típico cuando un chunk devuelve HTML
+      if (m.includes("Unexpected token '<'") || m.includes('Unexpected token <')) {
+        if (!filename) return true;
+        return /\/_next\/static\//.test(filename);
+      }
+      return false;
+    };
+    const reloadOnce = () => {
+      const last = Number(sessionStorage.getItem(RELOAD_FLAG) || 0);
+      // si ya recargamos hace menos de 30s, no loopear
+      if (Date.now() - last < 30000) return;
+      sessionStorage.setItem(RELOAD_FLAG, String(Date.now()));
+      window.location.reload();
+    };
+
+    const onError = (event) => {
+      if (isChunkError(event?.message, event?.filename)) reloadOnce();
+    };
+    const onRejection = (event) => {
+      const reason = event?.reason;
+      const msg = reason?.message || reason;
+      if (isChunkError(msg, reason?.fileName)) reloadOnce();
+    };
     const handleRouteError = (err, url) => {
-      if (err.message && err.message.includes('Unexpected token')) {
+      if (isChunkError(err?.message)) {
+        sessionStorage.setItem(RELOAD_FLAG, String(Date.now()));
         window.location.href = url;
       }
     };
+
+    window.addEventListener('error', onError);
+    window.addEventListener('unhandledrejection', onRejection);
     Router.events.on('routeChangeError', handleRouteError);
-    return () => Router.events.off('routeChangeError', handleRouteError);
+    return () => {
+      window.removeEventListener('error', onError);
+      window.removeEventListener('unhandledrejection', onRejection);
+      Router.events.off('routeChangeError', handleRouteError);
+    };
   }, []);
 
   const getLayout = Component.getLayout ?? ((page) => page);

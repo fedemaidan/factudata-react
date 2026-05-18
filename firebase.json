@@ -28,6 +28,10 @@
     ],
     "rewrites": [
       {
+        "source": "/_next/**",
+        "destination": "/__chunk-missing.js"
+      },
+      {
         "source": "/sdr/contacto/**",
         "destination": "/sdr/contacto/[id]/index.html"
       },
