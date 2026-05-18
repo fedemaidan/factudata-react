@@ -255,12 +255,14 @@ const ProyectoCard = ({ proyecto, resumen, onSelect, formatMonto, tipoCambio, mo
 };
 
 // ============ COMPONENTE: ITEM DE PRESUPUESTO ============
-// Click en la card → toggle selección (acumulativo, ver sticky bar inferior).
-// Ícono editar (esquina sup. derecha) → abre drawer de edición o popover si hay N>1 presupuestos.
+// Modo normal: click en la card abre el detalle (onEditar).
+// Modo selección (modoSeleccion=true): click toggle selección; checkbox visible.
+// Ícono editar (esquina sup. derecha) → abre drawer aunque esté en modo selección.
 const PresupuestoItem = ({
-  label, presupuesto, ejecutado, formatMonto, onEditar, onToggleSeleccion, seleccionada = false,
+  label, presupuesto, ejecutado, formatMonto, onEditar, onCrear, onToggleSeleccion, seleccionada = false,
   historial, moneda, indexacion, baseCalculo, cotizacionSnapshot, montoIngresado,
   cacIndiceActual: cacIdx, tipoCambioActual, cacTipo,
+  modoSeleccion = false,
 }) => {
   const tienePresupuesto = presupuesto !== null && presupuesto !== undefined;
   const ejec = ejecutado || 0;
@@ -282,6 +284,16 @@ const PresupuestoItem = ({
   const stylesSeleccion = seleccionada
     ? { borderColor: 'primary.main', borderWidth: 2, bgcolor: 'action.selected' }
     : { '&:hover': { bgcolor: 'action.hover', borderColor: 'primary.main' } };
+
+  // Handler unificado del click en la card.
+  // - Modo selección activo: toggle.
+  // - Modo normal: abrir detalle (onEditar) si lo hay; caso contrario, toggle (entra a selección con esta card).
+  const handleCardClick = (e) => {
+    if (modoSeleccion) return onToggleSeleccion?.(e);
+    if (onEditar) return onEditar(e);
+    if (onCrear) return onCrear(e);
+    // Sin presupuesto y sin handler de crear: no hacer nada (no debería seleccionarse fuera de modoSeleccion).
+  };
 
   // Ícono editar visible solo si hay presupuesto que editar.
   const renderEditarBtn = tienePresupuesto && onEditar ? (
@@ -318,11 +330,11 @@ const PresupuestoItem = ({
       <Paper
         variant="outlined"
         sx={{ p: { xs: 1.5, md: 2 }, cursor: 'pointer', position: 'relative', transition: 'all 0.15s', ...stylesSeleccion }}
-        onClick={(e) => onToggleSeleccion?.(e)}
+        onClick={handleCardClick}
       >
         <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1}>
           <Stack direction="row" spacing={1.25} alignItems="center">
-            {renderCheck}
+            {modoSeleccion && renderCheck}
             <Typography sx={{ fontSize: { xs: '0.875rem', md: '1rem' } }}>{label}</Typography>
           </Stack>
           <Chip label="Sin presupuesto" size="small" variant="outlined" color="default" />
@@ -335,12 +347,12 @@ const PresupuestoItem = ({
     <Paper
       variant="outlined"
       sx={{ p: { xs: 1.5, md: 2 }, cursor: 'pointer', position: 'relative', transition: 'all 0.15s', ...stylesSeleccion }}
-      onClick={(e) => onToggleSeleccion?.(e)}
+      onClick={handleCardClick}
     >
       {renderEditarBtn}
       {/* Fila superior: check + label + badges */}
       <Stack direction="row" spacing={0.75} alignItems="center" sx={{ minWidth: 0, mb: 0.5, pr: 3 }} flexWrap="wrap" useFlexGap>
-        {renderCheck}
+        {modoSeleccion && renderCheck}
         <Typography fontWeight={500} noWrap sx={{ fontSize: { xs: '0.85rem', md: '1rem' }, flex: { xs: '1 1 auto', sm: '0 1 auto' }, minWidth: 0 }}>{label}</Typography>
         {esIndexado && (
           <Chip label={`idx ${unidadIdx}`} size="small" color="secondary" variant="outlined" sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }} />
@@ -480,6 +492,10 @@ const ControlPresupuestosPage = () => {
     }));
   };
   const limpiarSeleccion = () => setSeleccionMulti({ clasificaciones: [], proveedores: [], etapa: null });
+
+  // Modo selección múltiple: cuando true, click en las cards toggle selección; cuando false, abre detalle.
+  const [modoSeleccion, setModoSeleccion] = useState(false);
+  const salirModoSeleccion = () => { setModoSeleccion(false); limpiarSeleccion(); };
   
   // Modal agregar proveedor (se mantiene como dialog simple)
   const [proveedorModal, setProveedorModal] = useState(false);
@@ -908,6 +924,7 @@ const ControlPresupuestosPage = () => {
   const handleDrawerSuccess = (message) => {
     setAlert({ open: true, message, severity: 'success' });
     limpiarSeleccion();
+    setModoSeleccion(false);
     cargarResumen();
   };
 
@@ -1057,6 +1074,19 @@ const ControlPresupuestosPage = () => {
       presupuesto: _buildPresupuestoPayload(item, label),
     });
   };
+
+  // Presupuestos que cubren múltiples categorías (sin etapa ni proveedor).
+  // Se muestran como cards combinadas (label "Cat A + Cat B") en vez de duplicarse
+  // en cada card de categoría individual.
+  const presupuestosMultiCategoria = useMemo(() => {
+    const items = obtenerTodosLosItemsEgresos();
+    return items.filter(
+      (i) => itemTieneCategorias(i)
+        && (i.clasificaciones || []).length > 1
+        && !i.etapa
+        && !itemTieneProveedores(i),
+    );
+  }, [resumen, moneda, tipoCambio, cacIndiceActual]);
 
   // Calcular sumas por cada agrupación (son 3 formas de ver el MISMO presupuesto)
   // Convierte cada item a la moneda de visualización antes de sumar
@@ -1796,6 +1826,32 @@ const ControlPresupuestosPage = () => {
                   </Box>
                   
                   <Box sx={{ mt: 3 }}>
+                    {/* Toggle modo selección múltiple */}
+                    <Stack direction="row" justifyContent="flex-end" sx={{ mb: 1.5 }}>
+                      {modoSeleccion ? (
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          color="primary"
+                          onClick={salirModoSeleccion}
+                          sx={{ textTransform: 'none' }}
+                        >
+                          Cancelar selección
+                        </Button>
+                      ) : (
+                        <Button
+                          size="small"
+                          variant="text"
+                          color="primary"
+                          startIcon={<AddCircleIcon fontSize="small" />}
+                          onClick={() => setModoSeleccion(true)}
+                          sx={{ textTransform: 'none' }}
+                        >
+                          Crear agrupando varios
+                        </Button>
+                      )}
+                    </Stack>
+
                     {/* TAB: POR CATEGORÍA */}
                     {tabActivo === 0 && (
                       <Stack spacing={2}>
@@ -1808,33 +1864,91 @@ const ControlPresupuestosPage = () => {
                             </Typography>
                           </Box>
                         ) : (
-                          categorias.map((cat) => {
-                            const catName = cat.name || cat;
-                            const data = getPresupuestoPorAgrupacion('categoria', catName);
-                            const nItems = data.items?.length || 0;
-                            const labelConChip = nItems > 1 ? `${catName} · ${nItems} presupuestos` : catName;
-                            return (
-                              <PresupuestoItem
-                                key={catName}
-                                label={labelConChip}
-                                presupuesto={data.presupuesto}
-                                ejecutado={data.ejecutado}
-                                formatMonto={formatMonto}
-                                historial={data.historial}
-                                moneda={data.moneda}
-                                indexacion={data.indexacion}
-                                baseCalculo={data.base_calculo}
-                                cotizacionSnapshot={data.cotizacion_snapshot}
-                                montoIngresado={data.monto_ingresado}
-                                cacIndiceActual={getCacIndice(data.cac_tipo)}
-                                tipoCambioActual={tipoCambio}
-                                cacTipo={data.cac_tipo}
-                                seleccionada={seleccionMulti.clasificaciones.includes(catName)}
-                                onToggleSeleccion={() => toggleSeleccionCategoria(catName)}
-                                onEditar={nItems > 0 ? (e) => handleEditarBucket(e, data, catName) : undefined}
-                              />
-                            );
-                          })
+                          <>
+                            {categorias.map((cat) => {
+                              const catName = cat.name || cat;
+                              const data = getPresupuestoPorAgrupacion('categoria', catName);
+                              // Sólo incluir presupuestos asignados exclusivamente a esta categoría.
+                              // Los multi-categoría se renderizan abajo como cards combinadas.
+                              const itemsSingle = (data.items || []).filter(
+                                (i) => (i.clasificaciones || []).length <= 1,
+                              );
+                              const nItems = itemsSingle.length;
+                              const presupuestoSingle = itemsSingle.reduce(
+                                (s, i) => s + convertir(i.monto || 0, i.moneda || 'ARS', i.cac_tipo),
+                                0,
+                              );
+                              const itemUnico = nItems === 1 ? itemsSingle[0] : null;
+                              const dataAjustada = nItems === 0
+                                ? { ...data, presupuesto: null, items: [], historial: [], moneda: 'ARS' }
+                                : nItems === 1
+                                ? {
+                                    ...data,
+                                    presupuesto: itemUnico.monto,
+                                    items: itemsSingle,
+                                    historial: itemUnico.historial || [],
+                                    moneda: itemUnico.moneda || 'ARS',
+                                    indexacion: itemUnico.indexacion || null,
+                                    base_calculo: itemUnico.base_calculo || 'total',
+                                    cotizacion_snapshot: itemUnico.cotizacion_snapshot || null,
+                                    monto_ingresado: itemUnico.monto_ingresado || itemUnico.monto,
+                                    cac_tipo: itemUnico.cac_tipo || null,
+                                  }
+                                : { ...data, presupuesto: presupuestoSingle, items: itemsSingle, indexacion: null };
+                              const labelConChip = nItems > 1 ? `${catName} · ${nItems} presupuestos` : catName;
+                              return (
+                                <PresupuestoItem
+                                  key={catName}
+                                  label={labelConChip}
+                                  presupuesto={dataAjustada.presupuesto}
+                                  ejecutado={dataAjustada.ejecutado}
+                                  formatMonto={formatMonto}
+                                  historial={dataAjustada.historial}
+                                  moneda={dataAjustada.moneda}
+                                  indexacion={dataAjustada.indexacion}
+                                  baseCalculo={dataAjustada.base_calculo}
+                                  cotizacionSnapshot={dataAjustada.cotizacion_snapshot}
+                                  montoIngresado={dataAjustada.monto_ingresado}
+                                  cacIndiceActual={getCacIndice(dataAjustada.cac_tipo)}
+                                  tipoCambioActual={tipoCambio}
+                                  cacTipo={dataAjustada.cac_tipo}
+                                  seleccionada={seleccionMulti.clasificaciones.includes(catName)}
+                                  modoSeleccion={modoSeleccion}
+                                  onToggleSeleccion={() => toggleSeleccionCategoria(catName)}
+                                  onEditar={nItems > 0 ? (e) => handleEditarBucket(e, dataAjustada, catName) : undefined}
+                                  onCrear={() => abrirDrawerCrear({
+                                    preFill: { clasificaciones: [{ categoria: catName, subcategorias: [] }], proveedores: [], etapa: null },
+                                  })}
+                                />
+                              );
+                            })}
+                            {presupuestosMultiCategoria.map((item) => {
+                              const cats = (item.clasificaciones || []).map((c) => c.categoria);
+                              const label = cats.join(' + ');
+                              return (
+                                <PresupuestoItem
+                                  key={`multi-${item.id}`}
+                                  label={label}
+                                  presupuesto={item.monto}
+                                  ejecutado={item.ejecutado || 0}
+                                  formatMonto={formatMonto}
+                                  historial={item.historial || []}
+                                  moneda={item.moneda || 'ARS'}
+                                  indexacion={item.indexacion || null}
+                                  baseCalculo={item.base_calculo || 'total'}
+                                  cotizacionSnapshot={item.cotizacion_snapshot || null}
+                                  montoIngresado={item.monto_ingresado || item.monto}
+                                  cacIndiceActual={getCacIndice(item.cac_tipo)}
+                                  tipoCambioActual={tipoCambio}
+                                  cacTipo={item.cac_tipo || null}
+                                  seleccionada={false}
+                                  modoSeleccion={false}
+                                  onToggleSeleccion={() => abrirDrawerEditar(item, label)}
+                                  onEditar={(e) => abrirDrawerEditar(item, label)}
+                                />
+                              );
+                            })}
+                          </>
                         )}
                       </Stack>
                     )}
@@ -1873,8 +1987,12 @@ const ControlPresupuestosPage = () => {
                                 tipoCambioActual={tipoCambio}
                                 cacTipo={data.cac_tipo}
                                 seleccionada={seleccionMulti.etapa === etapaName}
+                                modoSeleccion={modoSeleccion}
                                 onToggleSeleccion={() => toggleSeleccionEtapa(etapaName)}
                                 onEditar={nItems > 0 ? (e) => handleEditarBucket(e, data, etapaName) : undefined}
+                                onCrear={() => abrirDrawerCrear({
+                                  preFill: { clasificaciones: [], proveedores: [], etapa: etapaName },
+                                })}
                               />
                             );
                           })
@@ -1934,8 +2052,12 @@ const ControlPresupuestosPage = () => {
                                 tipoCambioActual={tipoCambio}
                                 cacTipo={data.cac_tipo}
                                 seleccionada={seleccionMulti.proveedores.includes(proveedor)}
+                                modoSeleccion={modoSeleccion}
                                 onToggleSeleccion={() => toggleSeleccionProveedor(proveedor)}
                                 onEditar={nItems > 0 ? (e) => handleEditarBucket(e, data, proveedor) : undefined}
+                                onCrear={() => abrirDrawerCrear({
+                                  preFill: { clasificaciones: [], proveedores: [{ id: null, nombre: proveedor }], etapa: null },
+                                })}
                               />
                             );
                           })
@@ -2000,7 +2122,7 @@ const ControlPresupuestosPage = () => {
                 ))}
               </Stack>
               <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>
-                <Button size="small" variant="text" onClick={limpiarSeleccion}>Limpiar</Button>
+                <Button size="small" variant="text" onClick={salirModoSeleccion}>Limpiar</Button>
                 <Button
                   size="small"
                   variant="contained"
@@ -2096,6 +2218,7 @@ const ControlPresupuestosPage = () => {
         showFullForm={drawerPresupuesto.showFullForm}
         presupuesto={drawerPresupuesto.presupuesto}
         drawerView={drawerPresupuesto.drawerView || 'full'}
+        filtrosColapsados
         onRecalcular={async (id) => {
           try {
             const { success } = await presupuestoService.recalcularPresupuesto(id, empresaId);

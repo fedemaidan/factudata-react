@@ -34,7 +34,10 @@ import {
   List,
   ListItem,
   ListItemText,
+  Collapse,
 } from '@mui/material';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import TuneIcon from '@mui/icons-material/Tune';
 import CloseIcon from '@mui/icons-material/Close';
 import DeleteIcon from '@mui/icons-material/Delete';
 import HistoryIcon from '@mui/icons-material/History';
@@ -136,7 +139,11 @@ const PresupuestoDrawer = ({
   proyectos = [],
   categorias = [],
   etapas = [],
+  // Cuando true, oculta el bloque de filtros (categorías/proveedores/etapa) detrás de un botón "Configuración avanzada".
+  // Útil cuando el usuario ya eligió los filtros fuera del drawer (p.ej. Control de presupuestos).
+  filtrosColapsados = false,
 }) => {
+  const [filtrosExpandidos, setFiltrosExpandidos] = useState(false);
   const router = useRouter();
 
   // === Estado: Crear ===
@@ -362,6 +369,7 @@ const PresupuestoDrawer = ({
       setAdicionalCacOverride('');
       setAdicionalDolarOverride('');
       setMostrarAdicional(drawerView === 'adicional');
+      setFiltrosExpandidos(false);
       setActiveTab(
         mode === 'editar' && (!drawerView || drawerView === 'full')
           ? (Array.isArray(presupuesto?.adjuntos) && presupuesto.adjuntos.length > 0 ? TAB_MAP.adjuntos : TAB_MAP.movimientos)
@@ -1313,50 +1321,68 @@ const PresupuestoDrawer = ({
                   {tipo !== 'ingreso' && (
                     <>
                       <Divider />
-                      <Typography variant="subtitle2" color="text.secondary">
-                        Opcional: ¿querés filtrar el seguimiento?
-                      </Typography>
-                      <Typography variant="caption" color="text.disabled" sx={{ mt: -1.5 }}>
-                        Asociá categoría, proveedor o etapa para un control más preciso
-                      </Typography>
-
-                      <Box>
-                        <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
-                          Categorías y subcategorías
-                        </Typography>
-                        <ClasificacionesPicker
-                          value={clasificacionesSel}
-                          onChange={setClasificacionesSel}
-                          categorias={categorias}
-                        />
-                      </Box>
-
-                      <Box>
-                        <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
-                          Proveedores
-                        </Typography>
-                        <ProveedoresMultiSelect
-                          value={proveedoresSel}
-                          onChange={setProveedoresSel}
-                          options={proveedoresEmpresa}
+                      {filtrosColapsados && !filtrosExpandidos ? (
+                        <Button
                           size="small"
-                        />
-                      </Box>
-
-                      <FormControl fullWidth size="small">
-                        <InputLabel>Etapa</InputLabel>
-                        <Select
-                          value={etapaSel}
-                          onChange={(e) => setEtapaSel(e.target.value)}
-                          label="Etapa"
+                          variant="text"
+                          startIcon={<TuneIcon fontSize="small" />}
+                          endIcon={<ExpandMoreIcon fontSize="small" />}
+                          onClick={() => setFiltrosExpandidos(true)}
+                          sx={{ alignSelf: 'flex-start', textTransform: 'none' }}
                         >
-                          <MenuItem value=""><em>Sin etapa</em></MenuItem>
-                          {etapas.map((et, idx) => (
-                            <MenuItem key={idx} value={et}>{et}</MenuItem>
-                          ))}
-                        </Select>
-                      </FormControl>
+                          Configuración avanzada
+                        </Button>
+                      ) : (
+                        <>
+                          <Typography variant="subtitle2" color="text.secondary">
+                            Opcional: ¿querés filtrar el seguimiento?
+                          </Typography>
+                          <Typography variant="caption" color="text.disabled" sx={{ mt: -1.5 }}>
+                            Asociá categoría, proveedor o etapa para un control más preciso
+                          </Typography>
+                        </>
+                      )}
 
+                      <Collapse in={!filtrosColapsados || filtrosExpandidos} unmountOnExit>
+                        <Stack spacing={2}>
+                          <Box>
+                            <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
+                              Categorías y subcategorías
+                            </Typography>
+                            <ClasificacionesPicker
+                              value={clasificacionesSel}
+                              onChange={setClasificacionesSel}
+                              categorias={categorias}
+                            />
+                          </Box>
+
+                          <Box>
+                            <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
+                              Proveedores
+                            </Typography>
+                            <ProveedoresMultiSelect
+                              value={proveedoresSel}
+                              onChange={setProveedoresSel}
+                              options={proveedoresEmpresa}
+                              size="small"
+                            />
+                          </Box>
+
+                          <FormControl fullWidth size="small">
+                            <InputLabel>Etapa</InputLabel>
+                            <Select
+                              value={etapaSel}
+                              onChange={(e) => setEtapaSel(e.target.value)}
+                              label="Etapa"
+                            >
+                              <MenuItem value=""><em>Sin etapa</em></MenuItem>
+                              {etapas.map((et, idx) => (
+                                <MenuItem key={idx} value={et}>{et}</MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+                        </Stack>
+                      </Collapse>
                     </>
                   )}
                 </>
