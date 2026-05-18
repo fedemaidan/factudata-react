@@ -41,6 +41,7 @@ import {
 } from "src/components/dhn/sync/cells";
 import SyncDriveExplorer from "src/components/dhn/sync/SyncDriveExplorer";
 import { computeSyncRootPrefixSegments } from "src/utils/dhn/driveViewModel";
+import useDHNDocTypePermissions from "src/hooks/dhn/useDHNDocTypePermissions";
 
 const DEFAULT_PAGE_LIMIT = 100;
 
@@ -96,11 +97,14 @@ const SyncDetailPage = () => {
   const isParte = tipo === "parte";
   const isLicencia = tipo === "licencia";
   const isHoras = tipo === "horas";
+  const { isTypeAllowed, loading: permsLoading, hasAny } = useDHNDocTypePermissions();
+  const tipoBloqueado = !permsLoading && tipo && !isTypeAllowed(tipo);
   const shouldShowFecha = isParte || isLicencia;
   const canEditFecha = isParte || isLicencia;
 
   const fetchDetails = useCallback(async () => {
     if (!syncId) return;
+    if (tipoBloqueado || (!permsLoading && !hasAny)) return;
     setIsLoading(true);
     try {
       const page = await DhnDriveService.getSyncChildren(String(syncId), {
@@ -124,7 +128,7 @@ const SyncDetailPage = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [syncId, paginationLimit, paginationOffset, searchQuery, statusFilter]);
+  }, [syncId, paginationLimit, paginationOffset, searchQuery, statusFilter, tipoBloqueado, permsLoading, hasAny]);
 
   const fetchDriveFullList = useCallback(async () => {
     if (!syncId) return;
@@ -607,6 +611,20 @@ const SyncDetailPage = () => {
     () => computeSyncRootPrefixSegments(driveAllItems),
     [driveAllItems]
   );
+
+  if (!permsLoading && (!hasAny || tipoBloqueado)) {
+    return (
+      <DashboardLayout title="Detalle de sincronización">
+        <Container maxWidth="xl">
+          <Alert severity="warning" sx={{ mt: 3 }}>
+            {!hasAny
+              ? "No tenés permisos para ver ningún tipo de documento (partes, licencias u horas). Contactá al administrador."
+              : `No tenés permiso para ver documentos del tipo "${tipo}".`}
+          </Alert>
+        </Container>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout title="Detalle de sincronización">

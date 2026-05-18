@@ -141,10 +141,13 @@ export const PartesCell = ({ item }) => {
   );
 };
 
-export const ComprobantesCell = ({ item, onOpen }) => (
+export const ComprobantesCell = ({ item, onOpen, allowedTypes }) => (
   <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
     {item.comprobantes && item.comprobantes.length > 0 ? (
-      item.comprobantes.map((comp, compIndex) => (
+      (allowedTypes
+        ? item.comprobantes.filter((c) => allowedTypes.includes(String(c?.type || '').toLowerCase()))
+        : item.comprobantes
+      ).map((comp, compIndex) => (
         (() => {
           const url = comp.url || comp.url_storage || null;
           const handleClick = (event) => {
@@ -201,24 +204,28 @@ export const ComprobantesCell = ({ item, onOpen }) => (
   </Box>
 );
 
-export const buildTrabajoRegistradoColumns = (onEdit, incluirTrabajador = false, onOpenComprobante) => ([
-  ...(incluirTrabajador ? [
-    { key: 'trabajador', label: 'Trabajador', sortable: true, render: (item) => <TrabajadorCell item={item} /> },
-    { key: 'dni', label: 'DNI', sortable: true, render: (item) => <DNICell item={item} /> },
-  ] : []),
-  { key: 'estado', label: 'Estado', sortable: true, render: (item) => <EstadoCell item={item} /> },
-  { key: 'licencia', label: 'Licencia', sortable: true, render: (item) => <LicenciaCell item={item} /> },
-  { key: 'fecha', label: 'Fecha', sortable: true },
-  { key: 'horas', label: 'Horas', sortable: false, render: (item) => <PartesCell item={item} /> },
-  { key: 'comprobantes', label: 'Comprobantes', sortable: false, render: (item) => (
-    <ComprobantesCell item={item} onOpen={onOpenComprobante} />
-  ) },
-  ...(onEdit ? [{ 
-    key: 'acciones', 
-    label: 'Acciones', 
-    sortable: false, 
-    render: (item) => onEdit(item) 
-  }] : []),
-]);
+export const buildTrabajoRegistradoColumns = (onEdit, incluirTrabajador = false, onOpenComprobante, allowedTypes) => {
+  const showLicencia = !allowedTypes || allowedTypes.includes('licencia');
+  const showHoras = !allowedTypes || allowedTypes.includes('horas');
+  return [
+    ...(incluirTrabajador ? [
+      { key: 'trabajador', label: 'Trabajador', sortable: true, render: (item) => <TrabajadorCell item={item} /> },
+      { key: 'dni', label: 'DNI', sortable: true, render: (item) => <DNICell item={item} /> },
+    ] : []),
+    { key: 'estado', label: 'Estado', sortable: true, render: (item) => <EstadoCell item={item} /> },
+    ...(showLicencia ? [{ key: 'licencia', label: 'Licencia', sortable: true, render: (item) => <LicenciaCell item={item} /> }] : []),
+    { key: 'fecha', label: 'Fecha', sortable: true },
+    ...(showHoras ? [{ key: 'horas', label: 'Horas', sortable: false, render: (item) => <PartesCell item={item} /> }] : []),
+    { key: 'comprobantes', label: 'Comprobantes', sortable: false, render: (item) => (
+      <ComprobantesCell item={item} onOpen={onOpenComprobante} allowedTypes={allowedTypes} />
+    ) },
+    ...(onEdit ? [{
+      key: 'acciones',
+      label: 'Acciones',
+      sortable: false,
+      render: (item) => onEdit(item)
+    }] : []),
+  ];
+};
 
 

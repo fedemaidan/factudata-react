@@ -18,6 +18,8 @@ import CloseIcon from "@mui/icons-material/Close";
 import SearchIcon from "@mui/icons-material/Search";
 import RefreshIcon from "@mui/icons-material/Refresh";
 
+const TIPO_LABELS = { parte: 'Parte', licencia: 'Licencia', horas: 'Horas' };
+
 const FiltroErrores = ({
   filterContext,
   onActualizar,
@@ -25,6 +27,8 @@ const FiltroErrores = ({
   isLoading,
   isCargandoCorreccion,
   totalDisponibles,
+  allowedTypes = ['parte', 'licencia', 'horas'],
+  canSeeAll = true,
 }) => {
   const {
     filters,
@@ -167,10 +171,10 @@ const FiltroErrores = ({
             size="small"
             fullWidth
           >
-            <MenuItem value="">Todos</MenuItem>
-            <MenuItem value="parte">Parte</MenuItem>
-            <MenuItem value="licencia">Licencia</MenuItem>
-            <MenuItem value="horas">Horas</MenuItem>
+            {canSeeAll && <MenuItem value="">Todos</MenuItem>}
+            {allowedTypes.map((t) => (
+              <MenuItem key={t} value={t}>{TIPO_LABELS[t] || t}</MenuItem>
+            ))}
           </TextField>
           <TextField
             select

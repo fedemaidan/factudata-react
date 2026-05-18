@@ -4,9 +4,14 @@ import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { Container, Stack, Alert } from '@mui/material';
 import DataTable from 'src/components/celulandia/DataTable';
 import TrabajoRegistradoService from 'src/services/dhn/TrabajoRegistradoService';
+import useDHNDocTypePermissions from 'src/hooks/dhn/useDHNDocTypePermissions';
 
 const ControlQuincenalPage = () => {
   const router = useRouter();
+  const { allowedTypes, hasAny, loading: permsLoading } = useDHNDocTypePermissions();
+  const showParte = allowedTypes.includes('parte');
+  const showHoras = allowedTypes.includes('horas');
+  const showLicencia = allowedTypes.includes('licencia');
   const [data, setData] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -22,10 +27,10 @@ const ControlQuincenalPage = () => {
     { key: 'ok', label: 'OK', sortable: true },
     { key: 'incompleto', label: 'Incompleto', sortable: true },
     { key: 'advertencia', label: 'Advertencia', sortable: true },
-    { key: 'conLicencia', label: 'Con Licencia', sortable: true },
-    { key: 'sinHoras', label: 'Sin Horas', sortable: true },
-    { key: 'sinParte', label: 'Sin Parte', sortable: true },
-  ], [router]);
+    ...(showLicencia ? [{ key: 'conLicencia', label: 'Con Licencia', sortable: true }] : []),
+    ...(showHoras ? [{ key: 'sinHoras', label: 'Sin Horas', sortable: true }] : []),
+    ...(showParte ? [{ key: 'sinParte', label: 'Sin Parte', sortable: true }] : []),
+  ], [router, showLicencia, showHoras, showParte]);
 
   const fetchData = useCallback(async () => {
     setIsLoading(true);
@@ -42,8 +47,9 @@ const ControlQuincenalPage = () => {
   }, []);
 
   useEffect(() => {
+    if (permsLoading || !hasAny) return;
     fetchData();
-  }, [fetchData]);
+  }, [fetchData, permsLoading, hasAny]);
 
   const handleSortChange = useCallback((field) => {
     setSortField((prevField) => {

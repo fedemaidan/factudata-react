@@ -31,6 +31,7 @@ import DataTable from "src/components/celulandia/DataTable";
 import conciliacionService from "src/services/dhn/conciliacionService";
 import Alerts from "src/components/alerts";
 import { useRouter } from "next/router";
+import useDHNDocTypePermissions from "src/hooks/dhn/useDHNDocTypePermissions";
 
 const DropZone = ({ label, file, onFileChange, accept, disabled }) => {
   const [isDragging, setIsDragging] = useState(false);
@@ -175,6 +176,7 @@ const getErrorMessage = (error) => {
 
 const ConciliacionPage = () => {
   const router = useRouter();
+  const { hasAny, loading: permsLoading } = useDHNDocTypePermissions();
   const [items, setItems] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
@@ -217,8 +219,9 @@ const ConciliacionPage = () => {
   }, []);
 
   useEffect(() => {
+    if (permsLoading || !hasAny) return;
     fetchConciliaciones();
-  }, [fetchConciliaciones]);
+  }, [fetchConciliaciones, permsLoading, hasAny]);
 
   useEffect(() => {
     if (!pendingConciliacionId) return undefined;
