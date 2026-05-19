@@ -55,8 +55,10 @@ const TABS = [
 
 const renderEstadoCC = (resumen) => {
   if (!resumen) return <Chip size="small" label="—" variant="outlined" />;
+  const saldo = resumen.saldo || 0;
   if (resumen.tiene_vencidas) return <Chip size="small" label="Vencida" color="error" />;
-  if ((resumen.deuda_actual || 0) > 0.005) return <Chip size="small" label="Con deuda" color="warning" />;
+  if (saldo > 0.005) return <Chip size="small" label="Con deuda" color="warning" />;
+  if (saldo < -0.005) return <Chip size="small" label="A favor" color="info" />;
   return <Chip size="small" label="Al día" color="success" variant="outlined" />;
 };
 
@@ -119,7 +121,7 @@ function ProveedoresContent({ empresa, refreshKey }) {
       const id = p._id || p.id;
       const r = resumenMap[id];
       const archivado = !!p.archivado;
-      const enDeuda = (r?.deuda_actual || 0) > 0.005;
+      const enDeuda = (r?.saldo || 0) > 0.005;
 
       // Filtro por tab
       if (tab === 'favoritos'  && (!p.favorito || archivado)) return false;
@@ -155,10 +157,10 @@ function ProveedoresContent({ empresa, refreshKey }) {
         return db - da;
       });
     } else if (tab === 'con_deuda') {
-      // Por deuda actual descendente
+      // Por saldo deudor descendente (los con más deuda primero)
       arr.sort((a, b) => {
-        const da = resumenMap[a._id || a.id]?.deuda_actual || 0;
-        const db = resumenMap[b._id || b.id]?.deuda_actual || 0;
+        const da = resumenMap[a._id || a.id]?.saldo || 0;
+        const db = resumenMap[b._id || b.id]?.saldo || 0;
         return db - da;
       });
     } else if (tab === 'todos' || tab === 'favoritos') {
@@ -185,7 +187,7 @@ function ProveedoresContent({ empresa, refreshKey }) {
         c.todos += 1;
         if (r?.ultimo_movimiento) c.recientes += 1;
         if (p.favorito) c.favoritos += 1;
-        if ((r?.deuda_actual || 0) > 0.005) c.con_deuda += 1;
+        if ((r?.saldo || 0) > 0.005) c.con_deuda += 1;
       }
     });
     return c;
@@ -425,7 +427,7 @@ function ProveedoresContent({ empresa, refreshKey }) {
                 <TableCell sx={{ width: 32 }} />
                 <TableCell>Nombre</TableCell>
                 <TableCell>Tipo</TableCell>
-                <TableCell align="right">Deuda actual</TableCell>
+                <TableCell align="right">Saldo</TableCell>
                 <TableCell align="right">Facturas abiertas</TableCell>
                 <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>Último movimiento</TableCell>
                 <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>Último pago</TableCell>
@@ -463,13 +465,27 @@ function ProveedoresContent({ empresa, refreshKey }) {
                       />
                     </TableCell>
                     <TableCell align="right">
-                      {(r?.deuda_actual || 0) > 0.005 ? (
-                        <Typography variant="body2" fontWeight={600} color={r.tiene_vencidas ? 'error.main' : 'warning.main'}>
-                          {formatCurrencyWithCode(r.deuda_actual)}
-                        </Typography>
-                      ) : (
-                        <Typography variant="body2" color="text.disabled">—</Typography>
-                      )}
+                      {(() => {
+                        const saldo = r?.saldo || 0;
+                        if (saldo > 0.005) {
+                          return (
+                            <Typography variant="body2" fontWeight={600} color={r.tiene_vencidas ? 'error.main' : 'warning.main'}>
+                              {formatCurrencyWithCode(saldo)}
+                            </Typography>
+                          );
+                        }
+                        if (saldo < -0.005) {
+                          return (
+                            <Box>
+                              <Typography variant="body2" fontWeight={600} color="info.main">
+                                {formatCurrencyWithCode(Math.abs(saldo))}
+                              </Typography>
+                              <Typography variant="caption" color="info.main">a favor</Typography>
+                            </Box>
+                          );
+                        }
+                        return <Typography variant="body2" color="text.disabled">—</Typography>;
+                      })()}
                     </TableCell>
                     <TableCell align="right">
                       {(r?.cantidad_facturas_abiertas || 0) > 0
