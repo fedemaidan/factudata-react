@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import Alerts from 'src/components/alerts';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
-import { Container, Stack, Alert, Box, TextField, InputAdornment, IconButton, Chip, Button, Typography, CircularProgress, MenuItem, Popover, Divider } from '@mui/material';
+import { Container, Stack, Alert, Box, TextField, InputAdornment, IconButton, Chip, Button, Typography, CircularProgress, MenuItem, Popover, Divider, FormControlLabel, Switch } from '@mui/material';
 import ClearIcon from '@mui/icons-material/Clear';
 import SickIcon from '@mui/icons-material/Sick';
 import EditIcon from '@mui/icons-material/Edit';
@@ -51,7 +51,18 @@ const INITIAL_STATS = {
   advertencia: 0,
   pendiente: 0,
   error: 0,
+  soloSistemaCount: 0,
+  soloNasaCount: 0,
+  diffChicaCount: 0,
+  conNocturnasCount: 0,
 };
+
+const DISCREPANCIA_FILTERS = [
+  { key: 'soloSistema', label: 'Solo nuestro sistema', countKey: 'soloSistemaCount' },
+  { key: 'soloNasa', label: 'Solo NASA / Excel', countKey: 'soloNasaCount' },
+  { key: 'diffChica', label: 'Diferencia ≤ 1h', countKey: 'diffChicaCount' },
+  { key: 'conNocturnas', label: 'Con horas nocturnas', countKey: 'conNocturnasCount' },
+];
 
 const ConciliacionDetallePage = () => {
   const router = useRouter();
@@ -72,6 +83,12 @@ const ConciliacionDetallePage = () => {
   const [sortField, setSortField] = useState('fecha');
   const [sortDirection, setSortDirection] = useState('desc');
   const [tipo, setTipo] = useState('');
+  const [discrepanciaFilters, setDiscrepanciaFilters] = useState({
+    soloSistema: false,
+    soloNasa: false,
+    diffChica: false,
+    conNocturnas: false,
+  });
   const [filtersAnchorEl, setFiltersAnchorEl] = useState(null);
   const [editOpen, setEditOpen] = useState(false);
   const [rowToEdit, setRowToEdit] = useState(null);
@@ -152,7 +169,7 @@ const ConciliacionDetallePage = () => {
   }, [router.query.estado]);
 
   const fetchRows = useCallback(
-    async ({ page: targetPage = 0, rowsPerPage: limit = DEFAULT_PAGE_SIZE, text, estado, tipo: tipoParam, sortField: sortKey, sortDirection: sortDir } = {}) => {
+    async ({ page: targetPage = 0, rowsPerPage: limit = DEFAULT_PAGE_SIZE, text, estado, tipo: tipoParam, sortField: sortKey, sortDirection: sortDir, discrepancia } = {}) => {
       if (!id) return;
       setIsLoading(true);
       try {
@@ -163,14 +180,19 @@ const ConciliacionDetallePage = () => {
           limit: normalizedLimit,
           offset,
         };
+        // statsParams NO incluye `estado`: los chips de estado actúan como selector
+        // y deben mostrar el desglose completo de cada estado dentro del resto de filtros.
+        const statsParams = {};
         if (estado && estado !== 'todos') {
           params.estado = estado;
         }
         if (text && text.trim()) {
           params.text = text.trim();
+          statsParams.text = text.trim();
         }
         if (tipoParam) {
           params.tipo = tipoParam;
+          statsParams.tipo = tipoParam;
         }
         if (sortKey) {
           params.sortField = sortKey;
@@ -178,9 +200,14 @@ const ConciliacionDetallePage = () => {
         if (sortDir) {
           params.sortDirection = sortDir;
         }
+        const flags = discrepancia || {};
+        if (flags.soloSistema) params.soloSistema = true;
+        if (flags.soloNasa) params.soloNasa = true;
+        if (flags.diffChica) params.diffChica = true;
+        if (flags.conNocturnas) params.conNocturnas = true;
         const [rowsRes, statsRes] = await Promise.all([
           conciliacionService.getConciliacionRows(id, params),
-          conciliacionService.getConciliacionStats(id),
+          conciliacionService.getConciliacionStats(id, { ...statsParams, ...flags }),
         ]);
         setRows(rowsRes.data || []);
         const normalizedStats = statsRes?.stats || statsRes || {};
@@ -192,6 +219,10 @@ const ConciliacionDetallePage = () => {
           advertencia: normalizedStats.advertencia ?? 0,
           pendiente: normalizedStats.pendiente ?? 0,
           error: normalizedStats.error ?? 0,
+          soloSistemaCount: normalizedStats.soloSistemaCount ?? 0,
+          soloNasaCount: normalizedStats.soloNasaCount ?? 0,
+          diffChicaCount: normalizedStats.diffChicaCount ?? 0,
+          conNocturnasCount: normalizedStats.conNocturnasCount ?? 0,
         });
         setPeriodoInfo(rowsRes.periodo || '-');
         setSheetId(rowsRes.sheetId || null);
@@ -215,8 +246,9 @@ const ConciliacionDetallePage = () => {
       tipo,
       sortField,
       sortDirection,
+      discrepancia: discrepanciaFilters,
     });
-  }, [fetchRows, page, rowsPerPage, appliedSearchTerm, estadoFiltro, tipo, searchTrigger, sortField, sortDirection]);
+  }, [fetchRows, page, rowsPerPage, appliedSearchTerm, estadoFiltro, tipo, searchTrigger, sortField, sortDirection, discrepanciaFilters]);
 
   const handleApplySearch = useCallback(() => {
     const trimmed = (searchTerm || '').trim();
@@ -256,8 +288,9 @@ const ConciliacionDetallePage = () => {
       tipo,
       sortField,
       sortDirection,
+      discrepancia: discrepanciaFilters,
     });
-  }, [fetchRows, page, rowsPerPage, appliedSearchTerm, estadoFiltro, tipo, sortField, sortDirection]);
+  }, [fetchRows, page, rowsPerPage, appliedSearchTerm, estadoFiltro, tipo, sortField, sortDirection, discrepanciaFilters]);
 
   const buildSheetSelectionPayload = useCallback((row) => {
     if (!row) return null;
@@ -585,6 +618,19 @@ const ConciliacionDetallePage = () => {
               size="small"
               onClick={(e) => {
                 e.stopPropagation();
+                console.log('[conciliacion] click EDIT row', {
+                  rowId,
+                  fecha: row?.fecha,
+                  trabajador: getTrabajadorDisplayData(row),
+                  estado: row?.estado,
+                  observacion: row?.observacion,
+                  dbHoras: row?.dbHoras,
+                  sheetHoras: row?.sheetHoras,
+                  horasExcel: row?.dbHoras?.horasExcel ?? row?.trabajoDiarioRegistrado?.horasExcel,
+                  trabajoDiarioRegistrado: row?.trabajoDiarioRegistrado,
+                  dataExtraida: row?.dataExtraida,
+                  rowCompleto: row,
+                });
                 const initial = {
                   horasNormales: row?.dbHoras?.horasNormales ?? null,
                   horas50: row?.dbHoras?.horas50 ?? null,
@@ -611,6 +657,14 @@ const ConciliacionDetallePage = () => {
               disabled={!row?.trabajoDiarioRegistrado || exportingRowId === rowId}
               onClick={(e) => {
                 e.stopPropagation();
+                console.log('[conciliacion] click EXPORT PDF row', {
+                  rowId,
+                  fecha: row?.fecha,
+                  trabajador: getTrabajadorDisplayData(row),
+                  estado: row?.estado,
+                  trabajoDiarioRegistrado: row?.trabajoDiarioRegistrado,
+                  rowCompleto: row,
+                });
                 handleExportPdf(row);
               }}
             >
@@ -628,11 +682,21 @@ const ConciliacionDetallePage = () => {
 
   useEffect(() => {
     setSelectedRowsMap(new Map());
-  }, [id, appliedSearchTerm, estadoFiltro, tipo, sortField, sortDirection]);
+  }, [id, appliedSearchTerm, estadoFiltro, tipo, sortField, sortDirection, discrepanciaFilters]);
 
   const handleTipoChange = useCallback((value) => {
     setPage(0);
     setTipo(value);
+  }, []);
+
+  const handleDiscrepanciaToggle = useCallback((key) => {
+    setPage(0);
+    setDiscrepanciaFilters((prev) => ({ ...prev, [key]: !prev[key] }));
+  }, []);
+
+  const handleDiscrepanciaClear = useCallback((key) => {
+    setPage(0);
+    setDiscrepanciaFilters((prev) => ({ ...prev, [key]: false }));
   }, []);
 
   const handleOpenFilters = useCallback((event) => {
@@ -645,6 +709,8 @@ const ConciliacionDetallePage = () => {
 
   const handleClearFilters = useCallback(() => {
     handleTipoChange('');
+    setDiscrepanciaFilters({ soloSistema: false, soloNasa: false, diffChica: false, conNocturnas: false });
+    setPage(0);
     setFiltersAnchorEl(null);
   }, [handleTipoChange]);
 
@@ -653,6 +719,11 @@ const ConciliacionDetallePage = () => {
     return found?.label || '';
   }, [tipo]);
   const filtersOpen = Boolean(filtersAnchorEl);
+  const activeDiscrepancias = useMemo(
+    () => DISCREPANCIA_FILTERS.filter((f) => discrepanciaFilters[f.key]),
+    [discrepanciaFilters]
+  );
+  const hasActiveFilterChips = Boolean(tipo) || activeDiscrepancias.length > 0;
 
   return (
     <DashboardLayout title={`Conciliación - ${periodoInfo}`}>
@@ -712,8 +783,8 @@ const ConciliacionDetallePage = () => {
                 sx={{
                   borderRadius: 2,
                   border: '1px solid',
-                  borderColor: filtersOpen || tipo ? 'primary.main' : 'divider',
-                  color: filtersOpen || tipo ? 'primary.main' : 'text.primary',
+                  borderColor: filtersOpen || hasActiveFilterChips ? 'primary.main' : 'divider',
+                  color: filtersOpen || hasActiveFilterChips ? 'primary.main' : 'text.primary',
                   '&:hover': { backgroundColor: 'action.hover' },
                 }}
               >
@@ -788,6 +859,31 @@ const ConciliacionDetallePage = () => {
                 ))}
               </TextField>
               <Divider />
+              <Typography variant="subtitle2" fontWeight={600}>Discrepancias</Typography>
+              <Stack spacing={0.25}>
+                {DISCREPANCIA_FILTERS.map((f) => (
+                  <FormControlLabel
+                    key={f.key}
+                    control={(
+                      <Switch
+                        size="small"
+                        checked={Boolean(discrepanciaFilters[f.key])}
+                        onChange={() => handleDiscrepanciaToggle(f.key)}
+                      />
+                    )}
+                    label={(
+                      <Typography variant="body2">
+                        {f.label}
+                        <Typography component="span" variant="body2" color="text.secondary" sx={{ ml: 0.5 }}>
+                          ({(stats[f.countKey] ?? 0).toLocaleString('es-AR')})
+                        </Typography>
+                      </Typography>
+                    )}
+                    sx={{ mr: 0, ml: 0 }}
+                  />
+                ))}
+              </Stack>
+              <Divider />
               <Stack direction="row" spacing={1}>
                 <Button size="small" variant="outlined" fullWidth onClick={handleClearFilters}>Limpiar</Button>
                 <Button size="small" variant="contained" fullWidth onClick={handleCloseFilters}>Cerrar</Button>
@@ -795,14 +891,26 @@ const ConciliacionDetallePage = () => {
             </Stack>
           </Popover>
 
-          {tipo && (
-            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
-              <Chip
-                label={`Tipo: ${tipoLabel}`}
-                size="small"
-                variant="outlined"
-                onDelete={() => handleTipoChange('')}
-              />
+          {hasActiveFilterChips && (
+            <Stack direction="row" spacing={1} alignItems="center" useFlexGap flexWrap="wrap">
+              {tipo && (
+                <Chip
+                  label={`Tipo: ${tipoLabel}`}
+                  size="small"
+                  variant="outlined"
+                  onDelete={() => handleTipoChange('')}
+                />
+              )}
+              {activeDiscrepancias.map((f) => (
+                <Chip
+                  key={f.key}
+                  label={f.label}
+                  size="small"
+                  variant="outlined"
+                  color="primary"
+                  onDelete={() => handleDiscrepanciaClear(f.key)}
+                />
+              ))}
             </Stack>
           )}
 
