@@ -8,6 +8,7 @@ import AttachMoneyIcon from "@mui/icons-material/AttachMoney";
 import SettingsIcon from "@mui/icons-material/Settings";
 import { AccountBalanceWallet, Checklist, LocalAtm } from "@mui/icons-material";
 import InventoryIcon from "@mui/icons-material/Inventory";
+import PaymentsIcon from "@mui/icons-material/Payments";
 import CompareArrowsIcon from "@mui/icons-material/CompareArrows";
 import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
 import ContactsIcon from "@mui/icons-material/Contacts";
@@ -66,8 +67,8 @@ async function buildDefaultGroups({ user, empresa, permisosUsuario, canUseAgente
   if (permisosUsuario.includes("VER_CONTROL_PAGOS")) {
     finanzasItems.push({ title: "Control de pagos", path: "/control-pagos", icon: icon(LocalAtm) });
   }
-  if (permisosUsuario.includes("VER_CUENTA_CORRIENTE_PROVEEDORES")) {
-    finanzasItems.push({ title: "Cta. cte. proveedores", path: "/cuenta-corriente-proveedores", icon: icon(LocalAtm) });
+  if (permisosUsuario.includes("GESTIONAR_PROVEEDORES") || permisosUsuario.includes("VER_CUENTA_CORRIENTE_PROVEEDORES")) {
+    finanzasItems.push({ title: "Proveedores", path: "/proveedores", icon: icon(StoreIcon) });
   }
   if (permisosUsuario.includes("VER_PLANES_COBRO")) {
     finanzasItems.push({ title: "Plan de cobros", path: "cobros", icon: icon(AttachMoneyIcon) });

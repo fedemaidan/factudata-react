@@ -10,7 +10,13 @@ import {
   Chip,
   CircularProgress,
   Container,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   FormControlLabel,
+  IconButton,
+  InputAdornment,
   Paper,
   Popover,
   Stack,
@@ -25,8 +31,12 @@ import {
   TableSortLabel,
   Tabs,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
+import AddIcon from '@mui/icons-material/Add';
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
+import PaymentsIcon from '@mui/icons-material/Payments';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import SaveOutlinedIcon from '@mui/icons-material/SaveOutlined';
@@ -38,12 +48,491 @@ import profileService from 'src/services/profileService';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import { getProyectosFromUser } from 'src/services/proyectosService';
 import { formatCurrencyWithCode, formatTimestamp, dateToTimestamp } from 'src/utils/formatters';
-import { buildCompletarPagoUpdateFields, puedeCompletarPagoEgreso } from 'src/utils/movimientoPagoCompleto';
+import { puedeCompletarPagoEgreso } from 'src/utils/movimientoPagoCompleto';
+import pretendidosService from 'src/services/pretendidosService';
+import ConfirmarPagoDialog from 'src/components/pagos/ConfirmarPagoDialog';
+import proveedorService from 'src/services/proveedorService';
+import PresupuestoService from 'src/services/presupuestoService';
+import ProveedorDrawer from 'src/components/ProveedorDrawer';
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100];
+
+// ─── Panel de Pretendidos ─────────────────────────────────────────────────────
+
+const ESTADO_PRETENDIDO_COLOR = { pendiente: 'warning', cerrado: 'default' };
+
+function getLunesDeEstaSemana() {
+  const hoy = new Date();
+  const dia = hoy.getDay();
+  const diffLunes = dia === 0 ? -6 : 1 - dia;
+  const lunes = new Date(hoy);
+  lunes.setDate(hoy.getDate() + diffLunes);
+  return lunes.toISOString().split('T')[0];
+}
+
+/**
+ * Muestra los presupuestos de un proveedor: primero la obra actual, luego las demás.
+ * `presupuestos` es la lista ya filtrada por proveedor_nombre (puede ser null mientras carga).
+ */
+function PresupuestoInfoProveedor({ presupuestos, proyectoId, proyectosMap, loading }) {
+  if (loading || presupuestos === null) {
+    return (
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 0.5 }}>
+        <CircularProgress size={14} />
+        <Typography variant="caption" color="text.secondary">Buscando presupuesto...</Typography>
+      </Box>
+    );
+  }
+
+  if (presupuestos.length === 0) {
+    return (
+      <Alert severity="warning" sx={{ py: 0.5 }}>
+        <Typography variant="caption">No hay presupuesto asignado para este proveedor.</Typography>
+      </Alert>
+    );
+  }
+
+  const mismaObra = presupuestos.filter((p) => p.proyecto_id === proyectoId);
+  const otrasObras = presupuestos.filter((p) => p.proyecto_id !== proyectoId);
+
+  const renderFila = (p) => {
+    const disponible = (p.monto || 0) - (p.ejecutado || 0);
+    const pct = p.monto > 0 ? Math.round(((p.ejecutado || 0) / p.monto) * 100) : 0;
+    const color = pct >= 100 ? 'error.main' : pct >= 80 ? 'warning.main' : 'success.main';
+    return (
+      <Stack key={p.id || p._id} direction="row" spacing={2} alignItems="center" flexWrap="wrap">
+        {p.categoria && <Typography variant="caption" color="text.secondary">{p.categoria}{p.subcategoria ? ` / ${p.subcategoria}` : ''}</Typography>}
+        <Typography variant="caption">Presupuesto: <strong>{formatCurrencyWithCode(p.monto, p.moneda)}</strong></Typography>
+        <Typography variant="caption">Ejecutado: <strong style={{ color: 'inherit' }}>{formatCurrencyWithCode(p.ejecutado || 0, p.moneda)}</strong></Typography>
+        <Typography variant="caption" sx={{ color }}>Disponible: <strong>{formatCurrencyWithCode(disponible, p.moneda)}</strong> ({pct}%)</Typography>
+      </Stack>
+    );
+  };
+
+  return (
+    <Box sx={{ bgcolor: 'grey.50', borderRadius: 1, px: 1.5, py: 1, border: '1px solid', borderColor: 'divider' }}>
+      {mismaObra.length > 0 && (
+        <Box sx={{ mb: otrasObras.length > 0 ? 1 : 0 }}>
+          <Typography variant="caption" fontWeight={700} color="primary.main" display="block" sx={{ mb: 0.5 }}>
+            Esta obra
+          </Typography>
+          <Stack spacing={0.5}>{mismaObra.map(renderFila)}</Stack>
+        </Box>
+      )}
+      {mismaObra.length === 0 && proyectoId && (
+        <Typography variant="caption" color="warning.main" display="block" sx={{ mb: otrasObras.length > 0 ? 1 : 0 }}>
+          Sin presupuesto en esta obra.
+        </Typography>
+      )}
+      {otrasObras.length > 0 && (
+        <Box>
+          <Typography variant="caption" fontWeight={700} color="text.secondary" display="block" sx={{ mb: 0.5 }}>
+            Otras obras
+          </Typography>
+          <Stack spacing={0.5}>
+            {otrasObras.map((p) => (
+              <Box key={p.id || p._id}>
+                <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                  {proyectosMap?.[p.proyecto_id]?.nombre || p.proyecto_id || 'Sin obra'}:
+                </Typography>
+                {renderFila(p)}
+              </Box>
+            ))}
+          </Stack>
+        </Box>
+      )}
+    </Box>
+  );
+}
+
+function NuevoPretendidoDialog({ open, onClose, proyectos, proveedores, onCrear, creating, editando, onEditar, saving, onEliminar, deleting }) {
+  const [form, setForm] = useState({
+    proveedorId: '', proyectoId: '', semana: getLunesDeEstaSemana(), monto: '', descripcion: '',
+  });
+
+  useEffect(() => {
+    if (!open) return;
+    if (editando) {
+      const semanaIso = editando.semana ? new Date(editando.semana).toISOString().split('T')[0] : getLunesDeEstaSemana();
+      setForm({
+        proveedorId: editando.proveedor_id || '',
+        proyectoId: editando.proyecto_id || '',
+        semana: semanaIso,
+        monto: String(editando.monto_pretendido ?? ''),
+        descripcion: editando.descripcion || '',
+      });
+    } else {
+      setForm({ proveedorId: '', proyectoId: '', semana: getLunesDeEstaSemana(), monto: '', descripcion: '' });
+    }
+  }, [open, editando]);
+
+  const set = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
+  const isLoading = editando ? saving : creating;
+  const canSubmit = !isLoading && form.proveedorId && form.proyectoId && form.semana && form.monto;
+
+  const handleSubmit = () => {
+    if (!canSubmit) return;
+    const payload = { ...form, descripcion: form.descripcion.trim() };
+    if (editando) onEditar(editando._id || editando.id, payload);
+    else onCrear(payload);
+  };
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle>{editando ? 'Editar pretendido' : 'Nuevo pretendido'}</DialogTitle>
+      <DialogContent>
+        <Stack spacing={2.5} sx={{ mt: 1 }}>
+          <Autocomplete
+            options={proveedores}
+            value={proveedores.find((p) => p._id === form.proveedorId) || null}
+            onChange={(_, v) => set('proveedorId', v?._id || '')}
+            getOptionLabel={(o) => o.nombre || ''}
+            isOptionEqualToValue={(o, v) => o._id === v._id}
+            renderOption={(props, o) => (
+              <li {...props}>
+                <Box>
+                  <Typography variant="body2">{o.nombre}</Typography>
+                  {o.tipo === 'mano_de_obra' && (
+                    <Typography variant="caption" color="text.secondary">Mano de obra</Typography>
+                  )}
+                </Box>
+              </li>
+            )}
+            renderInput={(params) => <TextField {...params} label="Proveedor" />}
+          />
+          <Autocomplete
+            options={proyectos}
+            value={proyectos.find((p) => p.id === form.proyectoId) || null}
+            onChange={(_, v) => set('proyectoId', v?.id || '')}
+            getOptionLabel={(o) => o.nombre || ''}
+            isOptionEqualToValue={(o, v) => o.id === v.id}
+            renderInput={(params) => <TextField {...params} label="Obra" />}
+          />
+          <Stack direction="row" spacing={1} alignItems="center">
+            <TextField
+              label="Semana (lunes)"
+              type="date"
+              value={form.semana}
+              onChange={(e) => set('semana', e.target.value)}
+              InputLabelProps={{ shrink: true }}
+              fullWidth
+            />
+            <Tooltip title="Semana actual">
+              <Button variant="outlined" sx={{ whiteSpace: 'nowrap', px: 1.5, minWidth: 'auto' }}
+                onClick={() => set('semana', getLunesDeEstaSemana())}>
+                Hoy
+              </Button>
+            </Tooltip>
+          </Stack>
+          <TextField
+            label="Monto pretendido"
+            type="number"
+            value={form.monto}
+            onChange={(e) => set('monto', e.target.value)}
+            InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment> }}
+            fullWidth
+          />
+          <TextField
+            label="Descripción (opcional)"
+            value={form.descripcion}
+            onChange={(e) => set('descripcion', e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleSubmit(); }}
+            placeholder="Detalle del trabajo, materiales, etc."
+            multiline
+            minRows={2}
+            fullWidth
+          />
+        </Stack>
+      </DialogContent>
+      <DialogActions sx={{ justifyContent: 'space-between' }}>
+        <Box>
+          {editando && (
+            <Button color="error" onClick={() => onEliminar(editando._id || editando.id)} disabled={isLoading || deleting}>
+              {deleting ? <CircularProgress size={16} color="inherit" /> : 'Eliminar'}
+            </Button>
+          )}
+        </Box>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <Button onClick={onClose}>Cancelar</Button>
+          <Button variant="contained" onClick={handleSubmit} disabled={!canSubmit}>
+            {isLoading ? <CircularProgress size={18} color="inherit" /> : editando ? 'Guardar' : 'Cargar'}
+          </Button>
+        </Box>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+function PretendidosPanel({ pretendidos, loading, proyectos, proveedoresManoObra, onCrear, creating, onCerrar, savingId, onEditar, savingEditId, onEliminar, deletingId, empresaId, onOpenDrawer }) {
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editando, setEditando] = useState(null);
+  const [montosCierre, setMontosCierre] = useState({});
+  const [presupuestosByProveedor, setPresupuestosByProveedor] = useState({});
+
+  const pendientes = pretendidos.filter((p) => p.estado === 'pendiente');
+  const cerrados = pretendidos.filter((p) => p.estado === 'cerrado');
+
+  const proyectosMap = useMemo(() => Object.fromEntries(proyectos.map((p) => [p.id, p])), [proyectos]);
+
+  // Fetch presupuestos for all unique proveedores in pending pretendidos
+  useEffect(() => {
+    if (!empresaId || pendientes.length === 0) return;
+    const uniqueNames = [...new Set(pendientes.map((p) => p.proveedor_nombre).filter(Boolean))];
+    uniqueNames.forEach(async (nombre) => {
+      if (presupuestosByProveedor[nombre] !== undefined) return;
+      try {
+        const items = await PresupuestoService.listarPorProveedor(empresaId, nombre);
+        setPresupuestosByProveedor((prev) => ({ ...prev, [nombre]: items }));
+      } catch {
+        setPresupuestosByProveedor((prev) => ({ ...prev, [nombre]: [] }));
+      }
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [empresaId, pendientes.length]);
+
+  // Cerrar el dialog cuando termina de crear o editar sin error
+  const prevCreating = useState(false);
+  useEffect(() => {
+    if (prevCreating[0] && !creating) setDialogOpen(false);
+    prevCreating[0] = creating;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [creating]);
+
+  const prevSaving = useState(null);
+  useEffect(() => {
+    if (prevSaving[0] != null && savingEditId == null) { setDialogOpen(false); setEditando(null); }
+    prevSaving[0] = savingEditId;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [savingEditId]);
+
+  return (
+    <Stack spacing={2}>
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <Button variant="contained" startIcon={<AddIcon />} onClick={() => setDialogOpen(true)}>
+          Nuevo pretendido
+        </Button>
+      </Box>
+
+      <NuevoPretendidoDialog
+        open={dialogOpen}
+        onClose={() => { setDialogOpen(false); setEditando(null); }}
+        proyectos={proyectos}
+        proveedores={proveedoresManoObra}
+        onCrear={onCrear}
+        creating={creating}
+        editando={editando}
+        onEditar={onEditar}
+        saving={savingEditId != null}
+        onEliminar={(id) => { onEliminar(id); setDialogOpen(false); setEditando(null); }}
+        deleting={deletingId != null}
+      />
+
+      {/* Lista pendientes */}
+      <Paper variant="outlined" sx={{ borderRadius: 3, overflow: 'hidden' }}>
+        <Box sx={{ px: 2, pt: 1.5, pb: 1 }}>
+          <Typography variant="subtitle2" fontWeight={700}>Pendientes ({pendientes.length})</Typography>
+        </Box>
+        {loading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}><CircularProgress size={24} /></Box>
+        ) : (
+          <TableContainer>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell sx={{ fontWeight: 700 }}>Proveedor</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>Obra</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>Fecha</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>Descripción</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 700 }}>Pretendido</TableCell>
+                  <TableCell sx={{ fontWeight: 700, minWidth: 180 }}>Presupuesto (esta obra)</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 700, minWidth: 160 }}>Monto a aprobar</TableCell>
+                  <TableCell align="center" sx={{ fontWeight: 700 }}>Acción</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {pendientes.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={8} align="center" sx={{ py: 4 }}>
+                      <Typography variant="body2" color="text.secondary">No hay pretendidos pendientes.</Typography>
+                    </TableCell>
+                  </TableRow>
+                )}
+                {pendientes.map((p) => {
+                  const isSaving = savingId === (p._id || p.id);
+                  const montoInput = montosCierre[p._id || p.id] ?? String(p.monto_pretendido);
+                  const presupuestosRow = presupuestosByProveedor[p.proveedor_nombre];
+                  const mismaObra = presupuestosRow?.filter((b) => b.proyecto_id === p.proyecto_id) ?? null;
+                  const otrasObras = presupuestosRow?.filter((b) => b.proyecto_id !== p.proyecto_id) ?? [];
+                  return (
+                    <TableRow
+                      key={p._id || p.id}
+                      hover
+                      onClick={() => { setEditando(p); setDialogOpen(true); }}
+                      sx={{ cursor: 'pointer' }}
+                    >
+                      <TableCell>
+                        <Stack direction="row" alignItems="center" spacing={0.5}>
+                          <span>{p.proveedor_nombre}</span>
+                          {onOpenDrawer && p.proveedor_id && (
+                            <Tooltip title="Ver ficha del proveedor">
+                              <IconButton size="small" onClick={(e) => { e.stopPropagation(); onOpenDrawer(p.proveedor_id); }} sx={{ opacity: 0.5, '&:hover': { opacity: 1 } }}>
+                                <InfoOutlinedIcon fontSize="inherit" />
+                              </IconButton>
+                            </Tooltip>
+                          )}
+                        </Stack>
+                      </TableCell>
+                      <TableCell>{p.proyecto_nombre}</TableCell>
+                      <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatTimestamp(p.semana, 'DIA/MES/ANO') || '-'}</TableCell>
+                      <TableCell sx={{ maxWidth: 240, color: 'text.secondary' }}>{p.descripcion || '—'}</TableCell>
+                      <TableCell align="right">{formatCurrencyWithCode(p.monto_pretendido)}</TableCell>
+                      <TableCell>
+                        {presupuestosRow === undefined && <CircularProgress size={12} />}
+                        {presupuestosRow !== undefined && mismaObra.length === 0 && (
+                          <Typography variant="caption" color="warning.main">Sin presupuesto</Typography>
+                        )}
+                        {mismaObra !== null && mismaObra.map((b) => {
+                          const aprobando = Number(montoInput) || 0;
+                          const disponible = (b.monto || 0) - (b.ejecutado || 0);
+                          const pct = b.monto > 0 ? Math.round(((b.ejecutado || 0) / b.monto) * 100) : 0;
+                          const colorActual = pct >= 100 ? 'error.main' : pct >= 80 ? 'warning.main' : 'success.main';
+                          const disponibleTras = disponible - aprobando;
+                          const pctTras = b.monto > 0 ? Math.round(((b.ejecutado || 0) + aprobando) / b.monto * 100) : 0;
+                          const colorTras = pctTras >= 100 ? 'error.main' : pctTras >= 80 ? 'warning.main' : 'success.main';
+                          return (
+                            <Stack key={b.id || b._id} spacing={0.25}>
+                              <Typography variant="caption" color="text.secondary">
+                                Presup: {formatCurrencyWithCode(b.monto, b.moneda)}
+                              </Typography>
+                              <Typography variant="caption" sx={{ color: colorActual }}>
+                                Disp. ahora: <strong>{formatCurrencyWithCode(disponible, b.moneda)}</strong> ({pct}%)
+                              </Typography>
+                              {aprobando > 0 && (
+                                <Typography variant="caption" sx={{ color: colorTras }}>
+                                  Disp. tras aprobar: <strong>{formatCurrencyWithCode(disponibleTras, b.moneda)}</strong> ({pctTras}%)
+                                </Typography>
+                              )}
+                            </Stack>
+                          );
+                        })}
+                        {otrasObras.length > 0 && (
+                          <Tooltip title={otrasObras.map((b) => {
+                            const disp = (b.monto || 0) - (b.ejecutado || 0);
+                            return `${proyectosMap[b.proyecto_id]?.nombre || 'Otra obra'}: ${formatCurrencyWithCode(disp, b.moneda)} disp.`;
+                          }).join(' | ')}>
+                            <Typography variant="caption" color="text.secondary" sx={{ cursor: 'default', textDecoration: 'underline dotted' }}>
+                              +{otrasObras.length} obra{otrasObras.length > 1 ? 's' : ''}
+                            </Typography>
+                          </Tooltip>
+                        )}
+                      </TableCell>
+                      <TableCell align="right" onClick={(e) => e.stopPropagation()}>
+                        <TextField
+                          size="small"
+                          type="number"
+                          value={montoInput}
+                          onChange={(e) => setMontosCierre((prev) => ({ ...prev, [p._id || p.id]: e.target.value }))}
+                          disabled={isSaving}
+                          inputProps={{ min: 0 }}
+                          sx={{ width: 130 }}
+                        />
+                      </TableCell>
+                      <TableCell align="center" onClick={(e) => e.stopPropagation()}>
+                        <Stack direction="row" spacing={0.5} justifyContent="center">
+                          <Button
+                            size="small"
+                            variant="contained"
+                            color="success"
+                            onClick={() => onCerrar(p._id || p.id, Number(montoInput))}
+                            disabled={isSaving}
+                          >
+                            {isSaving ? <CircularProgress size={14} /> : 'Aprobar'}
+                          </Button>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            color="error"
+                            onClick={() => onCerrar(p._id || p.id, 0)}
+                            disabled={isSaving}
+                          >
+                            Rechazar
+                          </Button>
+                        </Stack>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
+      </Paper>
+
+      {/* Historial cerrados */}
+      {cerrados.length > 0 && (
+        <Paper variant="outlined" sx={{ borderRadius: 3, overflow: 'hidden' }}>
+          <Box sx={{ px: 2, pt: 1.5, pb: 1 }}>
+            <Typography variant="subtitle2" fontWeight={700} color="text.secondary">Historial cerrados ({cerrados.length})</Typography>
+          </Box>
+          <TableContainer>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell sx={{ fontWeight: 600 }}>Proveedor</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Obra</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Fecha</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Descripción</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 600 }}>Pretendido</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 600 }}>Aprobado</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Estado</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {cerrados.map((p) => (
+                  <TableRow key={p._id || p.id} sx={{ opacity: 0.7 }}>
+                    <TableCell>
+                      <Stack direction="row" alignItems="center" spacing={0.5}>
+                        <span>{p.proveedor_nombre}</span>
+                        {onOpenDrawer && p.proveedor_id && (
+                          <Tooltip title="Ver ficha del proveedor">
+                            <IconButton size="small" onClick={() => onOpenDrawer(p.proveedor_id)} sx={{ opacity: 0.5, '&:hover': { opacity: 1 } }}>
+                              <InfoOutlinedIcon fontSize="inherit" />
+                            </IconButton>
+                          </Tooltip>
+                        )}
+                      </Stack>
+                    </TableCell>
+                    <TableCell>{p.proyecto_nombre}</TableCell>
+                    <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatTimestamp(p.semana, 'DIA/MES/ANO') || '-'}</TableCell>
+                    <TableCell sx={{ maxWidth: 240, color: 'text.secondary' }}>{p.descripcion || '—'}</TableCell>
+                    <TableCell align="right">{formatCurrencyWithCode(p.monto_pretendido)}</TableCell>
+                    <TableCell align="right">{p.monto_aprobado != null ? formatCurrencyWithCode(p.monto_aprobado) : '—'}</TableCell>
+                    <TableCell>
+                      <Chip
+                        size="small"
+                        label={p.monto_aprobado > 0 ? 'Aprobado' : p.monto_aprobado === 0 ? 'Rechazado' : 'Cerrado'}
+                        color={p.monto_aprobado > 0 ? 'success' : ESTADO_PRETENDIDO_COLOR[p.estado]}
+                        variant={p.monto_aprobado > 0 ? 'filled' : 'outlined'}
+                      />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Paper>
+      )}
+    </Stack>
+  );
+}
 const MIN_FREE_TEXT_LENGTH = 3;
 
 const ALL_TAB_OPTIONS = [
+  {
+    value: 'pretendidos',
+    label: 'Pretendidos',
+    tooltip: 'Solicitudes de pago de mano de obra pendientes de aprobación.',
+  },
   {
     value: 'porPagar',
     label: 'Por pagar',
@@ -53,16 +542,6 @@ const ALL_TAB_OPTIONS = [
     value: 'pagados',
     label: 'Pagados',
     tooltip: 'Egresos pagados.',
-  },
-  {
-    value: 'porAprobar',
-    label: 'Por aprobar',
-    tooltip: 'Egresos sin monto aprobado asignado todavía.',
-  },
-  {
-    value: 'todos',
-    label: 'Todos',
-    tooltip: 'Todos los egresos del alcance actual.',
   },
 ];
 
@@ -75,7 +554,6 @@ const TABLE_COLUMNS = [
   { key: 'categoria', label: 'Categoría', minWidth: 100, sortField: 'categoria' },
   { key: 'estado', label: 'Estado', minWidth: 80, sortField: 'estado' },
   { key: 'total', label: 'Saldo', minWidth: 110, align: 'right', sortField: 'total' },
-  { key: 'monto_aprobado', label: 'Aprobado', minWidth: 170, align: 'right', sortField: 'monto_aprobado' },
   { key: 'monto_pagado', label: 'Pagado', minWidth: 170, align: 'right', sortField: 'monto_pagado' },
   { key: 'observacion', label: 'Observación', minWidth: 160, sortField: 'observacion' },
 ];
@@ -114,24 +592,13 @@ const buildDashboardParams = ({ filterState, tabPreset, page, limit, empresaId, 
   if (filterState.fechaDesde) params.fechaDesde = filterState.fechaDesde;
   if (filterState.fechaHasta) params.fechaHasta = filterState.fechaHasta;
   if (tabPreset.estados?.length > 0) params.estados = tabPreset.estados.join(',');
-  if (tabPreset.aprobacion) params.aprobacion = tabPreset.aprobacion;
-
   return params;
 };
 
-const buildTabPreset = (tab, tieneMontoAprobado = true) => {
-  if (tab === 'porPagar') {
-    // Si monto_aprobado está desactivado, mostrar todos los pendientes sin filtro de aprobación.
-    // Con monto_aprobado habilitado, solo mostrar los que tienen saldo aprobado sin pagar todavía.
-    return { estados: ['Pendiente', 'Parcialmente Pagado'], aprobacion: tieneMontoAprobado ? 'pendiente_pago' : '' };
-  }
-  if (tab === 'pagados') {
-    return { estados: ['Pagado'], aprobacion: '' };
-  }
-  if (tab === 'porAprobar') {
-    return { estados: ['Pendiente', 'Parcialmente Pagado'], aprobacion: 'incompleto' };
-  }
-  return { estados: [], aprobacion: '' };
+const buildTabPreset = (tab) => {
+  if (tab === 'porPagar') return { estados: ['Pendiente', 'Parcialmente Pagado'] };
+  if (tab === 'pagados') return { estados: ['Pagado'] };
+  return { estados: [] };
 };
 
 const getMovimientoDisplayProyecto = (movimiento, proyectosMap) => (
@@ -187,19 +654,12 @@ const buildInlinePagoPatch = (movimiento, nextMontoPagado) => {
 };
 
 const buildDraftPatch = (movimiento, draft = {}) => {
-  const nextMontoAprobado = normalizeAmountInput(draft.monto_aprobado ?? movimiento.monto_aprobado);
   const nextMontoPagado = normalizeAmountInput(draft.monto_pagado ?? movimiento.monto_pagado);
-  const currentMontoAprobado = normalizeAmountInput(movimiento.monto_aprobado);
   const currentMontoPagado = normalizeAmountInput(movimiento.monto_pagado);
 
-  const montoAprobadoChanged = nextMontoAprobado !== currentMontoAprobado;
-  const montoPagadoChanged = nextMontoPagado !== currentMontoPagado;
-  if (!montoAprobadoChanged && !montoPagadoChanged) return null;
+  if (nextMontoPagado === currentMontoPagado) return null;
 
-  const patch = {};
-  if (montoAprobadoChanged) patch.monto_aprobado = nextMontoAprobado;
-  if (montoPagadoChanged) Object.assign(patch, buildInlinePagoPatch(movimiento, nextMontoPagado));
-  return patch;
+  return buildInlinePagoPatch(movimiento, nextMontoPagado);
 };
 
 const ESTADO_LABEL = {
@@ -226,14 +686,10 @@ const PagosAprobacionesPage = () => {
 
   const tienePermiso = user?.admin || (user?.empresa?.acciones || user?.empresaData?.acciones || []).includes('VER_CONTROL_PAGOS');
 
-  const [activeTab, setActiveTab] = useState('porPagar');
+  const [activeTab, setActiveTab] = useState('pretendidos');
   const [empresa, setEmpresa] = useState(null);
 
-  const tieneMontoAprobado = empresa?.comprobante_info?.monto_aprobado === true;
-
-  const tabOptions = tieneMontoAprobado
-    ? ALL_TAB_OPTIONS
-    : ALL_TAB_OPTIONS.filter((t) => t.value === 'porPagar' || t.value === 'pagados');
+  const tabOptions = ALL_TAB_OPTIONS;
   const [proyectos, setProyectos] = useState([]);
   const [selectedProjects, setSelectedProjects] = useState([]);
   const [options, setOptions] = useState({});
@@ -260,8 +716,26 @@ const PagosAprobacionesPage = () => {
   const [draftsById, setDraftsById] = useState({});
   const [savingById, setSavingById] = useState({});
   const [selectedIds, setSelectedIds] = useState(new Set());
-  const [bulkPayLoading, setBulkPayLoading] = useState(false);
   const [bulkSaveLoading, setBulkSaveLoading] = useState(false);
+  const [imputarOpen, setImputarOpen] = useState(false);
+  const [confirmarPagoOpen, setConfirmarPagoOpen] = useState(false);
+  const [movimientosParaConfirmar, setMovimientosParaConfirmar] = useState([]);
+
+  // ProveedorDrawer
+  const [provDrawerOpen, setProvDrawerOpen] = useState(false);
+  const [provDrawerId, setProvDrawerId] = useState(null);
+  const openProveedorDrawer = useCallback((id) => {
+    if (!id) return;
+    setProvDrawerId(id);
+    setProvDrawerOpen(true);
+  }, []);
+
+  // ── Pretendidos ──────────────────────────────────────────────────────────────
+  const [pretendidos, setPretendidos] = useState([]);
+  const [loadingPretendidos, setLoadingPretendidos] = useState(false);
+  const [proveedoresManoObra, setProveedoresManoObra] = useState([]);
+  const [savingPretendidoId, setSavingPretendidoId] = useState(null);
+  const [creatingPretendido, setCreatingPretendido] = useState(false);
   const [hiddenColumns, setHiddenColumns] = useState(() => {
     try {
       const stored = localStorage.getItem(COLUMNS_STORAGE_KEY);
@@ -299,14 +773,10 @@ const PagosAprobacionesPage = () => {
 
   const summary = useMemo(() => {
     const totalVisible = movimientos.reduce((acc, movimiento) => acc + (Number(movimiento.total) || 0), 0);
-    const totalAprobado = movimientos.reduce((acc, movimiento) => acc + (Number(movimiento.monto_aprobado) || 0), 0);
-    const pendientesAprobacion = movimientos.filter((movimiento) => !(Number(movimiento.monto_aprobado) > 0)).length;
     const pendientesPago = movimientos.filter((movimiento) => movimiento.estado !== 'Pagado').length;
 
     return {
       totalVisible,
-      totalAprobado,
-      pendientesAprobacion,
       pendientesPago,
     };
   }, [movimientos]);
@@ -454,7 +924,7 @@ const PagosAprobacionesPage = () => {
         return;
       }
 
-      const tabPreset = buildTabPreset(activeTab, tieneMontoAprobado);
+      const tabPreset = buildTabPreset(activeTab);
       const response = await movimientosService.getCajasDashboard(
         buildDashboardParams({
           filterState,
@@ -623,59 +1093,157 @@ const PagosAprobacionesPage = () => {
     }
   }, [dirtyMovimientos, fetchMovimientos, user]);
 
-  const handlePagarSeleccionados = useCallback(async () => {
+  const handlePagarSeleccionados = useCallback(() => {
     if (selectedPayableMovimientos.length === 0) return;
-    setBulkPayLoading(true);
-    setFeedback(null);
+    setImputarOpen(true);
+  }, [selectedPayableMovimientos]);
 
-    try {
-      const nombreUsuario = getNombreUsuario(user);
-      const results = await Promise.all(selectedPayableMovimientos.map(async (movimiento) => {
-        const patch = buildCompletarPagoUpdateFields(movimiento);
-        const response = await movimientosService.updateMovimiento(
-          movimiento.id,
-          { ...movimiento, ...patch },
-          nombreUsuario
-        );
+  const handleImputarSuccess = useCallback(() => {
+    setFeedback({ severity: 'success', message: 'Pago registrado correctamente.' });
+    setSelectedIds(new Set());
+    fetchMovimientos();
+  }, [fetchMovimientos]);
 
-        return {
-          id: movimiento.id,
-          ok: !response?.error,
-          patch,
-        };
-      }));
+  const handleImputarClose = useCallback(() => {
+    setImputarOpen(false);
+  }, []);
 
-      const successIds = results.filter((result) => result.ok).map((result) => result.id);
-      const patchMap = Object.fromEntries(results.filter((result) => result.ok).map((result) => [result.id, result.patch]));
-
-      setMovimientos((prev) => prev.map((movimiento) => (
-        patchMap[movimiento.id] ? { ...movimiento, ...patchMap[movimiento.id] } : movimiento
-      )));
-      setSelectedIds(new Set());
-
-      if (successIds.length === results.length) {
-        setFeedback({ severity: 'success', message: `Se pagaron ${successIds.length} movimiento(s).` });
-      } else {
-        setFeedback({ severity: 'warning', message: `Se pagaron ${successIds.length} de ${results.length} movimiento(s).` });
-      }
-    } catch (bulkError) {
-      console.error('Error en pago múltiple:', bulkError);
-      setFeedback({ severity: 'error', message: 'Error al pagar los movimientos seleccionados.' });
-    } finally {
-      setBulkPayLoading(false);
+  // Abrir ConfirmarPagoDialog: si hay cambios inline (dirty) priorizar esos,
+  // sino usar los seleccionados con su deuda total como monto a pagar.
+  const handleAbrirConfirmarPago = useCallback(() => {
+    let movs = [];
+    if (dirtyMovimientos.length > 0) {
+      movs = dirtyMovimientos.map(({ movimiento, patch }) => {
+        const total = Number(movimiento.total) || 0;
+        const pagadoAnterior = Number(movimiento.monto_pagado) || 0;
+        const pagadoNuevo = Number(patch.monto_pagado);
+        const target = Number.isFinite(pagadoNuevo) ? pagadoNuevo : total;
+        const delta = Math.max(0, target - pagadoAnterior);
+        return { ...movimiento, _montoAPagar: delta };
+      }).filter((m) => m._montoAPagar > 0.005);
+    } else {
+      movs = selectedPayableMovimientos.map((m) => ({
+        ...m,
+        _montoAPagar: Math.max(0, (Number(m.total) || 0) - (Number(m.monto_pagado) || 0)),
+      })).filter((m) => m._montoAPagar > 0.005);
     }
-  }, [selectedPayableMovimientos, user]);
+    if (movs.length === 0) return;
+    setMovimientosParaConfirmar(movs);
+    setConfirmarPagoOpen(true);
+  }, [dirtyMovimientos, selectedPayableMovimientos]);
+
+  const handleConfirmarPagoSuccess = useCallback(() => {
+    setFeedback({ severity: 'success', message: 'Pago registrado correctamente.' });
+    setSelectedIds(new Set());
+    setDraftsById({});
+    setConfirmarPagoOpen(false);
+    setMovimientosParaConfirmar([]);
+    fetchMovimientos();
+  }, [fetchMovimientos]);
+
+  const fetchPretendidos = useCallback(async () => {
+    if (!empresa?.id || activeTab !== 'pretendidos') return;
+    setLoadingPretendidos(true);
+    try {
+      const proyectoIds = selectedProjectIds.length > 0 ? selectedProjectIds : null;
+      const items = await Promise.all(
+        (proyectoIds || [null]).map((pid) =>
+          pretendidosService.listar({ empresaId: empresa.id, proyectoId: pid || undefined })
+        )
+      );
+      setPretendidos(items.flat());
+    } catch (err) {
+      console.error('Error cargando pretendidos:', err);
+    } finally {
+      setLoadingPretendidos(false);
+    }
+  }, [empresa?.id, activeTab, selectedProjectIds]);
+
+  const fetchProveedoresManoObra = useCallback(async () => {
+    if (!empresa?.id) return;
+    try {
+      const todos = await proveedorService.getByEmpresa(empresa.id);
+      setProveedoresManoObra(todos || []);
+    } catch (err) {
+      console.error('Error cargando proveedores:', err);
+    }
+  }, [empresa?.id]);
+
+  const handleCrearPretendido = useCallback(async ({ proveedorId, proyectoId, semana, monto, descripcion }) => {
+    const proyecto = proyectos.find((p) => p.id === proyectoId);
+    setCreatingPretendido(true);
+    try {
+      await pretendidosService.crear({
+        empresaId: empresa.id,
+        proyectoId,
+        proyectoNombre: proyecto?.nombre || '',
+        proveedorId,
+        semana,
+        montoPretendido: Number(monto),
+        descripcion,
+      });
+      setFeedback({ severity: 'success', message: 'Pretendido cargado.' });
+      fetchPretendidos();
+    } catch (err) {
+      setFeedback({ severity: 'error', message: err?.response?.data?.error || 'Error al crear pretendido.' });
+    } finally {
+      setCreatingPretendido(false);
+    }
+  }, [empresa?.id, proyectos, fetchPretendidos]);
+
+  const handleCerrarPretendido = useCallback(async (pretendidoId, montoAprobado) => {
+    setSavingPretendidoId(pretendidoId);
+    try {
+      await pretendidosService.cerrar(pretendidoId, montoAprobado);
+      setFeedback({ severity: 'success', message: montoAprobado > 0 ? 'Pretendido aprobado y egreso generado.' : 'Pretendido cerrado sin pago.' });
+      fetchPretendidos();
+    } catch (err) {
+      setFeedback({ severity: 'error', message: err?.response?.data?.error || 'Error al cerrar pretendido.' });
+    } finally {
+      setSavingPretendidoId(null);
+    }
+  }, [fetchPretendidos]);
+
+  const [savingEditPretendidoId, setSavingEditPretendidoId] = useState(null);
+  const [deletingPretendidoId, setDeletingPretendidoId] = useState(null);
+
+  const handleEditarPretendido = useCallback(async (pretendidoId, { proveedorId, proyectoId, semana, monto, descripcion }) => {
+    const proyecto = proyectos.find((p) => p.id === proyectoId);
+    setSavingEditPretendidoId(pretendidoId);
+    try {
+      await pretendidosService.actualizar(pretendidoId, {
+        proveedorId,
+        proyectoId,
+        proyectoNombre: proyecto?.nombre || '',
+        semana,
+        montoPretendido: Number(monto),
+        descripcion,
+      });
+      setFeedback({ severity: 'success', message: 'Pretendido actualizado.' });
+      fetchPretendidos();
+    } catch (err) {
+      setFeedback({ severity: 'error', message: err?.response?.data?.error || 'Error al editar pretendido.' });
+    } finally {
+      setSavingEditPretendidoId(null);
+    }
+  }, [proyectos, fetchPretendidos]);
+
+  const handleEliminarPretendido = useCallback(async (pretendidoId) => {
+    setDeletingPretendidoId(pretendidoId);
+    try {
+      await pretendidosService.eliminar(pretendidoId);
+      setFeedback({ severity: 'success', message: 'Pretendido eliminado.' });
+      fetchPretendidos();
+    } catch (err) {
+      setFeedback({ severity: 'error', message: err?.response?.data?.error || 'Error al eliminar pretendido.' });
+    } finally {
+      setDeletingPretendidoId(null);
+    }
+  }, [fetchPretendidos]);
 
   useEffect(() => {
     fetchScopeData();
   }, [fetchScopeData]);
-
-  // Si la empresa cargó sin monto_aprobado habilitado, resetear tabs que no son visibles
-  useEffect(() => {
-    if (empresa && !tieneMontoAprobado && (activeTab === 'porAprobar' || activeTab === 'todos')) {
-      setActiveTab('porPagar');
-    }
-  }, [tieneMontoAprobado, empresa]);
 
   useEffect(() => {
     fetchGlobalMetrics();
@@ -693,6 +1261,14 @@ const PagosAprobacionesPage = () => {
   useEffect(() => {
     fetchMovimientos();
   }, [fetchMovimientos]);
+
+  useEffect(() => {
+    fetchPretendidos();
+  }, [fetchPretendidos]);
+
+  useEffect(() => {
+    fetchProveedoresManoObra();
+  }, [fetchProveedoresManoObra]);
 
   if (!user) {
     return (
@@ -720,55 +1296,35 @@ const PagosAprobacionesPage = () => {
         <title>Control de pagos</title>
       </Head>
 
-      <Box component="main" sx={{ flexGrow: 1, py: 3 }}>
+      <Box component="main" sx={{ flexGrow: 1, py: 1.5 }}>
         <Container maxWidth={false} sx={{ px: { xs: 2, md: 3 } }}>
-          <Stack spacing={2.5}>
-            <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} justifyContent="space-between" alignItems={{ xs: 'flex-start', md: 'center' }}>
-              <Typography variant="h4" fontWeight={800}>Control de pagos</Typography>
-              <Stack direction="row" spacing={1} flexWrap="wrap">
-                <Chip label={empresa?.nombre || 'Mi empresa'} variant="outlined" color="primary" />
-                <Chip label={`${pagination.total || 0} resultado(s)`} variant="outlined" />
-                <Button type="button" variant="outlined" startIcon={<RefreshIcon />} onClick={handleRefresh} disabled={loadingMovimientos}>
-                  Actualizar
-                </Button>
-              </Stack>
-            </Stack>
-
+          <Stack spacing={2}>
+            {/* Tabs + filtros en un solo Paper */}
             <Paper variant="outlined" sx={{ borderRadius: 3, overflow: 'hidden' }}>
-              <Box sx={{ px: 2, pt: 1.5 }}>
-                <Tabs
-                  value={activeTab}
-                  onChange={handleTabChange}
-                  variant="scrollable"
-                  scrollButtons="auto"
-                  aria-label="Tabs de control de pagos"
-                >
+              <Box sx={{ px: 2, pt: 1, borderBottom: 1, borderColor: 'divider' }}>
+                <Tabs value={activeTab} onChange={handleTabChange} variant="scrollable" scrollButtons="auto">
                   {tabOptions.map((tab) => (
                     <Tab key={tab.value} value={tab.value} label={tab.label} />
                   ))}
                 </Tabs>
               </Box>
-
-            </Paper>
-
-            <Paper variant="outlined" sx={{ p: 2, borderRadius: 3 }}>
-              <Stack spacing={2}>
-                <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} flexWrap="wrap" alignItems="flex-start">
-                  <Autocomplete
-                    multiple
-                    options={proyectos}
-                    value={selectedProjects}
-                    onChange={(_event, values) => { setSelectedProjects(values); setPage(0); }}
-                    getOptionLabel={(option) => option?.nombre || 'Obra'}
-                    isOptionEqualToValue={(option, value) => option.id === value.id}
-                    loading={loadingScope}
-                    filterSelectedOptions
-                    renderInput={(params) => (
-                      <TextField {...params} label="Obra" placeholder="Todas las obras" size="small" />
-                    )}
-                    sx={{ minWidth: 240, flex: 1 }}
-                  />
-
+              <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} flexWrap="wrap" alignItems="flex-start" sx={{ p: 1.5 }}>
+                <Autocomplete
+                  multiple
+                  limitTags={2}
+                  options={proyectos}
+                  value={selectedProjects}
+                  onChange={(_event, values) => { setSelectedProjects(values); setPage(0); }}
+                  getOptionLabel={(option) => option?.nombre || 'Obra'}
+                  isOptionEqualToValue={(option, value) => option.id === value.id}
+                  loading={loadingScope}
+                  filterSelectedOptions
+                  renderInput={(params) => (
+                    <TextField {...params} label="Obra" placeholder="Todas las obras" size="small" />
+                  )}
+                  sx={{ minWidth: 200, flex: 1 }}
+                />
+                {activeTab !== 'pretendidos' && (
                   <TextField
                     label="Buscar"
                     size="small"
@@ -776,84 +1332,100 @@ const PagosAprobacionesPage = () => {
                     onChange={(e) => setFilterState((prev) => ({ ...prev, buscar: e.target.value }))}
                     onKeyDown={(e) => { if (e.key === 'Enter') { setPage(0); fetchMovimientos(); } }}
                     placeholder="Razón social, descripción..."
-                    sx={{ minWidth: 220, flex: 1 }}
+                    sx={{ minWidth: 200, flex: 1 }}
                   />
-
+                )}
+                {activeTab !== 'pretendidos' && (
                   <Autocomplete
                     multiple
+                    limitTags={1}
                     options={options?.proveedores || []}
                     value={filterState.proveedores}
                     onChange={(_e, values) => { setFilterState((prev) => ({ ...prev, proveedores: values })); setPage(0); }}
                     filterSelectedOptions
-                    renderInput={(params) => (
-                      <TextField {...params} label="Proveedor" size="small" />
-                    )}
-                    sx={{ minWidth: 220, flex: 1 }}
+                    renderInput={(params) => <TextField {...params} label="Proveedor" size="small" />}
+                    sx={{ minWidth: 180, flex: 1 }}
                   />
-
+                )}
+                {activeTab !== 'pretendidos' && (
                   <Autocomplete
                     multiple
+                    limitTags={1}
                     options={options?.categorias || []}
                     value={filterState.categorias}
                     onChange={(_e, values) => { setFilterState((prev) => ({ ...prev, categorias: values })); setPage(0); }}
                     filterSelectedOptions
-                    renderInput={(params) => (
-                      <TextField {...params} label="Categoría" size="small" />
-                    )}
-                    sx={{ minWidth: 200, flex: 1 }}
+                    renderInput={(params) => <TextField {...params} label="Categoría" size="small" />}
+                    sx={{ minWidth: 160, flex: 1 }}
                   />
-                </Stack>
-
-                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems="flex-start">
+                )}
+                {activeTab !== 'pretendidos' && (
                   <TextField
-                    label="Fecha desde"
+                    label="Desde"
                     type="date"
                     size="small"
                     value={filterState.fechaDesde}
                     onChange={(e) => { setFilterState((prev) => ({ ...prev, fechaDesde: e.target.value })); setPage(0); }}
                     InputLabelProps={{ shrink: true }}
-                    sx={{ minWidth: 160 }}
+                    sx={{ width: 148 }}
                   />
+                )}
+                {activeTab !== 'pretendidos' && (
                   <TextField
-                    label="Fecha hasta"
+                    label="Hasta"
                     type="date"
                     size="small"
                     value={filterState.fechaHasta}
                     onChange={(e) => { setFilterState((prev) => ({ ...prev, fechaHasta: e.target.value })); setPage(0); }}
                     InputLabelProps={{ shrink: true }}
-                    sx={{ minWidth: 160 }}
+                    sx={{ width: 148 }}
                   />
-                </Stack>
+                )}
+                <Button type="button" variant="outlined" size="small" startIcon={<RefreshIcon />} onClick={handleRefresh} disabled={loadingMovimientos} sx={{ alignSelf: 'center', whiteSpace: 'nowrap' }}>
+                  Actualizar
+                </Button>
               </Stack>
             </Paper>
 
             {error && <Alert severity="error">{error}</Alert>}
             {feedback && <Alert severity={feedback.severity}>{feedback.message}</Alert>}
 
-            {/* Métricas globales (sin filtros aplicados) */}
-            <Paper variant="outlined" sx={{ px: 2.5, py: 1.5, borderRadius: 3, bgcolor: 'background.neutral' }}>
-              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3} flexWrap="wrap" alignItems="center">
-                <Typography variant="body1" color="text.secondary">
+            {activeTab === 'pretendidos' && (
+              <PretendidosPanel
+                pretendidos={pretendidos}
+                loading={loadingPretendidos}
+                proyectos={proyectos}
+                proveedoresManoObra={proveedoresManoObra}
+                onCrear={handleCrearPretendido}
+                creating={creatingPretendido}
+                onCerrar={handleCerrarPretendido}
+                savingId={savingPretendidoId}
+                onEditar={handleEditarPretendido}
+                savingEditId={savingEditPretendidoId}
+                onEliminar={handleEliminarPretendido}
+                deletingId={deletingPretendidoId}
+                empresaId={empresa?.id}
+                onOpenDrawer={openProveedorDrawer}
+              />
+            )}
+
+            {activeTab !== 'pretendidos' && <Paper variant="outlined" sx={{ borderRadius: 3, overflow: 'hidden' }}>
+              {/* Métricas globales */}
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3} flexWrap="wrap" alignItems="center" sx={{ px: 2, py: 1, borderBottom: 1, borderColor: 'divider', bgcolor: 'grey.50' }}>
+                <Typography variant="body2" color="text.secondary">
                   Saldo a pagar: <strong>{globalMetrics ? formatCurrencyWithCode(globalMetrics.currencies?.ARS?.egreso || 0, 'ARS') : '—'}</strong>
                 </Typography>
-                <Typography variant="body1" color="text.secondary">
-                  Aprobado: <strong>{globalMetrics ? formatCurrencyWithCode(globalMetrics.egresosAprobacion?.totalMontoAprobado || 0, 'ARS') : '—'}</strong>
-                </Typography>
-                <Typography variant="body1" color="text.secondary">
+                <Typography variant="body2" color="text.secondary">
                   Pagado: <strong>{globalMetrics ? formatCurrencyWithCode(globalMetrics.egresosAprobacion?.totalMontoPagado || 0, 'ARS') : '—'}</strong>
                 </Typography>
               </Stack>
-            </Paper>
-
-            <Paper variant="outlined" sx={{ borderRadius: 3, overflow: 'hidden' }}>
               <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} justifyContent="space-between" alignItems={{ xs: 'flex-start', md: 'center' }} sx={{ p: 2 }}>
                 <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap">
                   <Chip label={`${selectedIds.size} seleccionado(s)`} size="small" variant="outlined" />
                   <Chip label={`${selectedPayableMovimientos.length} pagables`} size="small" variant="outlined" color="success" />
                   <Chip label={`${dirtyMovimientos.length} con cambios`} size="small" variant="outlined" color="warning" />
                   <Typography variant="caption" color="text.secondary">
-                    {pagination.total || 0} resultados — Saldo: <strong>{formatCurrencyWithCode(summary.totalVisible, 'ARS')}</strong> — Aprobado: <strong>{formatCurrencyWithCode(summary.totalAprobado, 'ARS')}</strong>
-                    {summary.pendientesAprobacion > 0 && <span style={{ marginLeft: 8, color: '#ed6c02', fontWeight: 600 }}>{summary.pendientesAprobacion} sin aprobar</span>}
+                    {pagination.total || 0} resultados — Saldo: <strong>{formatCurrencyWithCode(summary.totalVisible, 'ARS')}</strong>
                     {summary.pendientesPago > 0 && <span style={{ marginLeft: 8, color: '#d32f2f', fontWeight: 600 }}>{summary.pendientesPago} sin pagar</span>}
                   </Typography>
                 </Stack>
@@ -898,21 +1470,17 @@ const PagosAprobacionesPage = () => {
                   <Button
                     type="button"
                     variant="contained"
-                    color="primary"
-                    startIcon={<SaveOutlinedIcon fontSize="small" />}
-                    onClick={handleSaveChanges}
-                    disabled={bulkSaveLoading || dirtyMovimientos.length === 0}
-                  >
-                    {bulkSaveLoading ? 'Guardando...' : 'Guardar cambios'}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="contained"
                     color="success"
-                    onClick={handlePagarSeleccionados}
-                    disabled={bulkPayLoading || selectedPayableMovimientos.length === 0}
+                    startIcon={<PaymentsIcon fontSize="small" />}
+                    onClick={handleAbrirConfirmarPago}
+                    disabled={selectedPayableMovimientos.length === 0 && dirtyMovimientos.length === 0}
                   >
-                    {bulkPayLoading ? 'Pagando...' : 'Pagar seleccionados'}
+                    {(() => {
+                      const c = dirtyMovimientos.length > 0
+                        ? dirtyMovimientos.length
+                        : selectedPayableMovimientos.length;
+                      return `Pagar (${c})`;
+                    })()}
                   </Button>
                 </Stack>
               </Stack>
@@ -957,7 +1525,6 @@ const PagosAprobacionesPage = () => {
                   <TableBody>
                     {movimientos.map((movimiento) => {
                       const savingRow = !!savingById[movimiento.id];
-                      const draftMontoAprobado = getDraftValue(movimiento, 'monto_aprobado');
                       const draftMontoPagado = getDraftValue(movimiento, 'monto_pagado');
                       const rowDirty = dirtyMovimientoIds.has(movimiento.id);
 
@@ -979,6 +1546,27 @@ const PagosAprobacionesPage = () => {
                           </TableCell>
 
                           {visibleColumns.map((column) => {
+                            if (column.key === 'nombre_proveedor') {
+                              return (
+                                <TableCell key={`${movimiento.id}-${column.key}`} sx={{ whiteSpace: 'nowrap' }}>
+                                  <Stack direction="row" alignItems="center" spacing={0.5}>
+                                    <span>{movimiento.nombre_proveedor || '-'}</span>
+                                    {openProveedorDrawer && movimiento.id_proveedor && (
+                                      <Tooltip title="Ver ficha del proveedor">
+                                        <IconButton
+                                          size="small"
+                                          onClick={(e) => { e.stopPropagation(); openProveedorDrawer(movimiento.id_proveedor); }}
+                                          sx={{ opacity: 0.5, '&:hover': { opacity: 1 } }}
+                                        >
+                                          <InfoOutlinedIcon fontSize="inherit" />
+                                        </IconButton>
+                                      </Tooltip>
+                                    )}
+                                  </Stack>
+                                </TableCell>
+                              );
+                            }
+
                             if (column.key === 'proyecto') {
                               return (
                                 <TableCell key={`${movimiento.id}-${column.key}`} sx={{ whiteSpace: 'nowrap' }}>
@@ -999,61 +1587,6 @@ const PagosAprobacionesPage = () => {
                               return (
                                 <TableCell key={`${movimiento.id}-${column.key}`} align="right" sx={{ whiteSpace: 'nowrap' }}>
                                   {formatCurrencyWithCode(movimiento.total || 0, movimiento.moneda || 'ARS')}
-                                </TableCell>
-                              );
-                            }
-
-                            if (column.key === 'monto_aprobado') {
-                              const pctAprobado = (() => {
-                                const v = normalizeAmountInput(draftMontoAprobado);
-                                const t = movimiento.total;
-                                if (!v || !t || t <= 0) return null;
-                                return Math.round((v / t) * 100);
-                              })();
-                              return (
-                                <TableCell key={`${movimiento.id}-${column.key}`} align="right" sx={{ whiteSpace: 'nowrap' }}>
-                                  <Stack direction="row" spacing={0.5} alignItems="center" justifyContent="flex-end">
-                                    <TextField
-                                      size="small"
-                                      type="number"
-                                      value={pctAprobado ?? ''}
-                                      onChange={(event) => {
-                                        const pct = parseFloat(event.target.value);
-                                        const t = Number(movimiento.total) || 0;
-                                        if (Number.isFinite(pct) && t > 0) {
-                                          handleDraftChange(movimiento.id, 'monto_aprobado', String(Math.round((pct / 100) * t)));
-                                        } else if (event.target.value === '') {
-                                          handleDraftChange(movimiento.id, 'monto_aprobado', '');
-                                        }
-                                      }}
-                                      onKeyDown={(event) => { if (event.key === 'Enter') event.preventDefault(); }}
-                                      disabled={savingRow || bulkSaveLoading}
-                                      inputProps={{ style: { padding: '3px 4px', fontSize: '0.7rem', textAlign: 'right' }, min: 0, max: 100 }}
-                                      sx={{ width: 52 }}
-                                    />
-                                    <Typography variant="caption" sx={{ color: 'text.disabled', fontSize: '0.7rem' }}>%</Typography>
-                                    <TextField
-                                      size="small"
-                                      type="number"
-                                      value={draftMontoAprobado}
-                                      onChange={(event) => handleDraftChange(movimiento.id, 'monto_aprobado', event.target.value)}
-                                      onKeyDown={(event) => { if (event.key === 'Enter') event.preventDefault(); }}
-                                      disabled={savingRow || bulkSaveLoading}
-                                      inputProps={{ style: { padding: '3px 8px', fontSize: '0.8125rem' } }}
-                                      sx={{ width: 110 }}
-                                    />
-                                    <Button
-                                      type="button"
-                                      size="small"
-                                      variant="text"
-                                      title="Aprobar monto total"
-                                      onClick={() => handleDraftChange(movimiento.id, 'monto_aprobado', String(movimiento.total || ''))}
-                                      disabled={savingRow || bulkSaveLoading}
-                                      sx={{ minWidth: 0, px: 0.75, py: 0.25, fontSize: '0.7rem', color: 'text.secondary', textTransform: 'none' }}
-                                    >
-                                      total
-                                    </Button>
-                                  </Stack>
                                 </TableCell>
                               );
                             }
@@ -1103,9 +1636,7 @@ const PagosAprobacionesPage = () => {
                                       variant="text"
                                       title="Marcar como pagado"
                                       onClick={() => {
-                                        const aprobado = normalizeAmountInput(draftMontoAprobado) ?? normalizeAmountInput(movimiento.monto_aprobado);
-                                        const fill = aprobado || movimiento.total || '';
-                                        handleDraftChange(movimiento.id, 'monto_pagado', String(fill));
+                                        handleDraftChange(movimiento.id, 'monto_pagado', String(movimiento.total || ''));
                                       }}
                                       disabled={savingRow || bulkSaveLoading}
                                       sx={{ minWidth: 0, px: 0.75, py: 0.25, fontSize: '0.7rem', color: 'success.main', textTransform: 'none', fontWeight: 600 }}
@@ -1178,12 +1709,46 @@ const PagosAprobacionesPage = () => {
                   setPage(0);
                 }}
               />
-            </Paper>
+            </Paper>}
           </Stack>
         </Container>
       </Box>
+
+      {imputarOpen && (
+        <ImputarPagoDialogLazy
+          open={imputarOpen}
+          onClose={handleImputarClose}
+          onSuccess={handleImputarSuccess}
+          proveedor={selectedPayableMovimientos[0]?.nombre_proveedor || 'Seleccionados'}
+          remitos={selectedPayableMovimientos}
+          selectedIdsInicial={[...selectedIds]}
+        />
+      )}
+
+      <ConfirmarPagoDialog
+        open={confirmarPagoOpen}
+        onClose={() => { setConfirmarPagoOpen(false); setMovimientosParaConfirmar([]); }}
+        onSuccess={handleConfirmarPagoSuccess}
+        empresaId={empresa?.id}
+        movimientos={movimientosParaConfirmar}
+      />
+
+      <ProveedorDrawer
+        open={provDrawerOpen}
+        onClose={() => setProvDrawerOpen(false)}
+        proveedorId={provDrawerId}
+        empresaId={empresa?.id}
+        categoriasEmpresa={empresa?.categorias || []}
+        onUpdate={() => {}}
+      />
     </DashboardLayout>
   );
 };
+
+function ImputarPagoDialogLazy(props) {
+  // eslint-disable-next-line global-require
+  const ImputarPagoDialog = require('src/components/pagos/ImputarPagoDialog').default;
+  return <ImputarPagoDialog {...props} />;
+}
 
 export default PagosAprobacionesPage;

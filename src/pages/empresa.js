@@ -24,7 +24,8 @@ import {
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { ProyectosDetails } from 'src/sections/empresa/proyectosDetails';
 import { CategoriasDetails } from 'src/sections/empresa/categoriasDetails';
-import { ProveedoresDetails } from 'src/sections/empresa/proveedoresDetails';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import Link from 'next/link';
 import { UsuariosDetails } from 'src/sections/empresa/usuariosDetails';
 import { MediosPagoDetails } from 'src/sections/empresa/mediosPagoDetails';
 import { ImpuestosDetails } from 'src/sections/empresa/impuestosDetails';
@@ -454,7 +455,28 @@ const EmpresaPage = () => {
                 {currentTab === 'proyectos' && <ProyectosDetails empresa={empresa}/>} 
                 {currentTab === 'categorias' && <CategoriasDetails empresa={empresa}/>}
                 {currentTab === 'categorias_materiales' && <CategoriasMaterialesDetails empresa={empresa}/>}
-                {currentTab === 'proveedores' && <ProveedoresDetails empresa={empresa}/>}
+                {currentTab === 'proveedores' && (
+                  <Card elevation={0} sx={{ border: `1px solid ${theme.palette.divider}`, borderRadius: 2 }}>
+                    <CardContent>
+                      <Stack spacing={2} alignItems="flex-start">
+                        <Box>
+                          <Typography variant="h6" gutterBottom>Gestión de proveedores</Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            La gestión de proveedores se trasladó a su propia página, donde podés ver, crear, editar y archivar proveedores, marcar favoritos y acceder a la cuenta corriente de cada uno.
+                          </Typography>
+                        </Box>
+                        <Button
+                          variant="contained"
+                          startIcon={<OpenInNewIcon />}
+                          component={Link}
+                          href="/proveedores"
+                        >
+                          Ir a Proveedores
+                        </Button>
+                      </Stack>
+                    </CardContent>
+                  </Card>
+                )}
                 {currentTab === 'etapas' && <EtapasDetails empresa={empresa} />} 
                 {currentTab === 'drive' && <OrganizacionDrive empresa={empresa} updateEmpresaData={updateEmpresaDetails} />}
                 {currentTab === 'stock_config' && <StockConfigDetails empresa={empresa} updateEmpresaData={updateEmpresaDetails} />}

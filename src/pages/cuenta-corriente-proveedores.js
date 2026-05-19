@@ -28,12 +28,18 @@ import PaymentsIcon from '@mui/icons-material/Payments';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import SaveOutlinedIcon from '@mui/icons-material/SaveOutlined';
 import SearchIcon from '@mui/icons-material/Search';
+import BlockIcon from '@mui/icons-material/Block';
+import CheckIcon from '@mui/icons-material/Check';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useAuthContext } from 'src/contexts/auth-context';
 import movimientosService from 'src/services/movimientosService';
+import pagoProveedorService from 'src/services/pagoProveedorService';
+import proveedorService from 'src/services/proveedorService';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import { getProyectosFromUser } from 'src/services/proyectosService';
 import { dateToTimestamp, formatCurrencyWithCode, formatTimestamp } from 'src/utils/formatters';
+import RegistrarPagoDialog from 'src/components/pagos/RegistrarPagoDialog';
+import AnularPagoDialog from 'src/components/pagos/AnularPagoDialog';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -214,7 +220,7 @@ function ListaProveedores({ resumen, loading, onSelect, filtroProveedor, onFiltr
 
 // ─── Nivel 2 — Operaciones del proveedor ────────────────────────────────────
 
-function DetalleProveedor({ proveedor, remitos, loading, savingById, draftsById, onChangeDraft, onSaveDraft, tieneMontoAprobado, onPagarUno, selectedForPago, onToggleForPago, onToggleAllForPago }) {
+function DetalleProveedor({ proveedor, remitos, loading, savingById, draftsById, onChangeDraft, onSaveDraft, tieneMontoAprobado, onPagarUno, selectedForPago, onToggleForPago, onToggleAllForPago, pagos, loadingPagos, onRegistrarPago, onAnularPago }) {
   // Orden cronológico ascendente para el log
   const sorted = useMemo(() => [
     ...remitos].sort((a, b) => {
@@ -259,7 +265,9 @@ function DetalleProveedor({ proveedor, remitos, loading, savingById, draftsById,
           { label: 'Dif. pedido vs aprobado', value: formatCurrencyWithCode(diferenciaTotalAprobado), color: diferenciaTotalAprobado > 0.005 ? 'warning.main' : 'text.primary' },
         ] : []),
         { label: 'Total pagado', value: formatCurrencyWithCode(totales.monto_pagado) },
-        { label: 'Saldo', value: formatCurrencyWithCode(saldoFinal), color: saldoFinal > 0.005 ? 'error.main' : 'success.main' },
+        saldoFinal < -0.005
+          ? { label: 'Saldo a favor', value: formatCurrencyWithCode(Math.abs(saldoFinal)), color: 'info.main' }
+          : { label: 'Saldo', value: formatCurrencyWithCode(saldoFinal), color: saldoFinal > 0.005 ? 'error.main' : 'success.main' },
       ]} />
 
       <TableContainer component={Paper} variant="outlined">
@@ -378,7 +386,30 @@ function DetalleProveedor({ proveedor, remitos, loading, savingById, draftsById,
                       />
                     </TableCell>
                   )}
-                  <TableCell align="right">{formatCurrencyWithCode(rem._haber)}</TableCell>
+                  <TableCell align="right">
+                    {(() => {
+                      const haber = rem._haber || 0;
+                      const total = rem._debe || 0;
+                      if (haber < 0.005) return <Typography variant="body2" color="text.disabled">—</Typography>;
+                      const totalmente = haber >= total - 0.005;
+                      return (
+                        <Tooltip
+                          title={
+                            totalmente
+                              ? `Imputado: ${formatCurrencyWithCode(haber)}`
+                              : `Parcial: ${formatCurrencyWithCode(haber)} de ${formatCurrencyWithCode(total)}`
+                          }
+                        >
+                          <Stack direction="row" spacing={0.25} justifyContent="flex-end" alignItems="center">
+                            <CheckIcon fontSize="small" color={totalmente ? 'success' : 'warning'} />
+                            {!totalmente && (
+                              <Typography variant="caption" color="warning.main" fontWeight={700}>*</Typography>
+                            )}
+                          </Stack>
+                        </Tooltip>
+                      );
+                    })()}
+                  </TableCell>
                   <TableCell align="right" sx={{ color: pendiente > 0.005 ? 'warning.main' : 'success.main' }}>
                     {formatCurrencyWithCode(pendiente)}
                   </TableCell>
@@ -412,6 +443,103 @@ function DetalleProveedor({ proveedor, remitos, loading, savingById, draftsById,
           </TableBody>
         </Table>
       </TableContainer>
+
+      {/* ─── Pagos registrados ─────────────────────────────────────────────── */}
+      <Box sx={{ mt: 4 }}>
+        <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
+          <Typography variant="h6">Pagos registrados</Typography>
+          <Button
+            variant="contained"
+            size="small"
+            startIcon={<PaymentsIcon />}
+            onClick={onRegistrarPago}
+          >
+            Registrar pago
+          </Button>
+        </Stack>
+
+        <TableContainer component={Paper} variant="outlined">
+          <Table size="small">
+            <TableHead>
+              <TableRow sx={{ bgcolor: 'grey.50' }}>
+                <TableCell sx={{ fontWeight: 600 }}>Fecha</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>Método</TableCell>
+                <TableCell align="right" sx={{ fontWeight: 600 }}>Bruto</TableCell>
+                <TableCell align="right" sx={{ fontWeight: 600 }}>Retenciones</TableCell>
+                <TableCell align="right" sx={{ fontWeight: 600 }}>Neto</TableCell>
+                <TableCell align="right" sx={{ fontWeight: 600 }}>Sin imputar</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>Estado</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>Comprob.</TableCell>
+                <TableCell />
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {loadingPagos && (
+                <TableRow>
+                  <TableCell colSpan={9} align="center" sx={{ py: 3 }}>
+                    <CircularProgress size={20} />
+                  </TableCell>
+                </TableRow>
+              )}
+              {!loadingPagos && (pagos?.length || 0) === 0 && (
+                <TableRow>
+                  <TableCell colSpan={9} align="center" sx={{ py: 3 }}>
+                    <Typography variant="body2" color="text.secondary">
+                      No hay pagos registrados para este proveedor.
+                    </Typography>
+                  </TableCell>
+                </TableRow>
+              )}
+              {!loadingPagos && (pagos || []).map((pago) => {
+                const sinImputar = (pago.monto_sin_imputar || 0) > 0.005;
+                const estaActivo = pago.estado === 'activo';
+                const metodoLabel = pago.metodo === 'transferencia' ? 'Transferencia'
+                  : pago.metodo === 'cheque' ? 'Cheque'
+                    : pago.metodo === 'efectivo' ? 'Efectivo' : 'Otro';
+                return (
+                  <TableRow key={pago._id} sx={{ opacity: estaActivo ? 1 : 0.6 }}>
+                    <TableCell>{formatTimestamp(pago.fecha_pago)}</TableCell>
+                    <TableCell>{metodoLabel}</TableCell>
+                    <TableCell align="right">{formatCurrencyWithCode(pago.monto_bruto)} {pago.moneda}</TableCell>
+                    <TableCell align="right">
+                      {pago.total_retenciones > 0 ? `− ${formatCurrencyWithCode(pago.total_retenciones)}` : '—'}
+                    </TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 600 }}>
+                      {formatCurrencyWithCode(pago.monto_neto_proveedor)}
+                    </TableCell>
+                    <TableCell align="right">
+                      {sinImputar ? (
+                        <Chip size="small" label={formatCurrencyWithCode(pago.monto_sin_imputar)} color="warning" variant="outlined" />
+                      ) : '—'}
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        size="small"
+                        label={estaActivo ? 'Activo' : 'Anulado'}
+                        color={estaActivo ? 'success' : 'default'}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      {(pago.comprobantes?.length || 0) > 0 ? (
+                        <Chip size="small" label={pago.comprobantes.length} variant="outlined" />
+                      ) : '—'}
+                    </TableCell>
+                    <TableCell align="right">
+                      {estaActivo && (
+                        <Tooltip title="Anular pago">
+                          <IconButton size="small" color="error" onClick={() => onAnularPago(pago)}>
+                            <BlockIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </Box>
     </Box>
   );
 }
@@ -450,9 +578,17 @@ export default function CuentaCorrienteProveedoresPage() {
   const [savingById, setSavingById] = useState({});
   const [feedback, setFeedback] = useState(null);
 
-  // ImputarPagoDialog
+  // ImputarPagoDialog (legacy, se mantiene)
   const [imputarOpen, setImputarOpen] = useState(false);
   const [remitoInicial, setRemitoInicial] = useState(null);
+
+  // Pagos (nueva entidad PagoProveedor)
+  const [proveedoresEmpresa, setProveedoresEmpresa] = useState([]);
+  const [pagosProveedor, setPagosProveedor] = useState([]);
+  const [loadingPagos, setLoadingPagos] = useState(false);
+  const [registrarPagoOpen, setRegistrarPagoOpen] = useState(false);
+  const [anularPagoOpen, setAnularPagoOpen] = useState(false);
+  const [pagoAAnular, setPagoAAnular] = useState(null);
 
   // Selección de filas para pago
   const [selectedForPago, setSelectedForPago] = useState(() => new Set());
@@ -534,12 +670,48 @@ export default function CuentaCorrienteProveedoresPage() {
     }
   }, [empresa?.id, proyectoIds, fechaDesde, fechaHasta]);
 
+  // ── Proveedores de la empresa (para lookup nombre → _id) ──────────────────
+  const fetchProveedoresEmpresa = useCallback(async () => {
+    if (!empresa?.id) return;
+    try {
+      const data = await proveedorService.getByEmpresa(empresa.id);
+      setProveedoresEmpresa(data || []);
+    } catch (err) {
+      console.error('Error cargando proveedores de la empresa:', err);
+    }
+  }, [empresa?.id]);
+
+  const proveedorSeleccionadoData = useMemo(() => {
+    if (!selectedProveedor) return null;
+    return proveedoresEmpresa.find((p) => p.nombre?.toLowerCase() === selectedProveedor.toLowerCase()) || null;
+  }, [proveedoresEmpresa, selectedProveedor]);
+
+  // ── Pagos del proveedor seleccionado ──────────────────────────────────────
+  const fetchPagosProveedor = useCallback(async () => {
+    if (!empresa?.id || !proveedorSeleccionadoData?._id) {
+      setPagosProveedor([]);
+      return;
+    }
+    setLoadingPagos(true);
+    try {
+      const data = await pagoProveedorService.listar(empresa.id, { proveedor_id: proveedorSeleccionadoData._id });
+      setPagosProveedor(data || []);
+    } catch (err) {
+      console.error('Error cargando pagos del proveedor:', err);
+      setPagosProveedor([]);
+    } finally {
+      setLoadingPagos(false);
+    }
+  }, [empresa?.id, proveedorSeleccionadoData?._id]);
+
   // ── Efectos ────────────────────────────────────────────────────────────────
   useEffect(() => { fetchScopeData(); }, [fetchScopeData]);
   useEffect(() => { fetchResumen(); }, [fetchResumen]);
+  useEffect(() => { fetchProveedoresEmpresa(); }, [fetchProveedoresEmpresa]);
   useEffect(() => {
     if (selectedProveedor) fetchRemitos(selectedProveedor);
   }, [selectedProveedor, fetchRemitos]);
+  useEffect(() => { fetchPagosProveedor(); }, [fetchPagosProveedor]);
 
   // Reset selección al cambiar proveedor
   useEffect(() => {
@@ -600,6 +772,35 @@ export default function CuentaCorrienteProveedoresPage() {
     setImputarOpen(false);
     setRemitoInicial(null);
   }, []);
+
+  // ── Pagos (nueva entidad) ─────────────────────────────────────────────────
+  const handleAbrirRegistrarPago = useCallback(() => {
+    setRegistrarPagoOpen(true);
+  }, []);
+  const handleCerrarRegistrarPago = useCallback(() => {
+    setRegistrarPagoOpen(false);
+  }, []);
+  const handlePagoRegistradoOk = useCallback(() => {
+    setFeedback({ severity: 'success', message: 'Pago registrado correctamente.' });
+    fetchRemitos(selectedProveedor);
+    fetchPagosProveedor();
+    fetchResumen();
+  }, [selectedProveedor, fetchRemitos, fetchPagosProveedor, fetchResumen]);
+
+  const handleAbrirAnularPago = useCallback((pago) => {
+    setPagoAAnular(pago);
+    setAnularPagoOpen(true);
+  }, []);
+  const handleCerrarAnularPago = useCallback(() => {
+    setAnularPagoOpen(false);
+    setPagoAAnular(null);
+  }, []);
+  const handlePagoAnuladoOk = useCallback(() => {
+    setFeedback({ severity: 'success', message: 'Pago anulado correctamente.' });
+    fetchRemitos(selectedProveedor);
+    fetchPagosProveedor();
+    fetchResumen();
+  }, [selectedProveedor, fetchRemitos, fetchPagosProveedor, fetchResumen]);
 
   const handleToggleForPago = useCallback((id) => {
     setSelectedForPago((prev) => {
@@ -733,6 +934,10 @@ export default function CuentaCorrienteProveedoresPage() {
               selectedForPago={selectedForPago}
               onToggleForPago={handleToggleForPago}
               onToggleAllForPago={handleToggleAllForPago}
+              pagos={pagosProveedor}
+              loadingPagos={loadingPagos}
+              onRegistrarPago={handleAbrirRegistrarPago}
+              onAnularPago={handleAbrirAnularPago}
             />
           )}
         </Container>
@@ -750,6 +955,29 @@ export default function CuentaCorrienteProveedoresPage() {
           selectedIdsInicial={selectedForPago.size > 0 && !remitoInicial ? [...selectedForPago] : null}
         />
       )}
+
+      {/* RegistrarPagoDialog — nueva entidad Pago */}
+      {registrarPagoOpen && proveedorSeleccionadoData && (
+        <RegistrarPagoDialog
+          open={registrarPagoOpen}
+          onClose={handleCerrarRegistrarPago}
+          onSuccess={handlePagoRegistradoOk}
+          empresaId={empresa?.id}
+          proveedor={selectedProveedor}
+          proveedorId={proveedorSeleccionadoData._id}
+          remitos={remitos.filter((r) => r.estado !== 'Pagado')}
+        />
+      )}
+
+      {/* AnularPagoDialog */}
+      <AnularPagoDialog
+        open={anularPagoOpen}
+        onClose={handleCerrarAnularPago}
+        onSuccess={handlePagoAnuladoOk}
+        empresaId={empresa?.id}
+        pago={pagoAAnular}
+        proveedorNombre={selectedProveedor}
+      />
     </DashboardLayout>
   );
 }

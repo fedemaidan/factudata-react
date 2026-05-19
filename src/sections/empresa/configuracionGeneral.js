@@ -80,6 +80,9 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
     { ...comprobante_info_default, ...empresa.comprobante_info } || comprobante_info_default
   );
   const [conEstados, setConEstados] = useState(empresa.con_estados || false);
+  const [estadoDefaultMovimiento, setEstadoDefaultMovimiento] = useState(
+    empresa.estado_default_movimiento || 'Pendiente'
+  );
   const [soloDolar, setSoloDolar] = useState(empresa.solo_dolar || false);
   const [cajaChicaDirecto, setCajaChicaDirecto] = useState(empresa.caja_chica_directo || false);
   const [notasEstados, setNotasEstados] = useState(
@@ -225,6 +228,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
     "VER_PLANES_COBRO",
     "VER_CONTROL_PAGOS",
     "VER_CUENTA_CORRIENTE_PROVEEDORES",
+    "GESTIONAR_PROVEEDORES",
   ];
 
   const dhnAcciones = [
@@ -362,6 +366,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
       dolarDeAjuste: dolarDeAjuste,
       comprobante_info: comprobanteInfo,
       con_estados: conEstados,
+      estado_default_movimiento: estadoDefaultMovimiento,
       solo_dolar: soloDolar,
       caja_chica_directo: cajaChicaDirecto,
       notas_estados: notasEstados,
@@ -655,6 +660,20 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
         <Checkbox checked={conEstados} onChange={(e) => setConEstados(e.target.checked)} />
         <ListItemText primary="Con Estados" />
       </FormControl>
+
+      {conEstados && (
+        <FormControl sx={{ ml: 4, mt: 1, mb: 1, minWidth: 320 }} size="small">
+          <InputLabel>Estado inicial por defecto de los movimientos</InputLabel>
+          <Select
+            value={estadoDefaultMovimiento}
+            label="Estado inicial por defecto de los movimientos"
+            onChange={(e) => setEstadoDefaultMovimiento(e.target.value)}
+          >
+            <MenuItem value="Pendiente">Pendiente — la mayoría se cobra a cuenta corriente</MenuItem>
+            <MenuItem value="Pagado">Pagado — la mayoría se paga al contado</MenuItem>
+          </Select>
+        </FormControl>
+      )}
 
       <FormControl sx={{ mt: 2 }}>
         <Checkbox checked={cajaChicaDirecto} onChange={(e) => setCajaChicaDirecto(e.target.checked)} />

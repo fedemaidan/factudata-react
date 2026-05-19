@@ -31,7 +31,6 @@ const PresupuestoService = {
     try {
       const response = await api.get(`/presupuesto/empresa/${empresaId}`);
       if (response.status === 200) {
-        console.log('✅ Presupuestos obtenidos con éxito');
         return response.data;
       } else {
         throw new Error('Error al obtener presupuestos');
@@ -40,6 +39,13 @@ const PresupuestoService = {
       console.error('❌ Error al listar presupuestos:', error);
       throw error;
     }
+  },
+
+  listarPorProveedor: async (empresaId, proveedorNombre, { tipo } = {}) => {
+    const params = new URLSearchParams({ proveedor: proveedorNombre });
+    if (tipo) params.set('tipo', tipo);
+    const response = await api.get(`/presupuesto/empresa/${empresaId}?${params.toString()}`);
+    return response.data?.presupuestos || [];
   },
 
   /**
