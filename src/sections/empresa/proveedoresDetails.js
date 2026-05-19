@@ -27,6 +27,7 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  FormHelperText,
 } from '@mui/material';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
@@ -74,6 +75,7 @@ export const ProveedoresDetails = ({ empresa }) => {
       alias: [],
       categorias: [],
       tipo: 'materiales',
+      estado_inicial: '', // '' = usar default empresa; 'Pendiente' | 'Pagado' = override
     },
     enableReinitialize: true,
     validationSchema: Yup.object({
@@ -91,6 +93,7 @@ export const ProveedoresDetails = ({ empresa }) => {
             alias: values.alias,
             categorias: values.categorias,
             tipo: values.tipo,
+            estado_inicial: values.estado_inicial === '' ? null : values.estado_inicial,
           });
           setSnackbarMessage('Proveedor actualizado');
         } else {
@@ -102,6 +105,7 @@ export const ProveedoresDetails = ({ empresa }) => {
             alias: values.alias,
             categorias: values.categorias,
             tipo: values.tipo,
+            estado_inicial: values.estado_inicial === '' ? null : values.estado_inicial,
           });
           setSnackbarMessage('Proveedor agregado');
         }
@@ -164,6 +168,7 @@ export const ProveedoresDetails = ({ empresa }) => {
       alias: prov.alias ?? [],
       categorias: prov.categorias ?? [],
       tipo: prov.tipo ?? 'materiales',
+      estado_inicial: prov.estado_inicial ?? '',
     });
     setOpenModal(true);
   };
@@ -345,6 +350,27 @@ export const ProveedoresDetails = ({ empresa }) => {
                 <TextField {...params} label="Categorías" placeholder="Seleccioná" sx={{ mt: 2 }} />
               )}
             />
+
+            {empresa.con_estados && (
+              <FormControl fullWidth sx={{ mt: 2 }}>
+                <InputLabel>Estado inicial de movimientos</InputLabel>
+                <Select
+                  name="estado_inicial"
+                  value={formik.values.estado_inicial}
+                  label="Estado inicial de movimientos"
+                  onChange={formik.handleChange}
+                >
+                  <MenuItem value="">
+                    Usar default de la empresa ({empresa.estado_default_movimiento || 'Pendiente'})
+                  </MenuItem>
+                  <MenuItem value="Pendiente">Siempre Pendiente</MenuItem>
+                  <MenuItem value="Pagado">Siempre Pagado (se cierra al instante)</MenuItem>
+                </Select>
+                <FormHelperText>
+                  Cuando cargues un movimiento de este proveedor, ¿con qué estado debe arrancar?
+                </FormHelperText>
+              </FormControl>
+            )}
           </DialogContent>
           <DialogActions>
             <Button onClick={cancelarEdicion}>Cancelar</Button>
