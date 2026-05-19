@@ -50,6 +50,27 @@ const METRICAS = [
     { key: 'agendaron',       label: 'Agendaron',        emoji: '✅', color: '#10b981', desc: 'Confirmaron la reunión' },
 ];
 
+// ── A/B test "cat_before_vs_after" ─────────────────────────
+// A = control (categoría antes de elegir horario)
+// B = tratamiento (categoría después del booking, opcional)
+const VARIANTE_META = {
+    A: { label: 'Variante A (control)',     short: 'A', color: '#0ea5e9', desc: 'Categoría antes del horario' },
+    B: { label: 'Variante B (tratamiento)', short: 'B', color: '#10b981', desc: 'Horario primero, categoría opcional al final' },
+};
+
+// Proyecta totales y rows según el modo de visualización.
+// mode: 'todos' | 'A' | 'B'  → 'comparar' usa 'A' y 'B' por separado.
+function proyectarTotales(totales, mode) {
+    if (!totales) return {};
+    if (mode === 'todos') return totales;
+    return totales.byVariant?.[mode] || {};
+}
+function proyectarRows(rows, mode) {
+    if (!rows) return [];
+    if (mode === 'todos') return rows;
+    return rows.map(r => ({ fecha: r.fecha, ...(r.byVariant?.[mode] || {}) }));
+}
+
 // Totales históricos congelados del A/B test finalizado (para mostrar como contexto)
 const HISTORICO = {
     visitasLanding: 1819,
@@ -415,10 +436,120 @@ function TablaDaily({ rows }) {
     );
 }
 
+// ─── Comparación A vs B ───────────────────────────────────
+
+function ComparacionAB({ totales }) {
+    const totA = totales.byVariant?.A || {};
+    const totB = totales.byVariant?.B || {};
+
+    const tasa = (num, den) => (den > 0 ? (num / den) * 100 : 0);
+    const tasaAgendarA = tasa(totA.agendaron || 0, totA.visitasLanding || 0);
+    const tasaAgendarB = tasa(totB.agendaron || 0, totB.visitasLanding || 0);
+    const tasaModalAgendarA = tasa(totA.agendaron || 0, totA.abrioModal || 0);
+    const tasaModalAgendarB = tasa(totB.agendaron || 0, totB.abrioModal || 0);
+    const lift = tasaAgendarA > 0 ? ((tasaAgendarB / tasaAgendarA - 1) * 100) : null;
+    const liftPositive = lift !== null && lift > 0;
+    const liftColor = lift === null ? 'text.secondary' : liftPositive ? '#10b981' : '#ef4444';
+
+    return (
+        <Card sx={{ borderLeft: '4px solid #8b5cf6' }}>
+            <CardHeader
+                title="🧪 A/B test — Categoría antes vs después"
+                subheader="Hipótesis: forzar la elección de categoría antes del horario reduce los agendamientos"
+            />
+            <CardContent>
+                <Grid container spacing={2} alignItems="stretch">
+                    {['A', 'B'].map(v => {
+                        const m = VARIANTE_META[v];
+                        const t = v === 'A' ? totA : totB;
+                        const tasaV = v === 'A' ? tasaAgendarA : tasaAgendarB;
+                        const tasaModalV = v === 'A' ? tasaModalAgendarA : tasaModalAgendarB;
+                        return (
+                            <Grid item xs={12} md={5} key={v}>
+                                <Box sx={{ p: 2, borderRadius: 1, bgcolor: `${m.color}10`, height: '100%' }}>
+                                    <Stack direction="row" alignItems="center" spacing={1} mb={0.5}>
+                                        <Chip
+                                            label={m.short}
+                                            size="small"
+                                            sx={{ bgcolor: m.color, color: 'white', fontWeight: 700 }}
+                                        />
+                                        <Typography variant="subtitle2">{m.label}</Typography>
+                                    </Stack>
+                                    <Typography variant="caption" color="text.secondary" display="block" mb={1.5}>
+                                        {m.desc}
+                                    </Typography>
+                                    <Stack direction="row" spacing={3} mb={1.5}>
+                                        <Box>
+                                            <Typography variant="caption" color="text.secondary">Visitas</Typography>
+                                            <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                                                {(t.visitasLanding || 0).toLocaleString('es-AR')}
+                                            </Typography>
+                                        </Box>
+                                        <Box>
+                                            <Typography variant="caption" color="text.secondary">Agendaron</Typography>
+                                            <Typography variant="h6" sx={{ fontWeight: 700, color: m.color }}>
+                                                {(t.agendaron || 0).toLocaleString('es-AR')}
+                                            </Typography>
+                                        </Box>
+                                    </Stack>
+                                    <Box sx={{ p: 1.5, bgcolor: 'background.paper', borderRadius: 1 }}>
+                                        <Typography variant="caption" color="text.secondary" display="block">
+                                            Tasa agenda / visita
+                                        </Typography>
+                                        <Typography variant="h4" sx={{ fontWeight: 800, color: m.color }}>
+                                            {tasaV.toFixed(2)}%
+                                        </Typography>
+                                        <Typography variant="caption" color="text.secondary" display="block" mt={0.5}>
+                                            Agenda / abrió modal: <strong>{tasaModalV.toFixed(1)}%</strong>
+                                        </Typography>
+                                    </Box>
+                                </Box>
+                            </Grid>
+                        );
+                    })}
+                    <Grid item xs={12} md={2}>
+                        <Box
+                            sx={{
+                                p: 2,
+                                height: '100%',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                textAlign: 'center',
+                                borderRadius: 1,
+                                bgcolor: 'action.hover',
+                            }}
+                        >
+                            <Typography variant="caption" color="text.secondary" gutterBottom>
+                                Lift de B vs A
+                            </Typography>
+                            <Typography variant="h3" sx={{ fontWeight: 800, color: liftColor, lineHeight: 1 }}>
+                                {lift === null ? '—' : `${liftPositive ? '+' : ''}${lift.toFixed(1)}%`}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
+                                en tasa de agenda / visita
+                            </Typography>
+                            {lift !== null && (
+                                <Chip
+                                    size="small"
+                                    label={liftPositive ? 'B gana' : 'A gana'}
+                                    sx={{ mt: 1.5, bgcolor: liftColor, color: 'white', fontWeight: 700 }}
+                                />
+                            )}
+                        </Box>
+                    </Grid>
+                </Grid>
+            </CardContent>
+        </Card>
+    );
+}
+
 // ─── Página principal ─────────────────────────────────────
 
 const LandingFunnelPage = () => {
     const [data, setData] = useState(null);
+    const [vista, setVista] = useState('todos'); // 'todos' | 'A' | 'B' | 'comparar'
     const [modo, setModo] = useState('preset'); // 'preset' | 'rango'
     const [dias, setDias] = useState(30);
     const [fechaDesde, setFechaDesde] = useState(() => {
@@ -450,8 +581,13 @@ const LandingFunnelPage = () => {
         fetchData();
     }, [fetchData]);
 
-    const totales = data?.totales || {};
-    const rows = data?.rows || [];
+    const totalesRaw = data?.totales || {};
+    const rowsRaw = data?.rows || [];
+    // En modo 'comparar' usamos los datos crudos para SummaryCards/Tabla (el split lo da la tarjeta de comparación arriba).
+    const proyMode = vista === 'comparar' ? 'todos' : vista;
+    const totales = proyectarTotales(totalesRaw, proyMode);
+    const rows = proyectarRows(rowsRaw, proyMode);
+    const tieneVariantes = !!totalesRaw.byVariant;
 
     return (
         <>
@@ -470,6 +606,17 @@ const LandingFunnelPage = () => {
                             </Typography>
                         </Box>
                         <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                            <ToggleButtonGroup
+                                size="small"
+                                exclusive
+                                value={vista}
+                                onChange={(_, v) => { if (v) setVista(v); }}
+                            >
+                                <ToggleButton value="todos">Todos</ToggleButton>
+                                <ToggleButton value="A">A</ToggleButton>
+                                <ToggleButton value="B">B</ToggleButton>
+                                <ToggleButton value="comparar">Comparar</ToggleButton>
+                            </ToggleButtonGroup>
                             <ToggleButtonGroup
                                 size="small"
                                 exclusive
@@ -536,7 +683,22 @@ const LandingFunnelPage = () => {
                     {data && (
                         <Stack spacing={3}>
 
+                            {/* ─── Comparación A vs B (solo en modo Comparar) ─── */}
+                            {vista === 'comparar' && tieneVariantes && (
+                                <ComparacionAB totales={totalesRaw} />
+                            )}
+                            {vista === 'comparar' && !tieneVariantes && (
+                                <Alert severity="info">
+                                    Todavía no hay datos partidos por variante. Empezarán a aparecer cuando entren visitas a la landing con el nuevo tracking del A/B test.
+                                </Alert>
+                            )}
+
                             {/* ─── Tarjetas resumen ─── */}
+                            {(vista === 'A' || vista === 'B') && (
+                                <Alert severity="info" sx={{ mb: -1 }}>
+                                    Mostrando sólo <strong>Variante {vista}</strong> — {VARIANTE_META[vista].desc}
+                                </Alert>
+                            )}
                             <SummaryCards totales={totales} />
 
                             {/* ─── Funnel + Chart ─── */}

@@ -59,6 +59,7 @@ import PagoEntreCajasInfo from 'src/components/PagoEntreCajasInfo';
 import MovimientoLogsPanel from 'src/components/movimientos/MovimientoLogsPanel';
 import ComprobanteModal from 'src/components/celulandia/ComprobanteModal';
 import ComprobantePdfModal from 'src/components/celulandia/ComprobantePdfModal';
+import { safeRouterReplace } from 'src/utils/safeRouter';
 
 const getTodayLocalDate = () => {
   const now = new Date();
@@ -325,7 +326,7 @@ const MovementFormPage = () => {
 
       if (newMovId && !isEditMode) {
         const extraQuery = shouldShowStockPopup ? { showStockPopup: 'true' } : {};
-        router.replace({ pathname: router.pathname, query: { ...router.query, movimientoId: newMovId, ...extraQuery } });
+        safeRouterReplace(router, { pathname: router.pathname, query: { ...router.query, movimientoId: newMovId, ...extraQuery } });
       }
 
       if (result.error) throw new Error('Error al agregar o editar el movimiento');
@@ -941,7 +942,7 @@ const createdAtStr = (() => {
     setStockPopupOpen(false);
     // Limpiar query param showStockPopup
     const { showStockPopup: _, ...restQuery } = router.query;
-    router.replace({ pathname: router.pathname, query: restQuery }, undefined, { shallow: true });
+    safeRouterReplace(router, { pathname: router.pathname, query: restQuery }, undefined, { shallow: true });
   };
 
   const handleStockComplete = (result) => {

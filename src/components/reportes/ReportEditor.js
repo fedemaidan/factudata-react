@@ -122,7 +122,9 @@ const ReportEditor = ({
 
     const categorias = collect([
       ...movimientos.map((m) => m.categoria),
-      ...presupuestos.map((p) => p.categoria || p.rubro),
+      ...presupuestos.flatMap((p) =>
+        (Array.isArray(p.clasificaciones) ? p.clasificaciones.map((c) => c.categoria) : []).concat(p.rubro || [])
+      ),
     ]);
 
     return { categorias };

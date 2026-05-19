@@ -6,6 +6,7 @@ import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { Container, Stack, Alert, Box, TextField, InputAdornment, IconButton } from '@mui/material';
 import ClearIcon from '@mui/icons-material/Clear';
 import TableComponent from 'src/components/TableComponent';
+import { safeRouterReplace } from 'src/utils/safeRouter';
 import EditarTrabajoDiarioModal from 'src/components/dhn/EditarTrabajoDiarioModal';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
@@ -53,7 +54,7 @@ const ControlDiarioPage = () => {
     const nextDia = (nv || dayjs()).format('DD-MM-YYYY');
     const nextQuery = { ...router.query, dia: nextDia };
     delete nextQuery.page;
-    router.replace({ pathname: router.pathname, query: nextQuery }, undefined, { shallow: true });
+    safeRouterReplace(router, { pathname: router.pathname, query: nextQuery }, undefined, { shallow: true });
   }, [router]);
 
   const [modalUrl, setModalUrl] = useState("");
