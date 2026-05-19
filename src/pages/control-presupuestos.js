@@ -1469,9 +1469,8 @@ const ControlPresupuestosPage = () => {
                       }
                     }}
                   >
-                    <Tab icon={<CategoryIcon sx={{ fontSize: { xs: 16, md: 20 } }} />} iconPosition="start" label="Categoría" />
-                    <Tab icon={<TimelineIcon sx={{ fontSize: { xs: 16, md: 20 } }} />} iconPosition="start" label="Etapa" />
-                    <Tab icon={<StorefrontIcon sx={{ fontSize: { xs: 16, md: 20 } }} />} iconPosition="start" label="Proveedor" />
+                    <Tab value={0} icon={<CategoryIcon sx={{ fontSize: { xs: 16, md: 20 } }} />} iconPosition="start" label="Categoría" />
+                    <Tab value={2} icon={<StorefrontIcon sx={{ fontSize: { xs: 16, md: 20 } }} />} iconPosition="start" label="Proveedor" />
                   </Tabs>
                   
                   {/* Resumen de asignación del tab activo */}

@@ -52,6 +52,7 @@ import profileService from 'src/services/profileService';
 import MaterialesFacturaActions from 'src/components/stock/MaterialesFacturaActions';
 import { getProyectosByEmpresa } from 'src/services/proyectosService';
 import ProrrateoDialog from 'src/components/ProrrateoDialog';
+import ConfirmarPagoDialog from 'src/components/pagos/ConfirmarPagoDialog';
 import TransferenciaInternaDialog from 'src/components/TransferenciaInternaDialog';
 import EgresoConCajaPagadoraDialog from 'src/components/EgresoConCajaPagadoraDialog';
 import PagoEntreCajasInfo from 'src/components/PagoEntreCajasInfo';
@@ -260,6 +261,9 @@ const MovementFormPage = () => {
   }, [isEditMode, movimiento?.codigo_operacion, effectiveProyectoId, effectiveProyectoName, setBreadcrumbs]);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pendingPayload, setPendingPayload] = useState(null);
+  const [confirmarPagoOpen, setConfirmarPagoOpen] = useState(false);
+  const [movimientosParaConfirmar, setMovimientosParaConfirmar] = useState([]);
+  const [pendingPayloadPago, setPendingPayloadPago] = useState(null);
   // arriba con otros useState
   const [obrasEmpresa, setObrasEmpresa] = useState([]);
   const [obrasOptions, setObrasOptions] = useState([]);
@@ -809,8 +813,40 @@ const createdAtStr = (() => {
       const tipoMov = values.type || 'egreso';
       const usaSubtotal = isSubtotalFieldEnabled(comprobante_info, ingreso_info, tipoMov);
 
+      // Si el monto pagado aumentó respecto al guardado, interceptar para registrar PagoProveedor.
+      // Sólo aplica en edición de egresos con proveedor vinculado.
+      const requiereConfirmarPago = (p) => {
+        if (!isEditMode || tipoMov !== 'egreso' || !movimiento?.id_proveedor) return false;
+        const pagadoAnterior = Number(movimiento.monto_pagado) || 0;
+        const totalNuevo = Number(p.total) || 0;
+        const pagadoNuevo = p.estado === 'Pagado'
+          ? totalNuevo
+          : (p.estado === 'Parcialmente Pagado' ? (Number(p.monto_pagado) || 0) : 0);
+        return pagadoNuevo > pagadoAnterior + 0.005;
+      };
+
+      const abrirConfirmarPago = (p) => {
+        const pagadoAnterior = Number(movimiento.monto_pagado) || 0;
+        const totalNuevo = Number(p.total) || 0;
+        const pagadoNuevo = p.estado === 'Pagado'
+          ? totalNuevo
+          : (p.estado === 'Parcialmente Pagado' ? (Number(p.monto_pagado) || 0) : 0);
+        const delta = Math.max(0, pagadoNuevo - pagadoAnterior);
+        // En el PUT del movimiento sacamos estado/monto_pagado/fecha_pago — los setea
+        // el backend al registrar el PagoProveedor (cascade del service).
+        const payloadSinPago = { ...p };
+        delete payloadSinPago.estado;
+        delete payloadSinPago.monto_pagado;
+        delete payloadSinPago.fecha_pago;
+        setPendingPayloadPago(payloadSinPago);
+        setMovimientosParaConfirmar([{ ...movimiento, total: totalNuevo, _montoAPagar: delta }]);
+        setConfirmarPagoOpen(true);
+        setIsLoading(false);
+      };
+
       if (!usaSubtotal) {
         payload.subtotal = computeNetSubtotalFromTotalImpuestos(values.total, values.impuestos);
+        if (requiereConfirmarPago(payload)) { abrirConfirmarPago(payload); return; }
         await savePayload(payload);
         return;
       }
@@ -826,6 +862,7 @@ const createdAtStr = (() => {
         setIsLoading(false);
         return;
       }
+      if (requiereConfirmarPago(payload)) { abrirConfirmarPago(payload); return; }
       await savePayload(payload);
     }
   });
@@ -1837,7 +1874,31 @@ const createdAtStr = (() => {
           </div>
         )}
 
-        <ProrrateoDialog 
+        <ConfirmarPagoDialog
+          open={confirmarPagoOpen}
+          onClose={() => {
+            setConfirmarPagoOpen(false);
+            setMovimientosParaConfirmar([]);
+            setPendingPayloadPago(null);
+            setIsLoading(false);
+          }}
+          onSuccess={async () => {
+            // PagoProveedor ya actualizó estado/monto_pagado/fecha_pago del movimiento.
+            // Persistimos el resto del payload (otros campos editables del form).
+            const payload = pendingPayloadPago;
+            setConfirmarPagoOpen(false);
+            setMovimientosParaConfirmar([]);
+            setPendingPayloadPago(null);
+            if (payload) {
+              setIsLoading(true);
+              await savePayload(payload);
+            }
+          }}
+          empresaId={empresa?.id}
+          movimientos={movimientosParaConfirmar}
+        />
+
+        <ProrrateoDialog
           open={prorrateoOpen}
           onClose={(success) => {
             setProrrateoOpen(false);

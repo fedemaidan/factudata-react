@@ -50,6 +50,7 @@ import { getProyectosFromUser } from 'src/services/proyectosService';
 import { formatCurrencyWithCode, formatTimestamp, dateToTimestamp } from 'src/utils/formatters';
 import { puedeCompletarPagoEgreso } from 'src/utils/movimientoPagoCompleto';
 import pretendidosService from 'src/services/pretendidosService';
+import ConfirmarPagoDialog from 'src/components/pagos/ConfirmarPagoDialog';
 import proveedorService from 'src/services/proveedorService';
 import PresupuestoService from 'src/services/presupuestoService';
 import ProveedorDrawer from 'src/components/ProveedorDrawer';
@@ -717,6 +718,8 @@ const PagosAprobacionesPage = () => {
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [bulkSaveLoading, setBulkSaveLoading] = useState(false);
   const [imputarOpen, setImputarOpen] = useState(false);
+  const [confirmarPagoOpen, setConfirmarPagoOpen] = useState(false);
+  const [movimientosParaConfirmar, setMovimientosParaConfirmar] = useState([]);
 
   // ProveedorDrawer
   const [provDrawerOpen, setProvDrawerOpen] = useState(false);
@@ -1105,6 +1108,39 @@ const PagosAprobacionesPage = () => {
     setImputarOpen(false);
   }, []);
 
+  // Abrir ConfirmarPagoDialog: si hay cambios inline (dirty) priorizar esos,
+  // sino usar los seleccionados con su deuda total como monto a pagar.
+  const handleAbrirConfirmarPago = useCallback(() => {
+    let movs = [];
+    if (dirtyMovimientos.length > 0) {
+      movs = dirtyMovimientos.map(({ movimiento, patch }) => {
+        const total = Number(movimiento.total) || 0;
+        const pagadoAnterior = Number(movimiento.monto_pagado) || 0;
+        const pagadoNuevo = Number(patch.monto_pagado);
+        const target = Number.isFinite(pagadoNuevo) ? pagadoNuevo : total;
+        const delta = Math.max(0, target - pagadoAnterior);
+        return { ...movimiento, _montoAPagar: delta };
+      }).filter((m) => m._montoAPagar > 0.005);
+    } else {
+      movs = selectedPayableMovimientos.map((m) => ({
+        ...m,
+        _montoAPagar: Math.max(0, (Number(m.total) || 0) - (Number(m.monto_pagado) || 0)),
+      })).filter((m) => m._montoAPagar > 0.005);
+    }
+    if (movs.length === 0) return;
+    setMovimientosParaConfirmar(movs);
+    setConfirmarPagoOpen(true);
+  }, [dirtyMovimientos, selectedPayableMovimientos]);
+
+  const handleConfirmarPagoSuccess = useCallback(() => {
+    setFeedback({ severity: 'success', message: 'Pago registrado correctamente.' });
+    setSelectedIds(new Set());
+    setDraftsById({});
+    setConfirmarPagoOpen(false);
+    setMovimientosParaConfirmar([]);
+    fetchMovimientos();
+  }, [fetchMovimientos]);
+
   const fetchPretendidos = useCallback(async () => {
     if (!empresa?.id || activeTab !== 'pretendidos') return;
     setLoadingPretendidos(true);
@@ -1434,22 +1470,17 @@ const PagosAprobacionesPage = () => {
                   <Button
                     type="button"
                     variant="contained"
-                    color="primary"
-                    startIcon={<SaveOutlinedIcon fontSize="small" />}
-                    onClick={handleSaveChanges}
-                    disabled={bulkSaveLoading || dirtyMovimientos.length === 0}
-                  >
-                    {bulkSaveLoading ? 'Guardando...' : 'Guardar cambios'}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="contained"
                     color="success"
                     startIcon={<PaymentsIcon fontSize="small" />}
-                    onClick={handlePagarSeleccionados}
-                    disabled={selectedPayableMovimientos.length === 0}
+                    onClick={handleAbrirConfirmarPago}
+                    disabled={selectedPayableMovimientos.length === 0 && dirtyMovimientos.length === 0}
                   >
-                    {`Pagar seleccionados (${selectedPayableMovimientos.length})`}
+                    {(() => {
+                      const c = dirtyMovimientos.length > 0
+                        ? dirtyMovimientos.length
+                        : selectedPayableMovimientos.length;
+                      return `Pagar (${c})`;
+                    })()}
                   </Button>
                 </Stack>
               </Stack>
@@ -1693,6 +1724,14 @@ const PagosAprobacionesPage = () => {
           selectedIdsInicial={[...selectedIds]}
         />
       )}
+
+      <ConfirmarPagoDialog
+        open={confirmarPagoOpen}
+        onClose={() => { setConfirmarPagoOpen(false); setMovimientosParaConfirmar([]); }}
+        onSuccess={handleConfirmarPagoSuccess}
+        empresaId={empresa?.id}
+        movimientos={movimientosParaConfirmar}
+      />
 
       <ProveedorDrawer
         open={provDrawerOpen}

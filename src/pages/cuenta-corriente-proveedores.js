@@ -29,6 +29,7 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import SaveOutlinedIcon from '@mui/icons-material/SaveOutlined';
 import SearchIcon from '@mui/icons-material/Search';
 import BlockIcon from '@mui/icons-material/Block';
+import CheckIcon from '@mui/icons-material/Check';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useAuthContext } from 'src/contexts/auth-context';
 import movimientosService from 'src/services/movimientosService';
@@ -264,7 +265,9 @@ function DetalleProveedor({ proveedor, remitos, loading, savingById, draftsById,
           { label: 'Dif. pedido vs aprobado', value: formatCurrencyWithCode(diferenciaTotalAprobado), color: diferenciaTotalAprobado > 0.005 ? 'warning.main' : 'text.primary' },
         ] : []),
         { label: 'Total pagado', value: formatCurrencyWithCode(totales.monto_pagado) },
-        { label: 'Saldo', value: formatCurrencyWithCode(saldoFinal), color: saldoFinal > 0.005 ? 'error.main' : 'success.main' },
+        saldoFinal < -0.005
+          ? { label: 'Saldo a favor', value: formatCurrencyWithCode(Math.abs(saldoFinal)), color: 'info.main' }
+          : { label: 'Saldo', value: formatCurrencyWithCode(saldoFinal), color: saldoFinal > 0.005 ? 'error.main' : 'success.main' },
       ]} />
 
       <TableContainer component={Paper} variant="outlined">
@@ -383,7 +386,30 @@ function DetalleProveedor({ proveedor, remitos, loading, savingById, draftsById,
                       />
                     </TableCell>
                   )}
-                  <TableCell align="right">{formatCurrencyWithCode(rem._haber)}</TableCell>
+                  <TableCell align="right">
+                    {(() => {
+                      const haber = rem._haber || 0;
+                      const total = rem._debe || 0;
+                      if (haber < 0.005) return <Typography variant="body2" color="text.disabled">—</Typography>;
+                      const totalmente = haber >= total - 0.005;
+                      return (
+                        <Tooltip
+                          title={
+                            totalmente
+                              ? `Imputado: ${formatCurrencyWithCode(haber)}`
+                              : `Parcial: ${formatCurrencyWithCode(haber)} de ${formatCurrencyWithCode(total)}`
+                          }
+                        >
+                          <Stack direction="row" spacing={0.25} justifyContent="flex-end" alignItems="center">
+                            <CheckIcon fontSize="small" color={totalmente ? 'success' : 'warning'} />
+                            {!totalmente && (
+                              <Typography variant="caption" color="warning.main" fontWeight={700}>*</Typography>
+                            )}
+                          </Stack>
+                        </Tooltip>
+                      );
+                    })()}
+                  </TableCell>
                   <TableCell align="right" sx={{ color: pendiente > 0.005 ? 'warning.main' : 'success.main' }}>
                     {formatCurrencyWithCode(pendiente)}
                   </TableCell>

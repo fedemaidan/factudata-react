@@ -1331,20 +1331,6 @@ const PresupuestoDrawer = ({
                         />
                       </Box>
 
-                      <FormControl fullWidth size="small">
-                        <InputLabel>Etapa</InputLabel>
-                        <Select
-                          value={etapaSel}
-                          onChange={(e) => setEtapaSel(e.target.value)}
-                          label="Etapa"
-                        >
-                          <MenuItem value=""><em>Sin etapa</em></MenuItem>
-                          {etapas.map((et, idx) => (
-                            <MenuItem key={idx} value={et}>{et}</MenuItem>
-                          ))}
-                        </Select>
-                      </FormControl>
-
                       <FormControl fullWidth size="small" disabled={!categoriaSel}>
                         <InputLabel>Subcategoría</InputLabel>
                         <Select
@@ -1473,7 +1459,14 @@ const PresupuestoDrawer = ({
                     <Box sx={{ flex: 1 }}>
                       <Typography variant="caption" color="text.secondary">Presupuestado</Typography>
                       <Tooltip
-                        title={presupuesto.indexacion === 'CAC' && presupuesto.monto_ingresado ? `Al crear: ${formatCurrency(presupuesto.monto_ingresado)}` : ''}
+                        title={(() => {
+                          if (presupuesto.indexacion !== 'CAC' || !presupuesto.monto_ingresado) return '';
+                          const totalAdicionales = (presupuesto.adicionales || []).reduce((s, a) => s + (Number(a?.monto) || 0), 0);
+                          const nominal = (Number(presupuesto.monto_ingresado) || 0) + totalAdicionales;
+                          return totalAdicionales > 0.005
+                            ? `Nominal: ${formatCurrency(nominal)} (original ${formatCurrency(presupuesto.monto_ingresado)} + adicionales ${formatCurrency(totalAdicionales)})`
+                            : `Nominal: ${formatCurrency(nominal)}`;
+                        })()}
                         arrow
                         disableHoverListener={presupuesto.indexacion !== 'CAC'}
                       >

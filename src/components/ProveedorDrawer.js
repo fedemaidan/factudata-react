@@ -38,6 +38,7 @@ import useMediaQuery from '@mui/material/useMediaQuery';
 import AttachmentIcon from '@mui/icons-material/Attachment';
 import BlockIcon from '@mui/icons-material/Block';
 import CallMergeIcon from '@mui/icons-material/CallMerge';
+import CheckIcon from '@mui/icons-material/Check';
 import CloseIcon from '@mui/icons-material/Close';
 import DescriptionIcon from '@mui/icons-material/Description';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
@@ -362,8 +363,21 @@ function FilaPago({ row, onAnular, movimientosPorId = {} }) {
         <TableCell align="right" sx={{ color: anulado ? 'text.disabled' : 'success.main', fontWeight: 600 }}>
           {formatCurrencyWithCode(pago.monto_bruto)}
         </TableCell>
-        <TableCell align="right" sx={{ fontWeight: 700 }}>
-          {formatCurrencyWithCode(row._saldo)}
+        <TableCell
+          align="right"
+          sx={{
+            fontWeight: 700,
+            color: row._saldo < -0.005 ? 'info.main'
+              : row._saldo > 0.005 ? 'error.main'
+              : 'text.primary',
+          }}
+        >
+          {formatCurrencyWithCode(Math.abs(row._saldo))}
+          {row._saldo < -0.005 && (
+            <Typography variant="caption" sx={{ display: 'block', fontWeight: 500, color: 'info.main' }}>
+              a favor
+            </Typography>
+          )}
         </TableCell>
         <TableCell sx={{ width: 32, p: 0.5 }}>
           {!anulado && onAnular && (
@@ -495,12 +509,44 @@ function FilaMovimiento({ row }) {
         {formatCurrencyWithCode(m.total, m.moneda)}
       </TableCell>
       <TableCell align="right">
-        {(m.monto_pagado || 0) > 0.005
-          ? <Typography variant="body2" color="success.main">{formatCurrencyWithCode(m.monto_pagado)}</Typography>
-          : '—'}
+        {(() => {
+          const haber = Number(m.monto_pagado) || 0;
+          const total = Number(m.total) || 0;
+          if (haber < 0.005) return <Typography variant="body2" color="text.disabled">—</Typography>;
+          const totalmente = haber >= total - 0.005;
+          return (
+            <Tooltip
+              title={
+                totalmente
+                  ? `Imputado: ${formatCurrencyWithCode(haber)}`
+                  : `Parcial: ${formatCurrencyWithCode(haber)} de ${formatCurrencyWithCode(total)}`
+              }
+            >
+              <Stack direction="row" spacing={0.25} justifyContent="flex-end" alignItems="center">
+                <CheckIcon fontSize="small" color={totalmente ? 'success' : 'warning'} />
+                {!totalmente && (
+                  <Typography variant="caption" color="warning.main" fontWeight={700}>*</Typography>
+                )}
+              </Stack>
+            </Tooltip>
+          );
+        })()}
       </TableCell>
-      <TableCell align="right" sx={{ fontWeight: 700, color: row._saldo > 0.005 ? 'error.main' : 'text.primary' }}>
-        {formatCurrencyWithCode(row._saldo)}
+      <TableCell
+        align="right"
+        sx={{
+          fontWeight: 700,
+          color: row._saldo < -0.005 ? 'info.main'
+            : row._saldo > 0.005 ? 'error.main'
+            : 'text.primary',
+        }}
+      >
+        {formatCurrencyWithCode(Math.abs(row._saldo))}
+        {row._saldo < -0.005 && (
+          <Typography variant="caption" sx={{ display: 'block', fontWeight: 500, color: 'info.main' }}>
+            a favor
+          </Typography>
+        )}
       </TableCell>
       <TableCell sx={{ width: 32 }} />
     </TableRow>
@@ -554,15 +600,17 @@ function TabCuentaCorriente({
       });
     });
 
-    // Orden cronológico ascendente
+    // Orden cronológico ascendente para calcular saldo acumulado de cada fila
     items.sort((a, b) => a.fecha - b.fecha);
 
-    // Saldo acumulado
     let saldo = 0;
-    return items.map((it) => {
+    const withSaldo = items.map((it) => {
       saldo += it.debe - it.haber;
       return { ...it, _saldo: saldo };
     });
+
+    // Mostrar lo más nuevo arriba (el saldo de cada fila sigue siendo el acumulado hasta esa fecha)
+    return withSaldo.reverse();
   }, [movimientos, pagos]);
 
   const totales = useMemo(() => {
@@ -592,9 +640,15 @@ function TabCuentaCorriente({
         <Stack direction="row" spacing={0.5} flexWrap="wrap" gap={0.5} sx={{ flex: 1 }}>
           <Chip size="small" label={`Facturado: ${formatCurrencyWithCode(totales.facturado)}`} />
           <Chip size="small" color="success" label={`Pagado: ${formatCurrencyWithCode(totales.pagado)}`} />
-          {totales.saldo > 0.005
-            ? <Chip size="small" color="error" label={`Saldo: ${formatCurrencyWithCode(totales.saldo)}`} />
-            : <Chip size="small" color="success" variant="outlined" label="Al día" />}
+          {totales.saldo > 0.005 && (
+            <Chip size="small" color="error" label={`Saldo: ${formatCurrencyWithCode(totales.saldo)}`} />
+          )}
+          {totales.saldo < -0.005 && (
+            <Chip size="small" color="info" label={`Saldo a favor: ${formatCurrencyWithCode(Math.abs(totales.saldo))}`} />
+          )}
+          {Math.abs(totales.saldo) <= 0.005 && (
+            <Chip size="small" color="success" variant="outlined" label="Al día" />
+          )}
         </Stack>
         <Button
           variant="contained"
