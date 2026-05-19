@@ -847,10 +847,17 @@ export default function StockSolicitudes() {
                           <Typography variant="body2">{s.proveedor?.nombre || '—'}</Typography>
                         </TableCell>
                         <TableCell>
-                          {s.tipo === 'INGRESO' ? (() => {
-                            const ei = getEstadoChip(s.estado);
-                            return <Chip icon={ei.icon} label={ei.label} size="small" color={ei.color} variant="filled" />;
-                          })() : <Typography variant="caption" color="text.secondary">—</Typography>}
+                          <Stack direction="row" spacing={0.5} alignItems="center">
+                            {s.tipo === 'INGRESO' ? (() => {
+                              const ei = getEstadoChip(s.estado);
+                              return <Chip icon={ei.icon} label={ei.label} size="small" color={ei.color} variant="filled" />;
+                            })() : <Typography variant="caption" color="text.secondary">—</Typography>}
+                            {s.es_borrador && (
+                              <Tooltip title={`Borrador cargado por ${s.borrador_creado_por_nombre || s.borrador_creado_por || 'WhatsApp'} — no impacta stock`}>
+                                <Chip label="Borrador" size="small" color="info" variant="outlined" />
+                              </Tooltip>
+                            )}
+                          </Stack>
                         </TableCell>
                         <TableCell>{fmt(s.fecha)}</TableCell>
                         <TableCell>{fmt(s.updatedAt)}</TableCell>
@@ -909,7 +916,23 @@ export default function StockSolicitudes() {
                               </IconButton>
                             </Tooltip>
                           )}
-                          {s.estado === 'PENDIENTE_CONFIRMACION' && (
+                          {s.es_borrador && (
+                            <Tooltip title="Confirmar borrador (carga desde WhatsApp) — pasa a contar en stock">
+                              <IconButton size="small" color="success" onClick={async (ev) => {
+                                ev.stopPropagation();
+                                try {
+                                  await StockConfigService.confirmarBorrador(s._id);
+                                  setSnackbar({ open: true, message: 'Borrador confirmado — los movimientos ahora afectan stock', severity: 'success' });
+                                  setPage(0);
+                                } catch (err) {
+                                  setSnackbar({ open: true, message: err?.response?.data?.error?.message || 'Error al confirmar borrador', severity: 'error' });
+                                }
+                              }}>
+                                <CheckCircleOutlineIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          )}
+                          {s.estado === 'PENDIENTE_CONFIRMACION' && !s.es_borrador && (
                             <Tooltip title="Confirmar recepción (validación de movimientos)">
                               <IconButton size="small" color="warning" onClick={async (ev) => {
                                 ev.stopPropagation();

@@ -143,6 +143,9 @@ cambiarEstadoAcopio: async (acopioId, activo) => {
       const formData = new FormData();
       formData.append('fecha', remitoData.fecha);
       formData.append('numero_remito', remitoData.numero_remito);
+      if (remitoData.numero_factura) formData.append('numero_factura', remitoData.numero_factura);
+      if (remitoData.etiqueta) formData.append('etiqueta', remitoData.etiqueta);
+      if (remitoData.es_borrador) formData.append('es_borrador', 'true');
       formData.append('archivo', remitoData.archivo); // archivo es obligatorio ahora
       formData.append('materiales', JSON.stringify(materiales));
       // Fase 2 — destino post-desacopio (opcional)
@@ -1073,6 +1076,14 @@ actualizarCamposAcopio: async (acopioId, updates) => {
     }
   },
 
+};
+
+AcopioService.confirmarBorrador = async (acopioId, remitoId, opts = {}) => {
+  const response = await api.post(
+    `/acopio/${acopioId}/remito/${remitoId}/confirmar-borrador`,
+    opts
+  );
+  return response.data;
 };
 
 export default AcopioService;

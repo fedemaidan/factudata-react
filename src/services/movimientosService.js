@@ -390,23 +390,80 @@ const movimientosService = {
 
   /**
    * Analiza un lote de archivos (imágenes/PDF) sin crear borradores.
+   * Flujo ASÍNCRONO: el backend devuelve 202 con { jobId, total } y procesa
+   * en background. Aquí pooleamos GET /jobs/:id hasta status === 'done' o 'error'.
+   *
    * @param {File[]} archivos
-   * @param {object} contexto_lote - proyecto_id, proyecto_nombre, default_type, default_moneda, etc.
+   * @param {object} contexto_lote
+   * @param {object} [opts]
+   * @param {(p:{completed:number,total:number}) => void} [opts.onProgress]
+   * @param {AbortSignal} [opts.signal]
    */
-  analizarCargaMasiva: async (archivos, contexto_lote = {}) => {
+  analizarCargaMasiva: async (archivos, contexto_lote = {}, opts = {}) => {
+    const { onProgress, signal } = opts;
     try {
       const formData = new FormData();
       (archivos || []).forEach((f) => {
         formData.append('archivos', f);
       });
       formData.append('contexto_lote', JSON.stringify(contexto_lote || {}));
-      const response = await api.post('/movimiento/carga-masiva/analizar', formData, {
+      const startRes = await api.post('/movimiento/carga-masiva/analizar', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
+        signal,
       });
-      if (response.status === 200) {
-        return { error: false, data: response.data };
+      if (startRes.status !== 202 && startRes.status !== 200) {
+        return { error: true, message: 'Error al iniciar análisis del lote' };
       }
-      return { error: true, message: 'Error al analizar el lote' };
+      // Compat: si el backend antiguo devolvió 200 con { items }, ya está.
+      if (startRes.status === 200 && startRes.data?.items) {
+        return { error: false, data: startRes.data };
+      }
+      const { jobId, total } = startRes.data || {};
+      if (!jobId) {
+        return { error: true, message: 'El backend no devolvió jobId' };
+      }
+      if (typeof onProgress === 'function') {
+        onProgress({ completed: 0, total: total || archivos.length });
+      }
+
+      // Polling: intervalos suaves, sin timeout (axiosConfig ya tiene timeout alto).
+      const POLL_MS = 2500;
+      const MAX_WAIT_MS = 60 * 60 * 1000; // 60 min — coincide con TTL del job en backend
+      const start = Date.now();
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        if (signal?.aborted) {
+          return { error: true, message: 'Cancelado' };
+        }
+        if (Date.now() - start > MAX_WAIT_MS) {
+          return { error: true, message: 'El análisis tardó demasiado y se canceló el polling.' };
+        }
+        // eslint-disable-next-line no-await-in-loop
+        await new Promise((resolve) => setTimeout(resolve, POLL_MS));
+        let jobRes;
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          jobRes = await api.get(`/jobs/${jobId}`, { signal });
+        } catch (e) {
+          if (e?.response?.status === 404) {
+            return { error: true, message: 'El job expiró o no existe.' };
+          }
+          throw e;
+        }
+        const job = jobRes.data || {};
+        if (typeof onProgress === 'function') {
+          onProgress({ completed: job.completed || 0, total: job.total || total || archivos.length });
+        }
+        if (job.status === 'done') {
+          return { error: false, data: { items: job.result?.items || [] } };
+        }
+        if (job.status === 'error') {
+          return {
+            error: true,
+            message: job.errors?.[0]?.error || 'Error procesando el lote en background.',
+          };
+        }
+      }
     } catch (err) {
       console.error('analizarCargaMasiva:', err);
       return {
@@ -421,12 +478,35 @@ const movimientosService = {
    * @param {object[]} movimientos - incluir omitido: true para saltar ítems
    */
   confirmarCargaMasiva: async (movimientos) => {
+    // El backend permite máx. 50 por request; chunkeamos del lado del cliente
+    // para soportar lotes grandes (p.ej. PDFs con split-per-page que generan >50 items).
+    const CHUNK_SIZE = 50;
     try {
-      const response = await api.post('/movimiento/carga-masiva/confirmar', { movimientos });
-      if (response.status === 200) {
-        return { error: false, data: response.data };
+      if (!Array.isArray(movimientos) || movimientos.length === 0) {
+        return { error: true, message: 'No hay movimientos para confirmar' };
       }
-      return { error: true, message: 'Error al confirmar el lote' };
+      const chunks = [];
+      for (let i = 0; i < movimientos.length; i += CHUNK_SIZE) {
+        chunks.push(movimientos.slice(i, i + CHUNK_SIZE));
+      }
+      const okTotal = [];
+      const erroresTotal = [];
+      for (let c = 0; c < chunks.length; c += 1) {
+        const offset = c * CHUNK_SIZE;
+        // eslint-disable-next-line no-await-in-loop
+        const response = await api.post('/movimiento/carga-masiva/confirmar', {
+          movimientos: chunks[c],
+        });
+        if (response.status !== 200) {
+          return { error: true, message: 'Error al confirmar el lote' };
+        }
+        const { ok = [], errores = [] } = response.data || {};
+        // Reindexamos `index` al espacio global del lote para que el front pueda
+        // mapearlos a sus batchItems.
+        ok.forEach((o) => okTotal.push({ ...o, index: (o.index ?? 0) + offset }));
+        errores.forEach((e) => erroresTotal.push({ ...e, index: (e.index ?? 0) + offset }));
+      }
+      return { error: false, data: { ok: okTotal, errores: erroresTotal } };
     } catch (err) {
       console.error('confirmarCargaMasiva:', err);
       return {

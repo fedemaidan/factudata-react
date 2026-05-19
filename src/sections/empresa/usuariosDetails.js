@@ -357,6 +357,7 @@ export const UsuariosDetails = ({ empresa }) => {
       default_caja_chica: editingUsuario ? editingUsuario.default_caja_chica : null,
       notificacion_nota_pedido: editingUsuario ? editingUsuario.notificacion_nota_pedido : false,
       modo_estado_carga_bot: editingUsuario ? (editingUsuario.modo_estado_carga_bot || '') : '',
+      carga_borrador_default: editingUsuario ? !!editingUsuario.carga_borrador_default : false,
     },
     enableReinitialize: true,
     validationSchema: Yup.object({
@@ -422,6 +423,7 @@ export const UsuariosDetails = ({ empresa }) => {
             default_caja_chica: values.default_caja_chica,
             notificacion_nota_pedido: values.notificacion_nota_pedido || false,
             modo_estado_carga_bot: values.modo_estado_carga_bot || null,
+            carga_borrador_default: !!values.carga_borrador_default,
           };
           const createdUsuario = await profileService.createProfile(newUsuario, empresa);
           setUsuarios([...usuarios, createdUsuario]);
@@ -479,6 +481,7 @@ export const UsuariosDetails = ({ empresa }) => {
       default_caja_chica: usuario.default_caja_chica ?? null,
       notificacion_nota_pedido: usuario.notificacion_nota_pedido || false,
       modo_estado_carga_bot: usuario.modo_estado_carga_bot ?? "",
+      carga_borrador_default: !!usuario.carga_borrador_default,
     });
     setIsDialogOpen(true);
   };
@@ -1657,6 +1660,20 @@ export const UsuariosDetails = ({ empresa }) => {
                 <MenuItem value="siempre_borrador">Siempre borrador (validar en panel)</MenuItem>
                 <MenuItem value="siempre_confirmar">Siempre confirmar (flujo actual)</MenuItem>
                 <MenuItem value="doble_verificacion">Doble verificación (validar en bot + panel)</MenuItem>
+              </Select>
+            </FormControl>
+
+            <FormControl fullWidth margin="dense">
+              <InputLabel id="carga-borrador-default-label">Carga de remitos por WhatsApp — modo borrador automático</InputLabel>
+              <Select
+                labelId="carga-borrador-default-label"
+                label="Carga de remitos por WhatsApp — modo borrador automático"
+                name="carga_borrador_default"
+                value={!!formik.values.carga_borrador_default}
+                onChange={(e) => formik.setFieldValue('carga_borrador_default', e.target.value === true || e.target.value === 'true')}
+              >
+                <MenuItem value={false}>No — muestra el menú (continuar/modificar/borrador)</MenuItem>
+                <MenuItem value={true}>Sí — guarda directo como borrador (rápido, para personal de obra)</MenuItem>
               </Select>
             </FormControl>
 

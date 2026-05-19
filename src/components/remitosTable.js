@@ -48,6 +48,7 @@ const RemitosTable = ({
   setRemitoAEliminar,
   onExportarInforme,
   onNuevoRemito,
+  onConfirmarBorrador,
 }) => {
   const [filtroEstado, setFiltroEstado]           = useState('');
   const [filtroFechaDesde, setFiltroFechaDesde]   = useState('');
@@ -60,11 +61,14 @@ const RemitosTable = ({
     const fecha = new Date(r.fecha);
     const desde = filtroFechaDesde ? new Date(filtroFechaDesde) : null;
     const hasta = filtroFechaHasta ? new Date(filtroFechaHasta) : null;
+    const q = (filtroNumero || '').toLowerCase();
+    const matchTexto = !q || [r.numero_remito, r.numero_factura, r.etiqueta]
+      .some((v) => typeof v === 'string' && v.toLowerCase().includes(q));
     return (
-      (!filtroEstado   || r.estado === filtroEstado) &&
-      (!desde          || fecha >= desde) &&
-      (!hasta          || fecha <= hasta) &&
-      (!filtroNumero   || r.numero_remito?.toLowerCase().includes(filtroNumero.toLowerCase()))
+      (!filtroEstado || r.estado === filtroEstado) &&
+      (!desde || fecha >= desde) &&
+      (!hasta || fecha <= hasta) &&
+      matchTexto
     );
   });
 
@@ -99,7 +103,7 @@ const RemitosTable = ({
         {/* Búsqueda siempre visible */}
         <TextField
           size="small"
-          placeholder="Buscar por número..."
+          placeholder="Buscar por número, factura o etiqueta..."
           value={filtroNumero}
           onChange={(e) => setFiltroNumero(e.target.value)}
           sx={{ minWidth: 200 }}
@@ -245,12 +249,40 @@ const RemitosTable = ({
                   </TableCell>
 
                   <TableCell>
-                    <Stack direction="row" spacing={0.75} alignItems="center">
-                      <span>{remito.numero_remito || <Typography variant="caption" color="text.disabled">Sin número</Typography>}</span>
-                      {remitosDuplicados.has(remito.id) && (
-                        <Tooltip title="Posible duplicado">
-                          <Chip label="Duplicado" color="warning" size="small" sx={{ fontSize: 10, height: 18 }} />
-                        </Tooltip>
+                    <Stack spacing={0.25}>
+                      <Stack direction="row" spacing={0.75} alignItems="center">
+                        <span>{remito.numero_remito || <Typography variant="caption" color="text.disabled">Sin número</Typography>}</span>
+                        {(remito.es_borrador || remito.estado === 'borrador') && (
+                          <Tooltip title={`Borrador cargado por ${remito.borrador_creado_por_mail || 'obra'} — falta validar`}>
+                            <Chip label="Borrador" color="info" size="small" sx={{ fontSize: 10, height: 18 }} />
+                          </Tooltip>
+                        )}
+                        {remitosDuplicados.has(remito.id) && (
+                          <Tooltip title="Posible duplicado">
+                            <Chip label="Duplicado" color="warning" size="small" sx={{ fontSize: 10, height: 18 }} />
+                          </Tooltip>
+                        )}
+                        {(remito.es_borrador || remito.estado === 'borrador') && onConfirmarBorrador && (
+                          <Button
+                            size="small"
+                            variant="contained"
+                            color="success"
+                            sx={{ ml: 0.5, py: 0, px: 1, minHeight: 22, fontSize: 11 }}
+                            onClick={(e) => { e.stopPropagation(); onConfirmarBorrador(remito); }}
+                          >
+                            Confirmar
+                          </Button>
+                        )}
+                      </Stack>
+                      {remito.etiqueta && (
+                        <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                          {remito.etiqueta}
+                        </Typography>
+                      )}
+                      {remito.numero_factura && (
+                        <Typography variant="caption" color="text.disabled">
+                          Fact. {remito.numero_factura}
+                        </Typography>
                       )}
                     </Stack>
                   </TableCell>

@@ -33,6 +33,7 @@ import DownloadIcon from '@mui/icons-material/Download';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import { formatCurrency } from 'src/utils/formatters';
+import { detectarDuplicados, REMITO_KEYS } from 'src/utils/detectarDuplicados';
 
 // Nuevos componentes:
 import HeaderAcopioSummary from 'src/components/headerAcopioSummary';
@@ -352,7 +353,7 @@ const MovimientosAcopioPage = () => {
       const remitosResp = await AcopioService.obtenerRemitos(acopioId);
       setRemitos(remitosResp || []);
       setRemitosCount((remitosResp || []).length);
-      setRemitosDuplicados(detectarDuplicados(remitosResp || []));
+      setRemitosDuplicados(detectarDuplicados(remitosResp || [], REMITO_KEYS));
     } catch (err) {
       console.error(err);
       setAlert({ open: true, message: 'Error al obtener remitos', severity: 'error' });
@@ -712,25 +713,6 @@ const MovimientosAcopioPage = () => {
     }
   }, [acopioId]);
 
-  // Duplicados por número y por valor/fecha
-  const detectarDuplicados = (lista) => {
-    const porNumero = {};
-    const porVF = {};
-    lista.forEach((r) => {
-      if (r.numero_remito) {
-        const k = r.numero_remito.trim().toLowerCase();
-        porNumero[k] = porNumero[k] || [];
-        porNumero[k].push(r.id);
-      }
-      const k2 = `${r.valorOperacion}_${new Date(r.fecha).toISOString().split('T')[0]}`;
-      porVF[k2] = porVF[k2] || [];
-      porVF[k2].push(r.id);
-    });
-    const set = new Set();
-    Object.values(porNumero).forEach(ids => { if (ids.length > 1) ids.forEach(id => set.add(id)); });
-    Object.values(porVF).forEach(ids => { if (ids.length > 1) ids.forEach(id => set.add(id)); });
-    return set;
-  };
 
   // Toggle activo
   const handleToggleActivo = async () => {
@@ -1036,6 +1018,23 @@ const MovimientosAcopioPage = () => {
               setRemitoAEliminar={setRemitoAEliminar}
               onExportarInforme={exportarInformeRemitos}
               onNuevoRemito={handleNuevoRemito}
+              onConfirmarBorrador={async (remito) => {
+                try {
+                  setLoading(true);
+                  await AcopioService.confirmarBorrador(acopioId, remito.id, {
+                    destino: remito.destino || null,
+                    destino_proyecto_id: remito.destino_proyecto_id || null,
+                    destino_proyecto_nombre: remito.destino_proyecto_nombre || null,
+                  });
+                  setAlert({ open: true, message: 'Borrador confirmado', severity: 'success' });
+                  await fetchRemitos();
+                } catch (e) {
+                  console.error(e);
+                  setAlert({ open: true, message: 'Error al confirmar borrador', severity: 'error' });
+                } finally {
+                  setLoading(false);
+                }
+              }}
             />
           </Box>
         )}

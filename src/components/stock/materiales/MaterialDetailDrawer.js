@@ -66,6 +66,7 @@ export default function MaterialDetailDrawer({
         subcategoria: material.subcategoria || '',
         aliasChips: parseAliasToChips(material.alias),
         precio_unitario: material.precio_unitario ?? '',
+        stock_minimo: material.stock_minimo ?? 30,
         empresa_id: material.empresa_id || '',
         empresa_nombre: material.empresa_nombre || '',
       });
@@ -450,6 +451,16 @@ export default function MaterialDetailDrawer({
                 onChange={(e) => setForm((f) => ({ ...f, precio_unitario: e.target.value }))}
                 sx={{ flex: 1 }}
                 InputProps={{ inputProps: { min: 0, step: 0.01 } }}
+              />
+              <TextField
+                size="small"
+                label="Stock mínimo"
+                type="number"
+                value={form.stock_minimo ?? ''}
+                onChange={(e) => setForm((f) => ({ ...f, stock_minimo: e.target.value }))}
+                sx={{ flex: 1 }}
+                InputProps={{ inputProps: { min: 0, step: 1 } }}
+                helperText="Alerta si el stock baja del mínimo"
               />
             </Stack>
             <Stack direction="row" spacing={1}>

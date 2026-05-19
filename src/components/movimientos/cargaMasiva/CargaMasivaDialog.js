@@ -91,6 +91,7 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
   const [pdfSplitPerPage, setPdfSplitPerPage] = useState(false);
   const [contexto, setContexto] = useState(initialContexto);
   const [analyzeLoading, setAnalyzeLoading] = useState(false);
+  const [analyzeProgress, setAnalyzeProgress] = useState({ completed: 0, total: 0 });
   const [batchItems, setBatchItems] = useState([]);
   const [drawerCatalogos, setDrawerCatalogos] = useState({
     comprobanteInfo: {},
@@ -334,8 +335,11 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
   const handleRunAnalyze = async () => {
     setAnalyzeError('');
     setAnalyzeLoading(true);
+    setAnalyzeProgress({ completed: 0, total: files.length });
     try {
-      const res = await movimientosService.analizarCargaMasiva(files, payloadContextoLote);
+      const res = await movimientosService.analizarCargaMasiva(files, payloadContextoLote, {
+        onProgress: ({ completed, total }) => setAnalyzeProgress({ completed, total }),
+      });
       if (res.error) {
         throw new Error(res.message || 'Error al analizar');
       }
@@ -877,7 +881,14 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
               {analyzeLoading && (
                 <Stack alignItems="center" spacing={2} sx={{ py: 6 }}>
                   <CircularProgress />
-                  <Typography>Analizando comprobantes…</Typography>
+                  <Typography>
+                    {analyzeProgress.total > 0
+                      ? `Analizando comprobantes… ${analyzeProgress.completed}/${analyzeProgress.total}`
+                      : 'Analizando comprobantes…'}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Podés cerrar este cuadro si tarda. El proceso continúa en el servidor.
+                  </Typography>
                 </Stack>
               )}
             </>
@@ -920,6 +931,22 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
             )}
 
             <Box sx={{ flex: 1 }} />
+
+            {cargaModo === 'ocr' && activeStep >= 2 && batchItems.length > 0 && (
+              <Button
+                variant="outlined"
+                color="success"
+                onClick={handleOpenConfirm}
+                disabled={!canConfirm || analyzeLoading || confirmLoading}
+                title={
+                  !canConfirm
+                    ? 'Hay items con datos faltantes (proyecto, fecha o total). Revisalos antes de aprobar todos.'
+                    : 'Saltear la revisión item por item y crear todos los movimientos no omitidos'
+                }
+              >
+                Aprobar todos ({batchItems.filter((i) => !i.omitido).length})
+              </Button>
+            )}
 
             {cargaModo === 'ocr' && activeStep === 3 && validacionNavState.hasItems && (
               <>

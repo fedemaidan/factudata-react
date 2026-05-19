@@ -15,7 +15,9 @@ import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import { getPdfPageCount } from '../utils/pdfPageCount';
 
-const MAX_FILES = 50;
+const MAX_FILES = 200;
+const MAX_FILE_SIZE_BYTES = 200 * 1024 * 1024; // 200MB por archivo
+const MAX_FILE_SIZE_MB = Math.round(MAX_FILE_SIZE_BYTES / (1024 * 1024));
 const ACCEPT = 'image/*,.pdf,application/pdf';
 
 const dedupeKey = (f) => `${f.name}-${f.size}-${f.lastModified}`;
@@ -25,6 +27,7 @@ const CargaArchivosStep = ({ files, onFilesChange, pdfSplitPerPage, onPdfSplitPe
   const inputRef = useRef(null);
   const [dragOver, setDragOver] = useState(false);
   const [pageCounts, setPageCounts] = useState({});
+  const [oversizeError, setOversizeError] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -52,9 +55,20 @@ const CargaArchivosStep = ({ files, onFilesChange, pdfSplitPerPage, onPdfSplitPe
 
   const mergeFiles = useCallback(
     (incoming) => {
+      const oversized = incoming.filter((f) => f.size > MAX_FILE_SIZE_BYTES);
+      const accepted = incoming.filter((f) => f.size <= MAX_FILE_SIZE_BYTES);
+      if (oversized.length > 0) {
+        setOversizeError(
+          `Algunos archivos superan el límite de ${MAX_FILE_SIZE_MB}MB y fueron ignorados: ${oversized
+            .map((f) => f.name)
+            .join(', ')}`,
+        );
+      } else {
+        setOversizeError('');
+      }
       const map = new Map();
       files.forEach((f) => map.set(dedupeKey(f), f));
-      incoming.forEach((f) => map.set(dedupeKey(f), f));
+      accepted.forEach((f) => map.set(dedupeKey(f), f));
       const merged = Array.from(map.values()).slice(0, MAX_FILES);
       onFilesChange(merged);
     },
@@ -87,9 +101,15 @@ const CargaArchivosStep = ({ files, onFilesChange, pdfSplitPerPage, onPdfSplitPe
   return (
     <Stack spacing={2}>
       <Typography variant="body2" color="text.secondary">
-        Subí hasta {MAX_FILES} imágenes o PDF. Los PDF se convierten a imágenes en el servidor.
+        Subí hasta {MAX_FILES} imágenes o PDF (máx. {MAX_FILE_SIZE_MB}MB por archivo). Los PDF se convierten a imágenes en el servidor.
       </Typography>
       <LinearProgress variant="determinate" value={progress} sx={{ height: 6, borderRadius: 1 }} />
+
+      {oversizeError && (
+        <Alert severity="warning" onClose={() => setOversizeError('')}>
+          {oversizeError}
+        </Alert>
+      )}
 
       <Box
         onDragOver={(e) => {

@@ -18,6 +18,19 @@ const StockConfigService = {
       ? payload.data
       : payload;
   },
+
+  /**
+   * Confirmar una solicitud cargada como BORRADOR desde WhatsApp.
+   * POST /api/solicitud-material/:solicitudId/confirmar-borrador
+   */
+  confirmarBorrador: async (solicitudId) => {
+    if (!solicitudId) throw new Error('solicitudId es requerido');
+    const res = await api.post(`/solicitud-material/${solicitudId}/confirmar-borrador`);
+    const payload = res?.data ?? {};
+    return payload && typeof payload === 'object' && 'data' in payload
+      ? payload.data
+      : payload;
+  },
 };
 
 export default StockConfigService;

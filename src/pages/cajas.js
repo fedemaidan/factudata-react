@@ -4,6 +4,8 @@ import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
+import { detectarDuplicados, MOVIMIENTO_CAJA_KEYS } from 'src/utils/detectarDuplicados';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import Head from 'next/head';
 import { Box, Container, Stack, Chip, Typography, TextField, InputAdornment, Paper, Card, CardContent, Button, Select, MenuItem, FormControl, InputLabel, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, useMediaQuery, IconButton, Menu, Table, TableBody, TableCell, TableHead, TableRow, TableContainer, Tooltip, MenuItem as MenuOption, Divider, TablePagination, Drawer, List, ListItem, ListItemText, Fab, TableSortLabel, Autocomplete } from '@mui/material';
 
@@ -1977,6 +1979,16 @@ const getTime = (v) => {
   const totalRows = dashboardPagination?.total || 0;
   const paginatedMovs = movimientosConProrrateo;
 
+  // Posibles duplicados (mismo proveedor + factura, o mismo proveedor + monto + fecha)
+  const movimientosDuplicados = useMemo(() => {
+    const flat = [];
+    paginatedMovs.forEach((item) => {
+      if (item.tipo === 'grupo_prorrateo') item.movimientos.forEach((m) => flat.push(m));
+      else if (item.data) flat.push(item.data);
+    });
+    return detectarDuplicados(flat, MOVIMIENTO_CAJA_KEYS);
+  }, [paginatedMovs]);
+
   // ── Helpers selección masiva ──
   const allPageIds = useMemo(() => {
     const ids = [];
@@ -3004,8 +3016,8 @@ useEffect(() => {
                     : 'inherit';
                 
                 return (
-                  <TableRow 
-                    key={`${item.grupoId}-${subIndex}`} 
+                  <TableRow
+                    key={`${item.grupoId}-${subIndex}`}
                     hover
                     onClick={() => openDetalle(mov)}
                     sx={{
@@ -3013,7 +3025,12 @@ useEffect(() => {
                       '& td': { borderBottomColor: 'rgba(118,117,134,0.12)' },
                       '&:hover': { bgcolor: 'rgba(35,181,211,0.05)' },
                       ...(selectedIds.has(mov.id) && { bgcolor: 'rgba(35,181,211,0.10)' }),
+                      ...(movimientosDuplicados.has(String(mov.id)) && {
+                        borderLeft: '4px solid',
+                        borderLeftColor: 'warning.main',
+                      }),
                     }}
+                    title={movimientosDuplicados.has(String(mov.id)) ? 'Posible duplicado (mismo proveedor + factura o monto+fecha)' : undefined}
                   >
                     <TableCell padding="checkbox" sx={{ position: 'sticky', left: 0, zIndex: 1, bgcolor: 'inherit' }}>
                       <Checkbox
@@ -3057,7 +3074,12 @@ useEffect(() => {
               '& td': { borderBottomColor: 'rgba(118,117,134,0.12)' },
               '&:hover': { bgcolor: 'rgba(35,181,211,0.05)' },
               ...(selectedIds.has(mov.id) && { bgcolor: 'rgba(35,181,211,0.10)' }),
+              ...(movimientosDuplicados.has(String(mov.id)) && {
+                borderLeft: '4px solid',
+                borderLeftColor: 'warning.main',
+              }),
             }}
+            title={movimientosDuplicados.has(String(mov.id)) ? 'Posible duplicado (mismo proveedor + factura o monto+fecha)' : undefined}
           >
             <TableCell padding="checkbox" sx={{ position: 'sticky', left: 0, zIndex: 1, bgcolor: 'inherit' }}>
               <Checkbox

@@ -186,15 +186,28 @@ const RowItem = memo(
         <Stack spacing={0.5} alignItems="flex-end">
           {(() => {
             const stockValue = typeof row.stock === 'number' ? row.stock : (row.stockTotal ?? 0);
-            const status = getStockStatus(stockValue);
+            const stockMinimo = typeof row.stock_minimo === 'number' ? row.stock_minimo : 30;
+            const status = getStockStatus(stockValue, stockMinimo);
+            const colorMap = {
+              error: 'error.main',
+              warning: 'warning.main',
+              success: 'success.main',
+            };
             return (
-              <Typography
-                variant="body1"
-                fontWeight="bold"
-                color={status.color === 'error' ? 'error.main' : 'success.main'}
-              >
-                {stockValue}
-              </Typography>
+              <Tooltip title={status.color === 'warning' ? `Stock bajo (mínimo: ${stockMinimo})` : status.label}>
+                <Stack direction="row" spacing={0.5} alignItems="center">
+                  {(status.color === 'error' || status.color === 'warning') && (
+                    <WarningIcon fontSize="small" sx={{ color: colorMap[status.color] }} />
+                  )}
+                  <Typography
+                    variant="body1"
+                    fontWeight="bold"
+                    sx={{ color: colorMap[status.color] }}
+                  >
+                    {stockValue}
+                  </Typography>
+                </Stack>
+              </Tooltip>
             );
           })()}
           {/* Desglose depósito / obra — solo si hay algo en obra (mezcla o solo obra) */}
@@ -269,8 +282,11 @@ const ORDER_MAP = {
 };
 
 // Helper para obtener estado de stock
-const getStockStatus = (stock) => {
+const getStockStatus = (stock, stockMinimo = 30) => {
   if (stock <= 0) return { color: 'error', label: 'Sin Stock' };
+  if (typeof stockMinimo === 'number' && stock <= stockMinimo) {
+    return { color: 'warning', label: 'Stock bajo' };
+  }
   return { color: 'success', label: 'En Stock' };
 };
 
@@ -320,6 +336,9 @@ const StockMateriales = () => {
   const [selectedIds, setSelectedIds] = useState([]);
   const [openBulkCategoria, setOpenBulkCategoria] = useState(false);
   const [bulkCategoria, setBulkCategoria] = useState('');
+  const [fusionarDialogOpen, setFusionarDialogOpen] = useState(false);
+  const [fusionarDestino, setFusionarDestino] = useState(null);
+  const [fusionarLoading, setFusionarLoading] = useState(false);
   const [bulkSubcategoria, setBulkSubcategoria] = useState('');
   const [bulkLoading, setBulkLoading] = useState(false);
 
@@ -640,6 +659,35 @@ const StockMateriales = () => {
     setBulkCategoria('');
     setBulkSubcategoria('');
     setOpenBulkCategoria(true);
+  };
+
+  const handleFusionar = async () => {
+    if (!fusionarDestino || selectedIds.length < 2) return;
+    const origen_ids = selectedIds.filter((id) => String(id) !== String(fusionarDestino));
+    if (!origen_ids.length) return;
+    setFusionarLoading(true);
+    try {
+      const empresa = await getEmpresaDetailsFromUser(user);
+      const res = await StockMaterialesService.fusionarMateriales({
+        empresa_id: empresa.id,
+        destino_id: fusionarDestino,
+        origen_ids,
+      });
+      setAlert({
+        open: true,
+        severity: 'success',
+        message: `Fusión OK. ${res?.data?.movimientos_actualizados ?? 0} movimientos reasignados.`,
+      });
+      setFusionarDialogOpen(false);
+      setFusionarDestino(null);
+      setSelectedIds([]);
+      await fetchAll();
+    } catch (e) {
+      console.error(e);
+      setAlert({ open: true, message: 'Error al fusionar materiales', severity: 'error' });
+    } finally {
+      setFusionarLoading(false);
+    }
   };
 
   const handleBulkCategoria = async () => {
@@ -1096,6 +1144,15 @@ const StockMateriales = () => {
                         disabled={selectedIds.length === 0}
                       >
                         Asignar categoría
+                      </Button>
+                      <Button
+                        size="small"
+                        variant="contained"
+                        color="secondary"
+                        onClick={() => setFusionarDialogOpen(true)}
+                        disabled={selectedIds.length < 2}
+                      >
+                        Fusionar duplicados
                       </Button>
                       <Button
                         size="small"
@@ -1640,6 +1697,51 @@ const StockMateriales = () => {
               disabled={!bulkCategoria || bulkLoading}
             >
               {bulkLoading ? 'Aplicando…' : 'Aplicar'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Diálogo Fusionar materiales duplicados */}
+        <Dialog open={fusionarDialogOpen} onClose={() => setFusionarDialogOpen(false)} fullWidth maxWidth="sm">
+          <DialogTitle>Fusionar {selectedIds.length} materiales</DialogTitle>
+          <DialogContent dividers>
+            <Alert severity="warning" sx={{ mb: 2 }}>
+              Vas a reasignar todos los movimientos de los otros materiales al destino elegido y borrar los duplicados. Esta acción no se puede deshacer.
+            </Alert>
+            <Typography variant="body2" sx={{ mb: 1 }}>Elegí cuál material queda como destino:</Typography>
+            <Stack spacing={1}>
+              {allRows
+                .filter((r) => selectedIds.map(String).includes(String(r._id)))
+                .map((r) => (
+                  <Paper
+                    key={r._id}
+                    variant="outlined"
+                    onClick={() => setFusionarDestino(r._id)}
+                    sx={{
+                      p: 1.5,
+                      cursor: 'pointer',
+                      borderColor: String(fusionarDestino) === String(r._id) ? 'primary.main' : 'divider',
+                      borderWidth: String(fusionarDestino) === String(r._id) ? 2 : 1,
+                    }}
+                  >
+                    <Typography variant="body2" fontWeight={600}>{r.nombre}</Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Stock actual: {typeof r.stock === 'number' ? r.stock : 0}
+                      {r.SKU ? ` · SKU ${r.SKU}` : ''}
+                    </Typography>
+                  </Paper>
+                ))}
+            </Stack>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setFusionarDialogOpen(false)} disabled={fusionarLoading}>Cancelar</Button>
+            <Button
+              variant="contained"
+              color="warning"
+              onClick={handleFusionar}
+              disabled={!fusionarDestino || fusionarLoading || selectedIds.length < 2}
+            >
+              {fusionarLoading ? 'Fusionando…' : 'Confirmar fusión'}
             </Button>
           </DialogActions>
         </Dialog>

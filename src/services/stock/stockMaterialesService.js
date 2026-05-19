@@ -151,6 +151,18 @@ const StockMaterialesService = {
     if (res.status === 200) return res.data;
     throw new Error('Error al actualizar categorías');
   },
+
+  // Fusionar materiales duplicados (mueve movimientos de origen_ids al destino_id y elimina los origenes)
+  fusionarMateriales: async ({ empresa_id, destino_id, origen_ids }) => {
+    if (!empresa_id) throw new Error('empresa_id es requerido');
+    if (!destino_id) throw new Error('destino_id es requerido');
+    if (!Array.isArray(origen_ids) || origen_ids.length === 0) {
+      throw new Error('origen_ids es requerido');
+    }
+    const res = await api.post('/materiales/fusionar', { empresa_id, destino_id, origen_ids });
+    if (res.status === 200) return res.data;
+    throw new Error('Error al fusionar materiales');
+  },
 };
 
 const unwrap = (res) => {

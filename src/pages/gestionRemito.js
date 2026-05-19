@@ -3,7 +3,7 @@ import {
   Box, Button, Container, Stack, Typography, TextField, Snackbar, Alert,
   Grid, Paper, CircularProgress, Dialog, DialogContent, DialogTitle, DialogActions,
   IconButton, Chip, Skeleton, Slider, Fab, Tooltip, Divider,
-  FormControlLabel, Radio, RadioGroup, Autocomplete, Collapse, List, ListItem, ListItemText,
+  FormControlLabel, Radio, RadioGroup, Autocomplete, Collapse, List, ListItem, ListItemText, Checkbox,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
@@ -68,6 +68,9 @@ const GestionRemitoPage = () => {
 
   // Metadatos remito
   const [numeroRemito, setNumeroRemito] = useState('');
+  const [numeroFactura, setNumeroFactura] = useState('');
+  const [etiqueta, setEtiqueta] = useState('');
+  const [esBorrador, setEsBorrador] = useState(false);
   const [fecha, setFecha] = useState(() => new Date().toISOString().split('T')[0]); // Default: hoy
   const [remitoId, setRemitoId] = useState(null);
   const [tipoAcopio, setTipoAcopio] = useState('materiales');
@@ -207,6 +210,8 @@ const GestionRemitoPage = () => {
           const remito = await AcopioService.obtenerRemito(acopioId, rid);
           setFecha(remito.fecha ? String(remito.fecha).split('T')[0] : new Date().toISOString().split('T')[0]);
           setNumeroRemito(remito.numero_remito || '');
+          setNumeroFactura(remito.numero_factura || '');
+          setEtiqueta(remito.etiqueta || '');
           const url = Array.isArray(remito.url_remito) ? remito.url_remito[0] : remito.url_remito;
           setArchivoRemitoUrl(url || null);
           const movs = remito.movimientos || [];
@@ -380,7 +385,7 @@ const GestionRemitoPage = () => {
       if (remitoId) {
         await AcopioService.editarRemito(
           acopioId, remitoId, itemsParaEnviar,
-          { fecha, valorOperacion: valorTotal, estado: 'confirmado', numero_remito: numeroRemito },
+          { fecha, valorOperacion: valorTotal, estado: 'confirmado', numero_remito: numeroRemito, numero_factura: numeroFactura, etiqueta },
           archivoRemitoFile || undefined
         );
         setAlert({ open: true, message: 'Remito actualizado con éxito', severity: 'success' });
@@ -390,6 +395,9 @@ const GestionRemitoPage = () => {
           fecha,
           archivo: archivoRemitoFile || undefined,
           numero_remito: numeroRemito,
+          numero_factura: numeroFactura,
+          etiqueta,
+          es_borrador: esBorrador,
           destino: destinoOpts?.destino || null,
           destino_proyecto_id: destinoOpts?.proyecto_id || null,
           destino_proyecto_nombre: destinoOpts?.proyecto_nombre || null,
@@ -449,7 +457,7 @@ const GestionRemitoPage = () => {
     } finally {
       setLoadingProceso(false);
     }
-  }, [fecha, items, remitoId, acopioId, valorTotal, numeroRemito, archivoRemitoFile, router, npContext,
+  }, [fecha, items, remitoId, acopioId, valorTotal, numeroRemito, numeroFactura, etiqueta, archivoRemitoFile, router, npContext,
       destinoDesacopioActivo, destinoInline, proyectoDestinoInline]);
 
   const handleVolver = useCallback(() => {
@@ -611,6 +619,37 @@ const GestionRemitoPage = () => {
                       required
                     />
                   </Stack>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+                    <TextField
+                      label="Etiqueta / título"
+                      placeholder="Ej: Cemento Corralón X"
+                      value={etiqueta}
+                      onChange={(e) => setEtiqueta(e.target.value)}
+                      fullWidth
+                      size="small"
+                      helperText="Texto libre para identificar el remito al buscar"
+                    />
+                    <TextField
+                      label="Número de Factura"
+                      placeholder="Ej: A-0001-00012345"
+                      value={numeroFactura}
+                      onChange={(e) => setNumeroFactura(e.target.value)}
+                      fullWidth
+                      size="small"
+                    />
+                  </Stack>
+                  {!remitoId && (
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          checked={esBorrador}
+                          onChange={(e) => setEsBorrador(e.target.checked)}
+                          size="small"
+                        />
+                      }
+                      label="Guardar como borrador — no descuenta stock, queda pendiente de validar"
+                    />
+                  )}
 
                   {/* Destino desacopio inline */}
                   {destinoDesacopioActivo && !remitoId && (
