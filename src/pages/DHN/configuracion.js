@@ -25,15 +25,72 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  IconButton
+  IconButton,
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import horariosService from 'src/services/dhn/horariosService';
 import tiposLicenciaService from 'src/services/dhn/tiposLicenciaService';
-import HorariosConfigTable from 'src/components/dhn/HorariosConfigTable';
+import HorariosGridEditor from 'src/components/dhn/HorariosGridEditor';
 import FeriadosCalendar from 'src/components/dhn/FeriadosCalendar';
 import Alerts from 'src/components/alerts';
+import {
+  DIAS,
+  TIPOS_HORA,
+  TIPOS_VALIDOS,
+  emptyHours,
+} from 'src/utils/dhn/tiposHora';
+
+const decimalCeil2 = (v) => Math.ceil(v * 100) / 100;
+
+function normalizeHourCell(cell) {
+  if (cell?.split && typeof cell.split === 'object') {
+    const { atMin, before, after } = cell.split;
+    if (Number.isInteger(atMin) && TIPOS_VALIDOS.includes(before) && TIPOS_VALIDOS.includes(after)) {
+      return { split: { atMin, before, after } };
+    }
+  }
+  if (TIPOS_VALIDOS.includes(cell?.tipo)) return { tipo: cell.tipo };
+  return { tipo: TIPOS_HORA.NO_CUENTA };
+}
+
+function sanitizeTurnos(arr) {
+  if (!Array.isArray(arr)) return [];
+  return arr
+    .filter((t) => t && typeof t === 'object' && typeof t.entrada === 'string' && typeof t.salida === 'string')
+    .map((t) => ({ entrada: t.entrada, salida: t.salida }));
+}
+
+function toUiConfig(server) {
+  const out = {};
+  for (const d of DIAS) {
+    const dia = server?.[d.key];
+    const hoursRaw = Array.isArray(dia?.hours) ? dia.hours : [];
+    const hours = Array.from({ length: 24 }, (_, i) => normalizeHourCell(hoursRaw[i]));
+    const minutos = Number.isFinite(Number(dia?.fraccion?.minutos)) ? Number(dia.fraccion.minutos) : 20;
+    out[d.key] = {
+      hours,
+      fraccion: { minutos, decimal: decimalCeil2(minutos / 60) },
+      turnos: sanitizeTurnos(dia?.turnos),
+    };
+  }
+  return out;
+}
+
+function toServerConfig(ui) {
+  const out = {};
+  for (const d of DIAS) {
+    const dia = ui?.[d.key];
+    const hours = Array.isArray(dia?.hours) ? dia.hours.map(normalizeHourCell) : emptyHours();
+    const minutos = Number.isFinite(Number(dia?.fraccion?.minutos)) ? Number(dia.fraccion.minutos) : 20;
+    out[d.key] = {
+      hours,
+      fraccion: { minutos, decimal: decimalCeil2(minutos / 60) },
+      turnos: sanitizeTurnos(dia?.turnos),
+    };
+  }
+  return out;
+}
 
 const ConfiguracionPage = () => {
   const [config, setConfig] = useState(null);
@@ -43,106 +100,13 @@ const ConfiguracionPage = () => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
-  const [errors, setErrors] = useState({});
   const [tab, setTab] = useState(0);
 
-  // Tipos de licencia (tab 2)
   const [tiposLicencia, setTiposLicencia] = useState([]);
   const [loadingLicencias, setLoadingLicencias] = useState(false);
   const [alert, setAlert] = useState({ open: false, severity: 'success', message: '' });
   const [licenciaDialog, setLicenciaDialog] = useState({ open: false, id: null, codigo: '', nombre: '' });
   const [licenciaSaving, setLicenciaSaving] = useState(false);
-
-  const dias = useMemo(() => ([
-    { key: 'lunes', label: 'Lunes' },
-    { key: 'martes', label: 'Martes' },
-    { key: 'miercoles', label: 'Miércoles' },
-    { key: 'jueves', label: 'Jueves' },
-    { key: 'viernes', label: 'Viernes' },
-    { key: 'sabado', label: 'Sábado' },
-    { key: 'domingo', label: 'Domingo' },
-    { key: 'feriado', label: 'Feriado' },
-  ]), []);
-
-  // Valida formato HH:mm o H:mm (24h)
-  const isValidTime24 = (value) => {
-    if (!value || String(value).trim() === '') return true;
-    return /^([01]?\d|2[0-3]):[0-5]\d$/.test(String(value).trim());
-  };
-
-  const normalizeTime = (value) => {
-    if (!value || String(value).trim() === '') return '';
-    const trimmed = String(value).trim();
-    const match = trimmed.match(/^(\d{1,2}):(\d{2})$/);
-    if (match) {
-      const hour = match[1].padStart(2, '0');
-      return `${hour}:${match[2]}`;
-    }
-    return trimmed;
-  };
-
-  const toUiConfig = (serverCfg) => {
-    const ui = {};
-    for (const d of dias) {
-      const c = serverCfg?.[d.key] || {};
-      const noct = c?.nocturno && typeof c.nocturno === 'object' ? c.nocturno : {};
-      const fraccionMinutos = typeof c?.fraccion?.minutos === 'number' ? c.fraccion.minutos : 20;
-      const fraccionDecimal = typeof c?.fraccion?.decimal === 'number' ? c.fraccion.decimal : 0.34;
-      const fraccionNoctMinutos = typeof noct?.fraccion?.minutos === 'number' ? noct.fraccion.minutos : fraccionMinutos;
-      const fraccionNoctDecimal = typeof noct?.fraccion?.decimal === 'number' ? noct.fraccion.decimal : fraccionDecimal;
-      ui[d.key] = {
-        ingreso: normalizeTime(c.ingreso ?? ''),
-        salida: normalizeTime(c.salida ?? ''),
-        fraccion: {
-          minutos: fraccionMinutos,
-          decimal: fraccionDecimal,
-        },
-        nocturno: {
-          ingreso: normalizeTime(noct.ingreso ?? ''),
-          salida: normalizeTime(noct.salida ?? ''),
-          fraccion: {
-            minutos: fraccionNoctMinutos,
-            decimal: fraccionNoctDecimal,
-          }
-        }
-      };
-    }
-    return ui;
-  };
-
-  const toServerConfig = (uiCfg) => {
-    const decimalCeil2 = (value) => Math.ceil(value * 100) / 100;
-    const out = {};
-    for (const d of dias) {
-      const c = uiCfg?.[d.key] || {};
-      const ingresoNorm = normalizeTime(c.ingreso);
-      const salidaNorm = normalizeTime(c.salida);
-      const ingreso = ingresoNorm !== '' ? ingresoNorm : null;
-      const salida = salidaNorm !== '' ? salidaNorm : null;
-      const minutos = Number.isFinite(Number(c?.fraccion?.minutos)) ? Number(c.fraccion.minutos) : 20;
-      const decimal = decimalCeil2(minutos / 60);
-
-      const noct = c?.nocturno && typeof c.nocturno === 'object' ? c.nocturno : {};
-      const noctIngresoNorm = normalizeTime(noct.ingreso);
-      const noctSalidaNorm = normalizeTime(noct.salida);
-      const noctIngreso = noctIngresoNorm !== '' ? noctIngresoNorm : null;
-      const noctSalida = noctSalidaNorm !== '' ? noctSalidaNorm : null;
-      const noctMinutos = Number.isFinite(Number(noct?.fraccion?.minutos)) ? Number(noct.fraccion.minutos) : minutos;
-      const noctDecimal = decimalCeil2(noctMinutos / 60);
-
-      out[d.key] = {
-        ingreso,
-        salida,
-        fraccion: { minutos, decimal },
-        nocturno: {
-          ingreso: noctIngreso,
-          salida: noctSalida,
-          fraccion: { minutos: noctMinutos, decimal: noctDecimal }
-        }
-      };
-    }
-    return out;
-  };
 
   useEffect(() => {
     let active = true;
@@ -155,7 +119,6 @@ const ConfiguracionPage = () => {
         setConfig(ui);
         setOriginal(ui);
         setFeriadosFechas(Array.isArray(cfg?.feriadosFechas) ? cfg.feriadosFechas : []);
-        setErrors({});
       } catch (e) {
         setError('No se pudo cargar la configuración de horarios');
       } finally {
@@ -190,7 +153,7 @@ const ConfiguracionPage = () => {
       open: true,
       id: item?._id ?? null,
       codigo: item?.codigo ?? '',
-      nombre: item?.nombre ?? ''
+      nombre: item?.nombre ?? '',
     });
   }, []);
 
@@ -242,52 +205,20 @@ const ConfiguracionPage = () => {
     }
   }, [fetchTiposLicencia]);
 
-  const handleTimeChange = useCallback((dia, turno, field, value) => {
-    setConfig((prev) => {
-      if (!prev) return prev;
-      if (turno === 'nocturno') {
-        return {
-          ...prev,
-          [dia]: {
-            ...prev[dia],
-            nocturno: {
-              ...(prev[dia]?.nocturno || {}),
-              [field]: value
-            }
-          }
-        };
-      }
-      return {
-        ...prev,
-        [dia]: {
-          ...prev[dia],
-          [field]: value
-        }
-      };
-    });
-
-    if (field !== 'ingreso' && field !== 'salida') return;
-    setErrors((prev) => ({
-      ...prev,
-      [dia]: {
-        ...(prev[dia] || {}),
-        [`${turno}.${field}`]: !isValidTime24(value) ? 'Formato inválido. Use HH:mm (24h)' : ''
-      }
-    }));
+  const handleConfigChange = useCallback((next) => {
+    setConfig(next);
   }, []);
 
-  const handleFraccionChange = useCallback((dia, field, value) => {
+  const handleFraccionChange = useCallback((dia, minutos) => {
     setConfig((prev) => {
       if (!prev) return prev;
+      const m = Math.max(0, Math.round(Number(minutos) || 0));
       return {
         ...prev,
         [dia]: {
           ...prev[dia],
-          fraccion: {
-            ...prev[dia]?.fraccion,
-            [field]: value
-          }
-        }
+          fraccion: { minutos: m, decimal: decimalCeil2(m / 60) },
+        },
       };
     });
   }, []);
@@ -297,17 +228,8 @@ const ConfiguracionPage = () => {
     return JSON.stringify(config) !== JSON.stringify(original);
   }, [config, original]);
 
-  const hasTimeErrors = useMemo(() => {
-    if (!errors || typeof errors !== 'object') return false;
-    return Object.values(errors).some((dayErrors) => {
-      if (!dayErrors || typeof dayErrors !== 'object') return false;
-      return Object.values(dayErrors).some((msg) => Boolean(msg));
-    });
-  }, [errors]);
-
   const handleReset = () => {
     setConfig(original);
-    setErrors({});
   };
 
   const handleTabChange = useCallback((_, newValue) => {
@@ -316,23 +238,6 @@ const ConfiguracionPage = () => {
 
   const handleSave = async () => {
     try {
-      // Validación previa - detectar qué días tienen error
-      const invalidDays = dias.filter(d => {
-        const c = config?.[d.key] || {};
-        const n = c?.nocturno || {};
-        return (
-          !isValidTime24(c.ingreso) ||
-          !isValidTime24(c.salida) ||
-          !isValidTime24(n.ingreso) ||
-          !isValidTime24(n.salida)
-        );
-      });
-      if (invalidDays.length > 0) {
-        const dayLabels = invalidDays.map(d => d.label).join(', ');
-        setError(`Revise los campos con error en: ${dayLabels}. Formato esperado HH:mm (24h).`);
-        return;
-      }
-
       setSaving(true);
       const payload = toServerConfig(config);
       await horariosService.updateHorarios(payload);
@@ -387,6 +292,11 @@ const ConfiguracionPage = () => {
               {tab === 0 ? (
                 <>
                   <Stack direction="row" alignItems="center" justifyContent="space-between">
+                    <Box>
+                      <Typography variant="body2" color="text.secondary">
+                        Pintá cada hora del día con el tipo que corresponde. Una hora puede dividirse en 2 sub-slots cada 10 minutos.
+                      </Typography>
+                    </Box>
                     <Stack direction="row" spacing={1}>
                       <Button variant="outlined" onClick={handleReset} disabled={!isDirty || saving}>
                         Cancelar
@@ -399,27 +309,40 @@ const ConfiguracionPage = () => {
 
                   <Divider />
 
-                  {hasTimeErrors ? (
-                    <Alert severity="warning" variant="outlined">
-                      Hay campos con formato inválido. Usá <strong>HH:mm</strong> (24hs).
-                    </Alert>
-                  ) : null}
+                  <HorariosGridEditor
+                    config={config}
+                    onChange={handleConfigChange}
+                  />
 
-                  <Card>
+                  <Card variant="outlined">
                     <CardContent>
-                      <Stack spacing={1} sx={{ mb: 1 }}>
-                        <Typography variant="body2" color="text.secondary">
-                          Formato 24hs (HH:mm). Turno noche puede cruzar medianoche (ej: 21:00 a 06:00).
-                        </Typography>
-                      </Stack>
-
-                      <HorariosConfigTable
-                        dias={dias}
-                        config={config}
-                        errors={errors}
-                        onTimeChange={handleTimeChange}
-                        onFraccionChange={handleFraccionChange}
-                      />
+                      <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+                        Fracción de redondeo
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
+                        Minutos a los que se redondea el ingreso (hacia adelante) y la salida (hacia atrás). Aplica antes de mapear los minutos a la grilla.
+                      </Typography>
+                      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: 'repeat(4, 1fr)', md: 'repeat(8, 1fr)' }, gap: 1.5 }}>
+                        {DIAS.map((d) => {
+                          const minutos = config?.[d.key]?.fraccion?.minutos ?? 20;
+                          const decimal = decimalCeil2(minutos / 60).toFixed(2);
+                          return (
+                            <Stack key={d.key} spacing={0.25}>
+                              <Typography variant="caption" sx={{ fontWeight: 600 }}>{d.label}</Typography>
+                              <TextField
+                                value={minutos}
+                                onChange={(e) => handleFraccionChange(d.key, e.target.value)}
+                                size="small"
+                                type="number"
+                                InputProps={{ inputProps: { min: 0, step: 5 } }}
+                              />
+                              <Typography variant="caption" color="text.secondary">
+                                {decimal}h
+                              </Typography>
+                            </Stack>
+                          );
+                        })}
+                      </Box>
                     </CardContent>
                   </Card>
                 </>
