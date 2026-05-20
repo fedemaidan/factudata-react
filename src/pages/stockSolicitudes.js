@@ -41,6 +41,7 @@ import StockMovimientosService from 'src/services/stock/stockMovimientosService'
 import StockConfigService from 'src/services/stock/stockConfigService';
 import api from 'src/services/axiosConfig';
 import { getProyectosFromUser } from 'src/services/proyectosService';
+import useDebouncedValue from 'src/hooks/useDebouncedValue';
 
 // Sub-componentes extraídos
 import IngresoDesdeFactura from 'src/components/stock/IngresoDesdeFactura';
@@ -114,6 +115,13 @@ export default function StockSolicitudes() {
   // ===== stock config de la empresa (Fase T / Fase 3)
   const [stockConfig, setStockConfig] = useState({});
 
+  // ===== empresa cacheada (evita refetch en cada fetchAll)
+  const [empresa, setEmpresa] = useState(null);
+
+  // ===== valores de búsqueda con debounce (evita 1 request por tecla)
+  const dfBuscar = useDebouncedValue(fBuscar, 400);
+  const dfSubtipo = useDebouncedValue(fSubtipo, 400);
+
   // ===== menús desplegables
   const [anchorElNuevo, setAnchorElNuevo] = useState(null);
   const [anchorElIA, setAnchorElIA] = useState(null);
@@ -149,38 +157,66 @@ export default function StockSolicitudes() {
     return `${field}:${dir}`;
   }, [orderBy, order]);
 
+  // Cuando cambia el user (login / spy / returnToOriginalUser), limpiar la
+  // empresa cacheada para que fetchAll no corra con data stale entre cambios.
+  // Sin esto, hay una ventana de ms donde user=nuevo pero empresa=viejo y
+  // se podría disparar una request con empresa_id de la sesión anterior.
+  useEffect(() => { setEmpresa(null); }, [user?.id]);
+
   // ───── Cargar usuarios y proyectos ─────
   useEffect(() => {
     if (!user) return;
     (async () => {
       try {
         const empresa = await getEmpresaDetailsFromUser(user);
+        // Cachear empresa para evitar refetch en cada consulta de la tabla
+        setEmpresa(empresa);
         // Leer stock_config de la empresa (Fase T / Fase 3)
         setStockConfig(empresa?.stock_config || {});
-        const provsApi = await proveedorService.getByEmpresa(empresa.id);
-        setProveedores(
-          provsApi.map((p) => ({ id: p._id || '', nombre: p.nombre || '', cuit: p.cuit || '' })).filter((p) => p.nombre)
-        );
-        try {
-          const lista = await StockSolicitudesService.listarUsuarios({ empresa_id: empresa.id });
+
+        // Disparar las 3 cargas auxiliares en paralelo (proveedores, usuarios, proyectos).
+        // getProyectosFromUser usa internamente el endpoint batch por empresa con caché
+        // en memoria (5 min TTL), así que pasa de N requests a 1.
+        const [provsRes, usuariosRes, projsRes] = await Promise.allSettled([
+          proveedorService.getByEmpresa(empresa.id),
+          StockSolicitudesService.listarUsuarios({ empresa_id: empresa.id }),
+          (async () => {
+            let projsRaw = [];
+            try { projsRaw = await getProyectosFromUser(user); } catch { /* */ }
+            if (!Array.isArray(projsRaw) || projsRaw.length === 0) {
+              try { projsRaw = await StockMovimientosService.listarProyectos({ empresa_id: empresa.id }); } catch { projsRaw = []; }
+            }
+            return projsRaw;
+          })(),
+        ]);
+
+        if (provsRes.status === 'fulfilled') {
+          setProveedores(
+            (provsRes.value || [])
+              .map((p) => ({ id: p._id || '', nombre: p.nombre || '', cuit: p.cuit || '' }))
+              .filter((p) => p.nombre)
+          );
+        }
+
+        if (usuariosRes.status === 'fulfilled') {
           setUsuarios(
-            (lista ?? [])
+            (usuariosRes.value ?? [])
               .map((u) => ({ id: u?.id || u?.uid || u?._id, nombre: u?.nombre || u?.displayName || '', email: u?.email || '' }))
               .filter((x) => x.id && x.email)
           );
-        } catch { setUsuarios([]); }
-        try {
-          let projsRaw = [];
-          try { projsRaw = await getProyectosFromUser(user); } catch { /* */ }
-          if (!Array.isArray(projsRaw) || projsRaw.length === 0) {
-            try { projsRaw = await StockMovimientosService.listarProyectos({ empresa_id: empresa.id }); } catch { projsRaw = []; }
-          }
+        } else {
+          setUsuarios([]);
+        }
+
+        if (projsRes.status === 'fulfilled') {
           setProyectos(
-            (projsRaw ?? [])
+            (projsRes.value ?? [])
               .map((p) => ({ id: p?.id || p?._id || p?.proyecto_id || p?.codigo, nombre: p?.nombre || p?.name || '(sin nombre)' }))
               .filter((p) => p.id)
           );
-        } catch { setProyectos([]); }
+        } else {
+          setProyectos([]);
+        }
       } catch { /* */ }
     })();
   }, [user]);
@@ -227,10 +263,9 @@ export default function StockSolicitudes() {
 
   // ───── Consulta principal ─────
   async function fetchAll() {
-    if (!user) return;
+    if (!user || !empresa?.id) return;
     setLoading(true);
     try {
-      const empresa = await getEmpresaDetailsFromUser(user);
       const params = {
         empresa_id: empresa.id, sort: sortParam, limit: rpp,
         // Si "Pendientes de conciliar" está activo, traemos más data para filtrar client-side
@@ -238,11 +273,11 @@ export default function StockSolicitudes() {
         ...(fPendientes ? { limit: 200 } : {}),
         ...(fTipo ? { tipo: fTipo } : {}),
         ...(fEstado ? { estado: fEstado } : {}),
-        ...(fSubtipo?.trim() ? { subtipo: fSubtipo.trim() } : {}),
+        ...(dfSubtipo?.trim() ? { subtipo: dfSubtipo.trim() } : {}),
         ...(fDesde ? { fecha_desde: fDesde } : {}),
         ...(fHasta ? { fecha_hasta: fHasta } : {}),
         ...(fProyecto ? { proyecto_id: fProyecto } : {}),
-        ...(fBuscar?.trim() ? { q: fBuscar.trim() } : {}),
+        ...(dfBuscar?.trim() ? { q: dfBuscar.trim() } : {}),
       };
       const resp = await StockSolicitudesService.listarSolicitudes(params);
       let items = resp.items || [];
@@ -264,7 +299,7 @@ export default function StockSolicitudes() {
     } finally { setLoading(false); }
   }
 
-  useEffect(() => { fetchAll(); }, [user, fTipo, fSubtipo, fEstado, fProyecto, fPendientes, fDesde, fHasta, fBuscar, sortParam, page, rpp]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { fetchAll(); }, [user, empresa?.id, fTipo, dfSubtipo, fEstado, fProyecto, fPendientes, fDesde, fHasta, dfBuscar, sortParam, page, rpp]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ───── Helpers modal crear/editar ─────
   const resetModal = () => {

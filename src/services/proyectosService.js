@@ -6,6 +6,58 @@ import movimientosService from 'src/services/movimientosService';
 
 import { v4 as uuidv4 } from 'uuid';
 
+// ─── Cache en memoria para proyectos ─────────────────────────────────────
+// TTL: 5 min. Pensado para evitar N+1 cuando varias partes de la UI piden
+// el mismo proyecto en la misma pantalla (ej: lista de tickets con muchos
+// proyectos). Coalesce de requests en vuelo para no disparar duplicados.
+const _proyectoCache = new Map();      // id -> { data, expiresAt }
+const _proyectoInflight = new Map();   // id -> Promise<proyecto>
+const _empresaProyectosCache = new Map(); // empresaId -> { data, expiresAt }
+const _empresaProyectosInflight = new Map(); // empresaId -> Promise<proyectos[]>
+const PROYECTO_TTL_MS = 5 * 60 * 1000;
+
+const _isFresh = (entry) => entry && entry.expiresAt > Date.now();
+
+/**
+ * Extrae el empresaId del objeto user.
+ * Formatos esperados (post-migración a Mongo):
+ *  - user.empresaId / user.empresa_id (string)
+ *  - user.empresa (string)
+ *  - user.empresa.id / user.empresa._id (objeto)
+ */
+const _extractEmpresaIdFromUser = (user) => {
+  if (!user) return null;
+  if (typeof user.empresaId === 'string' && user.empresaId) return user.empresaId;
+  if (typeof user.empresa_id === 'string' && user.empresa_id) return user.empresa_id;
+  const e = user.empresa;
+  if (!e) return null;
+  if (typeof e === 'string') return e || null;
+  return e.id || e._id || null;
+};
+
+/**
+ * Extrae el id de un proyecto desde una referencia simple (string o {id/_id}).
+ */
+const _extractProyectoIdFromRef = (ref) => {
+  if (!ref) return null;
+  if (typeof ref === 'string') return ref || null;
+  return ref.id || ref._id || null;
+};
+
+/**
+ * Invalida la caché de proyectos. Llamar tras crear/editar/eliminar.
+ * @param {object} opts - { id?: string, empresaId?: string, all?: boolean }
+ */
+export const invalidarProyectoCache = ({ id, empresaId, all } = {}) => {
+  if (all) {
+    _proyectoCache.clear();
+    _empresaProyectosCache.clear();
+    return;
+  }
+  if (id) _proyectoCache.delete(id);
+  if (empresaId) _empresaProyectosCache.delete(empresaId);
+};
+
 /**
  * Asegura que cada subproyecto tenga un ID único.
  * Modifica el array en lugar.
@@ -27,15 +79,41 @@ export const asegurarIdsSubproyectos = (proyecto) => {
  * @param {string} empresaId - ID de la empresa.
  * @returns {Promise<object[]>}
  */
-export const getProyectosByEmpresaId = async (empresaId) => {
-  try {
-    const response = await api.get(`/proyecto/empresa/${empresaId}`);
-    const proyectos = response.data || [];
-    return proyectos.filter(p => p && p.eliminado !== true);
-  } catch (err) {
-    console.error('Error al obtener proyectos por empresa:', err);
-    return [];
+export const getProyectosByEmpresaId = async (empresaId, { forceRefresh = false } = {}) => {
+  if (!empresaId) return [];
+
+  // Cache hit
+  if (!forceRefresh) {
+    const cached = _empresaProyectosCache.get(empresaId);
+    if (_isFresh(cached)) return cached.data;
   }
+
+  // Coalesce: si ya hay una request en vuelo para esta empresa, reusala.
+  if (_empresaProyectosInflight.has(empresaId)) {
+    return _empresaProyectosInflight.get(empresaId);
+  }
+
+  const promise = (async () => {
+    try {
+      const response = await api.get(`/proyecto/empresa/${empresaId}`);
+      const proyectos = (response.data || []).filter(p => p && p.eliminado !== true);
+      _empresaProyectosCache.set(empresaId, { data: proyectos, expiresAt: Date.now() + PROYECTO_TTL_MS });
+      // Sembrá también la caché individual para futuras llamadas a getProyectoById.
+      for (const p of proyectos) {
+        const pid = p?._id || p?.id;
+        if (pid) _proyectoCache.set(pid, { data: p, expiresAt: Date.now() + PROYECTO_TTL_MS });
+      }
+      return proyectos;
+    } catch (err) {
+      console.error('Error al obtener proyectos por empresa:', err);
+      return [];
+    } finally {
+      _empresaProyectosInflight.delete(empresaId);
+    }
+  })();
+
+  _empresaProyectosInflight.set(empresaId, promise);
+  return promise;
 };
 
 /**
@@ -69,40 +147,56 @@ export const getProyectosByEmpresa = async (empresa) => {
  * @returns {Promise<object[]>} - Retorna un array con los proyectos o un array vacío si no se encuentran o hay un error.
  */
 export const getProyectosFromUser = async (user) => {
-
   try {
     if (!user || !user.proyectos) {
       console.log('Referencias de proyectos no proporcionadas o incompletas en el objeto usuario');
       return [];
     }
-      
-      const proyectos = await Promise.all(user.proyectos.map(async (proyectoRef) => {
-      // Extraer ID del proyecto de la referencia (puede ser string o DocumentReference)
-      let proyectoId = null;
-      if (typeof proyectoRef === 'string') {
-        proyectoId = proyectoRef.includes('/') ? proyectoRef.split('/').pop() : proyectoRef;
-      } else if (proyectoRef?.id) {
-        proyectoId = proyectoRef.id;
-      } else if (proyectoRef?._key?.path?.segments) {
-        const segs = proyectoRef._key.path.segments;
-        const offset = proyectoRef._key.path.offset || 0;
-        const len = proyectoRef._key.path.len || segs.length;
-        const path = segs.slice(offset, offset + len).join('/');
-        proyectoId = path.split('/').pop();
-      }
 
-      if (!proyectoId) {
-        console.log('No se pudo extraer ID del proyecto');
-        return null;
+    // Resolver empresaId con fallbacks. Todos los usuarios deberían tener uno;
+    // si no aparece en los campos directos, lo resolvemos vía API.
+    let empresaId = _extractEmpresaIdFromUser(user);
+    if (!empresaId) {
+      try {
+        // Import dinámico para evitar ciclo de dependencias con empresaService.
+        const { getEmpresaDetailsFromUser } = await import('./empresaService');
+        const empresa = await getEmpresaDetailsFromUser(user);
+        empresaId = empresa?.id || empresa?._id || null;
+      } catch (e) {
+        console.warn('No se pudo resolver empresaId vía getEmpresaDetailsFromUser:', e?.message);
       }
+    }
 
-      return await getProyectoById(proyectoId);
-    }));
-    
-    return proyectos.filter(proyecto => proyecto !== null && proyecto.eliminado !== true);
+    // Construir el set de ids del usuario una sola vez.
+    const idsUser = new Set();
+    for (const ref of user.proyectos) {
+      const pid = _extractProyectoIdFromRef(ref);
+      if (pid) idsUser.add(pid);
+    }
+
+    // Path principal: batch por empresa + filtro local. 1 request total.
+    if (empresaId) {
+      const todosDeEmpresa = await getProyectosByEmpresaId(empresaId);
+      if (Array.isArray(todosDeEmpresa) && todosDeEmpresa.length > 0) {
+        const filtrados = todosDeEmpresa.filter(
+          (p) => p && (idsUser.has(p._id) || idsUser.has(p.id)) && p.eliminado !== true
+        );
+        if (filtrados.length > 0) return filtrados;
+        // Si el filtro quedó vacío puede ser que los ids del user no estén en la
+        // empresa (caso raro). Caemos al path por id, que ya usa caché y coalescing.
+      }
+    }
+
+    // Fallback: pedir uno por uno. Igualmente pasa por la caché en memoria y
+    // por el coalescing, así que duplicados se deduplican automáticamente.
+    const proyectos = await Promise.all(
+      Array.from(idsUser).map((pid) => getProyectoById(pid))
+    );
+
+    return proyectos.filter((p) => p !== null && p?.eliminado !== true);
   } catch (err) {
     console.error('Error al obtener los proyectos del usuario:', err);
-    return []; 
+    return [];
   }
 };
 
@@ -113,14 +207,38 @@ export const getProyectosFromUser = async (user) => {
  * @param {string} id - El ID del proyecto a obtener.
  * @returns {Promise<object|null>} - Retorna un objeto con los datos del proyecto o null si no se encuentra.
  */
-export const getProyectoById = async (id) => {
-  try {
-    const response = await api.get(`/proyecto/${id}`);
-    return response.data;
-  } catch (err) {
-    console.error('Error al obtener el proyecto:', err);
-    return null;
+export const getProyectoById = async (id, { forceRefresh = false } = {}) => {
+  if (!id) return null;
+
+  // Cache hit
+  if (!forceRefresh) {
+    const cached = _proyectoCache.get(id);
+    if (_isFresh(cached)) return cached.data;
   }
+
+  // Coalesce: si ya hay una request en vuelo para este id, reusala.
+  if (_proyectoInflight.has(id)) {
+    return _proyectoInflight.get(id);
+  }
+
+  const promise = (async () => {
+    try {
+      const response = await api.get(`/proyecto/${id}`);
+      const data = response.data;
+      if (data) {
+        _proyectoCache.set(id, { data, expiresAt: Date.now() + PROYECTO_TTL_MS });
+      }
+      return data;
+    } catch (err) {
+      console.error('Error al obtener el proyecto:', err);
+      return null;
+    } finally {
+      _proyectoInflight.delete(id);
+    }
+  })();
+
+  _proyectoInflight.set(id, promise);
+  return promise;
 };
 
 /**
@@ -147,6 +265,7 @@ export const updateProyecto = async (id, proyecto, empresaId = null) => {
     }
     console.log("proyecto nuevo", proyecto);
     await api.put(`/proyecto/${id}`, proyecto);
+    invalidarProyectoCache({ id, empresaId });
 
     if (empresaId) {
       try {
@@ -249,6 +368,7 @@ export const crearProyecto = async (proyecto, empresaId) => {
       } catch (error) {
         console.warn('Error invalidando caché:', error);
       }
+      invalidarProyectoCache({ empresaId });
       console.log('Proyecto creado con éxito:', response.data.proyecto);
       return response.data.proyecto;
     } else {
@@ -291,6 +411,7 @@ export const deleteProyectoById = async (proyectoId, empresaId = null) => {
 
     // Elimina el proyecto via REST API
     await api.delete(`/proyecto/${proyectoId}`);
+    invalidarProyectoCache({ id: proyectoId, empresaId });
 
     if (empresaId) {
       try {
