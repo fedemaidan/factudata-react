@@ -31,11 +31,15 @@ const conciliacionService = {
     return lista;
   },
 
-  async getConciliacionRows(id, { estado, text, tipo, limit, offset, sortField, sortDirection } = {}) {
+  async getConciliacionRows(id, { estado, text, tipo, soloSistema, soloNasa, diffChica, conNocturnas, limit, offset, sortField, sortDirection } = {}) {
     const params = {};
     if (estado) params.estado = estado;
     if (text) params.text = text;
     if (tipo) params.tipo = tipo;
+    if (soloSistema) params.soloSistema = 'true';
+    if (soloNasa) params.soloNasa = 'true';
+    if (diffChica) params.diffChica = 'true';
+    if (conNocturnas) params.conNocturnas = 'true';
     if (limit != null) params.limit = limit;
     if (offset != null) params.offset = offset;
     if (sortField) params.sortField = sortField;
@@ -44,9 +48,17 @@ const conciliacionService = {
     return data;
   },
 
-  async getConciliacionStats(id) {
+  async getConciliacionStats(id, { estado, text, tipo, soloSistema, soloNasa, diffChica, conNocturnas } = {}) {
     if (!id) return null;
-    const { data } = await api.get(`/dhn/conciliacion/${id}/stats`);
+    const params = {};
+    if (estado) params.estado = estado;
+    if (text) params.text = text;
+    if (tipo) params.tipo = tipo;
+    if (soloSistema) params.soloSistema = 'true';
+    if (soloNasa) params.soloNasa = 'true';
+    if (diffChica) params.diffChica = 'true';
+    if (conNocturnas) params.conNocturnas = 'true';
+    const { data } = await api.get(`/dhn/conciliacion/${id}/stats`, { params });
     return data;
   },
 

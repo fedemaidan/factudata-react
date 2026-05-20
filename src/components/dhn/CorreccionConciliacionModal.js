@@ -31,6 +31,7 @@ import RotateRightIcon from "@mui/icons-material/RotateRight";
 import ReplayIcon from "@mui/icons-material/Replay";
 import ZoomInIcon from "@mui/icons-material/ZoomIn";
 import ZoomOutIcon from "@mui/icons-material/ZoomOut";
+import FileDownloadIcon from "@mui/icons-material/FileDownload";
 
 import { HorasRawTable } from "src/components/dhn/HorasRawModal";
 import { ImageViewer, useImageViewerState } from "src/components/ImageViewer";
@@ -329,11 +330,27 @@ const CorreccionConciliacionModal = ({
 
         {tabItems.length > 0 && (
           <Stack direction="column" spacing={0} sx={{ flex: 1 }}>
-            {activeTabMeta?.fileName && (
-              <Typography variant="caption" color="text.secondary">
-                {activeTabMeta.fileName}
-              </Typography>
-            )}
+            <Stack direction="row" alignItems="center" spacing={1} sx={{ minHeight: 32 }}>
+              {activeTabMeta?.fileName && (
+                <Typography variant="caption" color="text.secondary" sx={{ flex: 1, minWidth: 0 }} noWrap>
+                  {activeTabMeta.fileName}
+                </Typography>
+              )}
+              {activeTabMeta?.type === "horas" && activeTabMeta?.url && (
+                <Button
+                  component="a"
+                  href={activeTabMeta.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  size="small"
+                  variant="outlined"
+                  startIcon={<FileDownloadIcon />}
+                  sx={{ textTransform: "none" }}
+                >
+                  Descargar Excel
+                </Button>
+              )}
+            </Stack>
             {activeTabMeta?.type === "horas" ? (
               <Box sx={{ flex: 1, minHeight: 0 }}>
                 <HorasRawTable rows={row?.dataRawExcel || []} />

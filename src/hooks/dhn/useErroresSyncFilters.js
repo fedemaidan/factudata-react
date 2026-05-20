@@ -1,11 +1,44 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { formatDateToDDMMYYYY } from "src/utils/handleDates";
 
+const toJsDate = (value) => {
+  if (!value) return null;
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+  if (typeof value?.isValid === "function" && !value.isValid()) return null;
+  if (typeof value?.toDate === "function") {
+    const d = value.toDate();
+    return d instanceof Date && !Number.isNaN(d.getTime()) ? d : null;
+  }
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+
+const toLocalDateString = (value) => {
+  const d = toJsDate(value);
+  if (!d) return null;
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+};
+
+const toIsoSafe = (value) => {
+  const d = toJsDate(value);
+  return d ? d.toISOString() : null;
+};
+
+const FECHA_DETECTADA_KEYS = ["fechaDetectadaDesde", "fechaDetectadaHasta"];
+const FECHA_DOCUMENTO_KEYS = ["fechaDocumentoDesde", "fechaDocumentoHasta"];
+
 const DEFAULT_FILTERS = {
   searchTerm: "",
   searchQuery: "",
-  fechaDesde: null,
-  fechaHasta: null,
+  fechaDetectadaDesde: null,
+  fechaDetectadaHasta: null,
+  fechaDocumentoDesde: null,
+  fechaDocumentoHasta: null,
   tipo: "",
   estado: "",
 };
@@ -17,7 +50,16 @@ const useErroresSyncFilters = ({ onSearchApply } = {}) => {
   const [searchVersion, setSearchVersion] = useState(0);
   const [filtersAnchorEl, setFiltersAnchorEl] = useState(null);
 
-  const { fechaDesde, fechaHasta, tipo, estado, searchTerm, searchQuery } = filters;
+  const {
+    fechaDetectadaDesde,
+    fechaDetectadaHasta,
+    fechaDocumentoDesde,
+    fechaDocumentoHasta,
+    tipo,
+    estado,
+    searchTerm,
+    searchQuery,
+  } = filters;
   const filtersOpen = Boolean(filtersAnchorEl);
 
   const handleOpenFilters = useCallback(() => {
@@ -31,7 +73,21 @@ const useErroresSyncFilters = ({ onSearchApply } = {}) => {
   }, []);
 
   const setFilter = useCallback((key, value) => {
-    setFilters((prev) => ({ ...prev, [key]: value }));
+    setFilters((prev) => {
+      const next = { ...prev, [key]: value };
+      if (value != null) {
+        if (FECHA_DETECTADA_KEYS.includes(key)) {
+          FECHA_DOCUMENTO_KEYS.forEach((k) => {
+            next[k] = null;
+          });
+        } else if (FECHA_DOCUMENTO_KEYS.includes(key)) {
+          FECHA_DETECTADA_KEYS.forEach((k) => {
+            next[k] = null;
+          });
+        }
+      }
+      return next;
+    });
   }, []);
 
   const applySearch = useCallback(
@@ -66,16 +122,28 @@ const useErroresSyncFilters = ({ onSearchApply } = {}) => {
     if (searchQuery) {
       active.push({ key: "search", label: `Buscar: ${searchQuery}` });
     }
-    if (fechaDesde) {
+    if (fechaDetectadaDesde) {
       active.push({
-        key: "desde",
-        label: `Desde: ${formatDateToDDMMYYYY(fechaDesde)}`,
+        key: "fechaDetectadaDesde",
+        label: `Fecha detectada desde: ${formatDateToDDMMYYYY(fechaDetectadaDesde)}`,
       });
     }
-    if (fechaHasta) {
+    if (fechaDetectadaHasta) {
       active.push({
-        key: "hasta",
-        label: `Hasta: ${formatDateToDDMMYYYY(fechaHasta)}`,
+        key: "fechaDetectadaHasta",
+        label: `Fecha detectada hasta: ${formatDateToDDMMYYYY(fechaDetectadaHasta)}`,
+      });
+    }
+    if (fechaDocumentoDesde) {
+      active.push({
+        key: "fechaDocumentoDesde",
+        label: `Fecha documento desde: ${formatDateToDDMMYYYY(fechaDocumentoDesde)}`,
+      });
+    }
+    if (fechaDocumentoHasta) {
+      active.push({
+        key: "fechaDocumentoHasta",
+        label: `Fecha documento hasta: ${formatDateToDDMMYYYY(fechaDocumentoHasta)}`,
       });
     }
     if (tipo) {
@@ -91,17 +159,39 @@ const useErroresSyncFilters = ({ onSearchApply } = {}) => {
       });
     }
     return active;
-  }, [searchQuery, fechaDesde, fechaHasta, tipo, estado]);
+  }, [
+    searchQuery,
+    fechaDetectadaDesde,
+    fechaDetectadaHasta,
+    fechaDocumentoDesde,
+    fechaDocumentoHasta,
+    tipo,
+    estado,
+  ]);
 
   const filtersPayload = useMemo(() => {
     const payload = {};
-    if (fechaDesde) payload.createdAtFrom = fechaDesde.toISOString();
-    if (fechaHasta) payload.createdAtTo = fechaHasta.toISOString();
+    const fechaDetectadaFrom = toLocalDateString(fechaDetectadaDesde);
+    const fechaDetectadaTo = toLocalDateString(fechaDetectadaHasta);
+    const createdAtFrom = toIsoSafe(fechaDocumentoDesde);
+    const createdAtTo = toIsoSafe(fechaDocumentoHasta);
+    if (fechaDetectadaFrom) payload.fechaDetectadaFrom = fechaDetectadaFrom;
+    if (fechaDetectadaTo) payload.fechaDetectadaTo = fechaDetectadaTo;
+    if (createdAtFrom) payload.createdAtFrom = createdAtFrom;
+    if (createdAtTo) payload.createdAtTo = createdAtTo;
     if (tipo) payload.tipo = tipo;
     if (estado) payload.status = estado;
     if (searchQuery) payload.search = searchQuery;
     return payload;
-  }, [fechaDesde, fechaHasta, tipo, estado, searchQuery]);
+  }, [
+    fechaDetectadaDesde,
+    fechaDetectadaHasta,
+    fechaDocumentoDesde,
+    fechaDocumentoHasta,
+    tipo,
+    estado,
+    searchQuery,
+  ]);
 
   return {
     filters,

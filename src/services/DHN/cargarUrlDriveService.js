@@ -137,6 +137,8 @@ const DhnDriveService = {
     offset = 0,
     createdAtFrom,
     createdAtTo,
+    fechaDetectadaFrom,
+    fechaDetectadaTo,
     tipo,
     status,
     search,
@@ -150,6 +152,8 @@ const DhnDriveService = {
     };
     if (createdAtFrom) payload.createdAtFrom = createdAtFrom;
     if (createdAtTo) payload.createdAtTo = createdAtTo;
+    if (fechaDetectadaFrom) payload.fechaDetectadaFrom = fechaDetectadaFrom;
+    if (fechaDetectadaTo) payload.fechaDetectadaTo = fechaDetectadaTo;
     if (tipo) payload.tipo = tipo;
     if (search) payload.search = search;
     if (sortField) payload.sortField = sortField;
