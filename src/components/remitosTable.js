@@ -62,7 +62,7 @@ const RemitosTable = ({
     const desde = filtroFechaDesde ? new Date(filtroFechaDesde) : null;
     const hasta = filtroFechaHasta ? new Date(filtroFechaHasta) : null;
     const q = (filtroNumero || '').toLowerCase();
-    const matchTexto = !q || [r.numero_remito, r.numero_factura, r.etiqueta]
+    const matchTexto = !q || [r.numero_remito, r.etiqueta]
       .some((v) => typeof v === 'string' && v.toLowerCase().includes(q));
     return (
       (!filtroEstado || r.estado === filtroEstado) &&
@@ -103,7 +103,7 @@ const RemitosTable = ({
         {/* Búsqueda siempre visible */}
         <TextField
           size="small"
-          placeholder="Buscar por número, factura o etiqueta..."
+          placeholder="Buscar por número o etiqueta..."
           value={filtroNumero}
           onChange={(e) => setFiltroNumero(e.target.value)}
           sx={{ minWidth: 200 }}
@@ -277,11 +277,6 @@ const RemitosTable = ({
                       {remito.etiqueta && (
                         <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
                           {remito.etiqueta}
-                        </Typography>
-                      )}
-                      {remito.numero_factura && (
-                        <Typography variant="caption" color="text.disabled">
-                          Fact. {remito.numero_factura}
                         </Typography>
                       )}
                     </Stack>

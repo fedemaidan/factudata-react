@@ -68,7 +68,6 @@ const GestionRemitoPage = () => {
 
   // Metadatos remito
   const [numeroRemito, setNumeroRemito] = useState('');
-  const [numeroFactura, setNumeroFactura] = useState('');
   const [etiqueta, setEtiqueta] = useState('');
   const [esBorrador, setEsBorrador] = useState(false);
   const [fecha, setFecha] = useState(() => new Date().toISOString().split('T')[0]); // Default: hoy
@@ -210,7 +209,6 @@ const GestionRemitoPage = () => {
           const remito = await AcopioService.obtenerRemito(acopioId, rid);
           setFecha(remito.fecha ? String(remito.fecha).split('T')[0] : new Date().toISOString().split('T')[0]);
           setNumeroRemito(remito.numero_remito || '');
-          setNumeroFactura(remito.numero_factura || '');
           setEtiqueta(remito.etiqueta || '');
           const url = Array.isArray(remito.url_remito) ? remito.url_remito[0] : remito.url_remito;
           setArchivoRemitoUrl(url || null);
@@ -385,7 +383,7 @@ const GestionRemitoPage = () => {
       if (remitoId) {
         await AcopioService.editarRemito(
           acopioId, remitoId, itemsParaEnviar,
-          { fecha, valorOperacion: valorTotal, estado: 'confirmado', numero_remito: numeroRemito, numero_factura: numeroFactura, etiqueta },
+          { fecha, valorOperacion: valorTotal, estado: 'confirmado', numero_remito: numeroRemito, etiqueta },
           archivoRemitoFile || undefined
         );
         setAlert({ open: true, message: 'Remito actualizado con éxito', severity: 'success' });
@@ -395,7 +393,6 @@ const GestionRemitoPage = () => {
           fecha,
           archivo: archivoRemitoFile || undefined,
           numero_remito: numeroRemito,
-          numero_factura: numeroFactura,
           etiqueta,
           es_borrador: esBorrador,
           destino: destinoOpts?.destino || null,
@@ -457,7 +454,7 @@ const GestionRemitoPage = () => {
     } finally {
       setLoadingProceso(false);
     }
-  }, [fecha, items, remitoId, acopioId, valorTotal, numeroRemito, numeroFactura, etiqueta, archivoRemitoFile, router, npContext,
+  }, [fecha, items, remitoId, acopioId, valorTotal, numeroRemito, etiqueta, archivoRemitoFile, router, npContext,
       destinoDesacopioActivo, destinoInline, proyectoDestinoInline]);
 
   const handleVolver = useCallback(() => {
@@ -598,8 +595,8 @@ const GestionRemitoPage = () => {
                 <Stack spacing={2}>
                   <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
                     <TextField
-                      label="Número de Remito"
-                      placeholder="Ej: 0001-123456"
+                      label="N° de documento"
+                      placeholder="N° remito o factura (Ej: 0001-123456)"
                       value={numeroRemito}
                       onChange={(e) => setNumeroRemito(e.target.value)}
                       fullWidth
@@ -619,25 +616,15 @@ const GestionRemitoPage = () => {
                       required
                     />
                   </Stack>
-                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-                    <TextField
-                      label="Etiqueta / título"
-                      placeholder="Ej: Cemento Corralón X"
-                      value={etiqueta}
-                      onChange={(e) => setEtiqueta(e.target.value)}
-                      fullWidth
-                      size="small"
-                      helperText="Texto libre para identificar el remito al buscar"
-                    />
-                    <TextField
-                      label="Número de Factura"
-                      placeholder="Ej: A-0001-00012345"
-                      value={numeroFactura}
-                      onChange={(e) => setNumeroFactura(e.target.value)}
-                      fullWidth
-                      size="small"
-                    />
-                  </Stack>
+                  <TextField
+                    label="Etiqueta / título"
+                    placeholder="Ej: Cemento Corralón X"
+                    value={etiqueta}
+                    onChange={(e) => setEtiqueta(e.target.value)}
+                    fullWidth
+                    size="small"
+                    helperText="Texto libre para identificar el remito al buscar"
+                  />
                   {!remitoId && (
                     <FormControlLabel
                       control={

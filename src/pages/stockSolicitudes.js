@@ -82,6 +82,7 @@ export default function StockSolicitudes() {
   const [fHasta, setFHasta] = useState('');
   const [fEstado, setFEstado] = useState('');
   const [fProyecto, setFProyecto] = useState('');
+  const [fBuscar, setFBuscar] = useState('');
   const [fPendientes, setFPendientes] = useState(false);
 
   // ===== feedback
@@ -134,6 +135,7 @@ export default function StockSolicitudes() {
     proveedor_nombre: '', proveedor_id: '', proveedor_cuit: '',
     id_compra: '', url_doc: '', documentos: [],
     proyecto_id: '', proyecto_nombre: '',
+    numero_documento: '', etiqueta: '',
   };
   const [form, setForm] = useState(emptyForm);
   const [movs, setMovs] = useState([]);
@@ -185,7 +187,7 @@ export default function StockSolicitudes() {
 
   // ───── Filtros chips ─────
   const limpiarFiltros = () => {
-    setFTipo(''); setFSubtipo(''); setFDesde(''); setFHasta(''); setFEstado(''); setFProyecto(''); setFPendientes(false); setPage(0);
+    setFTipo(''); setFSubtipo(''); setFDesde(''); setFHasta(''); setFEstado(''); setFProyecto(''); setFPendientes(false); setFBuscar(''); setPage(0);
   };
 
   const chips = [
@@ -240,6 +242,7 @@ export default function StockSolicitudes() {
         ...(fDesde ? { fecha_desde: fDesde } : {}),
         ...(fHasta ? { fecha_hasta: fHasta } : {}),
         ...(fProyecto ? { proyecto_id: fProyecto } : {}),
+        ...(fBuscar?.trim() ? { q: fBuscar.trim() } : {}),
       };
       const resp = await StockSolicitudesService.listarSolicitudes(params);
       let items = resp.items || [];
@@ -261,7 +264,7 @@ export default function StockSolicitudes() {
     } finally { setLoading(false); }
   }
 
-  useEffect(() => { fetchAll(); }, [user, fTipo, fSubtipo, fEstado, fProyecto, fPendientes, fDesde, fHasta, sortParam, page, rpp]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { fetchAll(); }, [user, fTipo, fSubtipo, fEstado, fProyecto, fPendientes, fDesde, fHasta, fBuscar, sortParam, page, rpp]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ───── Helpers modal crear/editar ─────
   const resetModal = () => {
@@ -351,6 +354,8 @@ export default function StockSolicitudes() {
       id_compra: s.id_compra || '', url_doc: s.url_doc || '',
       documentos: Array.isArray(s.documentos) ? s.documentos : (s.url_doc ? [s.url_doc] : []),
       proyecto_id: proyectoId, proyecto_nombre: proyectoNombre,
+      numero_documento: s.numero_documento || s.numero_remito || s.numero_factura || '',
+      etiqueta: s.etiqueta || '',
     });
 
     if (s.tipo === 'TRANSFERENCIA') {
@@ -790,6 +795,13 @@ export default function StockSolicitudes() {
                     </Select>
                   </FormControl>
                   <TextField label="Subtipo" value={fSubtipo} onChange={(e) => { setFSubtipo(e.target.value); setPage(0); }} sx={{ minWidth: 200 }} />
+                  <TextField
+                    label="Buscar"
+                    placeholder="Etiqueta, N° remito, N° factura, proveedor…"
+                    value={fBuscar}
+                    onChange={(e) => { setFBuscar(e.target.value); setPage(0); }}
+                    sx={{ minWidth: 260 }}
+                  />
                   <TextField type="date" label="Desde" InputLabelProps={{ shrink: true }} value={fDesde} onChange={(e) => { setFDesde(e.target.value); setPage(0); }} sx={{ minWidth: 180 }} />
                   <TextField type="date" label="Hasta" InputLabelProps={{ shrink: true }} value={fHasta} onChange={(e) => { setFHasta(e.target.value); setPage(0); }} sx={{ minWidth: 180 }} />
                   <Button onClick={limpiarFiltros} startIcon={<ClearAllIcon />} variant="outlined">Limpiar</Button>
@@ -844,7 +856,19 @@ export default function StockSolicitudes() {
                         </TableCell>
                         <TableCell>{s.subtipo}</TableCell>
                         <TableCell>
-                          <Typography variant="body2">{s.proveedor?.nombre || '—'}</Typography>
+                          <Stack spacing={0.25}>
+                            <Typography variant="body2">{s.proveedor?.nombre || '—'}</Typography>
+                            {s.etiqueta && (
+                              <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                                {s.etiqueta}
+                              </Typography>
+                            )}
+                            {(s.numero_documento || s.numero_remito || s.numero_factura) && (
+                              <Typography variant="caption" color="text.disabled">
+                                N° {s.numero_documento || s.numero_remito || s.numero_factura}
+                              </Typography>
+                            )}
+                          </Stack>
                         </TableCell>
                         <TableCell>
                           <Stack direction="row" spacing={0.5} alignItems="center">

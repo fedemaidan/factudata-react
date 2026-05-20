@@ -270,6 +270,24 @@ export default function SolicitudFormDialog({
             </Stack>
           )}
 
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+            <TextField
+              label="Etiqueta / título"
+              placeholder='Ej: "Cemento Corralón X"'
+              value={form.etiqueta || ''}
+              onChange={(e) => patchForm('etiqueta', e.target.value)}
+              sx={{ minWidth: 280 }}
+              helperText="Texto libre para buscar rápido"
+            />
+            <TextField
+              label="N° de documento"
+              placeholder="N° remito o factura"
+              value={form.numero_documento || ''}
+              onChange={(e) => patchForm('numero_documento', e.target.value)}
+              sx={{ minWidth: 220 }}
+            />
+          </Stack>
+
           {/* Selector de proyecto (creación rápida ingreso/egreso) */}
           {!editMode && modalMode && modalMode !== 'transferencia' && (
             <FormControl fullWidth>

@@ -21,6 +21,8 @@ function buildParams(raw = {}) {
   if (raw.estados) out.estados = raw.estados;  // ✅ Filtro por múltiples estados (CSV)
   if (raw.responsable?.trim()) out.responsable = raw.responsable.trim(); // email
   if (raw.proveedor?.trim()) out.proveedor = raw.proveedor.trim();
+  if (raw.q?.trim()) out.q = raw.q.trim();
+  if (raw.search?.trim()) out.search = raw.search.trim();
   if (raw.proyecto_id) out.proyecto_id = String(raw.proyecto_id);
   if (raw.fecha_desde) out.fecha_desde = raw.fecha_desde;
   if (raw.fecha_hasta) out.fecha_hasta = raw.fecha_hasta;
@@ -186,6 +188,8 @@ const StockSolicitudesService = {
           ? { id: form.proveedor_id || null, nombre: form.proveedor_nombre || null, cuit: form.proveedor_cuit || null }
           : null,
         id_compra: form?.id_compra?.trim() || null,
+        numero_documento: form?.numero_documento?.trim() || null,
+        etiqueta: form?.etiqueta?.trim() || null,
         url_doc: form?.url_doc?.trim() || null,
         documentos: Array.isArray(form?.documentos) ? form.documentos.filter(Boolean) : [], // Array de URLs de documentos
         proyecto_id: form?.proyecto_id || null,
