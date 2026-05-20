@@ -29,6 +29,9 @@ const toIsoSafe = (value) => {
   return d ? d.toISOString() : null;
 };
 
+const FECHA_DETECTADA_KEYS = ["fechaDetectadaDesde", "fechaDetectadaHasta"];
+const FECHA_DOCUMENTO_KEYS = ["fechaDocumentoDesde", "fechaDocumentoHasta"];
+
 const DEFAULT_FILTERS = {
   searchTerm: "",
   searchQuery: "",
@@ -70,7 +73,21 @@ const useErroresSyncFilters = ({ onSearchApply } = {}) => {
   }, []);
 
   const setFilter = useCallback((key, value) => {
-    setFilters((prev) => ({ ...prev, [key]: value }));
+    setFilters((prev) => {
+      const next = { ...prev, [key]: value };
+      if (value != null) {
+        if (FECHA_DETECTADA_KEYS.includes(key)) {
+          FECHA_DOCUMENTO_KEYS.forEach((k) => {
+            next[k] = null;
+          });
+        } else if (FECHA_DOCUMENTO_KEYS.includes(key)) {
+          FECHA_DETECTADA_KEYS.forEach((k) => {
+            next[k] = null;
+          });
+        }
+      }
+      return next;
+    });
   }, []);
 
   const applySearch = useCallback(
