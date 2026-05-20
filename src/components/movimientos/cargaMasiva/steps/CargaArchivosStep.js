@@ -18,7 +18,13 @@ import { getPdfPageCount } from '../utils/pdfPageCount';
 const MAX_FILES = 200;
 const MAX_FILE_SIZE_BYTES = 200 * 1024 * 1024; // 200MB por archivo
 const MAX_FILE_SIZE_MB = Math.round(MAX_FILE_SIZE_BYTES / (1024 * 1024));
+// Cloudflare (planes Free/Pro) cortea requests con body > 100MB con 413.
+// Dejamos margen para overhead de multipart + JSON del contexto.
+export const MAX_BATCH_BYTES = 95 * 1024 * 1024;
+export const MAX_BATCH_MB = 100;
 const ACCEPT = 'image/*,.pdf,application/pdf';
+
+const formatMB = (bytes) => `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 
 const dedupeKey = (f) => `${f.name}-${f.size}-${f.lastModified}`;
 const isPdfFile = (f) => (f?.type || '') === 'application/pdf' || /\.pdf$/i.test(f?.name || '');
@@ -97,17 +103,27 @@ const CargaArchivosStep = ({ files, onFilesChange, pdfSplitPerPage, onPdfSplitPe
 
   const progress = (files.length / MAX_FILES) * 100;
   const hayPdfMultipagina = files.some((f) => isPdfFile(f) && (pageCounts[dedupeKey(f)] || 1) > 1);
+  const totalBytes = files.reduce((acc, f) => acc + (f.size || 0), 0);
+  const excedeBatch = totalBytes > MAX_BATCH_BYTES;
 
   return (
     <Stack spacing={2}>
       <Typography variant="body2" color="text.secondary">
-        Subí hasta {MAX_FILES} imágenes o PDF (máx. {MAX_FILE_SIZE_MB}MB por archivo). Los PDF se convierten a imágenes en el servidor.
+        Subí hasta {MAX_FILES} imágenes o PDF (máx. {MAX_FILE_SIZE_MB}MB por archivo, hasta {MAX_BATCH_MB}MB en total por lote). Los PDF se convierten a imágenes en el servidor.
       </Typography>
       <LinearProgress variant="determinate" value={progress} sx={{ height: 6, borderRadius: 1 }} />
 
       {oversizeError && (
         <Alert severity="warning" onClose={() => setOversizeError('')}>
           {oversizeError}
+        </Alert>
+      )}
+
+      {excedeBatch && (
+        <Alert severity="error">
+          El lote pesa {formatMB(totalBytes)} y supera el límite de {MAX_BATCH_MB}MB por subida.
+          {' '}El proxy de Cloudflare rechaza requests más grandes con error 413, así que dividí el
+          lote en varias subidas más chicas antes de continuar.
         </Alert>
       )}
 
@@ -147,7 +163,7 @@ const CargaArchivosStep = ({ files, onFilesChange, pdfSplitPerPage, onPdfSplitPe
       {files.length > 0 && (
         <Box>
           <Typography variant="subtitle2" sx={{ mb: 1 }}>
-            {files.length} archivo(s)
+            {files.length} archivo(s) · {formatMB(totalBytes)} en total
           </Typography>
           <Stack direction="row" flexWrap="wrap" useFlexGap spacing={0.5} sx={{ maxHeight: 220, overflow: 'auto' }}>
             {files.map((f) => {

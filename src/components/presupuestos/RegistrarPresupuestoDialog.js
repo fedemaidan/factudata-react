@@ -107,16 +107,27 @@ export default function RegistrarPresupuestoDialog({
     setSaving(true);
     try {
       const provId = proveedor._id || proveedor.id;
+      // Convertir el campo `categoria` plano (legacy) al formato nuevo `clasificaciones[]`.
+      // Si la categoría tiene formato "Cat - Sub", la dividimos.
+      const clasificaciones = (() => {
+        if (!categoria) return [];
+        const parts = String(categoria).split(' - ');
+        const cat = parts[0]?.trim();
+        const sub = parts[1]?.trim();
+        if (!cat) return [];
+        return [{ categoria: cat, subcategorias: sub ? [sub] : [] }];
+      })();
+
       const payload = {
         empresa_id: empresaId,
-        proveedor: proveedor.nombre,
-        proveedor_id: provId,
+        // Formato nuevo: array de proveedores
+        proveedores: [{ id: provId, nombre: proveedor.nombre }],
         monto: montoNum,
         moneda,
         tipo,
         proyecto_id: proyectoSel?.id || proyectoSel?._id || null,
         etapa: etapa.trim() || null,
-        categoria: categoria || null,
+        clasificaciones,
         fecha_presupuesto: fecha,
       };
       await PresupuestoService.crearPresupuesto(payload);

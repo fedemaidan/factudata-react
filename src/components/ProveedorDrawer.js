@@ -54,6 +54,7 @@ import RegistrarPagoDialog from 'src/components/pagos/RegistrarPagoDialog';
 import AnularPagoDialog from 'src/components/pagos/AnularPagoDialog';
 import CombinarProveedorDialog from 'src/components/proveedores/CombinarProveedorDialog';
 import RegistrarPresupuestoDialog from 'src/components/presupuestos/RegistrarPresupuestoDialog';
+import { getProyectosByEmpresaId } from 'src/services/proyectosService';
 
 // ─── Context ──────────────────────────────────────────────────────────────────
 
@@ -789,7 +790,30 @@ function TabPretendidos({ pretendidos, loading }) {
 
 // ─── Tab: Presupuestos ────────────────────────────────────────────────────────
 
-function TabPresupuestos({ presupuestos = [], loading, onRegistrarPresupuesto }) {
+function TabPresupuestos({ presupuestos = [], loading, onRegistrarPresupuesto, proyectos = [] }) {
+  // Helper para resolver el nombre del proyecto a partir de proyecto_id
+  const proyectoNombreById = useMemo(() => {
+    const map = new Map();
+    (proyectos || []).forEach((pr) => {
+      const id = pr.id || pr._id;
+      if (id) map.set(String(id), pr.nombre || pr.name || '');
+    });
+    return map;
+  }, [proyectos]);
+
+  // Helper para mostrar la categoría (formato nuevo `clasificaciones[]` o legacy `categoria`)
+  const renderCategoria = (p) => {
+    if (Array.isArray(p.clasificaciones) && p.clasificaciones.length > 0) {
+      const c = p.clasificaciones[0];
+      const subs = Array.isArray(c.subcategorias) && c.subcategorias.length > 0 ? ` - ${c.subcategorias[0]}` : '';
+      const label = `${c.categoria}${subs}${p.clasificaciones.length > 1 ? ` +${p.clasificaciones.length - 1}` : ''}`;
+      return label;
+    }
+    if (p.categoria) {
+      return p.subcategoria ? `${p.categoria} - ${p.subcategoria}` : p.categoria;
+    }
+    return null;
+  };
   const totales = useMemo(() => {
     const porMoneda = {};
     presupuestos.forEach((p) => {
@@ -860,14 +884,16 @@ function TabPresupuestos({ presupuestos = [], loading, onRegistrarPresupuesto })
                       {p.fecha_presupuesto || (p.createdAt ? formatTimestamp(p.createdAt, 'DIA/MES/ANO') : '—')}
                     </TableCell>
                     <TableCell>
-                      <Typography variant="body2">{p.proyecto_nombre || '—'}</Typography>
+                      <Typography variant="body2">
+                        {(p.proyecto_id && proyectoNombreById.get(String(p.proyecto_id))) || p.proyecto_nombre || '—'}
+                      </Typography>
                       {p.etapa && (
                         <Typography variant="caption" color="text.secondary">{p.etapa}</Typography>
                       )}
                     </TableCell>
                     <TableCell>
                       <Typography variant="body2" color="text.secondary">
-                        {p.categoria || '—'}
+                        {renderCategoria(p) || '—'}
                       </Typography>
                     </TableCell>
                     <TableCell>
@@ -909,7 +935,7 @@ function TabPresupuestos({ presupuestos = [], loading, onRegistrarPresupuesto })
 
 // ─── ProveedorDrawer ──────────────────────────────────────────────────────────
 
-function ProveedorDrawer({ open, onClose, proveedorId, empresaId, categoriasEmpresa, onUpdate }) {
+function ProveedorDrawer({ open, onClose, proveedorId, proveedorNombreHint, empresaId, categoriasEmpresa, onUpdate }) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
@@ -927,19 +953,22 @@ function ProveedorDrawer({ open, onClose, proveedorId, empresaId, categoriasEmpr
   // Dialog presupuesto
   const [registrarPresupuestoOpen, setRegistrarPresupuestoOpen] = useState(false);
 
+  // Proyectos de la empresa (para resolver nombre desde proyecto_id en la tab Presupuestos)
+  const [proyectos, setProyectos] = useState([]);
+
   const fetchData = useCallback(async () => {
     if (!proveedorId || !empresaId) return;
     setLoading(true);
     setError('');
     try {
-      const result = await proveedorService.getCuentaCorriente(empresaId, proveedorId);
+      const result = await proveedorService.getCuentaCorriente(empresaId, proveedorId, null, proveedorNombreHint);
       setData(result);
     } catch {
       setError('Error al cargar el proveedor');
     } finally {
       setLoading(false);
     }
-  }, [proveedorId, empresaId]);
+  }, [proveedorId, empresaId, proveedorNombreHint]);
 
   useEffect(() => {
     if (open) {
@@ -951,6 +980,13 @@ function ProveedorDrawer({ open, onClose, proveedorId, empresaId, categoriasEmpr
       return () => clearTimeout(t);
     }
   }, [open, fetchData]);
+
+  // Cargar proyectos de la empresa cuando se abre el drawer (cache simple)
+  useEffect(() => {
+    if (!open || !empresaId) return;
+    if (proyectos.length > 0) return;
+    getProyectosByEmpresaId(empresaId).then(setProyectos).catch(() => setProyectos([]));
+  }, [open, empresaId, proyectos.length]);
 
   const handleToggleFavorito = async () => {
     if (!data?.proveedor || togglingFav) return;
@@ -1091,6 +1127,7 @@ function ProveedorDrawer({ open, onClose, proveedorId, empresaId, categoriasEmpr
             presupuestos={data?.presupuestos || []}
             loading={loading && !data}
             onRegistrarPresupuesto={() => setRegistrarPresupuestoOpen(true)}
+            proyectos={proyectos}
           />
         )}
         {tab === TAB_PRETENDIDOS && (

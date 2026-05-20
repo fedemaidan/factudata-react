@@ -373,11 +373,18 @@ function PretendidosPanel({ pretendidos, loading, proyectos, proveedoresManoObra
                       <TableCell>
                         <Stack direction="row" alignItems="center" spacing={0.5}>
                           <span>{p.proveedor_nombre}</span>
-                          {onOpenDrawer && p.proveedor_id && (
-                            <Tooltip title="Ver ficha del proveedor">
-                              <IconButton size="small" onClick={(e) => { e.stopPropagation(); onOpenDrawer(p.proveedor_id); }} sx={{ opacity: 0.5, '&:hover': { opacity: 1 } }}>
-                                <InfoOutlinedIcon fontSize="inherit" />
-                              </IconButton>
+                          {onOpenDrawer && (
+                            <Tooltip title={p.proveedor_id ? 'Ver ficha del proveedor' : 'Proveedor no cargado'}>
+                              <span>
+                                <IconButton
+                                  size="small"
+                                  disabled={!p.proveedor_id}
+                                  onClick={(e) => { e.stopPropagation(); onOpenDrawer(p.proveedor_id, p.proveedor_nombre); }}
+                                  sx={{ opacity: 0.5, '&:hover': { opacity: 1 } }}
+                                >
+                                  <InfoOutlinedIcon fontSize="inherit" />
+                                </IconButton>
+                              </span>
                             </Tooltip>
                           )}
                         </Stack>
@@ -493,11 +500,18 @@ function PretendidosPanel({ pretendidos, loading, proyectos, proveedoresManoObra
                     <TableCell>
                       <Stack direction="row" alignItems="center" spacing={0.5}>
                         <span>{p.proveedor_nombre}</span>
-                        {onOpenDrawer && p.proveedor_id && (
-                          <Tooltip title="Ver ficha del proveedor">
-                            <IconButton size="small" onClick={() => onOpenDrawer(p.proveedor_id)} sx={{ opacity: 0.5, '&:hover': { opacity: 1 } }}>
-                              <InfoOutlinedIcon fontSize="inherit" />
-                            </IconButton>
+                        {onOpenDrawer && (
+                          <Tooltip title={p.proveedor_id ? 'Ver ficha del proveedor' : 'Proveedor no cargado'}>
+                            <span>
+                              <IconButton
+                                size="small"
+                                disabled={!p.proveedor_id}
+                                onClick={() => onOpenDrawer(p.proveedor_id, p.proveedor_nombre)}
+                                sx={{ opacity: 0.5, '&:hover': { opacity: 1 } }}
+                              >
+                                <InfoOutlinedIcon fontSize="inherit" />
+                              </IconButton>
+                            </span>
                           </Tooltip>
                         )}
                       </Stack>
@@ -724,9 +738,12 @@ const PagosAprobacionesPage = () => {
   // ProveedorDrawer
   const [provDrawerOpen, setProvDrawerOpen] = useState(false);
   const [provDrawerId, setProvDrawerId] = useState(null);
-  const openProveedorDrawer = useCallback((id) => {
+  const [provDrawerNombre, setProvDrawerNombre] = useState(null);
+  // Acepta (id) o (id, nombre). El nombre se usa como hint si el id no resuelve.
+  const openProveedorDrawer = useCallback((id, nombre = null) => {
     if (!id) return;
     setProvDrawerId(id);
+    setProvDrawerNombre(nombre);
     setProvDrawerOpen(true);
   }, []);
 
@@ -1551,15 +1568,18 @@ const PagosAprobacionesPage = () => {
                                 <TableCell key={`${movimiento.id}-${column.key}`} sx={{ whiteSpace: 'nowrap' }}>
                                   <Stack direction="row" alignItems="center" spacing={0.5}>
                                     <span>{movimiento.nombre_proveedor || '-'}</span>
-                                    {openProveedorDrawer && movimiento.id_proveedor && (
-                                      <Tooltip title="Ver ficha del proveedor">
-                                        <IconButton
-                                          size="small"
-                                          onClick={(e) => { e.stopPropagation(); openProveedorDrawer(movimiento.id_proveedor); }}
-                                          sx={{ opacity: 0.5, '&:hover': { opacity: 1 } }}
-                                        >
-                                          <InfoOutlinedIcon fontSize="inherit" />
-                                        </IconButton>
+                                    {openProveedorDrawer && (
+                                      <Tooltip title={movimiento.id_proveedor ? 'Ver ficha del proveedor' : 'Proveedor no cargado'}>
+                                        <span>
+                                          <IconButton
+                                            size="small"
+                                            disabled={!movimiento.id_proveedor}
+                                            onClick={(e) => { e.stopPropagation(); openProveedorDrawer(movimiento.id_proveedor, movimiento.nombre_proveedor); }}
+                                            sx={{ opacity: 0.5, '&:hover': { opacity: 1 } }}
+                                          >
+                                            <InfoOutlinedIcon fontSize="inherit" />
+                                          </IconButton>
+                                        </span>
                                       </Tooltip>
                                     )}
                                   </Stack>
@@ -1737,6 +1757,7 @@ const PagosAprobacionesPage = () => {
         open={provDrawerOpen}
         onClose={() => setProvDrawerOpen(false)}
         proveedorId={provDrawerId}
+        proveedorNombreHint={provDrawerNombre}
         empresaId={empresa?.id}
         categoriasEmpresa={empresa?.categorias || []}
         onUpdate={() => {}}

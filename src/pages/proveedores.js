@@ -4,6 +4,7 @@ import {
   Alert,
   Box,
   Button,
+  Checkbox,
   Chip,
   CircularProgress,
   Container,
@@ -30,6 +31,7 @@ import {
   Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
+import BalanceIcon from '@mui/icons-material/Balance';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import SearchIcon from '@mui/icons-material/Search';
@@ -41,6 +43,7 @@ import { useAuthContext } from 'src/contexts/auth-context';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import proveedorService from 'src/services/proveedorService';
 import { ProveedorDrawerProvider, useProveedorDrawer } from 'src/components/ProveedorDrawer';
+import AjustarCuentasDialog from 'src/components/proveedores/AjustarCuentasDialog';
 import { formatCurrencyWithCode, formatTimestamp } from 'src/utils/formatters';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -76,6 +79,10 @@ function ProveedoresContent({ empresa, refreshKey }) {
   // Tabs y filtros secundarios — default "Todos" para no ocultar proveedores al entrar
   const [tab, setTab] = useState('todos');
   const [busqueda, setBusqueda] = useState('');
+
+  // Selección múltiple (sólo activa en tab Con deuda para ajuste de cuentas)
+  const [seleccionados, setSeleccionados] = useState(() => new Set());
+  const [ajusteDialogOpen, setAjusteDialogOpen] = useState(false);
   const [filtroTipo, setFiltroTipo] = useState('todos'); // 'todos' | 'materiales' | 'mano_de_obra'
 
   // CSV
@@ -346,7 +353,7 @@ function ProveedoresContent({ empresa, refreshKey }) {
       <Paper variant="outlined" sx={{ mb: 2 }}>
         <Tabs
           value={tab}
-          onChange={(_, v) => setTab(v)}
+          onChange={(_, v) => { setTab(v); setSeleccionados(new Set()); }}
           variant="scrollable"
           scrollButtons="auto"
           sx={{ borderBottom: 1, borderColor: 'divider', px: 1 }}
@@ -406,6 +413,75 @@ function ProveedoresContent({ empresa, refreshKey }) {
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
+      {/* ── Barra de acciones para tab Con deuda ── */}
+      {tab === 'con_deuda' && ordenados.length > 0 && (() => {
+        const proveedoresConSaldo = ordenados.filter((p) => {
+          const r = resumenMap[p._id || p.id];
+          return (r?.saldo || 0) > 0.005;
+        });
+        const seleccionadosArr = proveedoresConSaldo.filter((p) => seleccionados.has(p._id || p.id));
+        const todosSeleccionados = proveedoresConSaldo.length > 0
+          && seleccionadosArr.length === proveedoresConSaldo.length;
+        const algunoSeleccionado = seleccionadosArr.length > 0;
+
+        const totalDeudaSeleccionados = seleccionadosArr.reduce((acc, p) => {
+          const r = resumenMap[p._id || p.id];
+          return acc + (r?.saldo || 0);
+        }, 0);
+
+        const toggleTodos = () => {
+          if (todosSeleccionados) {
+            setSeleccionados(new Set());
+          } else {
+            setSeleccionados(new Set(proveedoresConSaldo.map((p) => p._id || p.id)));
+          }
+        };
+
+        const proveedoresParaAjuste = seleccionadosArr.map((p) => ({
+          _id: p._id || p.id,
+          nombre: p.nombre,
+          saldo: resumenMap[p._id || p.id]?.saldo || 0,
+        }));
+
+        return (
+          <Paper variant="outlined" sx={{ p: 1.5, mb: 1.5 }}>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ xs: 'flex-start', sm: 'center' }} justifyContent="space-between">
+              <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap">
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={toggleTodos}
+                  disabled={proveedoresConSaldo.length === 0}
+                >
+                  {todosSeleccionados ? 'Deseleccionar todos' : `Seleccionar todos (${proveedoresConSaldo.length})`}
+                </Button>
+                {algunoSeleccionado && (
+                  <Chip
+                    size="small"
+                    color="warning"
+                    label={`${seleccionadosArr.length} seleccionado${seleccionadosArr.length !== 1 ? 's' : ''} · ${formatCurrencyWithCode(totalDeudaSeleccionados)}`}
+                  />
+                )}
+              </Stack>
+              <Tooltip title="Genera un Pago 'Ajuste inicial' por cada proveedor seleccionado que cierra su saldo en cero.">
+                <span>
+                  <Button
+                    variant="contained"
+                    color="warning"
+                    size="small"
+                    startIcon={<BalanceIcon fontSize="small" />}
+                    onClick={() => setAjusteDialogOpen(true)}
+                    disabled={!algunoSeleccionado}
+                  >
+                    Ajustar cuentas
+                  </Button>
+                </span>
+              </Tooltip>
+            </Stack>
+          </Paper>
+        );
+      })()}
+
       {/* ── Tabla ── */}
       <Paper variant="outlined">
         {loading && proveedores.length === 0 ? (
@@ -424,6 +500,7 @@ function ProveedoresContent({ empresa, refreshKey }) {
           <Table size="small">
             <TableHead>
               <TableRow sx={{ bgcolor: 'background.neutral' }}>
+                {tab === 'con_deuda' && <TableCell padding="checkbox" />}
                 <TableCell sx={{ width: 32 }} />
                 <TableCell>Nombre</TableCell>
                 <TableCell>Tipo</TableCell>
@@ -445,6 +522,23 @@ function ProveedoresContent({ empresa, refreshKey }) {
                     onClick={() => openDrawer(id)}
                     sx={{ cursor: 'pointer', opacity: prov.archivado ? 0.55 : 1 }}
                   >
+                    {tab === 'con_deuda' && (
+                      <TableCell padding="checkbox" onClick={(e) => e.stopPropagation()}>
+                        <Checkbox
+                          size="small"
+                          checked={seleccionados.has(id)}
+                          disabled={(r?.saldo || 0) <= 0.005}
+                          onChange={(e) => {
+                            setSeleccionados((prev) => {
+                              const next = new Set(prev);
+                              if (e.target.checked) next.add(id);
+                              else next.delete(id);
+                              return next;
+                            });
+                          }}
+                        />
+                      </TableCell>
+                    )}
                     <TableCell sx={{ width: 32, pr: 0 }}>
                       {prov.favorito && <StarIcon fontSize="small" sx={{ color: 'warning.main', display: 'block' }} />}
                     </TableCell>
@@ -539,6 +633,25 @@ function ProveedoresContent({ empresa, refreshKey }) {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* ── Dialog: Ajustar cuentas (cerrar saldo histórico) ── */}
+      <AjustarCuentasDialog
+        open={ajusteDialogOpen}
+        onClose={() => setAjusteDialogOpen(false)}
+        onSuccess={() => {
+          setAjusteDialogOpen(false);
+          setSeleccionados(new Set());
+          fetchData();
+        }}
+        empresaId={empresaId}
+        proveedores={(proveedores || [])
+          .filter((p) => seleccionados.has(p._id || p.id))
+          .map((p) => ({
+            _id: p._id || p.id,
+            nombre: p.nombre,
+            saldo: resumenMap[p._id || p.id]?.saldo || 0,
+          }))}
+      />
     </Container>
   );
 }

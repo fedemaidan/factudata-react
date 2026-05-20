@@ -402,6 +402,18 @@ const movimientosService = {
   analizarCargaMasiva: async (archivos, contexto_lote = {}, opts = {}) => {
     const { onProgress, signal } = opts;
     try {
+      // Pre-flight: Cloudflare (Free/Pro) rechaza body > 100MB con 413.
+      // Dejamos margen para overhead de multipart + JSON del contexto.
+      const MAX_BATCH_BYTES = 95 * 1024 * 1024;
+      const MAX_BATCH_MB = 100;
+      const totalBytes = (archivos || []).reduce((acc, f) => acc + (f?.size || 0), 0);
+      if (totalBytes > MAX_BATCH_BYTES) {
+        const totalMb = (totalBytes / (1024 * 1024)).toFixed(1);
+        return {
+          error: true,
+          message: `El lote pesa ${totalMb}MB y supera el límite de ${MAX_BATCH_MB}MB por subida. Dividilo en lotes más chicos: el proxy (Cloudflare) rechaza requests más grandes con error 413.`,
+        };
+      }
       const formData = new FormData();
       (archivos || []).forEach((f) => {
         formData.append('archivos', f);

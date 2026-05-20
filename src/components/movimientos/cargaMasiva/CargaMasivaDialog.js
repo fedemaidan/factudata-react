@@ -24,7 +24,7 @@ import proveedorService from 'src/services/proveedorService';
 import profileService from 'src/services/profileService';
 import movimientosService from 'src/services/movimientosService';
 import { getCamposConfig } from 'src/components/movementFieldsConfig';
-import CargaArchivosStep from './steps/CargaArchivosStep';
+import CargaArchivosStep, { MAX_BATCH_BYTES, MAX_BATCH_MB } from './steps/CargaArchivosStep';
 import PreguntasContextoStep from './steps/PreguntasContextoStep';
 import ValidacionLoteStep from './steps/ValidacionLoteStep';
 import { mapExtractedToForm, emptyForm, copyShareableFields } from './cargaMasivaMap';
@@ -569,8 +569,10 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
     onClose();
   };
 
+  const totalBatchBytes = files.reduce((acc, f) => acc + (f.size || 0), 0);
+  const batchExcedeLimite = totalBatchBytes > MAX_BATCH_BYTES;
   const nextDisabledOcr =
-    (activeStep === 0 && (files.length === 0 || preguntasLoading)) ||
+    (activeStep === 0 && (files.length === 0 || preguntasLoading || batchExcedeLimite)) ||
     (activeStep === 1 &&
       (!contexto.proyecto_id || !preguntasEstanCompletas(preguntasGpt, respuestasGpt))) ||
     analyzeLoading;

@@ -108,9 +108,28 @@ const proveedorService = {
    * @param {string} proveedorId
    * @param {string} [proyectoId]
    */
-  async getCuentaCorriente(empresaId, proveedorId, proyectoId) {
-    const params = proyectoId ? `?proyectoId=${proyectoId}` : '';
+  async getCuentaCorriente(empresaId, proveedorId, proyectoId, nombreHint) {
+    const qs = new URLSearchParams();
+    if (proyectoId) qs.set('proyectoId', proyectoId);
+    if (nombreHint) qs.set('nombre', nombreHint);
+    const params = qs.toString() ? `?${qs.toString()}` : '';
     const { data } = await api.get(`/empresa/${empresaId}/proveedores/${proveedorId}/cuenta-corriente${params}`);
+    return data;
+  },
+
+  /**
+   * Cierra el saldo de uno o varios proveedores generando un PagoProveedor
+   * de "Ajuste inicial" por cada uno que imputa todo el pendiente.
+   * @param {string} empresaId
+   * @param {string[]} proveedor_ids
+   * @param {{ fecha_pago?: string, descripcion?: string }} [opts]
+   * @returns {Promise<{ ok, totals, resultados }>}
+   */
+  async ajustarCuentas(empresaId, proveedor_ids, opts = {}) {
+    const { data } = await api.post(
+      `/empresa/${empresaId}/proveedores/ajustar-cuentas`,
+      { proveedor_ids, ...opts }
+    );
     return data;
   },
 };
