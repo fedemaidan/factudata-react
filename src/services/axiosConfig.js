@@ -26,13 +26,51 @@ const waitForAuthReady = async () => {
     }
 };
 
+// Si al token le quedan menos de este margen para expirar, lo refrescamos
+// proactivamente antes de mandar la request. Reduce drásticamente los 401 +
+// retry que veíamos en backend cuando una pantalla dispara muchas requests
+// en paralelo y el SDK de Firebase aún no refrescó solo.
+const TOKEN_REFRESH_MARGIN_MS = 5 * 60 * 1000; // 5 minutos
+
+// Coalesce: si varias requests detectan token expirando al mismo tiempo,
+// hacemos UN solo refresh y todas reusan la misma Promise.
+let _inflightRefresh = null;
+const getFreshToken = async (user, forceRefresh) => {
+    if (!forceRefresh) return user.getIdToken(false);
+    if (!_inflightRefresh) {
+        _inflightRefresh = user
+            .getIdToken(true)
+            .finally(() => { _inflightRefresh = null; });
+    }
+    return _inflightRefresh;
+};
+
 api.interceptors.request.use(
     async config => {
         try {
             await waitForAuthReady();
             const fallbackToken = window.localStorage.getItem('authToken');
             const user = auth.currentUser || await waitForUser().catch(() => null);
-            const token = user ? await user.getIdToken() : fallbackToken;
+
+            let token = null;
+            if (user) {
+                // Si el token vence en <5 min, refrescar AHORA (en vez de
+                // dejar que el server devuelva 401 y reintentar después).
+                let forceRefresh = false;
+                try {
+                    const result = await user.getIdTokenResult();
+                    const expMs = new Date(result.expirationTime).getTime();
+                    forceRefresh = (expMs - Date.now()) < TOKEN_REFRESH_MARGIN_MS;
+                } catch { /* si falla, vamos con el camino normal */ }
+
+                token = await getFreshToken(user, forceRefresh);
+                if (forceRefresh) {
+                    window.localStorage.setItem('authToken', token);
+                }
+            } else {
+                token = fallbackToken;
+            }
+
             if (token) {
                 config.headers['Authorization'] = `Bearer ${token}`;
             }
@@ -56,7 +94,10 @@ api.interceptors.response.use(
                 await waitForAuthReady();
                 const user = auth.currentUser || await waitForUser().catch(() => null);
                 if (!user) return Promise.reject(error);
-                const token = await user.getIdToken(true);
+                // Coalesce con el refresh proactivo: si ya hay uno en vuelo,
+                // todas las requests fallidas reusan la misma Promise en vez
+                // de pegarle 90 veces a Firebase.
+                const token = await getFreshToken(user, true);
                 window.localStorage.setItem('authToken', token);
                 originalRequest.headers['Authorization'] = `Bearer ${token}`;
                 return api(originalRequest);
