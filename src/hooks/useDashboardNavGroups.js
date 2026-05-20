@@ -53,7 +53,7 @@ async function buildDefaultGroups({ user, empresa, permisosUsuario, canUseAgente
   // ——— FINANZAS ———
   const finanzasItems = [];
   if (esAdmin) {
-    finanzasItems.push({ title: "Todos los movimientos", path: `/todosProyectos?empresaId=${empId}`, icon: icon(DashboardIcon) });
+    finanzasItems.push({ title: "Todos los movimientos", path: `/cajas?empresaId=${empId}&vista=todos`, icon: icon(DashboardIcon) });
   }
   if (permisosUsuario.includes("CREAR_EGRESO_SIMPLIFICADO")) {
     finanzasItems.push({ title: "Ver caja", path: "/cajaSimple", icon: icon(AccountBalanceWallet) });

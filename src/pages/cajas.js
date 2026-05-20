@@ -28,6 +28,15 @@ import { getProyectosFromUser, recargarProyecto, updateProyecto } from 'src/serv
 import { getSheetConfigsByEmpresa, syncSheetConfig } from 'src/services/sheetConfigService';
 import movimientosService from 'src/services/movimientosService';
 import profileService from 'src/services/profileService';
+import proveedorService from 'src/services/proveedorService';
+import {
+  exportMovimientosToExcel,
+  exportMovimientosToCSV,
+  exportMovimientosToPDF,
+  exportMovimientosAfip,
+} from 'src/utils/movimientoExporters';
+import CargaMasivaDialog from 'src/components/movimientos/cargaMasiva/CargaMasivaDialog';
+import Papa from 'papaparse';
 import Snackbar from '@mui/material/Snackbar';
 import Alert from '@mui/material/Alert';
 import { useAuthContext } from 'src/contexts/auth-context';
@@ -999,7 +1008,20 @@ const scrollByStep = (dir) => {
   el.scrollTo({ left: next, behavior: 'smooth' });
 };
 
-const handleSaveCols = async () => {
+const persistUserCajasPrefs = useCallback(async (nextPrefs) => {
+    writeCajasLocalPrefs(nextPrefs);
+    if (!user?.id) return;
+    const mergedUiPrefs = {
+      ...(user.ui_prefs || {}),
+      cajas: nextPrefs,
+    };
+    await profileService.updateProfile(user.id, { ui_prefs: mergedUiPrefs });
+    if (user && typeof user === 'object') {
+      user.ui_prefs = mergedUiPrefs;
+    }
+  }, [user]);
+
+  const handleSaveCols = async () => {
     try {
       setSavingCols(true);
       const nextPrefs = {
@@ -1007,21 +1029,7 @@ const handleSaveCols = async () => {
         visible: visibleCols,
         orden: columnasOrden,
       };
-      if (activeProject?.id) {
-        const updatedProject = {
-          ...activeProject,
-          ui_prefs: {
-            ...(activeProject.ui_prefs || {}),
-            columnas: nextPrefs,
-          },
-        };
-        await updateProyecto(activeProject.id, {
-          ...updatedProject,
-        });
-        setProyectos((prev) => prev.map((item) => (item.id === updatedProject.id ? updatedProject : item)));
-      } else {
-        writeCajasLocalPrefs(nextPrefs);
-      }
+      await persistUserCajasPrefs(nextPrefs);
       setSaveMsg('Configuración guardada');
     } catch (e) {
       setSaveMsg('No se pudo guardar');
@@ -1154,34 +1162,14 @@ const handleCloseViewConfig = () => setViewConfigOpen(false);
 
 const handleOrdenColumnasChange = async (nuevoOrden) => {
   setColumnasOrden(nuevoOrden);
-  if (activeProject?.id) {
-    try {
-      const updatedProject = {
-        ...activeProject,
-        ui_prefs: {
-          ...(activeProject.ui_prefs || {}),
-          columnas: {
-            ...(activeProject.ui_prefs?.columnas || {}),
-            compact: compactCols,
-            visible: visibleCols,
-            orden: nuevoOrden,
-          },
-        },
-      };
-      await updateProyecto(activeProject.id, {
-        ...updatedProject,
-      });
-      setProyectos((prev) => prev.map((item) => (item.id === updatedProject.id ? updatedProject : item)));
-    } catch (e) {
-      setAlert((prev) => ({ ...prev, open: true, message: 'No se pudo guardar el orden', severity: 'error' }));
-    }
-  } else {
-    writeCajasLocalPrefs({
-      ...(readCajasLocalPrefs() || {}),
+  try {
+    await persistUserCajasPrefs({
       compact: compactCols,
       visible: visibleCols,
       orden: nuevoOrden,
     });
+  } catch (e) {
+    setAlert((prev) => ({ ...prev, open: true, message: 'No se pudo guardar el orden', severity: 'error' }));
   }
 };
 
@@ -1716,7 +1704,9 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
 
   useEffect(() => {
     if (!empresa?.id) return;
-    const savedCols = activeProject?.ui_prefs?.columnas || readCajasLocalPrefs();
+    const savedCols = user?.ui_prefs?.cajas
+      || readCajasLocalPrefs()
+      || activeProject?.ui_prefs?.columnas;
     const nextCompact = typeof savedCols?.compact === 'boolean' ? savedCols.compact : true;
     const nextDefaultVisible = buildDefaultVisible(nextCompact, !activeProjectId);
     setProyecto(activeProject || null);
@@ -1732,7 +1722,22 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
     );
     setColumnasOrden(Array.isArray(savedCols?.orden) ? savedCols.orden : []);
     setPrefsHydrated(true);
-  }, [activeProject, activeProjectId, buildDefaultVisible, empresa?.id]);
+  }, [activeProject, activeProjectId, buildDefaultVisible, empresa?.id, user?.ui_prefs]);
+
+  // Si el usuario llega desde "Todos los movimientos" (vista=todos), mostrar
+  // un aviso de que la vista fue integrada dentro de Caja.
+  useEffect(() => {
+    if (!router.isReady) return;
+    if (router.query.vista !== 'todos') return;
+    setAlert({
+      open: true,
+      severity: 'info',
+      message: 'Todos los movimientos ahora está integrado dentro de Caja.',
+    });
+    const nextQuery = { ...router.query };
+    delete nextQuery.vista;
+    router.replace({ pathname: router.pathname, query: nextQuery }, undefined, { shallow: true });
+  }, [router.isReady, router.query.vista]);
 
   useEffect(() => {
     if (!empresa?.id) return;
@@ -1871,6 +1876,126 @@ const getTime = (v) => {
     setCsvSelectedFields(csvDefaultOrder);
     setCsvFieldOrder(csvDefaultOrder);
   }, [csvDefaultOrder]);
+
+  // ---- Exportadores migrados desde "Todos los movimientos" ----
+  const fetchAllMovimientosFiltrados = useCallback(async () => {
+    const batchSize = 1000;
+    const all = [];
+    let exportPage = 0;
+    let hasNext = true;
+    while (hasNext) {
+      const response = await movimientosService.getCajasDashboard({
+        ...buildCajaDashboardParams({
+          filters,
+          caja: filters.caja,
+          page: exportPage,
+          limit: batchSize,
+          includeOptions: false,
+        }),
+        empresaId: empresa?.id,
+        ...(scopeProjectIds.length > 0 ? { proyectoIds: scopeProjectIds.join(',') } : {}),
+      });
+      all.push(...flattenDashboardItems(response?.items || []));
+      hasNext = !!response?.pagination?.hasNext;
+      exportPage += 1;
+    }
+    return all;
+  }, [empresa?.id, filters, scopeProjectIds]);
+
+  const runExportador = useCallback(async (exporter, label) => {
+    try {
+      setCsvExporting(true);
+      const movimientos = await fetchAllMovimientosFiltrados();
+      if (movimientos.length === 0) {
+        setAlert({ open: true, severity: 'warning', message: 'No hay movimientos para exportar' });
+        return;
+      }
+      await exporter(movimientos);
+      setAlert({ open: true, severity: 'success', message: `${label} exportado (${movimientos.length} movimientos)` });
+    } catch (err) {
+      console.error('[cajas] export error:', err);
+      setAlert({ open: true, severity: 'error', message: `No se pudo exportar (${label})` });
+    } finally {
+      setCsvExporting(false);
+    }
+  }, [fetchAllMovimientosFiltrados]);
+
+  const handleExportExcel = useCallback(() => (
+    runExportador((movs) => exportMovimientosToExcel({ movimientos: movs, empresa }), 'Excel')
+  ), [empresa, runExportador]);
+
+  const handleExportCSV = useCallback(() => (
+    runExportador((movs) => exportMovimientosToCSV({ movimientos: movs, empresa }), 'CSV')
+  ), [empresa, runExportador]);
+
+  const handleExportPDF = useCallback(() => (
+    runExportador((movs) => exportMovimientosToPDF({ movimientos: movs, empresa }), 'PDF')
+  ), [empresa, runExportador]);
+
+  const handleExportAfip = useCallback(() => (
+    runExportador(async (movs) => {
+      let proveedoresData = [];
+      try {
+        proveedoresData = await proveedorService.getByEmpresa(empresa?.id) || [];
+      } catch {}
+      return exportMovimientosAfip({ movimientos: movs, empresa, proveedoresData });
+    }, 'AFIP')
+  ), [empresa, runExportador]);
+
+  // ---- Carga masiva ----
+  const [cargaMasivaOpen, setCargaMasivaOpen] = useState(false);
+
+  // ---- Importar CSV (actualiza movimientos existentes por id) ----
+  const [openImportDialog, setOpenImportDialog] = useState(false);
+  const [csvFile, setCsvFile] = useState(null);
+  const [importLoading, setImportLoading] = useState(false);
+
+  const handleImportCsv = useCallback(async () => {
+    if (!csvFile) return;
+    setImportLoading(true);
+    Papa.parse(csvFile, {
+      header: true,
+      skipEmptyLines: true,
+      complete: async (results) => {
+        const rows = results.data;
+        const errores = [];
+        for (let i = 0; i < rows.length; i += 1) {
+          const { id, ...campos } = rows[i];
+          try {
+            if (!id) throw new Error('Falta ID en la fila');
+            const normalizados = {};
+            for (const key of Object.keys(campos)) {
+              const value = campos[key];
+              if (value === '') continue;
+              if (!Number.isNaN(Number(value)) && String(value).trim() !== '') {
+                normalizados[key] = Number(value);
+              } else {
+                normalizados[key] = value;
+              }
+            }
+            await movimientosService.updateMovimiento(id, normalizados);
+          } catch (err) {
+            errores.push({ fila: i + 2, error: err.message });
+          }
+        }
+        setImportLoading(false);
+        setOpenImportDialog(false);
+        setCsvFile(null);
+        fetchAndHydrateMovimientos({ includeOptions: false });
+        setAlert({
+          open: true,
+          severity: errores.length === 0 ? 'success' : 'warning',
+          message: errores.length === 0
+            ? 'Importación exitosa'
+            : `Algunos movimientos fallaron (${errores.length})`,
+        });
+      },
+      error: () => {
+        setImportLoading(false);
+        setAlert({ open: true, severity: 'error', message: 'Error al leer CSV' });
+      },
+    });
+  }, [csvFile, fetchAndHydrateMovimientos]);
 
   const handleExportCsvAnalisis = useCallback(async () => {
     const selectedFields = csvFieldOrder
@@ -3223,6 +3348,36 @@ useEffect(() => {
     <DownloadIcon sx={{ mr: 1 }} />
     Exportar CSV para análisis
   </MenuOption>
+
+  <Divider sx={{ my: 1 }} />
+
+  <MenuOption onClick={() => { handleExportExcel(); handleCloseMenu(); }} disabled={csvExporting}>
+    <DownloadIcon sx={{ mr: 1 }} />
+    Exportar a Excel
+  </MenuOption>
+  <MenuOption onClick={() => { handleExportCSV(); handleCloseMenu(); }} disabled={csvExporting}>
+    <DownloadIcon sx={{ mr: 1 }} />
+    Exportar a CSV
+  </MenuOption>
+  <MenuOption onClick={() => { handleExportPDF(); handleCloseMenu(); }} disabled={csvExporting}>
+    <DownloadIcon sx={{ mr: 1 }} />
+    Exportar a PDF
+  </MenuOption>
+  <MenuOption onClick={() => { handleExportAfip(); handleCloseMenu(); }} disabled={csvExporting}>
+    <DownloadIcon sx={{ mr: 1 }} />
+    Exportar AFIP (Excel)
+  </MenuOption>
+
+  <Divider sx={{ my: 1 }} />
+
+  <MenuOption onClick={() => { setCargaMasivaOpen(true); handleCloseMenu(); }}>
+    <DownloadIcon sx={{ mr: 1 }} />
+    Carga masiva
+  </MenuOption>
+  <MenuOption onClick={() => { setOpenImportDialog(true); handleCloseMenu(); }}>
+    <DownloadIcon sx={{ mr: 1 }} />
+    Importar CSV (actualizar)
+  </MenuOption>
 </Menu>
 
       </Box>
@@ -3581,6 +3736,63 @@ useEffect(() => {
   exporting={csvExporting}
   totalRows={totalRows}
 />
+
+<CargaMasivaDialog
+  open={cargaMasivaOpen}
+  onClose={() => setCargaMasivaOpen(false)}
+  empresa={empresa}
+  proyectos={proyectos}
+  user={user}
+  onSuccess={({ ok, errores, tabularImport, resultado }) => {
+    if (tabularImport) {
+      const exitosos = resultado?.exitosos ?? resultado?.total;
+      setAlert({
+        open: true,
+        severity: resultado?.fallidos > 0 ? 'warning' : 'success',
+        message: exitosos != null
+          ? `Planilla: ${exitosos} movimiento(s) importados${resultado?.fallidos ? `. ${resultado.fallidos} con error.` : '.'}`
+          : 'Importación por planilla finalizada.',
+      });
+    } else {
+      const nOk = ok?.length ?? 0;
+      const nErr = errores?.length ?? 0;
+      setAlert({
+        open: true,
+        severity: nErr ? 'warning' : 'success',
+        message: nErr > 0
+          ? `Creados ${nOk} movimiento(s). ${nErr} error(es).`
+          : `Se crearon ${nOk} movimiento(s) correctamente.`,
+      });
+    }
+    fetchAndHydrateMovimientos({ includeOptions: false });
+  }}
+/>
+
+<Dialog
+  open={openImportDialog}
+  onClose={() => setOpenImportDialog(false)}
+  maxWidth="sm"
+  fullWidth
+>
+  <DialogTitle>Importar CSV para actualizar movimientos</DialogTitle>
+  <DialogContent>
+    <input
+      type="file"
+      accept=".csv"
+      onChange={(e) => setCsvFile(e.target.files?.[0] || null)}
+    />
+  </DialogContent>
+  <DialogActions>
+    <Button onClick={() => setOpenImportDialog(false)}>Cancelar</Button>
+    <Button
+      variant="contained"
+      disabled={!csvFile || importLoading}
+      onClick={handleImportCsv}
+    >
+      {importLoading ? 'Importando...' : 'Importar'}
+    </Button>
+  </DialogActions>
+</Dialog>
 
 
       </ErrorBoundary>
