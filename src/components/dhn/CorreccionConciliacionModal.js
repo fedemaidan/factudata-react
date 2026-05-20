@@ -62,6 +62,12 @@ const TAB_DEFINITIONS = {
   },
 };
 
+const TIPO_TURNO_LABEL = {
+  diurno: "Diurno",
+  nocturno1: "Nocturno 1",
+  nocturno2: "Nocturno 2",
+};
+
 const formatFechaLabel = (value) => {
   if (!value) return "-";
   const fecha = new Date(value);
@@ -111,6 +117,10 @@ const CorreccionConciliacionModal = ({
   const theme = useTheme();
   const isMdDown = useMediaQuery(theme.breakpoints.down("md"));
   const comprobantes = useMemo(() => (Array.isArray(row?.comprobantes) ? row.comprobantes : []), [row]);
+  const turnosDetectados = useMemo(
+    () => (Array.isArray(row?.turnosDetectados) ? row.turnosDetectados : []),
+    [row]
+  );
   const sheetHoras = row?.sheetHoras || {};
   const sheetItems = useMemo(
     () =>
@@ -498,6 +508,59 @@ const CorreccionConciliacionModal = ({
                 </Stack>
               </Box>
             </Stack>
+            {turnosDetectados.length > 0 && (
+              <Box>
+                <Typography variant="subtitle2" gutterBottom>
+                  Horario detectado
+                </Typography>
+                <Stack spacing={0.5}>
+                  {turnosDetectados.map((turno, idx) => {
+                    const label = TIPO_TURNO_LABEL[turno.tipo] || turno.tipo;
+                    const variante =
+                      turno.varianteEntrada && turno.varianteSalida
+                        ? `${turno.varianteEntrada} → ${turno.varianteSalida}`
+                        : turno.varianteSalida
+                        ? `→ ${turno.varianteSalida}`
+                        : turno.varianteEntrada
+                        ? `${turno.varianteEntrada} →`
+                        : "-";
+                    const real =
+                      turno.entradaReal || turno.salidaReal
+                        ? `${turno.entradaReal || "-"} → ${turno.salidaReal || "-"}`
+                        : null;
+                    const calculado =
+                      turno.entradaFinal && turno.salidaFinal
+                        ? `${turno.entradaFinal} → ${turno.salidaFinal}`
+                        : null;
+                    return (
+                      <Box
+                        key={`${turno.tipo}-${idx}`}
+                        sx={{
+                          borderLeft: 3,
+                          borderColor: "primary.light",
+                          pl: 1,
+                          py: 0.25,
+                        }}
+                      >
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                          {label}: {variante}
+                        </Typography>
+                        {real && (
+                          <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                            Real: {real}
+                          </Typography>
+                        )}
+                        {calculado && (
+                          <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                            Calculado: {calculado}
+                          </Typography>
+                        )}
+                      </Box>
+                    );
+                  })}
+                </Stack>
+              </Box>
+            )}
             <Box sx={{ display: "flex", gap: 1 }}>
               <Button variant="text" onClick={onClose}>
                 Cancelar
