@@ -1,14 +1,32 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { formatDateToDDMMYYYY } from "src/utils/handleDates";
 
-const toLocalDateString = (date) => {
-  if (!date) return null;
-  const d = date instanceof Date ? date : new Date(date);
-  if (Number.isNaN(d.getTime())) return null;
+const toJsDate = (value) => {
+  if (!value) return null;
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+  if (typeof value?.isValid === "function" && !value.isValid()) return null;
+  if (typeof value?.toDate === "function") {
+    const d = value.toDate();
+    return d instanceof Date && !Number.isNaN(d.getTime()) ? d : null;
+  }
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+
+const toLocalDateString = (value) => {
+  const d = toJsDate(value);
+  if (!d) return null;
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const dd = String(d.getDate()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd}`;
+};
+
+const toIsoSafe = (value) => {
+  const d = toJsDate(value);
+  return d ? d.toISOString() : null;
 };
 
 const DEFAULT_FILTERS = {
@@ -136,10 +154,14 @@ const useErroresSyncFilters = ({ onSearchApply } = {}) => {
 
   const filtersPayload = useMemo(() => {
     const payload = {};
-    if (fechaDetectadaDesde) payload.fechaDetectadaFrom = toLocalDateString(fechaDetectadaDesde);
-    if (fechaDetectadaHasta) payload.fechaDetectadaTo = toLocalDateString(fechaDetectadaHasta);
-    if (fechaDocumentoDesde) payload.createdAtFrom = fechaDocumentoDesde.toISOString();
-    if (fechaDocumentoHasta) payload.createdAtTo = fechaDocumentoHasta.toISOString();
+    const fechaDetectadaFrom = toLocalDateString(fechaDetectadaDesde);
+    const fechaDetectadaTo = toLocalDateString(fechaDetectadaHasta);
+    const createdAtFrom = toIsoSafe(fechaDocumentoDesde);
+    const createdAtTo = toIsoSafe(fechaDocumentoHasta);
+    if (fechaDetectadaFrom) payload.fechaDetectadaFrom = fechaDetectadaFrom;
+    if (fechaDetectadaTo) payload.fechaDetectadaTo = fechaDetectadaTo;
+    if (createdAtFrom) payload.createdAtFrom = createdAtFrom;
+    if (createdAtTo) payload.createdAtTo = createdAtTo;
     if (tipo) payload.tipo = tipo;
     if (estado) payload.status = estado;
     if (searchQuery) payload.search = searchQuery;
