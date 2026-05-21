@@ -60,6 +60,19 @@ import MovimientoLogsPanel from 'src/components/movimientos/MovimientoLogsPanel'
 import ComprobanteModal from 'src/components/celulandia/ComprobanteModal';
 import ComprobantePdfModal from 'src/components/celulandia/ComprobantePdfModal';
 import { safeRouterReplace } from 'src/utils/safeRouter';
+import { parseAsPathForRouter } from 'src/utils/movimientoNavCtx';
+
+// Helper local: vuelve a `lastPageUrl` preservando el query intacto. Pasar el
+// string directo a `router.push` puede perder params cuando el query contiene
+// JSON ya decodeado (ej. `caja={"nombre":..}`). Usando la forma objeto,
+// Next re-encodea cada value correctamente al construir la URL.
+const pushBack = (router, lastPageUrl, fallback) => {
+  const parsed = lastPageUrl ? parseAsPathForRouter(lastPageUrl) : null;
+  if (parsed) {
+    return router.push({ pathname: parsed.pathname, query: parsed.query, hash: parsed.hash || undefined });
+  }
+  return router.push(fallback || '/');
+};
 
 const getTodayLocalDate = () => {
   const now = new Date();
@@ -342,7 +355,7 @@ const MovementFormPage = () => {
       setAlert({ open: true, message: 'Movimiento guardado con éxito!', severity: 'success' });
       if (returnAfterSaveRef.current) {
         showGlobalAlert({ message: 'Movimiento guardado con éxito!', severity: 'success' });
-        router.push(lastPageUrl || '/');
+        pushBack(router, lastPageUrl, '/');
       }
     } catch (err) {
       setAlert({ open: true, message: err.message, severity: 'error' });
@@ -1005,7 +1018,7 @@ const createdAtStr = (() => {
     });
     // Opcional: redirigir o refrescar datos
     setTimeout(() => {
-      router.push(lastPageUrl || `/cajas?proyectoId=${effectiveProyectoId}`);
+      pushBack(router, lastPageUrl, `/cajas?proyectoId=${effectiveProyectoId}`);
     }, 1500);
   };
 
@@ -1564,7 +1577,7 @@ const createdAtStr = (() => {
               </div>
               <button
                 type="button"
-                onClick={() => router.push(lastPageUrl || '/')}
+                onClick={() => pushBack(router, lastPageUrl, '/')}
                 className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium text-neutral-800 shadow-sm hover:bg-neutral-50"
               >
                 Volver sin guardar
@@ -1617,7 +1630,7 @@ const createdAtStr = (() => {
               <div className="mt-3 flex flex-wrap gap-2">
                 <button
                   type="button"
-                  onClick={() => router.push(lastPageUrl || '/')}
+                  onClick={() => pushBack(router, lastPageUrl, '/')}
                   className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm"
                 >
                   Volver
@@ -1910,7 +1923,7 @@ const createdAtStr = (() => {
                 severity: 'success',
               });
               setTimeout(() => {
-                router.push(lastPageUrl || `/cajas?proyectoId=${effectiveProyectoId}`);
+                pushBack(router, lastPageUrl, `/cajas?proyectoId=${effectiveProyectoId}`);
               }, 1500);
             }
           }}

@@ -72,6 +72,7 @@ import SouthWestRoundedIcon from '@mui/icons-material/SouthWestRounded';
 import PaymentsOutlinedIcon from '@mui/icons-material/PaymentsOutlined';
 import { buildCompletarPagoUpdateFields, puedeCompletarPagoEgreso } from 'src/utils/movimientoPagoCompleto';
 import { formatCurrencyWithCode } from 'src/utils/formatters';
+import { NAV_CTX_PARAM, encodeNavCtx, decodeNavCtx, appendNavCtxToUrl } from 'src/utils/movimientoNavCtx';
 
 
 // tamaños mínimos por columna (px)
@@ -717,6 +718,8 @@ const CajasPage = () => {
   const [backendOptions, setBackendOptions] = useState(null);
   const [cajasTotalsMap, setCajasTotalsMap] = useState({});
   const [tablaActiva, setTablaActiva] = useState('ARS');
+  const tablaActivaRef = useRef(tablaActiva);
+  useEffect(() => { tablaActivaRef.current = tablaActiva; }, [tablaActiva]);
   const [empresa, setEmpresa] = useState(null);
   const [loadingPage, setLoadingPage] = useState(true);
   const [loadingDashboard, setLoadingDashboard] = useState(false);
@@ -835,6 +838,12 @@ const CajasPage = () => {
   }, [scopeSummary, setBreadcrumbs]);
 
   const [anchorEl, setAnchorEl] = useState(null);
+  const [submenuKey, setSubmenuKey] = useState(null);
+  const submenuRefs = useRef({});
+  const setSubmenuRef = (key) => (el) => { if (el) submenuRefs.current[key] = el; };
+  const openSubmenu = (key) => () => setSubmenuKey(key);
+  const closeSubmenu = () => setSubmenuKey(null);
+  const closeAllMenus = () => { setSubmenuKey(null); setAnchorEl(null); };
   const [cajasVirtuales, setCajasVirtuales] = useState([
     { nombre: 'Caja en Pesos', moneda: 'ARS', medio_pago: "" , equivalencia: 'none', type: '', baseCalculo: 'total' },
     { nombre: 'Caja en Dólares', moneda: 'USD', medio_pago: "" , equivalencia: 'none', type: '', baseCalculo: 'total' },
@@ -911,6 +920,18 @@ const [topWidth, setTopWidth] = useState(0);
 // --- paginación ---
 const [page, setPage] = useState(0);           // página actual (0-based)
 const [rowsPerPage, setRowsPerPage] = useState(25);  // filas por página
+// Refs sincronizados con los useState anteriores. Se usan en callbacks
+// (ej. `goToEdit`) que viven dentro de objetos memoizados como `cajaCellCtx`
+// con deps acotadas: sin el ref, el callback queda con un closure stale
+// (page=0 del primer render) aunque el usuario haya navegado a otra página.
+const pageRef = useRef(page);
+const rowsPerPageRef = useRef(rowsPerPage);
+useEffect(() => { pageRef.current = page; }, [page]);
+useEffect(() => { rowsPerPageRef.current = rowsPerPage; }, [rowsPerPage]);
+// Snapshot pendiente de rehidratar al volver desde el form de edición. El effect
+// que lo consume (más abajo) lo aplica una sola vez y limpia este ref + el query.
+const navCtxAppliedRef = useRef(false);
+const pendingScrollYRef = useRef(null);
 
 const csvExportFields = useMemo(() => getMovimientoCsvExportFields(), []);
 const csvDefaultOrder = useMemo(() => csvExportFields.map((field) => field.key), [csvExportFields]);
@@ -1277,6 +1298,7 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
   };
 
   const handleCloseMenu = () => {
+    setSubmenuKey(null);
     setAnchorEl(null);
   };
 
@@ -1402,6 +1424,23 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
   };
 
   const goToEdit = (mov) => {
+    // Snapshot del estado no-URL (page/rows/tabla/scroll). Se embebe dentro de
+    // `lastPageUrl` para que viaje opaco por movementForm y se rehidrate al volver.
+    // Usamos `window.location` (no `router.asPath`) porque el sync de filtros del
+    // hook se hace con `router.replace` shallow y puede no estar reflejado en
+    // `router.asPath` en el instante exacto del click. Leemos `page`/`rows`/`tabla`
+    // desde refs porque esta función queda capturada dentro de `cajaCellCtx`
+    // (memo con deps acotadas), y un closure stale guardaría page=0.
+    const currentUrl = typeof window !== 'undefined'
+      ? `${window.location.pathname}${window.location.search}`
+      : router.asPath;
+    const navCtx = encodeNavCtx({
+      page: pageRef.current,
+      rowsPerPage: rowsPerPageRef.current,
+      tablaActiva: tablaActivaRef.current,
+      scrollY: typeof window !== 'undefined' ? window.scrollY : 0,
+    });
+    const lastPageUrl = navCtx ? appendNavCtxToUrl(currentUrl, navCtx) : currentUrl;
     router.push({
       pathname: '/movementForm',
       query: {
@@ -1409,7 +1448,7 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
         lastPageName: scopeSummary,
         proyectoId: mov.proyecto_id || activeProject?.id,
         proyectoName: mov.proyecto_nombre || mov.proyecto || activeProject?.nombre,
-        lastPageUrl: router.asPath,
+        lastPageUrl,
       },
     });
   };
@@ -1738,6 +1777,48 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
     delete nextQuery.vista;
     router.replace({ pathname: router.pathname, query: nextQuery }, undefined, { shallow: true });
   }, [router.isReady, router.query.vista]);
+
+  // Rehidratación del contexto de navegación al volver desde el form de edición.
+  // Corre UNA VEZ al mount leyendo `window.location.search` directo: así evitamos
+  // race conditions con el sync asíncrono del hook de filtros, que usa
+  // `router.replace` shallow y puede no reflejarse en `router.query` en el
+  // primer render. Limpiamos `mvCtx` del URL con `history.replaceState` para no
+  // disparar re-renders del router ni efectos del hook de filtros.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (navCtxAppliedRef.current) return;
+    const url = new URL(window.location.href);
+    const raw = url.searchParams.get(NAV_CTX_PARAM);
+    if (!raw) return;
+    navCtxAppliedRef.current = true;
+    const ctx = decodeNavCtx(raw);
+    if (ctx) {
+      if (ctx.rowsPerPage != null) setRowsPerPage(ctx.rowsPerPage);
+      if (ctx.page != null) setPage(ctx.page);
+      if (ctx.tablaActiva) setTablaActiva(ctx.tablaActiva);
+      if (ctx.scrollY != null) pendingScrollYRef.current = ctx.scrollY;
+    }
+    url.searchParams.delete(NAV_CTX_PARAM);
+    const cleanUrl = `${url.pathname}${url.search ? `?${url.searchParams.toString()}` : ''}${url.hash}`;
+    window.history.replaceState(window.history.state, '', cleanUrl);
+  }, []);
+
+  // Restaurar scroll una vez que los datos estén pintados.
+  useEffect(() => {
+    const targetY = pendingScrollYRef.current;
+    if (targetY == null) return;
+    if (loadingDashboard) return;
+    if (!dashboardItems || dashboardItems.length === 0) return;
+    pendingScrollYRef.current = null;
+    // doble rAF: el primer frame agenda layout, el segundo garantiza que ya está
+    // pintado y las alturas de filas son las definitivas antes de scrollear.
+    if (typeof window === 'undefined') return;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: targetY, left: window.scrollX, behavior: 'auto' });
+      });
+    });
+  }, [loadingDashboard, dashboardItems]);
 
   useEffect(() => {
     if (!empresa?.id) return;
@@ -2226,7 +2307,27 @@ const getTime = (v) => {
         break;
       case 'registrarMovimiento':
         if (!activeProject) break;
-        router.push('/movementForm?proyectoName=' + activeProject.nombre + '&proyectoId=' + activeProject.id + '&lastPageUrl=' + router.asPath + '&lastPageName=Cajas');
+        {
+          const currentUrl = typeof window !== 'undefined'
+            ? `${window.location.pathname}${window.location.search}`
+            : router.asPath;
+          const navCtx = encodeNavCtx({
+            page: pageRef.current,
+            rowsPerPage: rowsPerPageRef.current,
+            tablaActiva: tablaActivaRef.current,
+            scrollY: typeof window !== 'undefined' ? window.scrollY : 0,
+          });
+          const lastPageUrl = navCtx ? appendNavCtxToUrl(currentUrl, navCtx) : currentUrl;
+          router.push({
+            pathname: '/movementForm',
+            query: {
+              proyectoName: activeProject.nombre,
+              proyectoId: activeProject.id,
+              lastPageUrl,
+              lastPageName: 'Cajas',
+            },
+          });
+        }
         break;
       case 'recalcularSheets':
         if (activeProject?.id) handleRecargarProyecto(activeProject.id);
@@ -3265,120 +3366,90 @@ useEffect(() => {
 /> */}
         </Container>
 
-<Menu
-  anchorEl={anchorEl}
-  open={Boolean(anchorEl)}
-  onClose={handleCloseMenu}
-  keepMounted
->
-  <MenuOption onClick={() => handleMenuOptionClick('registrarMovimiento')} disabled={!canUseProjectActions}>
-    <AddCircleIcon sx={{ mr: 1 }} />
-    Registrar movimiento
-  </MenuOption>
-  <MenuOption onClick={() => {
-    handleOpenTransferencia();
-    handleCloseMenu();
-  }}>
-    <SwapHorizIcon sx={{ mr: 1 }} />
-    Transferencia interna
-  </MenuOption>
-  <MenuOption onClick={() => {
-    handleOpenIntercambio();
-    handleCloseMenu();
-  }} disabled={!canUseProjectActions}>
-    <CurrencyExchangeIcon sx={{ mr: 1 }} />
-    Compra/Venta Moneda
-  </MenuOption>
-  <MenuOption onClick={() => handleMenuOptionClick('recalcularSheets')} disabled={!canUseProjectActions}>
-    <RefreshIcon sx={{ mr: 1 }} />
-    Recalcular sheets
-  </MenuOption>
-  <MenuOption onClick={() => handleMenuOptionClick('filtrar')}>
-    <FilterListIcon sx={{ mr: 1 }} />
-    Filtros
-  </MenuOption>
+{(() => {
+  const itemSx = { gap: 1 };
+  const submenuItems = {
+    cajas: [
+      { label: 'Agregar nueva caja', icon: <AddCircleIcon fontSize="small" />, onClick: () => { setShowCrearCaja(true); closeAllMenus(); } },
+      { label: 'Guardar vista actual como caja', icon: <AccountBalanceWalletIcon fontSize="small" />, onClick: () => {
+        setSavedViewMode(true); setEditandoCaja(null);
+        setNombreCaja(''); setMonedaCaja(''); setMedioPagoCaja('');
+        setEstadoCaja(''); setEquivalenciaCaja('none'); setTypeCaja(''); setBaseCalculoCaja('total');
+        setShowCrearCaja(true); closeAllMenus();
+      } },
+    ],
+    sync: [
+      { label: 'Actualizar saldos', icon: <RefreshIcon fontSize="small" />, onClick: () => { handleRefresh(); closeAllMenus(); } },
+      { label: 'Recalcular sheets', icon: <RefreshIcon fontSize="small" />, disabled: !canUseProjectActions, onClick: () => handleMenuOptionClick('recalcularSheets') },
+      { label: 'Recalcular dólar estimado', icon: <RefreshIcon fontSize="small" />, disabled: !canUseProjectActions, onClick: () => handleMenuOptionClick('recalcularEquivalencias') },
+    ],
+    exportar: [
+      { label: 'Excel', icon: <DownloadIcon fontSize="small" />, disabled: csvExporting, onClick: () => { handleExportExcel(); closeAllMenus(); } },
+      { label: 'CSV', icon: <DownloadIcon fontSize="small" />, disabled: csvExporting, onClick: () => { handleExportCSV(); closeAllMenus(); } },
+      { label: 'PDF', icon: <DownloadIcon fontSize="small" />, disabled: csvExporting, onClick: () => { handleExportPDF(); closeAllMenus(); } },
+      { label: 'AFIP (Excel)', icon: <DownloadIcon fontSize="small" />, disabled: csvExporting, onClick: () => { handleExportAfip(); closeAllMenus(); } },
+      { label: 'CSV para análisis', icon: <DownloadIcon fontSize="small" />, onClick: () => { handleOpenExportCsvDialog(); closeAllMenus(); } },
+    ],
+    importar: [
+      { label: 'Carga masiva', icon: <DownloadIcon fontSize="small" />, onClick: () => { setCargaMasivaOpen(true); closeAllMenus(); } },
+      { label: 'Importar CSV (actualizar)', icon: <DownloadIcon fontSize="small" />, onClick: () => { setOpenImportDialog(true); closeAllMenus(); } },
+    ],
+  };
+  const renderSubItem = (key, icon, label) => (
+    <MenuOption ref={setSubmenuRef(key)} sx={itemSx} onClick={openSubmenu(key)}>
+      {icon}
+      <Box sx={{ flexGrow: 1 }}>{label}</Box>
+      <ChevronRightIcon fontSize="small" sx={{ opacity: 0.6 }} />
+    </MenuOption>
+  );
+  return (
+    <>
+      <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleCloseMenu} keepMounted>
+        <MenuOption sx={itemSx} onClick={() => handleMenuOptionClick('registrarMovimiento')} disabled={!canUseProjectActions}>
+          <AddCircleIcon fontSize="small" /> Registrar movimiento
+        </MenuOption>
+        <MenuOption sx={itemSx} onClick={() => { handleOpenTransferencia(); closeAllMenus(); }}>
+          <SwapHorizIcon fontSize="small" /> Transferencia interna
+        </MenuOption>
+        <MenuOption sx={itemSx} onClick={() => { handleOpenIntercambio(); closeAllMenus(); }} disabled={!canUseProjectActions}>
+          <CurrencyExchangeIcon fontSize="small" /> Compra/Venta moneda
+        </MenuOption>
 
-  <Divider sx={{ my: 1 }} />
+        <Divider sx={{ my: 0.5 }} />
 
-  <MenuOption onClick={() => {
-    setShowCrearCaja(true);
-    handleCloseMenu();
-  }}>
-    <AddCircleIcon sx={{ mr: 1 }} />
-    Agregar nueva caja
-  </MenuOption>
-  <MenuOption onClick={() => {
-    setSavedViewMode(true);
-    setEditandoCaja(null);
-    setNombreCaja(''); setMonedaCaja(''); setMedioPagoCaja('');
-    setEstadoCaja(''); setEquivalenciaCaja('none'); setTypeCaja(''); setBaseCalculoCaja('total');
-    setShowCrearCaja(true);
-    handleCloseMenu();
-  }}>
-    <AccountBalanceWalletIcon sx={{ mr: 1 }} />
-    Guardar vista actual como caja
-  </MenuOption>
-  <MenuOption onClick={() => {
-    handleRefresh();
-    handleCloseMenu();
-  }}>
-    <RefreshIcon sx={{ mr: 1 }} />
-    Actualizar saldos
-  </MenuOption>
+        <MenuOption sx={itemSx} onClick={() => handleMenuOptionClick('filtrar')}>
+          <FilterListIcon fontSize="small" /> Filtros
+        </MenuOption>
+        <MenuOption sx={itemSx} onClick={() => { setConfigDrawerOpen(true); closeAllMenus(); }} disabled={!canUseProjectActions}>
+          <SettingsIcon fontSize="small" /> Configurar proyecto
+        </MenuOption>
 
-  <MenuOption onClick={() => handleMenuOptionClick('recalcularEquivalencias')} disabled={!canUseProjectActions}>
-    <RefreshIcon sx={{ mr: 1 }} />
-    Recalcular valor dolar estimado
-  </MenuOption>
-  
-  <Divider sx={{ my: 1 }} />
+        <Divider sx={{ my: 0.5 }} />
 
-  <MenuOption onClick={() => {
-    setConfigDrawerOpen(true);
-    handleCloseMenu();
-  }} disabled={!canUseProjectActions}>
-    <SettingsIcon sx={{ mr: 1 }} />
-    Configurar proyecto
-  </MenuOption>
-  
-  <MenuOption onClick={() => {
-    handleOpenExportCsvDialog();
-    handleCloseMenu();
-  }}>
-    <DownloadIcon sx={{ mr: 1 }} />
-    Exportar CSV para análisis
-  </MenuOption>
+        {renderSubItem('cajas', <AccountBalanceWalletIcon fontSize="small" />, 'Cajas')}
+        {renderSubItem('sync', <RefreshIcon fontSize="small" />, 'Sincronizar')}
+        {renderSubItem('exportar', <DownloadIcon fontSize="small" />, 'Exportar')}
+        {renderSubItem('importar', <DownloadIcon fontSize="small" />, 'Importar')}
+      </Menu>
 
-  <Divider sx={{ my: 1 }} />
-
-  <MenuOption onClick={() => { handleExportExcel(); handleCloseMenu(); }} disabled={csvExporting}>
-    <DownloadIcon sx={{ mr: 1 }} />
-    Exportar a Excel
-  </MenuOption>
-  <MenuOption onClick={() => { handleExportCSV(); handleCloseMenu(); }} disabled={csvExporting}>
-    <DownloadIcon sx={{ mr: 1 }} />
-    Exportar a CSV
-  </MenuOption>
-  <MenuOption onClick={() => { handleExportPDF(); handleCloseMenu(); }} disabled={csvExporting}>
-    <DownloadIcon sx={{ mr: 1 }} />
-    Exportar a PDF
-  </MenuOption>
-  <MenuOption onClick={() => { handleExportAfip(); handleCloseMenu(); }} disabled={csvExporting}>
-    <DownloadIcon sx={{ mr: 1 }} />
-    Exportar AFIP (Excel)
-  </MenuOption>
-
-  <Divider sx={{ my: 1 }} />
-
-  <MenuOption onClick={() => { setCargaMasivaOpen(true); handleCloseMenu(); }}>
-    <DownloadIcon sx={{ mr: 1 }} />
-    Carga masiva
-  </MenuOption>
-  <MenuOption onClick={() => { setOpenImportDialog(true); handleCloseMenu(); }}>
-    <DownloadIcon sx={{ mr: 1 }} />
-    Importar CSV (actualizar)
-  </MenuOption>
-</Menu>
+      <Menu
+        anchorEl={submenuKey ? submenuRefs.current[submenuKey] : null}
+        open={Boolean(submenuKey && submenuRefs.current[submenuKey])}
+        onClose={closeSubmenu}
+        anchorOrigin={{ vertical: 'top', horizontal: 'left' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+        slotProps={{ paper: { sx: { ml: -0.5 } } }}
+      >
+        {(submenuItems[submenuKey] || []).map((it, i) => (
+          <MenuOption key={i} sx={itemSx} onClick={it.onClick} disabled={it.disabled}>
+            {it.icon}
+            {it.label}
+          </MenuOption>
+        ))}
+      </Menu>
+    </>
+  );
+})()}
 
       </Box>
 
