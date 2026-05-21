@@ -74,8 +74,14 @@ export function crearDiaPorDefecto() {
       { desde: '21:00', hasta: '24:00' },
     ],
     fraccion: 20,
-    turnoDiurno: [{ entrada: '08:20', salida: '17:20' }],
-    turnoNoche: [{ entrada: '20:00', salida: '08:00' }],
+    turnoDiurno: [
+      { entrada: '08:00', salida: '17:00' },
+      { entrada: '08:20', salida: '17:20' },
+    ],
+    turnoNoche: [
+      { entrada: '20:00', salida: '08:00' },
+      { entrada: '20:20', salida: '08:20' },
+    ],
     horaExtra: TIPOS_HORA.EXTRA_50,
   };
 }
