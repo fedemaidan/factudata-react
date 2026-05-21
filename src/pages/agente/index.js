@@ -228,12 +228,12 @@ const AgentChatPage = () => {
 
   return (
     <DashboardLayout
-      title="Asistente Sorby"
+      title="Asistente Sorby (Beta)"
       titleIcon={titleIcon}
       headerActions={headerActions}
     >
       <Head>
-        <title>Asistente Sorby</title>
+        <title>Asistente Sorby (Beta)</title>
       </Head>
       <Box
         component="main"
@@ -411,7 +411,7 @@ const AgentChatPage = () => {
                 textAlign: 'center',
               }}
             >
-              Sorby puede equivocarse. Revisá los movimientos antes de confirmarlos.
+              Sorby (Beta) puede equivocarse. Revisá los movimientos antes de confirmarlos.
             </Typography>
           </Container>
         </Box>
@@ -463,10 +463,29 @@ function EmptyState({ onQuickAction, onPromptClick, disabled, quickActions, exam
         >
           <AutoAwesomeRoundedIcon sx={{ fontSize: 32 }} />
         </Box>
-        <Typography variant="h5" sx={{ fontWeight: 700, letterSpacing: '-0.02em', mt: 1 }}>
-          ¿En qué te puedo ayudar?
-        </Typography>
+        <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1 }}>
+          <Typography variant="h5" sx={{ fontWeight: 700, letterSpacing: '-0.02em' }}>
+            ¿En qué te puedo ayudar?
+          </Typography>
+          <Box
+            component="span"
+            sx={{
+              px: 0.85,
+              py: 0.25,
+              borderRadius: 0.75,
+              fontSize: '0.6875rem',
+              fontWeight: 700,
+              letterSpacing: '0.05em',
+              textTransform: 'uppercase',
+              color: 'primary.main',
+              backgroundColor: (t) => `${t.palette.primary.main}1f`,
+            }}
+          >
+            Beta
+          </Box>
+        </Stack>
         <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 460 }}>
+          Estoy en beta: todavía puedo equivocarme o no tener todas las funciones.
           Cargá movimientos, armá un presupuesto, generá un reporte o consultá el
           estado de tus proyectos. Lo que hacés en el dashboard, también acá.
         </Typography>

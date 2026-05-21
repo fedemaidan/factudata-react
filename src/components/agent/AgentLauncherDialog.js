@@ -203,6 +203,22 @@ export function AgentLauncherDialog({ open, onClose }) {
             '& input::placeholder': { color: 'text.secondary', opacity: 1 },
           }}
         />
+        <Box
+          component="span"
+          sx={{
+            px: 0.85,
+            py: 0.25,
+            borderRadius: 0.75,
+            fontSize: '0.6875rem',
+            fontWeight: 700,
+            letterSpacing: '0.05em',
+            textTransform: 'uppercase',
+            color: 'primary.main',
+            backgroundColor: (t) => `${t.palette.primary.main}1f`,
+          }}
+        >
+          Beta
+        </Box>
         <IconButton size="small" onClick={onClose} aria-label="Cerrar">
           <CloseRoundedIcon fontSize="small" />
         </IconButton>

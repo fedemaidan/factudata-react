@@ -56,10 +56,10 @@ export function AgentLauncher() {
   if (isCompact) {
     return (
       <>
-        <Tooltip title="Pregúntale a Sorby">
+        <Tooltip title="Pregúntale a Sorby (Beta)">
           <IconButton
             onClick={() => setOpen(true)}
-            aria-label="Abrir asistente Sorby"
+            aria-label="Abrir asistente Sorby (Beta)"
             size="small"
             sx={{
               color: 'primary.main',
@@ -118,6 +118,22 @@ export function AgentLauncher() {
         >
           Pregúntale a Sorby…
         </Typography>
+        <Box
+          component="span"
+          sx={{
+            px: 0.75,
+            py: 0.125,
+            borderRadius: 0.75,
+            fontSize: '0.625rem',
+            fontWeight: 700,
+            letterSpacing: '0.04em',
+            textTransform: 'uppercase',
+            color: 'primary.main',
+            backgroundColor: (t) => `${t.palette.primary.main}1f`,
+          }}
+        >
+          Beta
+        </Box>
         <Stack direction="row" spacing={0.25}>
           <Kbd>{isMac ? '⌘' : 'Ctrl'}</Kbd>
           <Kbd>K</Kbd>
