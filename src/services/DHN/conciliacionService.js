@@ -78,6 +78,12 @@ const conciliacionService = {
     return data;
   },
 
+  async getConciliacionRowDetail(conciliacionId, rowId) {
+    if (!conciliacionId || !rowId) return null;
+    const { data } = await api.get(`/dhn/conciliacion/${conciliacionId}/row/${rowId}`);
+    return data?.data || null;
+  },
+
   async updateConciliacionRow(conciliacionId, rowId, payload) {
     const { data } = await api.patch(`/dhn/conciliacion/${conciliacionId}/row/${rowId}`, payload);
     return data;

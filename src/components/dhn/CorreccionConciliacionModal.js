@@ -62,6 +62,24 @@ const TAB_DEFINITIONS = {
   },
 };
 
+const TIPO_TURNO_LABEL = {
+  diurno: "Diurno",
+  nocturno1: "Nocturno 1",
+  nocturno2: "Nocturno 2",
+};
+
+const TIPO_TURNO_COLOR = {
+  diurno: "primary.main",
+  nocturno1: "secondary.main",
+  nocturno2: "warning.main",
+};
+
+const HORA_MONO_SX = {
+  fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+  fontVariantNumeric: "tabular-nums",
+  fontWeight: 600,
+};
+
 const formatFechaLabel = (value) => {
   if (!value) return "-";
   const fecha = new Date(value);
@@ -111,6 +129,10 @@ const CorreccionConciliacionModal = ({
   const theme = useTheme();
   const isMdDown = useMediaQuery(theme.breakpoints.down("md"));
   const comprobantes = useMemo(() => (Array.isArray(row?.comprobantes) ? row.comprobantes : []), [row]);
+  const turnosDetectados = useMemo(
+    () => (Array.isArray(row?.turnosDetectados) ? row.turnosDetectados : []),
+    [row]
+  );
   const sheetHoras = row?.sheetHoras || {};
   const sheetItems = useMemo(
     () =>
@@ -352,8 +374,95 @@ const CorreccionConciliacionModal = ({
               )}
             </Stack>
             {activeTabMeta?.type === "horas" ? (
-              <Box sx={{ flex: 1, minHeight: 0 }}>
-                <HorasRawTable rows={row?.dataRawExcel || []} />
+              <Box sx={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", gap: 1 }}>
+                {turnosDetectados.length > 0 && (
+                  <Box
+                    sx={{
+                      border: 1,
+                      borderColor: "divider",
+                      borderRadius: 1,
+                      backgroundColor: "background.paper",
+                      px: 1.5,
+                      py: 1,
+                    }}
+                  >
+                    <Stack spacing={0.75} divider={<Box sx={{ borderTop: 1, borderColor: "divider" }} />}>
+                      {turnosDetectados.map((turno, idx) => {
+                        const label = TIPO_TURNO_LABEL[turno.tipo] || turno.tipo;
+                        const dotColor = TIPO_TURNO_COLOR[turno.tipo] || "text.disabled";
+                        const nominalText =
+                          turno.varianteEntrada && turno.varianteSalida
+                            ? `${turno.varianteEntrada} → ${turno.varianteSalida}`
+                            : turno.varianteSalida
+                            ? `— → ${turno.varianteSalida}`
+                            : turno.varianteEntrada
+                            ? `${turno.varianteEntrada} → —`
+                            : "—";
+                        const realText =
+                          turno.entradaReal || turno.salidaReal
+                            ? `${turno.entradaReal || "—"} → ${turno.salidaReal || "—"}`
+                            : "—";
+                        const calcText =
+                          turno.entradaFinal && turno.salidaFinal
+                            ? `${turno.entradaFinal} → ${turno.salidaFinal}`
+                            : "—";
+
+                        const Segment = ({ caption, value }) => (
+                          <Stack direction="row" spacing={0.75} alignItems="baseline">
+                            <Typography
+                              variant="caption"
+                              sx={{
+                                color: "text.secondary",
+                                textTransform: "uppercase",
+                                letterSpacing: 0.4,
+                                fontSize: "0.65rem",
+                              }}
+                            >
+                              {caption}
+                            </Typography>
+                            <Typography variant="body2" sx={HORA_MONO_SX}>
+                              {value}
+                            </Typography>
+                          </Stack>
+                        );
+
+                        return (
+                          <Stack
+                            key={`${turno.tipo}-${idx}`}
+                            direction="row"
+                            spacing={2}
+                            alignItems="center"
+                            flexWrap="wrap"
+                            useFlexGap
+                          >
+                            <Stack direction="row" spacing={0.75} alignItems="center" sx={{ minWidth: 110 }}>
+                              <Box
+                                sx={{
+                                  width: 8,
+                                  height: 8,
+                                  borderRadius: "50%",
+                                  bgcolor: dotColor,
+                                  flexShrink: 0,
+                                }}
+                              />
+                              <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                                {label}
+                              </Typography>
+                            </Stack>
+                            <Segment caption="Nominal" value={nominalText} />
+                            <Box sx={{ color: "text.disabled", fontSize: "0.8rem" }}>·</Box>
+                            <Segment caption="Real" value={realText} />
+                            <Box sx={{ color: "text.disabled", fontSize: "0.8rem" }}>·</Box>
+                            <Segment caption="Calculado" value={calcText} />
+                          </Stack>
+                        );
+                      })}
+                    </Stack>
+                  </Box>
+                )}
+                <Box sx={{ flex: 1, minHeight: 0 }}>
+                  <HorasRawTable rows={row?.dataRawExcel || []} />
+                </Box>
               </Box>
             ) : (
               <Box sx={{ flex: 1, minHeight: 0 }}>
@@ -498,6 +607,59 @@ const CorreccionConciliacionModal = ({
                 </Stack>
               </Box>
             </Stack>
+            {turnosDetectados.length > 0 && (
+              <Box>
+                <Typography variant="subtitle2" gutterBottom>
+                  Horario detectado
+                </Typography>
+                <Stack spacing={0.5}>
+                  {turnosDetectados.map((turno, idx) => {
+                    const label = TIPO_TURNO_LABEL[turno.tipo] || turno.tipo;
+                    const variante =
+                      turno.varianteEntrada && turno.varianteSalida
+                        ? `${turno.varianteEntrada} → ${turno.varianteSalida}`
+                        : turno.varianteSalida
+                        ? `→ ${turno.varianteSalida}`
+                        : turno.varianteEntrada
+                        ? `${turno.varianteEntrada} →`
+                        : "-";
+                    const real =
+                      turno.entradaReal || turno.salidaReal
+                        ? `${turno.entradaReal || "-"} → ${turno.salidaReal || "-"}`
+                        : null;
+                    const calculado =
+                      turno.entradaFinal && turno.salidaFinal
+                        ? `${turno.entradaFinal} → ${turno.salidaFinal}`
+                        : null;
+                    return (
+                      <Box
+                        key={`${turno.tipo}-${idx}`}
+                        sx={{
+                          borderLeft: 3,
+                          borderColor: "primary.light",
+                          pl: 1,
+                          py: 0.25,
+                        }}
+                      >
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                          {label}: {variante}
+                        </Typography>
+                        {real && (
+                          <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                            Real: {real}
+                          </Typography>
+                        )}
+                        {calculado && (
+                          <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                            Calculado: {calculado}
+                          </Typography>
+                        )}
+                      </Box>
+                    );
+                  })}
+                </Stack>
+              </Box>
+            )}
             <Box sx={{ display: "flex", gap: 1 }}>
               <Button variant="text" onClick={onClose}>
                 Cancelar
