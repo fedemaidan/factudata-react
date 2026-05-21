@@ -10,7 +10,6 @@ import {
   Snackbar,
   CircularProgress,
   Box,
-  Divider,
   Typography,
   Tabs,
   Tab,
@@ -31,63 +30,15 @@ import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import horariosService from 'src/services/dhn/horariosService';
 import tiposLicenciaService from 'src/services/dhn/tiposLicenciaService';
-import HorariosGridEditor from 'src/components/dhn/HorariosGridEditor';
+import HorariosFormEditor from 'src/components/dhn/HorariosFormEditor';
 import FeriadosCalendar from 'src/components/dhn/FeriadosCalendar';
 import Alerts from 'src/components/alerts';
-import {
-  DIAS,
-  TIPOS_HORA,
-  TIPOS_VALIDOS,
-  emptyHours,
-} from 'src/utils/dhn/tiposHora';
+import { DIA_KEYS, validarConfig, crearDiaPorDefecto } from 'src/utils/dhn/configHorarios';
 
-const decimalCeil2 = (v) => Math.ceil(v * 100) / 100;
-
-function normalizeHourCell(cell) {
-  if (cell?.split && typeof cell.split === 'object') {
-    const { atMin, before, after } = cell.split;
-    if (Number.isInteger(atMin) && TIPOS_VALIDOS.includes(before) && TIPOS_VALIDOS.includes(after)) {
-      return { split: { atMin, before, after } };
-    }
-  }
-  if (TIPOS_VALIDOS.includes(cell?.tipo)) return { tipo: cell.tipo };
-  return { tipo: TIPOS_HORA.NO_CUENTA };
-}
-
-function sanitizeTurnos(arr) {
-  if (!Array.isArray(arr)) return [];
-  return arr
-    .filter((t) => t && typeof t === 'object' && typeof t.entrada === 'string' && typeof t.salida === 'string')
-    .map((t) => ({ entrada: t.entrada, salida: t.salida }));
-}
-
-function toUiConfig(server) {
-  const out = {};
-  for (const d of DIAS) {
-    const dia = server?.[d.key];
-    const hoursRaw = Array.isArray(dia?.hours) ? dia.hours : [];
-    const hours = Array.from({ length: 24 }, (_, i) => normalizeHourCell(hoursRaw[i]));
-    const minutos = Number.isFinite(Number(dia?.fraccion?.minutos)) ? Number(dia.fraccion.minutos) : 20;
-    out[d.key] = {
-      hours,
-      fraccion: { minutos, decimal: decimalCeil2(minutos / 60) },
-      turnos: sanitizeTurnos(dia?.turnos),
-    };
-  }
-  return out;
-}
-
-function toServerConfig(ui) {
-  const out = {};
-  for (const d of DIAS) {
-    const dia = ui?.[d.key];
-    const hours = Array.isArray(dia?.hours) ? dia.hours.map(normalizeHourCell) : emptyHours();
-    const minutos = Number.isFinite(Number(dia?.fraccion?.minutos)) ? Number(dia.fraccion.minutos) : 20;
-    out[d.key] = {
-      hours,
-      fraccion: { minutos, decimal: decimalCeil2(minutos / 60) },
-      turnos: sanitizeTurnos(dia?.turnos),
-    };
+function sanitizeConfig(raw) {
+  const out = { feriadosFechas: Array.isArray(raw?.feriadosFechas) ? raw.feriadosFechas : [] };
+  for (const k of DIA_KEYS) {
+    out[k] = raw?.[k] || crearDiaPorDefecto();
   }
   return out;
 }
@@ -115,9 +66,9 @@ const ConfiguracionPage = () => {
         setLoading(true);
         const cfg = await horariosService.getHorarios();
         if (!active) return;
-        const ui = toUiConfig(cfg);
-        setConfig(ui);
-        setOriginal(ui);
+        const sanitized = sanitizeConfig(cfg);
+        setConfig(sanitized);
+        setOriginal(sanitized);
         setFeriadosFechas(Array.isArray(cfg?.feriadosFechas) ? cfg.feriadosFechas : []);
       } catch (e) {
         setError('No se pudo cargar la configuración de horarios');
@@ -209,24 +160,13 @@ const ConfiguracionPage = () => {
     setConfig(next);
   }, []);
 
-  const handleFraccionChange = useCallback((dia, minutos) => {
-    setConfig((prev) => {
-      if (!prev) return prev;
-      const m = Math.max(0, Math.round(Number(minutos) || 0));
-      return {
-        ...prev,
-        [dia]: {
-          ...prev[dia],
-          fraccion: { minutos: m, decimal: decimalCeil2(m / 60) },
-        },
-      };
-    });
-  }, []);
-
   const isDirty = useMemo(() => {
     if (!config || !original) return false;
     return JSON.stringify(config) !== JSON.stringify(original);
   }, [config, original]);
+
+  const erroresPorDia = useMemo(() => (config ? validarConfig(config) : {}), [config]);
+  const hayErrores = Object.keys(erroresPorDia).length > 0;
 
   const handleReset = () => {
     setConfig(original);
@@ -239,12 +179,15 @@ const ConfiguracionPage = () => {
   const handleSave = async () => {
     try {
       setSaving(true);
-      const payload = toServerConfig(config);
-      await horariosService.updateHorarios(payload);
-      setOriginal(config);
+      setError('');
+      const payload = { ...config, feriadosFechas };
+      const updated = await horariosService.updateHorarios(payload);
+      const sanitized = sanitizeConfig(updated || payload);
+      setConfig(sanitized);
+      setOriginal(sanitized);
       setSuccess(true);
     } catch (e) {
-      setError('No se pudo guardar la configuración');
+      setError(e?.response?.data?.message || e?.message || 'No se pudo guardar la configuración');
     } finally {
       setSaving(false);
     }
@@ -253,7 +196,11 @@ const ConfiguracionPage = () => {
   const handleAddFeriado = useCallback(async (fecha) => {
     try {
       const result = await horariosService.addFeriado(fecha);
-      const fechas = Array.isArray(result?.feriadosFechas) ? result.feriadosFechas : [];
+      const fechas = Array.isArray(result?.feriadosFechas)
+        ? result.feriadosFechas
+        : Array.isArray(result)
+        ? result
+        : [];
       setFeriadosFechas(fechas);
     } catch (e) {
       throw new Error(e?.response?.data?.message || e?.message || 'No se pudo agregar el feriado');
@@ -263,7 +210,11 @@ const ConfiguracionPage = () => {
   const handleRemoveFeriado = useCallback(async (fecha) => {
     try {
       const result = await horariosService.removeFeriado(fecha);
-      const fechas = Array.isArray(result?.feriadosFechas) ? result.feriadosFechas : [];
+      const fechas = Array.isArray(result?.feriadosFechas)
+        ? result.feriadosFechas
+        : Array.isArray(result)
+        ? result
+        : [];
       setFeriadosFechas(fechas);
     } catch (e) {
       throw new Error(e?.response?.data?.message || e?.message || 'No se pudo eliminar el feriado');
@@ -291,60 +242,31 @@ const ConfiguracionPage = () => {
               {error ? <Alert severity="error" onClose={() => setError('')}>{error}</Alert> : null}
               {tab === 0 ? (
                 <>
-                  <Stack direction="row" alignItems="center" justifyContent="space-between">
-                    <Box>
+                  <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ flexWrap: 'wrap', gap: 1 }}>
+                    <Box sx={{ minWidth: 0 }}>
                       <Typography variant="body2" color="text.secondary">
-                        Pintá cada hora del día con el tipo que corresponde. Una hora puede dividirse en 2 sub-slots cada 10 minutos.
+                        Configurá el horario de cada día: turnos, fracción de redondeo y, si lo necesitás, los tramos detallados desde el modo avanzado.
                       </Typography>
                     </Box>
                     <Stack direction="row" spacing={1}>
                       <Button variant="outlined" onClick={handleReset} disabled={!isDirty || saving}>
                         Cancelar
                       </Button>
-                      <Button variant="contained" onClick={handleSave} disabled={!isDirty || saving}>
+                      <Button
+                        variant="contained"
+                        onClick={handleSave}
+                        disabled={!isDirty || saving || hayErrores}
+                      >
                         {saving ? <CircularProgress size={20} /> : 'Guardar cambios'}
                       </Button>
                     </Stack>
                   </Stack>
-
-                  <Divider />
-
-                  <HorariosGridEditor
-                    config={config}
-                    onChange={handleConfigChange}
-                  />
-
-                  <Card variant="outlined">
-                    <CardContent>
-                      <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
-                        Fracción de redondeo
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
-                        Minutos a los que se redondea el ingreso (hacia adelante) y la salida (hacia atrás). Aplica antes de mapear los minutos a la grilla.
-                      </Typography>
-                      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: 'repeat(4, 1fr)', md: 'repeat(8, 1fr)' }, gap: 1.5 }}>
-                        {DIAS.map((d) => {
-                          const minutos = config?.[d.key]?.fraccion?.minutos ?? 20;
-                          const decimal = decimalCeil2(minutos / 60).toFixed(2);
-                          return (
-                            <Stack key={d.key} spacing={0.25}>
-                              <Typography variant="caption" sx={{ fontWeight: 600 }}>{d.label}</Typography>
-                              <TextField
-                                value={minutos}
-                                onChange={(e) => handleFraccionChange(d.key, e.target.value)}
-                                size="small"
-                                type="number"
-                                InputProps={{ inputProps: { min: 0, step: 5 } }}
-                              />
-                              <Typography variant="caption" color="text.secondary">
-                                {decimal}h
-                              </Typography>
-                            </Stack>
-                          );
-                        })}
-                      </Box>
-                    </CardContent>
-                  </Card>
+                  {hayErrores ? (
+                    <Alert severity="warning">
+                      Hay {Object.keys(erroresPorDia).length} día(s) con avisos. Revisalos antes de guardar.
+                    </Alert>
+                  ) : null}
+                  <HorariosFormEditor config={config} onChange={handleConfigChange} />
                 </>
               ) : tab === 1 ? (
                 <FeriadosCalendar
