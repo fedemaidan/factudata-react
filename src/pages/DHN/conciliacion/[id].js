@@ -92,6 +92,7 @@ const ConciliacionDetallePage = () => {
   const [filtersAnchorEl, setFiltersAnchorEl] = useState(null);
   const [editOpen, setEditOpen] = useState(false);
   const [rowToEdit, setRowToEdit] = useState(null);
+  const [rowDetailLoading, setRowDetailLoading] = useState(false);
   const [selectedRowsMap, setSelectedRowsMap] = useState(() => new Map());
   const [formHoras, setFormHoras] = useState({
     horasNormales: null,
@@ -683,6 +684,34 @@ const ConciliacionDetallePage = () => {
   useEffect(() => {
     setSelectedRowsMap(new Map());
   }, [id, appliedSearchTerm, estadoFiltro, tipo, sortField, sortDirection, discrepanciaFilters]);
+
+  // Al abrir el modal, el row del listado tiene dataRawExcel/turnosDetectados/
+  // comprobantes en null por la proyección reducida (16MB cap). Acá pedimos
+  // el detalle completo y enriquecemos rowToEdit sin perder los campos que
+  // ya tenemos.
+  useEffect(() => {
+    if (!editOpen || !id || !rowToEdit?._id) return;
+    if (rowToEdit?.dataRawExcel != null || rowToEdit?._detalleCargado) return;
+    let active = true;
+    setRowDetailLoading(true);
+    conciliacionService
+      .getConciliacionRowDetail(id, rowToEdit._id)
+      .then((detail) => {
+        if (!active || !detail) return;
+        setRowToEdit((prev) => (prev && prev._id === detail._id
+          ? { ...prev, ...detail, _detalleCargado: true }
+          : prev));
+      })
+      .catch((err) => {
+        console.error('[conciliacion] Error cargando detalle de fila', err);
+      })
+      .finally(() => {
+        if (active) setRowDetailLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [editOpen, id, rowToEdit?._id, rowToEdit?.dataRawExcel, rowToEdit?._detalleCargado]);
 
   const handleTipoChange = useCallback((value) => {
     setPage(0);
