@@ -4,7 +4,6 @@ import {
   AccordionDetails,
   AccordionSummary,
   Box,
-  Stack,
   Typography,
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
@@ -15,7 +14,6 @@ import {
   validarDia,
 } from 'src/utils/dhn/configHorarios';
 import DiaHorarioForm from './DiaHorarioForm';
-import HorarioPreviewGrid from './HorarioPreviewGrid';
 
 const HorariosFormEditor = ({ config, onChange }) => {
   const [diaActivo, setDiaActivo] = useState('lunes');
@@ -41,16 +39,10 @@ const HorariosFormEditor = ({ config, onChange }) => {
     return out;
   }, [config]);
 
-  const diaPreview = diaActivo && config?.[diaActivo] ? config[diaActivo] : null;
-
   if (!config) return null;
 
   return (
-    <Stack
-      direction={{ xs: 'column', lg: 'row' }}
-      spacing={2}
-      alignItems="flex-start"
-    >
+    <Box sx={{ width: '100%' }}>
       <Box sx={{ flex: 1, minWidth: 0, width: '100%' }}>
         {DIA_KEYS.map((key) => {
           const dia = config[key];
@@ -112,18 +104,7 @@ const HorariosFormEditor = ({ config, onChange }) => {
           );
         })}
       </Box>
-
-      <Box
-        sx={{
-          width: { xs: '100%', lg: 420 },
-          position: { lg: 'sticky' },
-          top: { lg: 16 },
-          flexShrink: 0,
-        }}
-      >
-        <HorarioPreviewGrid configDia={diaPreview} label={DIA_LABEL[diaActivo]} />
-      </Box>
-    </Stack>
+    </Box>
   );
 };
 
