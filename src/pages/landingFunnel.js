@@ -255,7 +255,7 @@ function FunnelVisual({ totales }) {
                         📌 Histórico A/B test (congelado, previo al nuevo tracking):
                     </Typography>
                     <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                        {METRICAS.filter(m => HISTORICO[m.key] !== null).map(m => (
+                        {METRICAS.filter(m => HISTORICO[m.key] != null).map(m => (
                             <Chip
                                 key={m.key}
                                 size="small"
