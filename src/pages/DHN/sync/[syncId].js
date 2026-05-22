@@ -296,9 +296,11 @@ const SyncDetailPage = () => {
 
     try {
       setResyncingId(urlStorageId);
+      // Optimista: las horas se encolan, el resto procesa directo.
+      const optimisticStatus = tipo === "horas" ? "queued" : "processing";
       setItems((prev) =>
         prev.map((it) =>
-          it?._id === urlStorageId ? { ...it, status: "processing" } : it
+          it?._id === urlStorageId ? { ...it, status: optimisticStatus } : it
         )
       );
 
