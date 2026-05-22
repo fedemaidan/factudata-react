@@ -1514,7 +1514,14 @@ const PresupuestoDrawer = ({
                       <Tooltip
                         title={(() => {
                           if (presupuesto.indexacion !== 'CAC' || !presupuesto.monto_ingresado) return '';
-                          const totalAdicionales = (presupuesto.adicionales || []).reduce((s, a) => s + (Number(a?.monto) || 0), 0);
+                          // Convertir cada adicional a ARS usando su cotizacion_snapshot (NO la cotización actual)
+                          // para mantener el valor nominal del momento en que se agregó (TAR-376).
+                          const totalAdicionales = (presupuesto.adicionales || []).reduce((s, a) => {
+                            const monto = Number(a?.monto) || 0;
+                            const snap = a?.cotizacion_snapshot || {};
+                            const idx = snap.cac_indice ?? snap.cac_general ?? null;
+                            return s + (idx ? monto * idx : 0);
+                          }, 0);
                           const nominal = (Number(presupuesto.monto_ingresado) || 0) + totalAdicionales;
                           return totalAdicionales > 0.005
                             ? `Nominal: ${formatCurrency(nominal)} (original ${formatCurrency(presupuesto.monto_ingresado)} + adicionales ${formatCurrency(totalAdicionales)})`
@@ -2317,6 +2324,13 @@ const PresupuestoDrawer = ({
                               const diff = item.tipo === 'adicional'
                                 ? (item.monto || 0)
                                 : (item.diferencia != null ? item.diferencia : ((item.montoNuevo || 0) - (item.montoAnterior || 0)));
+                              // Tasa histórica del momento (snapshot del item del historial), con fallback a la actual.
+                              const itemSnap = item.cotizacion_snapshot || {};
+                              const rateHistorico = presupuesto.indexacion === 'CAC'
+                                ? (itemSnap.cac_indice ?? itemSnap.cac_general ?? rate)
+                                : presupuesto.indexacion === 'USD'
+                                  ? (itemSnap.dolar_blue ?? rate)
+                                  : rate;
 
                               return (
                                 <Fragment key={idx}>
@@ -2345,18 +2359,18 @@ const PresupuestoDrawer = ({
                                     </TableCell>
                                   </TableRow>
 
-                                  {/* Sub-fila – equivalente ARS (solo si está indexado) */}
-                                  {isIndexed && rate ? (
+                                  {/* Sub-fila – equivalente ARS al momento del movimiento (snapshot histórico) */}
+                                  {isIndexed && rateHistorico ? (
                                     <TableRow sx={{ '& td': { ...subCellSx, borderBottom: (item.motivo || item.concepto) ? 0 : undefined } }}>
-                                      <TableCell sx={{ fontSize: '0.65rem', color: 'text.disabled' }}>≈ ARS</TableCell>
+                                      <TableCell sx={{ fontSize: '0.65rem', color: 'text.disabled' }}>ARS nominal</TableCell>
                                       <TableCell align="right">
-                                        {formatCurrency((item.montoAnterior || 0) * rate)}
+                                        {formatCurrency((item.montoAnterior || 0) * rateHistorico)}
                                       </TableCell>
                                       <TableCell align="right">
-                                        {formatCurrency((item.montoNuevo || 0) * rate)}
+                                        {formatCurrency((item.montoNuevo || 0) * rateHistorico)}
                                       </TableCell>
                                       <TableCell align="right" sx={{ color: diff >= 0 ? 'success.main' : 'error.main' }}>
-                                        {diff >= 0 ? '+' : ''}{formatCurrency(Math.abs(diff) * rate)}
+                                        {diff >= 0 ? '+' : ''}{formatCurrency(Math.abs(diff) * rateHistorico)}
                                       </TableCell>
                                     </TableRow>
                                   ) : null}

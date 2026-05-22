@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import {
@@ -362,6 +362,8 @@ const MovimientosGlobalesPage = () => {
       return DEFAULT_VISIBLE_COLUMNS;
     }
   });
+  const [columnasHydrated, setColumnasHydrated] = useState(false);
+  const lastPersistedColumnasRef = useRef(null);
 
   const { filters, setFilters } = useMovimientosFilters({
     empresaId: selectedEmpresa?.id || 'global-admin',
@@ -695,10 +697,41 @@ const MovimientosGlobalesPage = () => {
   }, [fetchMovimientos]);
 
   useEffect(() => {
+    if (columnasHydrated || !user) return;
+    const remote = user?.ui_prefs?.movimientosGlobales?.columnasVisibles;
+    if (remote && typeof remote === 'object') {
+      const merged = { ...DEFAULT_VISIBLE_COLUMNS, ...remote };
+      setColumnasVisibles(merged);
+      lastPersistedColumnasRef.current = JSON.stringify(merged);
+    } else {
+      lastPersistedColumnasRef.current = JSON.stringify(columnasVisibles);
+    }
+    setColumnasHydrated(true);
+  }, [user, columnasHydrated, columnasVisibles]);
+
+  useEffect(() => {
     try {
       window.localStorage.setItem(COLUMN_STORAGE_KEY, JSON.stringify(columnasVisibles));
     } catch {}
-  }, [columnasVisibles]);
+    if (!columnasHydrated || !user?.id) return;
+    const serialized = JSON.stringify(columnasVisibles);
+    if (lastPersistedColumnasRef.current === serialized) return;
+    lastPersistedColumnasRef.current = serialized;
+    const mergedUiPrefs = {
+      ...(user.ui_prefs || {}),
+      movimientosGlobales: {
+        ...(user.ui_prefs?.movimientosGlobales || {}),
+        columnasVisibles,
+      },
+    };
+    profileService.updateProfile(user.id, { ui_prefs: mergedUiPrefs }).then(() => {
+      if (user && typeof user === 'object') {
+        user.ui_prefs = mergedUiPrefs;
+      }
+    }).catch((err) => {
+      console.warn('No se pudo guardar la preferencia de columnas:', err);
+    });
+  }, [columnasVisibles, columnasHydrated, user]);
 
   const handleSort = (column) => {
     if (!column.sort) return;

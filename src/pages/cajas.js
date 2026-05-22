@@ -28,6 +28,15 @@ import { getProyectosFromUser, recargarProyecto, updateProyecto } from 'src/serv
 import { getSheetConfigsByEmpresa, syncSheetConfig } from 'src/services/sheetConfigService';
 import movimientosService from 'src/services/movimientosService';
 import profileService from 'src/services/profileService';
+import proveedorService from 'src/services/proveedorService';
+import {
+  exportMovimientosToExcel,
+  exportMovimientosToCSV,
+  exportMovimientosToPDF,
+  exportMovimientosAfip,
+} from 'src/utils/movimientoExporters';
+import CargaMasivaDialog from 'src/components/movimientos/cargaMasiva/CargaMasivaDialog';
+import Papa from 'papaparse';
 import Snackbar from '@mui/material/Snackbar';
 import Alert from '@mui/material/Alert';
 import { useAuthContext } from 'src/contexts/auth-context';
@@ -63,6 +72,7 @@ import SouthWestRoundedIcon from '@mui/icons-material/SouthWestRounded';
 import PaymentsOutlinedIcon from '@mui/icons-material/PaymentsOutlined';
 import { buildCompletarPagoUpdateFields, puedeCompletarPagoEgreso } from 'src/utils/movimientoPagoCompleto';
 import { formatCurrencyWithCode } from 'src/utils/formatters';
+import { NAV_CTX_PARAM, encodeNavCtx, decodeNavCtx, appendNavCtxToUrl } from 'src/utils/movimientoNavCtx';
 
 
 // tamaños mínimos por columna (px)
@@ -708,6 +718,8 @@ const CajasPage = () => {
   const [backendOptions, setBackendOptions] = useState(null);
   const [cajasTotalsMap, setCajasTotalsMap] = useState({});
   const [tablaActiva, setTablaActiva] = useState('ARS');
+  const tablaActivaRef = useRef(tablaActiva);
+  useEffect(() => { tablaActivaRef.current = tablaActiva; }, [tablaActiva]);
   const [empresa, setEmpresa] = useState(null);
   const [loadingPage, setLoadingPage] = useState(true);
   const [loadingDashboard, setLoadingDashboard] = useState(false);
@@ -826,6 +838,12 @@ const CajasPage = () => {
   }, [scopeSummary, setBreadcrumbs]);
 
   const [anchorEl, setAnchorEl] = useState(null);
+  const [submenuKey, setSubmenuKey] = useState(null);
+  const submenuRefs = useRef({});
+  const setSubmenuRef = (key) => (el) => { if (el) submenuRefs.current[key] = el; };
+  const openSubmenu = (key) => () => setSubmenuKey(key);
+  const closeSubmenu = () => setSubmenuKey(null);
+  const closeAllMenus = () => { setSubmenuKey(null); setAnchorEl(null); };
   const [cajasVirtuales, setCajasVirtuales] = useState([
     { nombre: 'Caja en Pesos', moneda: 'ARS', medio_pago: "" , equivalencia: 'none', type: '', baseCalculo: 'total' },
     { nombre: 'Caja en Dólares', moneda: 'USD', medio_pago: "" , equivalencia: 'none', type: '', baseCalculo: 'total' },
@@ -902,6 +920,18 @@ const [topWidth, setTopWidth] = useState(0);
 // --- paginación ---
 const [page, setPage] = useState(0);           // página actual (0-based)
 const [rowsPerPage, setRowsPerPage] = useState(25);  // filas por página
+// Refs sincronizados con los useState anteriores. Se usan en callbacks
+// (ej. `goToEdit`) que viven dentro de objetos memoizados como `cajaCellCtx`
+// con deps acotadas: sin el ref, el callback queda con un closure stale
+// (page=0 del primer render) aunque el usuario haya navegado a otra página.
+const pageRef = useRef(page);
+const rowsPerPageRef = useRef(rowsPerPage);
+useEffect(() => { pageRef.current = page; }, [page]);
+useEffect(() => { rowsPerPageRef.current = rowsPerPage; }, [rowsPerPage]);
+// Snapshot pendiente de rehidratar al volver desde el form de edición. El effect
+// que lo consume (más abajo) lo aplica una sola vez y limpia este ref + el query.
+const navCtxAppliedRef = useRef(false);
+const pendingScrollYRef = useRef(null);
 
 const csvExportFields = useMemo(() => getMovimientoCsvExportFields(), []);
 const csvDefaultOrder = useMemo(() => csvExportFields.map((field) => field.key), [csvExportFields]);
@@ -999,7 +1029,20 @@ const scrollByStep = (dir) => {
   el.scrollTo({ left: next, behavior: 'smooth' });
 };
 
-const handleSaveCols = async () => {
+const persistUserCajasPrefs = useCallback(async (nextPrefs) => {
+    writeCajasLocalPrefs(nextPrefs);
+    if (!user?.id) return;
+    const mergedUiPrefs = {
+      ...(user.ui_prefs || {}),
+      cajas: nextPrefs,
+    };
+    await profileService.updateProfile(user.id, { ui_prefs: mergedUiPrefs });
+    if (user && typeof user === 'object') {
+      user.ui_prefs = mergedUiPrefs;
+    }
+  }, [user]);
+
+  const handleSaveCols = async () => {
     try {
       setSavingCols(true);
       const nextPrefs = {
@@ -1007,21 +1050,7 @@ const handleSaveCols = async () => {
         visible: visibleCols,
         orden: columnasOrden,
       };
-      if (activeProject?.id) {
-        const updatedProject = {
-          ...activeProject,
-          ui_prefs: {
-            ...(activeProject.ui_prefs || {}),
-            columnas: nextPrefs,
-          },
-        };
-        await updateProyecto(activeProject.id, {
-          ...updatedProject,
-        });
-        setProyectos((prev) => prev.map((item) => (item.id === updatedProject.id ? updatedProject : item)));
-      } else {
-        writeCajasLocalPrefs(nextPrefs);
-      }
+      await persistUserCajasPrefs(nextPrefs);
       setSaveMsg('Configuración guardada');
     } catch (e) {
       setSaveMsg('No se pudo guardar');
@@ -1154,34 +1183,14 @@ const handleCloseViewConfig = () => setViewConfigOpen(false);
 
 const handleOrdenColumnasChange = async (nuevoOrden) => {
   setColumnasOrden(nuevoOrden);
-  if (activeProject?.id) {
-    try {
-      const updatedProject = {
-        ...activeProject,
-        ui_prefs: {
-          ...(activeProject.ui_prefs || {}),
-          columnas: {
-            ...(activeProject.ui_prefs?.columnas || {}),
-            compact: compactCols,
-            visible: visibleCols,
-            orden: nuevoOrden,
-          },
-        },
-      };
-      await updateProyecto(activeProject.id, {
-        ...updatedProject,
-      });
-      setProyectos((prev) => prev.map((item) => (item.id === updatedProject.id ? updatedProject : item)));
-    } catch (e) {
-      setAlert((prev) => ({ ...prev, open: true, message: 'No se pudo guardar el orden', severity: 'error' }));
-    }
-  } else {
-    writeCajasLocalPrefs({
-      ...(readCajasLocalPrefs() || {}),
+  try {
+    await persistUserCajasPrefs({
       compact: compactCols,
       visible: visibleCols,
       orden: nuevoOrden,
     });
+  } catch (e) {
+    setAlert((prev) => ({ ...prev, open: true, message: 'No se pudo guardar el orden', severity: 'error' }));
   }
 };
 
@@ -1289,6 +1298,7 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
   };
 
   const handleCloseMenu = () => {
+    setSubmenuKey(null);
     setAnchorEl(null);
   };
 
@@ -1414,6 +1424,23 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
   };
 
   const goToEdit = (mov) => {
+    // Snapshot del estado no-URL (page/rows/tabla/scroll). Se embebe dentro de
+    // `lastPageUrl` para que viaje opaco por movementForm y se rehidrate al volver.
+    // Usamos `window.location` (no `router.asPath`) porque el sync de filtros del
+    // hook se hace con `router.replace` shallow y puede no estar reflejado en
+    // `router.asPath` en el instante exacto del click. Leemos `page`/`rows`/`tabla`
+    // desde refs porque esta función queda capturada dentro de `cajaCellCtx`
+    // (memo con deps acotadas), y un closure stale guardaría page=0.
+    const currentUrl = typeof window !== 'undefined'
+      ? `${window.location.pathname}${window.location.search}`
+      : router.asPath;
+    const navCtx = encodeNavCtx({
+      page: pageRef.current,
+      rowsPerPage: rowsPerPageRef.current,
+      tablaActiva: tablaActivaRef.current,
+      scrollY: typeof window !== 'undefined' ? window.scrollY : 0,
+    });
+    const lastPageUrl = navCtx ? appendNavCtxToUrl(currentUrl, navCtx) : currentUrl;
     router.push({
       pathname: '/movementForm',
       query: {
@@ -1421,7 +1448,7 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
         lastPageName: scopeSummary,
         proyectoId: mov.proyecto_id || activeProject?.id,
         proyectoName: mov.proyecto_nombre || mov.proyecto || activeProject?.nombre,
-        lastPageUrl: router.asPath,
+        lastPageUrl,
       },
     });
   };
@@ -1716,7 +1743,9 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
 
   useEffect(() => {
     if (!empresa?.id) return;
-    const savedCols = activeProject?.ui_prefs?.columnas || readCajasLocalPrefs();
+    const savedCols = user?.ui_prefs?.cajas
+      || readCajasLocalPrefs()
+      || activeProject?.ui_prefs?.columnas;
     const nextCompact = typeof savedCols?.compact === 'boolean' ? savedCols.compact : true;
     const nextDefaultVisible = buildDefaultVisible(nextCompact, !activeProjectId);
     setProyecto(activeProject || null);
@@ -1732,7 +1761,64 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
     );
     setColumnasOrden(Array.isArray(savedCols?.orden) ? savedCols.orden : []);
     setPrefsHydrated(true);
-  }, [activeProject, activeProjectId, buildDefaultVisible, empresa?.id]);
+  }, [activeProject, activeProjectId, buildDefaultVisible, empresa?.id, user?.ui_prefs]);
+
+  // Si el usuario llega desde "Todos los movimientos" (vista=todos), mostrar
+  // un aviso de que la vista fue integrada dentro de Caja.
+  useEffect(() => {
+    if (!router.isReady) return;
+    if (router.query.vista !== 'todos') return;
+    setAlert({
+      open: true,
+      severity: 'info',
+      message: 'Todos los movimientos ahora está integrado dentro de Caja.',
+    });
+    const nextQuery = { ...router.query };
+    delete nextQuery.vista;
+    router.replace({ pathname: router.pathname, query: nextQuery }, undefined, { shallow: true });
+  }, [router.isReady, router.query.vista]);
+
+  // Rehidratación del contexto de navegación al volver desde el form de edición.
+  // Corre UNA VEZ al mount leyendo `window.location.search` directo: así evitamos
+  // race conditions con el sync asíncrono del hook de filtros, que usa
+  // `router.replace` shallow y puede no reflejarse en `router.query` en el
+  // primer render. Limpiamos `mvCtx` del URL con `history.replaceState` para no
+  // disparar re-renders del router ni efectos del hook de filtros.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (navCtxAppliedRef.current) return;
+    const url = new URL(window.location.href);
+    const raw = url.searchParams.get(NAV_CTX_PARAM);
+    if (!raw) return;
+    navCtxAppliedRef.current = true;
+    const ctx = decodeNavCtx(raw);
+    if (ctx) {
+      if (ctx.rowsPerPage != null) setRowsPerPage(ctx.rowsPerPage);
+      if (ctx.page != null) setPage(ctx.page);
+      if (ctx.tablaActiva) setTablaActiva(ctx.tablaActiva);
+      if (ctx.scrollY != null) pendingScrollYRef.current = ctx.scrollY;
+    }
+    url.searchParams.delete(NAV_CTX_PARAM);
+    const cleanUrl = `${url.pathname}${url.search ? `?${url.searchParams.toString()}` : ''}${url.hash}`;
+    window.history.replaceState(window.history.state, '', cleanUrl);
+  }, []);
+
+  // Restaurar scroll una vez que los datos estén pintados.
+  useEffect(() => {
+    const targetY = pendingScrollYRef.current;
+    if (targetY == null) return;
+    if (loadingDashboard) return;
+    if (!dashboardItems || dashboardItems.length === 0) return;
+    pendingScrollYRef.current = null;
+    // doble rAF: el primer frame agenda layout, el segundo garantiza que ya está
+    // pintado y las alturas de filas son las definitivas antes de scrollear.
+    if (typeof window === 'undefined') return;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: targetY, left: window.scrollX, behavior: 'auto' });
+      });
+    });
+  }, [loadingDashboard, dashboardItems]);
 
   useEffect(() => {
     if (!empresa?.id) return;
@@ -1871,6 +1957,126 @@ const getTime = (v) => {
     setCsvSelectedFields(csvDefaultOrder);
     setCsvFieldOrder(csvDefaultOrder);
   }, [csvDefaultOrder]);
+
+  // ---- Exportadores migrados desde "Todos los movimientos" ----
+  const fetchAllMovimientosFiltrados = useCallback(async () => {
+    const batchSize = 1000;
+    const all = [];
+    let exportPage = 0;
+    let hasNext = true;
+    while (hasNext) {
+      const response = await movimientosService.getCajasDashboard({
+        ...buildCajaDashboardParams({
+          filters,
+          caja: filters.caja,
+          page: exportPage,
+          limit: batchSize,
+          includeOptions: false,
+        }),
+        empresaId: empresa?.id,
+        ...(scopeProjectIds.length > 0 ? { proyectoIds: scopeProjectIds.join(',') } : {}),
+      });
+      all.push(...flattenDashboardItems(response?.items || []));
+      hasNext = !!response?.pagination?.hasNext;
+      exportPage += 1;
+    }
+    return all;
+  }, [empresa?.id, filters, scopeProjectIds]);
+
+  const runExportador = useCallback(async (exporter, label) => {
+    try {
+      setCsvExporting(true);
+      const movimientos = await fetchAllMovimientosFiltrados();
+      if (movimientos.length === 0) {
+        setAlert({ open: true, severity: 'warning', message: 'No hay movimientos para exportar' });
+        return;
+      }
+      await exporter(movimientos);
+      setAlert({ open: true, severity: 'success', message: `${label} exportado (${movimientos.length} movimientos)` });
+    } catch (err) {
+      console.error('[cajas] export error:', err);
+      setAlert({ open: true, severity: 'error', message: `No se pudo exportar (${label})` });
+    } finally {
+      setCsvExporting(false);
+    }
+  }, [fetchAllMovimientosFiltrados]);
+
+  const handleExportExcel = useCallback(() => (
+    runExportador((movs) => exportMovimientosToExcel({ movimientos: movs, empresa }), 'Excel')
+  ), [empresa, runExportador]);
+
+  const handleExportCSV = useCallback(() => (
+    runExportador((movs) => exportMovimientosToCSV({ movimientos: movs, empresa }), 'CSV')
+  ), [empresa, runExportador]);
+
+  const handleExportPDF = useCallback(() => (
+    runExportador((movs) => exportMovimientosToPDF({ movimientos: movs, empresa }), 'PDF')
+  ), [empresa, runExportador]);
+
+  const handleExportAfip = useCallback(() => (
+    runExportador(async (movs) => {
+      let proveedoresData = [];
+      try {
+        proveedoresData = await proveedorService.getByEmpresa(empresa?.id) || [];
+      } catch {}
+      return exportMovimientosAfip({ movimientos: movs, empresa, proveedoresData });
+    }, 'AFIP')
+  ), [empresa, runExportador]);
+
+  // ---- Carga masiva ----
+  const [cargaMasivaOpen, setCargaMasivaOpen] = useState(false);
+
+  // ---- Importar CSV (actualiza movimientos existentes por id) ----
+  const [openImportDialog, setOpenImportDialog] = useState(false);
+  const [csvFile, setCsvFile] = useState(null);
+  const [importLoading, setImportLoading] = useState(false);
+
+  const handleImportCsv = useCallback(async () => {
+    if (!csvFile) return;
+    setImportLoading(true);
+    Papa.parse(csvFile, {
+      header: true,
+      skipEmptyLines: true,
+      complete: async (results) => {
+        const rows = results.data;
+        const errores = [];
+        for (let i = 0; i < rows.length; i += 1) {
+          const { id, ...campos } = rows[i];
+          try {
+            if (!id) throw new Error('Falta ID en la fila');
+            const normalizados = {};
+            for (const key of Object.keys(campos)) {
+              const value = campos[key];
+              if (value === '') continue;
+              if (!Number.isNaN(Number(value)) && String(value).trim() !== '') {
+                normalizados[key] = Number(value);
+              } else {
+                normalizados[key] = value;
+              }
+            }
+            await movimientosService.updateMovimiento(id, normalizados);
+          } catch (err) {
+            errores.push({ fila: i + 2, error: err.message });
+          }
+        }
+        setImportLoading(false);
+        setOpenImportDialog(false);
+        setCsvFile(null);
+        fetchAndHydrateMovimientos({ includeOptions: false });
+        setAlert({
+          open: true,
+          severity: errores.length === 0 ? 'success' : 'warning',
+          message: errores.length === 0
+            ? 'Importación exitosa'
+            : `Algunos movimientos fallaron (${errores.length})`,
+        });
+      },
+      error: () => {
+        setImportLoading(false);
+        setAlert({ open: true, severity: 'error', message: 'Error al leer CSV' });
+      },
+    });
+  }, [csvFile, fetchAndHydrateMovimientos]);
 
   const handleExportCsvAnalisis = useCallback(async () => {
     const selectedFields = csvFieldOrder
@@ -2101,7 +2307,27 @@ const getTime = (v) => {
         break;
       case 'registrarMovimiento':
         if (!activeProject) break;
-        router.push('/movementForm?proyectoName=' + activeProject.nombre + '&proyectoId=' + activeProject.id + '&lastPageUrl=' + router.asPath + '&lastPageName=Cajas');
+        {
+          const currentUrl = typeof window !== 'undefined'
+            ? `${window.location.pathname}${window.location.search}`
+            : router.asPath;
+          const navCtx = encodeNavCtx({
+            page: pageRef.current,
+            rowsPerPage: rowsPerPageRef.current,
+            tablaActiva: tablaActivaRef.current,
+            scrollY: typeof window !== 'undefined' ? window.scrollY : 0,
+          });
+          const lastPageUrl = navCtx ? appendNavCtxToUrl(currentUrl, navCtx) : currentUrl;
+          router.push({
+            pathname: '/movementForm',
+            query: {
+              proyectoName: activeProject.nombre,
+              proyectoId: activeProject.id,
+              lastPageUrl,
+              lastPageName: 'Cajas',
+            },
+          });
+        }
         break;
       case 'recalcularSheets':
         if (activeProject?.id) handleRecargarProyecto(activeProject.id);
@@ -3140,90 +3366,90 @@ useEffect(() => {
 /> */}
         </Container>
 
-<Menu
-  anchorEl={anchorEl}
-  open={Boolean(anchorEl)}
-  onClose={handleCloseMenu}
-  keepMounted
->
-  <MenuOption onClick={() => handleMenuOptionClick('registrarMovimiento')} disabled={!canUseProjectActions}>
-    <AddCircleIcon sx={{ mr: 1 }} />
-    Registrar movimiento
-  </MenuOption>
-  <MenuOption onClick={() => {
-    handleOpenTransferencia();
-    handleCloseMenu();
-  }}>
-    <SwapHorizIcon sx={{ mr: 1 }} />
-    Transferencia interna
-  </MenuOption>
-  <MenuOption onClick={() => {
-    handleOpenIntercambio();
-    handleCloseMenu();
-  }} disabled={!canUseProjectActions}>
-    <CurrencyExchangeIcon sx={{ mr: 1 }} />
-    Compra/Venta Moneda
-  </MenuOption>
-  <MenuOption onClick={() => handleMenuOptionClick('recalcularSheets')} disabled={!canUseProjectActions}>
-    <RefreshIcon sx={{ mr: 1 }} />
-    Recalcular sheets
-  </MenuOption>
-  <MenuOption onClick={() => handleMenuOptionClick('filtrar')}>
-    <FilterListIcon sx={{ mr: 1 }} />
-    Filtros
-  </MenuOption>
+{(() => {
+  const itemSx = { gap: 1 };
+  const submenuItems = {
+    cajas: [
+      { label: 'Agregar nueva caja', icon: <AddCircleIcon fontSize="small" />, onClick: () => { setShowCrearCaja(true); closeAllMenus(); } },
+      { label: 'Guardar vista actual como caja', icon: <AccountBalanceWalletIcon fontSize="small" />, onClick: () => {
+        setSavedViewMode(true); setEditandoCaja(null);
+        setNombreCaja(''); setMonedaCaja(''); setMedioPagoCaja('');
+        setEstadoCaja(''); setEquivalenciaCaja('none'); setTypeCaja(''); setBaseCalculoCaja('total');
+        setShowCrearCaja(true); closeAllMenus();
+      } },
+    ],
+    sync: [
+      { label: 'Actualizar saldos', icon: <RefreshIcon fontSize="small" />, onClick: () => { handleRefresh(); closeAllMenus(); } },
+      { label: 'Recalcular sheets', icon: <RefreshIcon fontSize="small" />, disabled: !canUseProjectActions, onClick: () => handleMenuOptionClick('recalcularSheets') },
+      { label: 'Recalcular dólar estimado', icon: <RefreshIcon fontSize="small" />, disabled: !canUseProjectActions, onClick: () => handleMenuOptionClick('recalcularEquivalencias') },
+    ],
+    exportar: [
+      { label: 'Excel', icon: <DownloadIcon fontSize="small" />, disabled: csvExporting, onClick: () => { handleExportExcel(); closeAllMenus(); } },
+      { label: 'CSV', icon: <DownloadIcon fontSize="small" />, disabled: csvExporting, onClick: () => { handleExportCSV(); closeAllMenus(); } },
+      { label: 'PDF', icon: <DownloadIcon fontSize="small" />, disabled: csvExporting, onClick: () => { handleExportPDF(); closeAllMenus(); } },
+      { label: 'AFIP (Excel)', icon: <DownloadIcon fontSize="small" />, disabled: csvExporting, onClick: () => { handleExportAfip(); closeAllMenus(); } },
+      { label: 'CSV para análisis', icon: <DownloadIcon fontSize="small" />, onClick: () => { handleOpenExportCsvDialog(); closeAllMenus(); } },
+    ],
+    importar: [
+      { label: 'Carga masiva', icon: <DownloadIcon fontSize="small" />, onClick: () => { setCargaMasivaOpen(true); closeAllMenus(); } },
+      { label: 'Importar CSV (actualizar)', icon: <DownloadIcon fontSize="small" />, onClick: () => { setOpenImportDialog(true); closeAllMenus(); } },
+    ],
+  };
+  const renderSubItem = (key, icon, label) => (
+    <MenuOption ref={setSubmenuRef(key)} sx={itemSx} onClick={openSubmenu(key)}>
+      {icon}
+      <Box sx={{ flexGrow: 1 }}>{label}</Box>
+      <ChevronRightIcon fontSize="small" sx={{ opacity: 0.6 }} />
+    </MenuOption>
+  );
+  return (
+    <>
+      <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleCloseMenu} keepMounted>
+        <MenuOption sx={itemSx} onClick={() => handleMenuOptionClick('registrarMovimiento')} disabled={!canUseProjectActions}>
+          <AddCircleIcon fontSize="small" /> Registrar movimiento
+        </MenuOption>
+        <MenuOption sx={itemSx} onClick={() => { handleOpenTransferencia(); closeAllMenus(); }}>
+          <SwapHorizIcon fontSize="small" /> Transferencia interna
+        </MenuOption>
+        <MenuOption sx={itemSx} onClick={() => { handleOpenIntercambio(); closeAllMenus(); }} disabled={!canUseProjectActions}>
+          <CurrencyExchangeIcon fontSize="small" /> Compra/Venta moneda
+        </MenuOption>
 
-  <Divider sx={{ my: 1 }} />
+        <Divider sx={{ my: 0.5 }} />
 
-  <MenuOption onClick={() => {
-    setShowCrearCaja(true);
-    handleCloseMenu();
-  }}>
-    <AddCircleIcon sx={{ mr: 1 }} />
-    Agregar nueva caja
-  </MenuOption>
-  <MenuOption onClick={() => {
-    setSavedViewMode(true);
-    setEditandoCaja(null);
-    setNombreCaja(''); setMonedaCaja(''); setMedioPagoCaja('');
-    setEstadoCaja(''); setEquivalenciaCaja('none'); setTypeCaja(''); setBaseCalculoCaja('total');
-    setShowCrearCaja(true);
-    handleCloseMenu();
-  }}>
-    <AccountBalanceWalletIcon sx={{ mr: 1 }} />
-    Guardar vista actual como caja
-  </MenuOption>
-  <MenuOption onClick={() => {
-    handleRefresh();
-    handleCloseMenu();
-  }}>
-    <RefreshIcon sx={{ mr: 1 }} />
-    Actualizar saldos
-  </MenuOption>
+        <MenuOption sx={itemSx} onClick={() => handleMenuOptionClick('filtrar')}>
+          <FilterListIcon fontSize="small" /> Filtros
+        </MenuOption>
+        <MenuOption sx={itemSx} onClick={() => { setConfigDrawerOpen(true); closeAllMenus(); }} disabled={!canUseProjectActions}>
+          <SettingsIcon fontSize="small" /> Configurar proyecto
+        </MenuOption>
 
-  <MenuOption onClick={() => handleMenuOptionClick('recalcularEquivalencias')} disabled={!canUseProjectActions}>
-    <RefreshIcon sx={{ mr: 1 }} />
-    Recalcular valor dolar estimado
-  </MenuOption>
-  
-  <Divider sx={{ my: 1 }} />
+        <Divider sx={{ my: 0.5 }} />
 
-  <MenuOption onClick={() => {
-    setConfigDrawerOpen(true);
-    handleCloseMenu();
-  }} disabled={!canUseProjectActions}>
-    <SettingsIcon sx={{ mr: 1 }} />
-    Configurar proyecto
-  </MenuOption>
-  
-  <MenuOption onClick={() => {
-    handleOpenExportCsvDialog();
-    handleCloseMenu();
-  }}>
-    <DownloadIcon sx={{ mr: 1 }} />
-    Exportar CSV para análisis
-  </MenuOption>
-</Menu>
+        {renderSubItem('cajas', <AccountBalanceWalletIcon fontSize="small" />, 'Cajas')}
+        {renderSubItem('sync', <RefreshIcon fontSize="small" />, 'Sincronizar')}
+        {renderSubItem('exportar', <DownloadIcon fontSize="small" />, 'Exportar')}
+        {renderSubItem('importar', <DownloadIcon fontSize="small" />, 'Importar')}
+      </Menu>
+
+      <Menu
+        anchorEl={submenuKey ? submenuRefs.current[submenuKey] : null}
+        open={Boolean(submenuKey && submenuRefs.current[submenuKey])}
+        onClose={closeSubmenu}
+        anchorOrigin={{ vertical: 'top', horizontal: 'left' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+        slotProps={{ paper: { sx: { ml: -0.5 } } }}
+      >
+        {(submenuItems[submenuKey] || []).map((it, i) => (
+          <MenuOption key={i} sx={itemSx} onClick={it.onClick} disabled={it.disabled}>
+            {it.icon}
+            {it.label}
+          </MenuOption>
+        ))}
+      </Menu>
+    </>
+  );
+})()}
 
       </Box>
 
@@ -3581,6 +3807,63 @@ useEffect(() => {
   exporting={csvExporting}
   totalRows={totalRows}
 />
+
+<CargaMasivaDialog
+  open={cargaMasivaOpen}
+  onClose={() => setCargaMasivaOpen(false)}
+  empresa={empresa}
+  proyectos={proyectos}
+  user={user}
+  onSuccess={({ ok, errores, tabularImport, resultado }) => {
+    if (tabularImport) {
+      const exitosos = resultado?.exitosos ?? resultado?.total;
+      setAlert({
+        open: true,
+        severity: resultado?.fallidos > 0 ? 'warning' : 'success',
+        message: exitosos != null
+          ? `Planilla: ${exitosos} movimiento(s) importados${resultado?.fallidos ? `. ${resultado.fallidos} con error.` : '.'}`
+          : 'Importación por planilla finalizada.',
+      });
+    } else {
+      const nOk = ok?.length ?? 0;
+      const nErr = errores?.length ?? 0;
+      setAlert({
+        open: true,
+        severity: nErr ? 'warning' : 'success',
+        message: nErr > 0
+          ? `Creados ${nOk} movimiento(s). ${nErr} error(es).`
+          : `Se crearon ${nOk} movimiento(s) correctamente.`,
+      });
+    }
+    fetchAndHydrateMovimientos({ includeOptions: false });
+  }}
+/>
+
+<Dialog
+  open={openImportDialog}
+  onClose={() => setOpenImportDialog(false)}
+  maxWidth="sm"
+  fullWidth
+>
+  <DialogTitle>Importar CSV para actualizar movimientos</DialogTitle>
+  <DialogContent>
+    <input
+      type="file"
+      accept=".csv"
+      onChange={(e) => setCsvFile(e.target.files?.[0] || null)}
+    />
+  </DialogContent>
+  <DialogActions>
+    <Button onClick={() => setOpenImportDialog(false)}>Cancelar</Button>
+    <Button
+      variant="contained"
+      disabled={!csvFile || importLoading}
+      onClick={handleImportCsv}
+    >
+      {importLoading ? 'Importando...' : 'Importar'}
+    </Button>
+  </DialogActions>
+</Dialog>
 
 
       </ErrorBoundary>

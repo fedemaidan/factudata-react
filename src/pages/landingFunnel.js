@@ -42,12 +42,38 @@ const Chart = dynamic(() => import('react-apexcharts'), { ssr: false });
 
 // ─── Config ──────────────────────────────────────────────
 
+// Funnel principal (variante B ganadora — categoría es post-booking).
+// `eligioCategoria` legacy (pre-booking del A/B viejo) ya no se incrementa,
+// así que se quita del funnel para evitar CR inflados (>100%).
 const METRICAS = [
-    { key: 'visitasLanding',  label: 'Visitas',          emoji: '👁️', color: '#6366f1', desc: 'Llegaron a la landing' },
-    { key: 'abrioModal',      label: 'Abrió modal',      emoji: '📆', color: '#0ea5e9', desc: 'Hicieron clic en "Agendar"' },
-    { key: 'eligioCategoria', label: 'Eligió categoría', emoji: '🏷️', color: '#8b5cf6', desc: 'Seleccionaron su tipo de negocio' },
-    { key: 'eligioSlot',      label: 'Eligió horario',   emoji: '🕐', color: '#f59e0b', desc: 'Seleccionaron un slot' },
-    { key: 'agendaron',       label: 'Agendaron',        emoji: '✅', color: '#10b981', desc: 'Confirmaron la reunión' },
+    { key: 'visitasLanding',     label: 'Visitas',          emoji: '👁️', color: '#6366f1', desc: 'Llegaron a la landing' },
+    { key: 'abrioModal',         label: 'Abrió modal',      emoji: '📆', color: '#0ea5e9', desc: 'Hicieron clic en "Agendar"' },
+    { key: 'eligioSlot',         label: 'Eligió horario',   emoji: '🕐', color: '#f59e0b', desc: 'Seleccionaron un slot' },
+    { key: 'agendaron',          label: 'Agendaron',        emoji: '✅', color: '#10b981', desc: 'Confirmaron la reunión' },
+    { key: 'eligioCategoriaPost', label: 'Eligió rubro',    emoji: '🏷️', color: '#8b5cf6', desc: 'Eligieron rubro después de agendar (opcional)' },
+];
+
+// Embudo granular dentro del modal — viene de LandingStats.extraSteps.
+// Orden lógico del recorrido del usuario una vez que tocó un horario.
+const GRANULAR_FUNNEL = [
+    { key: 'eligioSlot',                 source: 'top',   label: 'Tocó horario',           emoji: '🕐', color: '#f59e0b', desc: 'Click en una píldora de slot (== eligioSlot)' },
+    { key: 'view_datos',                 source: 'extra', label: 'Vio form datos',         emoji: '📝', color: '#0ea5e9', desc: 'El step 2 se renderizó (form visible)' },
+    { key: 'focus_form',                 source: 'extra', label: 'Tocó un campo',          emoji: '👆', color: '#06b6d4', desc: 'Primer focus en cualquier input' },
+    { key: 'submit_attempt',             source: 'extra', label: 'Intentó confirmar',     emoji: '🚀', color: '#8b5cf6', desc: 'Clickeó "Confirmar agendamiento"' },
+    { key: 'agendaron',                  source: 'top',   label: 'Agendaron',              emoji: '✅', color: '#10b981', desc: 'Backend devolvió ok' },
+];
+
+// Errores que cortan el flujo en el form — no son parte del happy path.
+const GRANULAR_ERRORES = [
+    { key: 'submit_validation_error',    label: 'Error validación local',   emoji: '⚠️', color: '#f59e0b', desc: 'Faltaba nombre o email mal formado' },
+    { key: 'submit_backend_error',       label: 'Error backend',            emoji: '❌', color: '#ef4444', desc: 'POST /book devolvió ok:false' },
+    { key: 'submit_network_error',       label: 'Error red',                emoji: '🌐', color: '#ef4444', desc: 'fetch tiró excepción (CORS / 5xx / sin conexión)' },
+];
+
+// Abandonos: cierres del modal en cada step.
+const GRANULAR_CIERRES = [
+    { key: 'close_step_1',  label: 'Cerró en horario',  emoji: '🚪', color: '#94a3b8', desc: 'Cerró el modal viendo el calendario' },
+    { key: 'close_step_2',  label: 'Cerró en form',     emoji: '🚪', color: '#94a3b8', desc: 'Cerró el modal viendo el form de datos' },
 ];
 
 // ── A/B test "cat_before_vs_after" ─────────────────────────
@@ -229,7 +255,7 @@ function FunnelVisual({ totales }) {
                         📌 Histórico A/B test (congelado, previo al nuevo tracking):
                     </Typography>
                     <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                        {METRICAS.filter(m => HISTORICO[m.key] !== null).map(m => (
+                        {METRICAS.filter(m => HISTORICO[m.key] != null).map(m => (
                             <Chip
                                 key={m.key}
                                 size="small"
@@ -307,6 +333,204 @@ function TendenciaChart({ rows }) {
             <CardHeader title="📈 Tendencia diaria" />
             <CardContent sx={{ pt: 0 }}>
                 <Chart type="bar" series={series} options={options} height={280} />
+            </CardContent>
+        </Card>
+    );
+}
+
+// ─── Embudo granular del modal (eventos extraSteps) ──────
+// Une los counters principales (eligioSlot, agendaron) con los granulares
+// (view_datos, focus_form, submit_attempt, errores y cierres) para revelar
+// exactamente dónde se cae la gente DENTRO del modal.
+
+function getStepValue(totales, step) {
+    if (step.source === 'top') return totales[step.key] || 0;
+    return totales.extraSteps?.[step.key] || 0;
+}
+
+function EmbudoGranular({ totales }) {
+    const hayDatosGranulares = totales.extraSteps && Object.keys(totales.extraSteps).length > 0;
+
+    return (
+        <Card sx={{ borderLeft: '4px solid #0ea5e9' }}>
+            <CardHeader
+                title="🔍 Embudo granular dentro del modal"
+                subheader={hayDatosGranulares
+                    ? 'Eventos finos del flujo de agendamiento — revela el lugar exacto del abandono'
+                    : 'Sin datos granulares todavía — se llenarán a medida que entren visitas con el tracking nuevo'}
+            />
+            <CardContent sx={{ pt: 0 }}>
+                {/* Happy path: tocó horario → vio form → tocó campo → intentó submit → agendó */}
+                <Typography variant="overline" color="text.secondary" sx={{ fontWeight: 600 }}>
+                    Happy path
+                </Typography>
+                <TableContainer component={Paper} variant="outlined" sx={{ mb: 3 }}>
+                    <Table size="small">
+                        <TableHead>
+                            <TableRow>
+                                <TableCell><strong>Paso</strong></TableCell>
+                                <TableCell align="right"><strong>Conteo</strong></TableCell>
+                                <TableCell align="right">
+                                    <Tooltip title="Conversión desde el paso inmediatamente anterior" placement="top" arrow>
+                                        <strong style={{ cursor: 'help' }}>CR paso ant.</strong>
+                                    </Tooltip>
+                                </TableCell>
+                                <TableCell align="right">
+                                    <Tooltip title="Conversión desde 'Tocó horario'" placement="top" arrow>
+                                        <strong style={{ cursor: 'help' }}>CR vs horario</strong>
+                                    </Tooltip>
+                                </TableCell>
+                                <TableCell><strong>Descripción</strong></TableCell>
+                            </TableRow>
+                        </TableHead>
+                        <TableBody>
+                            {GRANULAR_FUNNEL.map((m, i) => {
+                                const val = getStepValue(totales, m);
+                                const prev = i > 0 ? GRANULAR_FUNNEL[i - 1] : null;
+                                const prevVal = prev ? getStepValue(totales, prev) : null;
+                                const base = getStepValue(totales, GRANULAR_FUNNEL[0]);
+                                const crStep = prev ? pct(val, prevVal) : null;
+                                const crBase = i > 0 ? pct(val, base) : null;
+                                return (
+                                    <TableRow key={m.key} sx={{ '&:hover': { bgcolor: 'action.hover' } }}>
+                                        <TableCell>
+                                            <Typography variant="body2" sx={{ fontWeight: 600, color: m.color }}>
+                                                {m.emoji} {m.label}
+                                            </Typography>
+                                        </TableCell>
+                                        <TableCell align="right">
+                                            <Typography variant="body2" sx={{ fontWeight: 700, color: val > 0 ? m.color : 'text.disabled' }}>
+                                                {val > 0 ? val.toLocaleString('es-AR') : '—'}
+                                            </Typography>
+                                        </TableCell>
+                                        <TableCell align="right">
+                                            <Typography variant="caption" sx={{ color: crStep && crStep !== '—' ? m.color : 'text.disabled', fontWeight: 600 }}>
+                                                {crStep || '—'}
+                                            </Typography>
+                                        </TableCell>
+                                        <TableCell align="right">
+                                            <Typography variant="caption" color="text.secondary">
+                                                {crBase || '—'}
+                                            </Typography>
+                                        </TableCell>
+                                        <TableCell>
+                                            <Typography variant="caption" color="text.secondary">{m.desc}</Typography>
+                                        </TableCell>
+                                    </TableRow>
+                                );
+                            })}
+                        </TableBody>
+                    </Table>
+                </TableContainer>
+
+                {/* Errores y abandonos en una grilla compacta */}
+                <Grid container spacing={2}>
+                    <Grid item xs={12} md={6}>
+                        <Typography variant="overline" color="text.secondary" sx={{ fontWeight: 600 }}>
+                            Errores al confirmar
+                        </Typography>
+                        <TableContainer component={Paper} variant="outlined">
+                            <Table size="small">
+                                <TableBody>
+                                    {GRANULAR_ERRORES.map(e => {
+                                        const val = totales.extraSteps?.[e.key] || 0;
+                                        const submits = totales.extraSteps?.submit_attempt || 0;
+                                        const pctSubmit = submits > 0 ? pct(val, submits) : '—';
+                                        return (
+                                            <TableRow key={e.key}>
+                                                <TableCell>
+                                                    <Tooltip title={e.desc} placement="top" arrow>
+                                                        <Typography variant="body2" sx={{ cursor: 'help', fontWeight: val > 0 ? 600 : 400, color: val > 0 ? e.color : 'text.secondary' }}>
+                                                            {e.emoji} {e.label}
+                                                        </Typography>
+                                                    </Tooltip>
+                                                </TableCell>
+                                                <TableCell align="right">
+                                                    <Typography variant="body2" sx={{ fontWeight: 700, color: val > 0 ? e.color : 'text.disabled' }}>
+                                                        {val > 0 ? val.toLocaleString('es-AR') : '—'}
+                                                    </Typography>
+                                                </TableCell>
+                                                <TableCell align="right" sx={{ width: 80 }}>
+                                                    <Typography variant="caption" color="text.secondary">
+                                                        {val > 0 && pctSubmit !== '—' ? `${pctSubmit} subm.` : ''}
+                                                    </Typography>
+                                                </TableCell>
+                                            </TableRow>
+                                        );
+                                    })}
+                                </TableBody>
+                            </Table>
+                        </TableContainer>
+                    </Grid>
+                    <Grid item xs={12} md={6}>
+                        <Typography variant="overline" color="text.secondary" sx={{ fontWeight: 600 }}>
+                            Abandonos por step
+                        </Typography>
+                        <TableContainer component={Paper} variant="outlined">
+                            <Table size="small">
+                                <TableBody>
+                                    {GRANULAR_CIERRES.map(c => {
+                                        const val = totales.extraSteps?.[c.key] || 0;
+                                        return (
+                                            <TableRow key={c.key}>
+                                                <TableCell>
+                                                    <Tooltip title={c.desc} placement="top" arrow>
+                                                        <Typography variant="body2" sx={{ cursor: 'help', fontWeight: val > 0 ? 600 : 400 }}>
+                                                            {c.emoji} {c.label}
+                                                        </Typography>
+                                                    </Tooltip>
+                                                </TableCell>
+                                                <TableCell align="right">
+                                                    <Typography variant="body2" sx={{ fontWeight: 700, color: val > 0 ? c.color : 'text.disabled' }}>
+                                                        {val > 0 ? val.toLocaleString('es-AR') : '—'}
+                                                    </Typography>
+                                                </TableCell>
+                                            </TableRow>
+                                        );
+                                    })}
+                                </TableBody>
+                            </Table>
+                        </TableContainer>
+                    </Grid>
+                </Grid>
+
+                {/* Eventos crudos que llegaron pero no encajan en las categorías arriba */}
+                {hayDatosGranulares && (() => {
+                    const conocidos = new Set([
+                        ...GRANULAR_FUNNEL.filter(s => s.source === 'extra').map(s => s.key),
+                        ...GRANULAR_ERRORES.map(s => s.key),
+                        ...GRANULAR_CIERRES.map(s => s.key),
+                    ]);
+                    const otros = Object.entries(totales.extraSteps || {})
+                        .filter(([k]) => !conocidos.has(k))
+                        .sort((a, b) => b[1] - a[1]);
+                    if (otros.length === 0) return null;
+                    return (
+                        <Box mt={3}>
+                            <Typography variant="overline" color="text.secondary" sx={{ fontWeight: 600 }}>
+                                Otros eventos
+                            </Typography>
+                            <TableContainer component={Paper} variant="outlined">
+                                <Table size="small">
+                                    <TableBody>
+                                        {otros.map(([k, v]) => (
+                                            <TableRow key={k}>
+                                                <TableCell>
+                                                    <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>{k}</Typography>
+                                                </TableCell>
+                                                <TableCell align="right">
+                                                    <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                                                        {v.toLocaleString('es-AR')}
+                                                    </Typography>
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </TableContainer>
+                        </Box>
+                    );
+                })()}
             </CardContent>
         </Card>
     );
@@ -710,6 +934,11 @@ const LandingFunnelPage = () => {
                                     <TendenciaChart rows={rows} />
                                 </Grid>
                             </Grid>
+
+                            {/* ─── Embudo granular del modal (sólo en vista global, no split por A/B) ─── */}
+                            {(vista === 'todos' || vista === 'comparar') && (
+                                <EmbudoGranular totales={totalesRaw} />
+                            )}
 
                             {/* ─── Tabla diaria ─── */}
                             <TablaDaily rows={rows} />

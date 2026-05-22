@@ -16,7 +16,6 @@ import AssessmentIcon from "@mui/icons-material/Assessment";
 import ConstructionIcon from "@mui/icons-material/Construction";
 import AutoAwesomeRoundedIcon from "@mui/icons-material/AutoAwesomeRounded";
 import { useAuthContext } from "src/contexts/auth-context";
-import { useAgenteAccess } from "src/hooks/useAgenteAccess";
 import { getProyectosFromUser } from "src/services/proyectosService";
 import { getEmpresaDetailsFromUser } from "src/services/empresaService";
 
@@ -29,7 +28,7 @@ const icon = (Icon) => (
 const getPermisosVisibles = (empresaAcciones, permisosOcultos = []) =>
   (empresaAcciones || []).filter((accion) => !(permisosOcultos || []).includes(accion));
 
-async function buildDefaultGroups({ user, empresa, permisosUsuario, canUseAgente }) {
+async function buildDefaultGroups({ user, empresa, permisosUsuario }) {
   const empId = empresa.id;
   const esAdmin =
     permisosUsuario.includes("VER_CAJAS") &&
@@ -38,9 +37,7 @@ async function buildDefaultGroups({ user, empresa, permisosUsuario, canUseAgente
 
   // ——— INICIO ———
   const inicioItems = [];
-  if (canUseAgente) {
-    inicioItems.push({ title: "Asistente IA", path: "/agente", icon: icon(AutoAwesomeRoundedIcon) });
-  }
+  inicioItems.push({ title: "Asistente IA (Beta)", path: "/agente", icon: icon(AutoAwesomeRoundedIcon) });
   if (user?.admin) {
     inicioItems.push({ title: "Panel de Control", path: "/control-panel", icon: icon(AdminPanelSettingsIcon) });
   }
@@ -53,7 +50,7 @@ async function buildDefaultGroups({ user, empresa, permisosUsuario, canUseAgente
   // ——— FINANZAS ———
   const finanzasItems = [];
   if (esAdmin) {
-    finanzasItems.push({ title: "Todos los movimientos", path: `/todosProyectos?empresaId=${empId}`, icon: icon(DashboardIcon) });
+    finanzasItems.push({ title: "Todos los movimientos", path: `/cajas?empresaId=${empId}&vista=todos`, icon: icon(DashboardIcon) });
   }
   if (permisosUsuario.includes("CREAR_EGRESO_SIMPLIFICADO")) {
     finanzasItems.push({ title: "Ver caja", path: "/cajaSimple", icon: icon(AccountBalanceWallet) });
@@ -184,7 +181,6 @@ const INITIAL_STATE = {
 // lo consume el SideNav y también el AgentLauncherDialog para listar páginas.
 export function useDashboardNavGroups() {
   const { user } = useAuthContext();
-  const { canUse: canUseAgente } = useAgenteAccess();
   const [state, setState] = useState(INITIAL_STATE);
 
   useEffect(() => {
@@ -268,7 +264,6 @@ export function useDashboardNavGroups() {
         user,
         empresa: emp,
         permisosUsuario,
-        canUseAgente,
       });
       if (cancelled) return;
       setState({
@@ -285,7 +280,7 @@ export function useDashboardNavGroups() {
     return () => {
       cancelled = true;
     };
-  }, [user, canUseAgente]);
+  }, [user]);
 
   return state;
 }

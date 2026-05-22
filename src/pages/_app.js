@@ -1,13 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import Router from 'next/router';
 import Head from 'next/head';
+import Script from 'next/script';
 import { CacheProvider } from '@emotion/react';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { es } from 'date-fns/locale';
 import { CssBaseline } from '@mui/material';
 import { ThemeProvider } from '@mui/material/styles';
-import { AuthConsumer, AuthProvider } from 'src/contexts/auth-context';
+import { AuthConsumer, AuthProvider, useAuthContext } from 'src/contexts/auth-context';
 import { useNProgress } from 'src/hooks/use-nprogress';
 import { createTheme } from 'src/theme';
 import { createEmotionCache } from 'src/utils/create-emotion-cache';
@@ -21,6 +22,26 @@ import { AlertProvider, useAlert } from 'src/contexts/alert-context';
 const clientSideEmotionCache = createEmotionCache();
 
 const SplashScreen = () => null;
+
+/**
+ * Identifica al usuario logueado en Clarity para poder filtrar
+ * grabaciones por usuario / email / empresa desde el panel.
+ * Sin esto, Clarity sólo ve sesiones anónimas.
+ */
+const ClarityIdentifier = () => {
+  const { user } = useAuthContext() || {};
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.clarity !== 'function') return;
+    if (!user?.id) return;
+    try {
+      window.clarity('identify', String(user.id), undefined, undefined, user.email || user.name || undefined);
+      if (user.email) window.clarity('set', 'email', String(user.email));
+      if (user.empresaId) window.clarity('set', 'empresaId', String(user.empresaId));
+      if (user.admin) window.clarity('set', 'role', 'admin');
+    } catch (_) {}
+  }, [user?.id, user?.email, user?.empresaId, user?.admin]);
+  return null;
+};
 
 const ReactQueryProvider = ({ children }) => {
   const { notifyError } = useAlert();
@@ -113,6 +134,24 @@ const App = (props) => {
           content="initial-scale=1, width=device-width"
         />
       </Head>
+      {/*
+        Microsoft Clarity — session replay para el dashboard.
+        Project ID separado del de la landing (wutf5eai8c).
+        strategy="afterInteractive" para no bloquear render.
+      */}
+      <Script
+        id="clarity-script"
+        strategy="afterInteractive"
+        dangerouslySetInnerHTML={{
+          __html: `
+            (function(c,l,a,r,i,t,y){
+                c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+                t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+                y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+            })(window, document, "clarity", "script", "wutikur0d0");
+          `,
+        }}
+      />
       <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={es}>
         <AuthProvider>
           <ThemeProvider theme={theme}>
@@ -120,6 +159,7 @@ const App = (props) => {
             <AlertProvider>
               <BreadcrumbsProvider>
                 <ReactQueryProvider>
+                  <ClarityIdentifier />
                   <AuthConsumer>
                     {(auth) =>
                       auth.isLoading ? (

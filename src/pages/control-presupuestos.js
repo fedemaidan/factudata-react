@@ -1550,6 +1550,51 @@ const ControlPresupuestosPage = () => {
                             const fmtARS = (v) => v != null ? `$${Number(v).toLocaleString('es-AR', { maximumFractionDigits: 0 })}` : '';
                             const fmtUnidad = (v) => `${Number(v).toLocaleString('es-AR', { maximumFractionDigits: 2 })} ${unidadIdx}`;
                             const label = labelItem(item);
+                            // Nominal total = presupuesto inicial (monto_ingresado) + suma de adicionales (TAR-376).
+                            // - Item indexado: monto_ingresado guarda los ARS originales al crear.
+                            //   Cada adicional tiene monto en unidades CAC/USD + cotizacion_snapshot → convertir a ARS
+                            //   usando el snapshot (NO la cotización actual) para mantener el valor "nominal".
+                            // - Item no indexado: monto_ingresado / monto ya están en la moneda del item.
+                            const nominalBase = Number(item.monto_ingresado ?? item.monto ?? 0);
+                            const adicionalesArr = Array.isArray(item.adicionales) ? item.adicionales : [];
+                            const nominalDeAdicional = (a) => {
+                              const m = Number(a?.monto || 0);
+                              if (!esIdx) return m;
+                              const snap = a?.cotizacion_snapshot || {};
+                              if (item.indexacion === 'CAC') {
+                                const idx = snap.cac_indice ?? snap.cac_general ?? null;
+                                return idx ? m * idx : 0;
+                              }
+                              if (item.indexacion === 'USD') {
+                                const usd = snap.dolar_blue ?? null;
+                                return usd ? m * usd : 0;
+                              }
+                              return m;
+                            };
+                            const nominalAdicionales = adicionalesArr.reduce((s, a) => s + nominalDeAdicional(a), 0);
+                            const nominalTotal = nominalBase + nominalAdicionales;
+                            const monedaNominal = esIdx ? 'ARS' : (item.moneda_display || monedaItem);
+                            const hasAdicionales = nominalAdicionales > 0.005;
+                            const tooltipPresTitle = (nominalTotal > 0 || (esIdx && presEnARS != null)) ? (
+                              <Box sx={{ fontSize: '0.75rem', lineHeight: 1.6 }}>
+                                {esIdx && presEnARS != null && (
+                                  <>Hoy: {fmtARS(presEnARS)}<br /></>
+                                )}
+                                {nominalTotal > 0 && (
+                                  <>
+                                    <strong>Nominal total: {formatMonto(nominalTotal, monedaNominal)}</strong>
+                                    {hasAdicionales && (
+                                      <>
+                                        <br />
+                                        <Box component="span" sx={{ color: 'grey.300' }}>
+                                          Inicial: {formatMonto(nominalBase, monedaNominal)} + Adicionales: {formatMonto(nominalAdicionales, monedaNominal)}
+                                        </Box>
+                                      </>
+                                    )}
+                                  </>
+                                )}
+                              </Box>
+                            ) : '';
                             return (
                               <Paper key={item.id} variant="outlined" sx={{ p: { xs: 1.5, md: 2 } }}>
                                 {/* Fila 1: label + badges */}
@@ -1602,8 +1647,8 @@ const ControlPresupuestosPage = () => {
                                 <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" useFlexGap>
                                   {esIdx ? (
                                     <>
-                                      <Tooltip title={presEnARS != null ? `Hoy: ${fmtARS(presEnARS)}` : ''} arrow>
-                                        <Chip label={`Pres: ${fmtUnidad(item.monto)}`} size="small" variant="outlined" />
+                                      <Tooltip title={tooltipPresTitle} arrow>
+                                        <Chip label={`Pres: ${fmtUnidad(item.monto)}`} size="small" variant="outlined" sx={{ cursor: 'help' }} />
                                       </Tooltip>
                                       <Tooltip title={ejEnARS != null ? `Hoy: ${fmtARS(ejEnARS)}` : ''} arrow>
                                         <Chip
@@ -1615,7 +1660,9 @@ const ControlPresupuestosPage = () => {
                                     </>
                                   ) : (
                                     <>
-                                      <Chip label={`Pres: ${formatMonto(item.monto, monedaItem)}`} size="small" variant="outlined" />
+                                      <Tooltip title={tooltipPresTitle} arrow disableHoverListener={!nominalTotal}>
+                                        <Chip label={`Pres: ${formatMonto(item.monto, monedaItem)}`} size="small" variant="outlined" sx={{ cursor: nominalTotal ? 'help' : 'default' }} />
+                                      </Tooltip>
                                       <Chip
                                         label={`Cobrado: ${formatMonto(item.ejecutado || 0, monedaItem)}`}
                                         size="small"
@@ -1624,12 +1671,14 @@ const ControlPresupuestosPage = () => {
                                     </>
                                   )}
                                 </Stack>
-                                <LinearProgress
-                                  variant="determinate"
-                                  value={Math.min(porcentaje, 100)}
-                                  sx={{ mt: 1, height: { xs: 6, md: 8 }, borderRadius: 4 }}
-                                  color={porcentaje > 100 ? 'error' : porcentaje > 80 ? 'warning' : 'success'}
-                                />
+                                <Tooltip title={tooltipPresTitle} arrow disableHoverListener={!tooltipPresTitle}>
+                                  <LinearProgress
+                                    variant="determinate"
+                                    value={Math.min(porcentaje, 100)}
+                                    sx={{ mt: 1, height: { xs: 6, md: 8 }, borderRadius: 4, cursor: tooltipPresTitle ? 'help' : 'default' }}
+                                    color={porcentaje > 100 ? 'error' : porcentaje > 80 ? 'warning' : 'success'}
+                                  />
+                                </Tooltip>
                                 <Stack direction="row" justifyContent="space-between" sx={{ mt: 0.5 }}>
                                   <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.6rem', sm: '0.75rem' } }}>
                                     {porcentaje.toFixed(1)}% cobrado
