@@ -76,27 +76,6 @@ const GRANULAR_CIERRES = [
     { key: 'close_step_2',  label: 'Cerró en form',     emoji: '🚪', color: '#94a3b8', desc: 'Cerró el modal viendo el form de datos' },
 ];
 
-// ── A/B test "cat_before_vs_after" ─────────────────────────
-// A = control (categoría antes de elegir horario)
-// B = tratamiento (categoría después del booking, opcional)
-const VARIANTE_META = {
-    A: { label: 'Variante A (control)',     short: 'A', color: '#0ea5e9', desc: 'Categoría antes del horario' },
-    B: { label: 'Variante B (tratamiento)', short: 'B', color: '#10b981', desc: 'Horario primero, categoría opcional al final' },
-};
-
-// Proyecta totales y rows según el modo de visualización.
-// mode: 'todos' | 'A' | 'B'  → 'comparar' usa 'A' y 'B' por separado.
-function proyectarTotales(totales, mode) {
-    if (!totales) return {};
-    if (mode === 'todos') return totales;
-    return totales.byVariant?.[mode] || {};
-}
-function proyectarRows(rows, mode) {
-    if (!rows) return [];
-    if (mode === 'todos') return rows;
-    return rows.map(r => ({ fecha: r.fecha, ...(r.byVariant?.[mode] || {}) }));
-}
-
 // Totales históricos congelados del A/B test finalizado (para mostrar como contexto)
 const HISTORICO = {
     visitasLanding: 1819,
@@ -502,7 +481,8 @@ function EmbudoGranular({ totales }) {
                         ...GRANULAR_CIERRES.map(s => s.key),
                     ]);
                     const otros = Object.entries(totales.extraSteps || {})
-                        .filter(([k]) => !conocidos.has(k))
+                        // Excluir las claves de atribución (van a su propio bloque)
+                        .filter(([k]) => !conocidos.has(k) && !k.startsWith('src:') && !k.startsWith('camp:'))
                         .sort((a, b) => b[1] - a[1]);
                     if (otros.length === 0) return null;
                     return (
@@ -660,127 +640,114 @@ function TablaDaily({ rows }) {
     );
 }
 
-// ─── Comparación A vs B ───────────────────────────────────
+// ─── Atribución por fuente / campaña ─────────────────────────
+// Parsea las claves `src:<source>:<event>` y `camp:<campaign>:<event>` de
+// extraSteps en una tabla que muestra el funnel completo por dimensión:
+//   visita → abrioModal → eligioSlot → agendaron + (lead_parcial, lead_whatsapp)
+function parseAttributionBreakdown(extraSteps, prefix /* 'src' | 'camp' */) {
+    const buckets = {}; // { source/campaign: { visita, abrioModal, eligioSlot, agendaron, lead_parcial, lead_whatsapp } }
+    Object.entries(extraSteps || {}).forEach(([k, v]) => {
+        if (!k.startsWith(prefix + ':')) return;
+        const parts = k.split(':');
+        if (parts.length < 3) return;
+        const dim = parts.slice(1, -1).join(':'); // permite ':' dentro del nombre
+        const ev = parts[parts.length - 1];
+        if (!buckets[dim]) buckets[dim] = {};
+        buckets[dim][ev] = (buckets[dim][ev] || 0) + (v || 0);
+    });
+    return buckets;
+}
 
-function ComparacionAB({ totales }) {
-    const totA = totales.byVariant?.A || {};
-    const totB = totales.byVariant?.B || {};
+const ATTR_EVENTS = [
+    { key: 'visita',         label: 'Visitas',        color: '#6366f1' },
+    { key: 'abrioModal',     label: 'Abrió modal',    color: '#0ea5e9' },
+    { key: 'eligioSlot',     label: 'Eligió slot',    color: '#f59e0b' },
+    { key: 'agendaron',      label: 'Agendaron',      color: '#10b981' },
+    { key: 'lead_parcial',   label: 'Lead parcial',   color: '#94a3b8' },
+    { key: 'lead_whatsapp',  label: 'Lead WA',        color: '#25d366' },
+];
 
-    const tasa = (num, den) => (den > 0 ? (num / den) * 100 : 0);
-    const tasaAgendarA = tasa(totA.agendaron || 0, totA.visitasLanding || 0);
-    const tasaAgendarB = tasa(totB.agendaron || 0, totB.visitasLanding || 0);
-    const tasaModalAgendarA = tasa(totA.agendaron || 0, totA.abrioModal || 0);
-    const tasaModalAgendarB = tasa(totB.agendaron || 0, totB.abrioModal || 0);
-    const lift = tasaAgendarA > 0 ? ((tasaAgendarB / tasaAgendarA - 1) * 100) : null;
-    const liftPositive = lift !== null && lift > 0;
-    const liftColor = lift === null ? 'text.secondary' : liftPositive ? '#10b981' : '#ef4444';
+function AtribucionTabla({ extraSteps, prefix, title, dimLabel }) {
+    const buckets = parseAttributionBreakdown(extraSteps, prefix);
+    const rows = Object.entries(buckets)
+        .map(([dim, evs]) => ({ dim, ...evs }))
+        .sort((a, b) => (b.visita || b.abrioModal || 0) - (a.visita || a.abrioModal || 0));
+
+    if (rows.length === 0) {
+        return (
+            <Card sx={{ borderLeft: '4px solid #8b5cf6' }}>
+                <CardHeader title={title} subheader="Sin datos todavía — empezarán a aparecer cuando lleguen visitas con UTM" />
+            </Card>
+        );
+    }
 
     return (
         <Card sx={{ borderLeft: '4px solid #8b5cf6' }}>
             <CardHeader
-                title="🧪 A/B test — Categoría antes vs después"
-                subheader="Hipótesis: forzar la elección de categoría antes del horario reduce los agendamientos"
+                title={title}
+                subheader={`${rows.length} ${dimLabel}${rows.length > 1 ? 's' : ''} detectado${rows.length > 1 ? 's' : ''} — funnel completo por dimensión`}
             />
-            <CardContent>
-                <Grid container spacing={2} alignItems="stretch">
-                    {['A', 'B'].map(v => {
-                        const m = VARIANTE_META[v];
-                        const t = v === 'A' ? totA : totB;
-                        const tasaV = v === 'A' ? tasaAgendarA : tasaAgendarB;
-                        const tasaModalV = v === 'A' ? tasaModalAgendarA : tasaModalAgendarB;
-                        return (
-                            <Grid item xs={12} md={5} key={v}>
-                                <Box sx={{ p: 2, borderRadius: 1, bgcolor: `${m.color}10`, height: '100%' }}>
-                                    <Stack direction="row" alignItems="center" spacing={1} mb={0.5}>
-                                        <Chip
-                                            label={m.short}
-                                            size="small"
-                                            sx={{ bgcolor: m.color, color: 'white', fontWeight: 700 }}
-                                        />
-                                        <Typography variant="subtitle2">{m.label}</Typography>
-                                    </Stack>
-                                    <Typography variant="caption" color="text.secondary" display="block" mb={1.5}>
-                                        {m.desc}
-                                    </Typography>
-                                    <Stack direction="row" spacing={3} mb={1.5}>
-                                        <Box>
-                                            <Typography variant="caption" color="text.secondary">Visitas</Typography>
-                                            <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                                                {(t.visitasLanding || 0).toLocaleString('es-AR')}
-                                            </Typography>
-                                        </Box>
-                                        <Box>
-                                            <Typography variant="caption" color="text.secondary">Agendaron</Typography>
-                                            <Typography variant="h6" sx={{ fontWeight: 700, color: m.color }}>
-                                                {(t.agendaron || 0).toLocaleString('es-AR')}
-                                            </Typography>
-                                        </Box>
-                                    </Stack>
-                                    <Box sx={{ p: 1.5, bgcolor: 'background.paper', borderRadius: 1 }}>
-                                        <Typography variant="caption" color="text.secondary" display="block">
-                                            Tasa agenda / visita
-                                        </Typography>
-                                        <Typography variant="h4" sx={{ fontWeight: 800, color: m.color }}>
-                                            {tasaV.toFixed(2)}%
-                                        </Typography>
-                                        <Typography variant="caption" color="text.secondary" display="block" mt={0.5}>
-                                            Agenda / abrió modal: <strong>{tasaModalV.toFixed(1)}%</strong>
-                                        </Typography>
-                                    </Box>
-                                </Box>
-                            </Grid>
-                        );
-                    })}
-                    <Grid item xs={12} md={2}>
-                        <Box
-                            sx={{
-                                p: 2,
-                                height: '100%',
-                                display: 'flex',
-                                flexDirection: 'column',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                textAlign: 'center',
-                                borderRadius: 1,
-                                bgcolor: 'action.hover',
-                            }}
-                        >
-                            <Typography variant="caption" color="text.secondary" gutterBottom>
-                                Lift de B vs A
-                            </Typography>
-                            <Typography variant="h3" sx={{ fontWeight: 800, color: liftColor, lineHeight: 1 }}>
-                                {lift === null ? '—' : `${liftPositive ? '+' : ''}${lift.toFixed(1)}%`}
-                            </Typography>
-                            <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
-                                en tasa de agenda / visita
-                            </Typography>
-                            {lift !== null && (
-                                <Chip
-                                    size="small"
-                                    label={liftPositive ? 'B gana' : 'A gana'}
-                                    sx={{ mt: 1.5, bgcolor: liftColor, color: 'white', fontWeight: 700 }}
-                                />
-                            )}
-                        </Box>
-                    </Grid>
-                </Grid>
+            <CardContent sx={{ pt: 0 }}>
+                <TableContainer component={Paper} variant="outlined">
+                    <Table size="small">
+                        <TableHead>
+                            <TableRow>
+                                <TableCell><strong>{dimLabel.charAt(0).toUpperCase() + dimLabel.slice(1)}</strong></TableCell>
+                                {ATTR_EVENTS.map(e => (
+                                    <TableCell key={e.key} align="right"><strong>{e.label}</strong></TableCell>
+                                ))}
+                                <TableCell align="right">
+                                    <Tooltip title="Tasa agenda / visita" placement="top" arrow>
+                                        <strong style={{ cursor: 'help' }}>CR</strong>
+                                    </Tooltip>
+                                </TableCell>
+                            </TableRow>
+                        </TableHead>
+                        <TableBody>
+                            {rows.map(r => {
+                                const cr = r.visita > 0 ? pct(r.agendaron || 0, r.visita) : '—';
+                                return (
+                                    <TableRow key={r.dim} sx={{ '&:hover': { bgcolor: 'action.hover' } }}>
+                                        <TableCell>
+                                            <Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 600 }}>{r.dim}</Typography>
+                                        </TableCell>
+                                        {ATTR_EVENTS.map(e => (
+                                            <TableCell key={e.key} align="right">
+                                                <Typography variant="body2" sx={{ color: (r[e.key] || 0) > 0 ? e.color : 'text.disabled', fontWeight: (r[e.key] || 0) > 0 ? 700 : 400 }}>
+                                                    {r[e.key] > 0 ? r[e.key].toLocaleString('es-AR') : '—'}
+                                                </Typography>
+                                            </TableCell>
+                                        ))}
+                                        <TableCell align="right">
+                                            <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary' }}>{cr}</Typography>
+                                        </TableCell>
+                                    </TableRow>
+                                );
+                            })}
+                        </TableBody>
+                    </Table>
+                </TableContainer>
             </CardContent>
         </Card>
     );
 }
 
-// ─── Página principal ─────────────────────────────────────
+// ─── Rangos preset basados en hitos del producto ──────────
+// Cortes históricos relevantes para entender el impacto de cada cambio:
+//   • antes_7may  → baseline previo al primer rediseño (visitasLanding viejo)
+//   • 7may_23may  → ventana del A/B test categoría pre vs post
+//   • post_23may  → desde el rediseño propuesta-3 (CTA verde, sticky, WhatsApp, tracking granular)
+const RANGOS_PRESET = [
+    { key: 'antes_7may',    label: 'Pre 7-may',          desde: '2024-01-01', hasta: '2026-05-06', desc: 'Baseline previo al rediseño' },
+    { key: '7may_23may',    label: '7-may → 23-may',     desde: '2026-05-07', hasta: '2026-05-23', desc: 'Ventana del A/B test cat-pre vs cat-post' },
+    { key: 'post_23may',    label: '23-may en adelante', desde: '2026-05-24', hasta: null,         desc: 'Desde el rediseño propuesta-3 (verde + sticky + WA + tracking granular)' },
+];
 
 const LandingFunnelPage = () => {
     const [data, setData] = useState(null);
-    const [vista, setVista] = useState('todos'); // 'todos' | 'A' | 'B' | 'comparar'
     const [modo, setModo] = useState('preset'); // 'preset' | 'rango'
-    const [dias, setDias] = useState(30);
-    const [fechaDesde, setFechaDesde] = useState(() => {
-        const d = new Date();
-        d.setDate(d.getDate() - 29);
-        return d;
-    });
+    const [rangoKey, setRangoKey] = useState('post_23may');
+    const [fechaDesde, setFechaDesde] = useState(() => new Date('2026-05-24T00:00:00'));
     const [fechaHasta, setFechaHasta] = useState(() => new Date());
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -789,9 +756,13 @@ const LandingFunnelPage = () => {
         setLoading(true);
         setError(null);
         try {
-            const args = modo === 'rango'
-                ? { desde: toYMD(fechaDesde), hasta: toYMD(fechaHasta) }
-                : { dias };
+            let args;
+            if (modo === 'rango') {
+                args = { desde: toYMD(fechaDesde), hasta: toYMD(fechaHasta) };
+            } else {
+                const r = RANGOS_PRESET.find(x => x.key === rangoKey) || RANGOS_PRESET[2];
+                args = { desde: r.desde, hasta: r.hasta || toYMD(new Date()) };
+            }
             const res = await landingStatsService.getStats(args);
             setData(res);
         } catch (err) {
@@ -799,19 +770,15 @@ const LandingFunnelPage = () => {
         } finally {
             setLoading(false);
         }
-    }, [modo, dias, fechaDesde, fechaHasta]);
+    }, [modo, rangoKey, fechaDesde, fechaHasta]);
 
     useEffect(() => {
         fetchData();
     }, [fetchData]);
 
-    const totalesRaw = data?.totales || {};
-    const rowsRaw = data?.rows || [];
-    // En modo 'comparar' usamos los datos crudos para SummaryCards/Tabla (el split lo da la tarjeta de comparación arriba).
-    const proyMode = vista === 'comparar' ? 'todos' : vista;
-    const totales = proyectarTotales(totalesRaw, proyMode);
-    const rows = proyectarRows(rowsRaw, proyMode);
-    const tieneVariantes = !!totalesRaw.byVariant;
+    const totales = data?.totales || {};
+    const rows = data?.rows || [];
+    const rangoActivo = RANGOS_PRESET.find(r => r.key === rangoKey);
 
     return (
         <>
@@ -833,32 +800,23 @@ const LandingFunnelPage = () => {
                             <ToggleButtonGroup
                                 size="small"
                                 exclusive
-                                value={vista}
-                                onChange={(_, v) => { if (v) setVista(v); }}
-                            >
-                                <ToggleButton value="todos">Todos</ToggleButton>
-                                <ToggleButton value="A">A</ToggleButton>
-                                <ToggleButton value="B">B</ToggleButton>
-                                <ToggleButton value="comparar">Comparar</ToggleButton>
-                            </ToggleButtonGroup>
-                            <ToggleButtonGroup
-                                size="small"
-                                exclusive
                                 value={modo}
                                 onChange={(_, v) => { if (v) setModo(v); }}
                             >
-                                <ToggleButton value="preset">Preset</ToggleButton>
+                                <ToggleButton value="preset">Por etapa</ToggleButton>
                                 <ToggleButton value="rango">Rango exacto</ToggleButton>
                             </ToggleButtonGroup>
                             {modo === 'preset' ? (
                                 <ToggleButtonGroup
                                     size="small"
                                     exclusive
-                                    value={dias}
-                                    onChange={(_, v) => { if (v) setDias(v); }}
+                                    value={rangoKey}
+                                    onChange={(_, v) => { if (v) setRangoKey(v); }}
                                 >
-                                    {[7, 14, 30, 90].map(d => (
-                                        <ToggleButton key={d} value={d}>{d}d</ToggleButton>
+                                    {RANGOS_PRESET.map(r => (
+                                        <Tooltip key={r.key} title={r.desc} placement="top" arrow>
+                                            <ToggleButton value={r.key}>{r.label}</ToggleButton>
+                                        </Tooltip>
                                     ))}
                                 </ToggleButtonGroup>
                             ) : (
@@ -907,22 +865,12 @@ const LandingFunnelPage = () => {
                     {data && (
                         <Stack spacing={3}>
 
-                            {/* ─── Comparación A vs B (solo en modo Comparar) ─── */}
-                            {vista === 'comparar' && tieneVariantes && (
-                                <ComparacionAB totales={totalesRaw} />
-                            )}
-                            {vista === 'comparar' && !tieneVariantes && (
-                                <Alert severity="info">
-                                    Todavía no hay datos partidos por variante. Empezarán a aparecer cuando entren visitas a la landing con el nuevo tracking del A/B test.
+                            {modo === 'preset' && rangoActivo && (
+                                <Alert severity="info" sx={{ mb: -1 }}>
+                                    <strong>{rangoActivo.label}</strong> ({rangoActivo.desde} → {rangoActivo.hasta || 'hoy'}) — {rangoActivo.desc}
                                 </Alert>
                             )}
 
-                            {/* ─── Tarjetas resumen ─── */}
-                            {(vista === 'A' || vista === 'B') && (
-                                <Alert severity="info" sx={{ mb: -1 }}>
-                                    Mostrando sólo <strong>Variante {vista}</strong> — {VARIANTE_META[vista].desc}
-                                </Alert>
-                            )}
                             <SummaryCards totales={totales} />
 
                             {/* ─── Funnel + Chart ─── */}
@@ -935,12 +883,21 @@ const LandingFunnelPage = () => {
                                 </Grid>
                             </Grid>
 
-                            {/* ─── Embudo granular del modal (sólo en vista global, no split por A/B) ─── */}
-                            {(vista === 'todos' || vista === 'comparar') && (
-                                <EmbudoGranular totales={totalesRaw} />
-                            )}
+                            <EmbudoGranular totales={totales} />
 
-                            {/* ─── Tabla diaria ─── */}
+                            <AtribucionTabla
+                                extraSteps={totales.extraSteps}
+                                prefix="src"
+                                title="🎯 Atribución por fuente"
+                                dimLabel="fuente"
+                            />
+                            <AtribucionTabla
+                                extraSteps={totales.extraSteps}
+                                prefix="camp"
+                                title="📣 Atribución por campaña"
+                                dimLabel="campaña"
+                            />
+
                             <TablaDaily rows={rows} />
 
                         </Stack>
@@ -951,7 +908,7 @@ const LandingFunnelPage = () => {
                         <Alert severity="info" sx={{ mt: 2 }}>
                             {modo === 'rango'
                                 ? `No hay datos registrados entre ${toYMD(fechaDesde)} y ${toYMD(fechaHasta)}.`
-                                : `No hay datos registrados en los últimos ${dias} días.`}
+                                : `No hay datos registrados en el rango "${rangoActivo?.label || rangoKey}".`}
                             {' '}Los contadores se empezarán a llenar cuando haya actividad en la landing.
                         </Alert>
                     )}
