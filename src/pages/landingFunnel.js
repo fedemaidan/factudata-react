@@ -735,12 +735,14 @@ function AtribucionTabla({ extraSteps, prefix, title, dimLabel }) {
 // ─── Rangos preset basados en hitos del producto ──────────
 // Cortes históricos relevantes para entender el impacto de cada cambio:
 //   • antes_7may  → baseline previo al primer rediseño (visitasLanding viejo)
-//   • 7may_23may  → ventana del A/B test categoría pre vs post
-//   • post_23may  → desde el rediseño propuesta-3 (CTA verde, sticky, WhatsApp, tracking granular)
+//   • 7may_24may  → ventana del A/B test categoría pre vs post + Constructoras con
+//                   objetivo "ver contenido" en abrir modal (audiencia ruidosa)
+//   • post_25may  → era limpia: propuesta-3 deployada, reglas no-code de Rodo
+//                   eliminadas, ViewContent movido a "eligió horario" (filtra calidad)
 const RANGOS_PRESET = [
     { key: 'antes_7may',    label: 'Pre 7-may',          desde: '2024-01-01', hasta: '2026-05-06', desc: 'Baseline previo al rediseño' },
-    { key: '7may_23may',    label: '7-may → 23-may',     desde: '2026-05-07', hasta: '2026-05-23', desc: 'Ventana del A/B test cat-pre vs cat-post' },
-    { key: 'post_23may',    label: '23-may en adelante', desde: '2026-05-24', hasta: null,         desc: 'Desde el rediseño propuesta-3 (verde + sticky + WA + tracking granular)' },
+    { key: '7may_24may',    label: '7-may → 24-may',     desde: '2026-05-07', hasta: '2026-05-24', desc: 'A/B cat-pre vs cat-post + Constructoras con ViewContent en modal' },
+    { key: 'post_25may',    label: '25-may en adelante', desde: '2026-05-25', hasta: null,         desc: 'Era limpia: propuesta-3 + reglas Rodo eliminadas + ViewContent en eligió horario' },
 ];
 
 // Mapea los eventos `src:<fuente>:<evento>` al shape del funnel principal
@@ -771,8 +773,8 @@ function buildTotalesPorFuente(extraSteps, fuentes) {
 const LandingFunnelPage = () => {
     const [data, setData] = useState(null);
     const [modo, setModo] = useState('preset'); // 'preset' | 'rango'
-    const [rangoKey, setRangoKey] = useState('post_23may');
-    const [fechaDesde, setFechaDesde] = useState(() => new Date('2026-05-24T00:00:00'));
+    const [rangoKey, setRangoKey] = useState('post_25may');
+    const [fechaDesde, setFechaDesde] = useState(() => new Date('2026-05-25T00:00:00'));
     const [fechaHasta, setFechaHasta] = useState(() => new Date());
     const [fuentesFiltro, setFuentesFiltro] = useState([]); // [] = todas
     const [loading, setLoading] = useState(true);
