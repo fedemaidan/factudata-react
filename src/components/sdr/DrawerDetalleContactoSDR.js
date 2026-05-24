@@ -1015,16 +1015,16 @@ const DrawerDetalleContactoSDR = ({
                         </Paper>
 
                         {/* Datos del Bot (si existen) */}
-                        {contactoLocal.datosBot && (contactoLocal.datosBot.rubro || contactoLocal.datosBot.interes || contactoLocal.datosBot.saludoInicial || contactoLocal.datosBot.cantidadObras) && (
+                        {((contactoLocal.datosBot && (contactoLocal.datosBot.rubro || contactoLocal.datosBot.interes || contactoLocal.datosBot.saludoInicial || contactoLocal.datosBot.cantidadObras)) || contactoLocal.rubro) && (
                             <Paper elevation={0} sx={{ p: 2, mb: 2, borderRadius: 3, bgcolor: '#e3f2fd', border: '1px solid', borderColor: 'info.light' }}>
                                 <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
                                     <SmartToyIcon color="info" fontSize="small" />
                                     <Typography variant="subtitle2" color="info.dark">Información del Bot</Typography>
                                 </Stack>
                                 <Stack spacing={0.8}>
-                                    {contactoLocal.datosBot.rubro && (
+                                    {(contactoLocal.rubro || contactoLocal.datosBot.rubro) && (
                                         <Typography variant="body2">
-                                            <strong>🏗️ Rubro:</strong> {contactoLocal.datosBot.rubro}
+                                            <strong>🏗️ Rubro:</strong> {contactoLocal.rubro || contactoLocal.datosBot.rubro}
                                         </Typography>
                                     )}
                                     {contactoLocal.datosBot.interes && (

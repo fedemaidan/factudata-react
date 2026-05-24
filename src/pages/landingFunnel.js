@@ -752,14 +752,15 @@ const EVENT_TO_METRICA = {
     agendaron: 'agendaron',
 };
 
-function buildTotalesPorFuente(extraSteps, fuente) {
+function buildTotalesPorFuente(extraSteps, fuentes) {
     const out = { visitasLanding: 0, abrioModal: 0, eligioSlot: 0, agendaron: 0, eligioCategoriaPost: 0, extraSteps: {} };
+    const set = new Set(fuentes);
     Object.entries(extraSteps || {}).forEach(([k, v]) => {
         if (!k.startsWith('src:')) return;
         const parts = k.split(':');
         if (parts.length < 3) return;
         const dim = parts.slice(1, -1).join(':');
-        if (dim !== fuente) return;
+        if (!set.has(dim)) return;
         const ev = parts[parts.length - 1];
         const metricaKey = EVENT_TO_METRICA[ev];
         if (metricaKey) out[metricaKey] += v || 0;
@@ -773,7 +774,7 @@ const LandingFunnelPage = () => {
     const [rangoKey, setRangoKey] = useState('post_23may');
     const [fechaDesde, setFechaDesde] = useState(() => new Date('2026-05-24T00:00:00'));
     const [fechaHasta, setFechaHasta] = useState(() => new Date());
-    const [fuenteFiltro, setFuenteFiltro] = useState('all');
+    const [fuentesFiltro, setFuentesFiltro] = useState([]); // [] = todas
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
@@ -816,16 +817,17 @@ const LandingFunnelPage = () => {
             .filter(Boolean)
     )).sort();
 
-    // Si el filtro activo ya no existe en el período actual, volver a 'all'
+    // Limpiar fuentes seleccionadas que ya no existen en el período actual
     useEffect(() => {
-        if (fuenteFiltro !== 'all' && !fuentesDetectadas.includes(fuenteFiltro)) {
-            setFuenteFiltro('all');
+        const filtradas = fuentesFiltro.filter(f => fuentesDetectadas.includes(f));
+        if (filtradas.length !== fuentesFiltro.length) {
+            setFuentesFiltro(filtradas);
         }
-    }, [fuenteFiltro, fuentesDetectadas]);
+    }, [fuentesFiltro, fuentesDetectadas]);
 
-    const totales = fuenteFiltro === 'all'
+    const totales = fuentesFiltro.length === 0
         ? totalesRaw
-        : buildTotalesPorFuente(totalesRaw.extraSteps, fuenteFiltro);
+        : buildTotalesPorFuente(totalesRaw.extraSteps, fuentesFiltro);
 
     return (
         <>
@@ -890,15 +892,11 @@ const LandingFunnelPage = () => {
                             {fuentesDetectadas.length > 0 && (
                                 <ToggleButtonGroup
                                     size="small"
-                                    exclusive
-                                    value={fuenteFiltro}
-                                    onChange={(_, v) => { if (v) setFuenteFiltro(v); }}
+                                    value={fuentesFiltro}
+                                    onChange={(_, v) => setFuentesFiltro(v || [])}
                                 >
-                                    <Tooltip title="Sin filtro de fuente" placement="top" arrow>
-                                        <ToggleButton value="all">Todas las fuentes</ToggleButton>
-                                    </Tooltip>
                                     {fuentesDetectadas.map(f => (
-                                        <Tooltip key={f} title={`Filtrar por fuente: ${f}`} placement="top" arrow>
+                                        <Tooltip key={f} title={`Incluir fuente: ${f}`} placement="top" arrow>
                                             <ToggleButton value={f} sx={{ fontFamily: 'monospace', textTransform: 'none' }}>{f}</ToggleButton>
                                         </Tooltip>
                                     ))}
@@ -935,9 +933,9 @@ const LandingFunnelPage = () => {
                                 </Alert>
                             )}
 
-                            {fuenteFiltro !== 'all' && (
-                                <Alert severity="warning" sx={{ mb: -1 }} onClose={() => setFuenteFiltro('all')}>
-                                    Filtrando funnel principal por fuente <strong>{fuenteFiltro}</strong>. La tendencia diaria, embudo granular y tabla por día siguen mostrando el total — la fuente no está desagregada en esas vistas.
+                            {fuentesFiltro.length > 0 && (
+                                <Alert severity="warning" sx={{ mb: -1 }} onClose={() => setFuentesFiltro([])}>
+                                    Filtrando funnel principal por {fuentesFiltro.length === 1 ? 'fuente' : 'fuentes'} <strong>{fuentesFiltro.join(', ')}</strong>. La tendencia diaria, embudo granular y tabla por día siguen mostrando el total — la fuente no está desagregada en esas vistas.
                                 </Alert>
                             )}
 
