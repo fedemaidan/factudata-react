@@ -743,12 +743,37 @@ const RANGOS_PRESET = [
     { key: 'post_23may',    label: '23-may en adelante', desde: '2026-05-24', hasta: null,         desc: 'Desde el rediseño propuesta-3 (verde + sticky + WA + tracking granular)' },
 ];
 
+// Mapea los eventos `src:<fuente>:<evento>` al shape del funnel principal
+// para poder reusar SummaryCards y FunnelVisual con datos filtrados por fuente.
+const EVENT_TO_METRICA = {
+    visita: 'visitasLanding',
+    abrioModal: 'abrioModal',
+    eligioSlot: 'eligioSlot',
+    agendaron: 'agendaron',
+};
+
+function buildTotalesPorFuente(extraSteps, fuente) {
+    const out = { visitasLanding: 0, abrioModal: 0, eligioSlot: 0, agendaron: 0, eligioCategoriaPost: 0, extraSteps: {} };
+    Object.entries(extraSteps || {}).forEach(([k, v]) => {
+        if (!k.startsWith('src:')) return;
+        const parts = k.split(':');
+        if (parts.length < 3) return;
+        const dim = parts.slice(1, -1).join(':');
+        if (dim !== fuente) return;
+        const ev = parts[parts.length - 1];
+        const metricaKey = EVENT_TO_METRICA[ev];
+        if (metricaKey) out[metricaKey] += v || 0;
+    });
+    return out;
+}
+
 const LandingFunnelPage = () => {
     const [data, setData] = useState(null);
     const [modo, setModo] = useState('preset'); // 'preset' | 'rango'
     const [rangoKey, setRangoKey] = useState('post_23may');
     const [fechaDesde, setFechaDesde] = useState(() => new Date('2026-05-24T00:00:00'));
     const [fechaHasta, setFechaHasta] = useState(() => new Date());
+    const [fuenteFiltro, setFuenteFiltro] = useState('all');
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
@@ -776,9 +801,31 @@ const LandingFunnelPage = () => {
         fetchData();
     }, [fetchData]);
 
-    const totales = data?.totales || {};
+    const totalesRaw = data?.totales || {};
     const rows = data?.rows || [];
     const rangoActivo = RANGOS_PRESET.find(r => r.key === rangoKey);
+
+    // Fuentes detectadas en extraSteps (`src:<fuente>:<evento>`)
+    const fuentesDetectadas = Array.from(new Set(
+        Object.keys(totalesRaw.extraSteps || {})
+            .filter(k => k.startsWith('src:'))
+            .map(k => {
+                const parts = k.split(':');
+                return parts.slice(1, -1).join(':');
+            })
+            .filter(Boolean)
+    )).sort();
+
+    // Si el filtro activo ya no existe en el período actual, volver a 'all'
+    useEffect(() => {
+        if (fuenteFiltro !== 'all' && !fuentesDetectadas.includes(fuenteFiltro)) {
+            setFuenteFiltro('all');
+        }
+    }, [fuenteFiltro, fuentesDetectadas]);
+
+    const totales = fuenteFiltro === 'all'
+        ? totalesRaw
+        : buildTotalesPorFuente(totalesRaw.extraSteps, fuenteFiltro);
 
     return (
         <>
@@ -840,6 +887,23 @@ const LandingFunnelPage = () => {
                                     />
                                 </Stack>
                             )}
+                            {fuentesDetectadas.length > 0 && (
+                                <ToggleButtonGroup
+                                    size="small"
+                                    exclusive
+                                    value={fuenteFiltro}
+                                    onChange={(_, v) => { if (v) setFuenteFiltro(v); }}
+                                >
+                                    <Tooltip title="Sin filtro de fuente" placement="top" arrow>
+                                        <ToggleButton value="all">Todas las fuentes</ToggleButton>
+                                    </Tooltip>
+                                    {fuentesDetectadas.map(f => (
+                                        <Tooltip key={f} title={`Filtrar por fuente: ${f}`} placement="top" arrow>
+                                            <ToggleButton value={f} sx={{ fontFamily: 'monospace', textTransform: 'none' }}>{f}</ToggleButton>
+                                        </Tooltip>
+                                    ))}
+                                </ToggleButtonGroup>
+                            )}
                             <Tooltip title="Refrescar datos">
                                 <span>
                                     <IconButton onClick={fetchData} disabled={loading}>
@@ -868,6 +932,12 @@ const LandingFunnelPage = () => {
                             {modo === 'preset' && rangoActivo && (
                                 <Alert severity="info" sx={{ mb: -1 }}>
                                     <strong>{rangoActivo.label}</strong> ({rangoActivo.desde} → {rangoActivo.hasta || 'hoy'}) — {rangoActivo.desc}
+                                </Alert>
+                            )}
+
+                            {fuenteFiltro !== 'all' && (
+                                <Alert severity="warning" sx={{ mb: -1 }} onClose={() => setFuenteFiltro('all')}>
+                                    Filtrando funnel principal por fuente <strong>{fuenteFiltro}</strong>. La tendencia diaria, embudo granular y tabla por día siguen mostrando el total — la fuente no está desagregada en esas vistas.
                                 </Alert>
                             )}
 
