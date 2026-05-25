@@ -791,6 +791,12 @@ const LandingFunnelPage = () => {
                 const r = RANGOS_PRESET.find(x => x.key === rangoKey) || RANGOS_PRESET[2];
                 args = { desde: r.desde, hasta: r.hasta || toYMD(new Date()) };
             }
+            // Si el período aún no comenzó (desde > hasta porque hoy es anterior),
+            // no llamamos al backend — devolvía datos engañosos al invertir el rango.
+            if (args.desde && args.hasta && args.desde > args.hasta) {
+                setData({ totales: {}, rows: [], _futuro: true, _desde: args.desde });
+                return;
+            }
             const res = await landingStatsService.getStats(args);
             setData(res);
         } catch (err) {
@@ -932,6 +938,12 @@ const LandingFunnelPage = () => {
                             {modo === 'preset' && rangoActivo && (
                                 <Alert severity="info" sx={{ mb: -1 }}>
                                     <strong>{rangoActivo.label}</strong> ({rangoActivo.desde} → {rangoActivo.hasta || 'hoy'}) — {rangoActivo.desc}
+                                </Alert>
+                            )}
+
+                            {data?._futuro && (
+                                <Alert severity="info" sx={{ mb: -1 }}>
+                                    Este período arranca el <strong>{data._desde}</strong> y todavía no comenzó — no hay datos para mostrar.
                                 </Alert>
                             )}
 
