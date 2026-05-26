@@ -867,7 +867,6 @@ const CajasPage = () => {
   // cajaSeleccionada eliminado: filters.caja es la única fuente de verdad
   const [prefsHydrated, setPrefsHydrated] = useState(false);
   const [savingCols, setSavingCols] = useState(false);
-  const [saveMsg, setSaveMsg] = useState(null); // opcional: feedback breve
   const [imgPreview, setImgPreview] = useState({ open: false, url: null });
   const [detalleMov, setDetalleMov] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -909,6 +908,9 @@ const CajasPage = () => {
 const [compactCols, setCompactCols] = useState(true);
 const [viewConfigOpen, setViewConfigOpen] = useState(false);
 const [columnasOrden, setColumnasOrden] = useState([]);
+// Snapshot del último estado persistido para evitar reguardar lo recién hidratado.
+// Se compara por referencia: cualquier `set*` genera una ref nueva → autosave dispara.
+const lastSavedPrefsRef = useRef(null);
 // 'full' | 'abbreviated' | 'rounded'
 const [totalesFormat, setTotalesFormat] = useState('full');
 
@@ -1038,6 +1040,7 @@ const scrollByStep = (dir) => {
 };
 
 const persistUserCajasPrefs = useCallback(async (nextPrefs) => {
+    lastSavedPrefsRef.current = nextPrefs;
     writeCajasLocalPrefs(nextPrefs);
     if (!user?.id) return;
     const mergedUiPrefs = {
@@ -1059,9 +1062,10 @@ const persistUserCajasPrefs = useCallback(async (nextPrefs) => {
         orden: columnasOrden,
       };
       await persistUserCajasPrefs(nextPrefs);
-      setSaveMsg('Configuración guardada');
+      setAlert({ open: true, severity: 'success', message: 'Configuración de columnas guardada' });
+      setViewConfigOpen(false);
     } catch (e) {
-      setSaveMsg('No se pudo guardar');
+      setAlert({ open: true, severity: 'error', message: 'No se pudo guardar la configuración' });
     } finally {
       setSavingCols(false);
     }
@@ -1761,20 +1765,50 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
       || activeProject?.ui_prefs?.columnas;
     const nextCompact = typeof savedCols?.compact === 'boolean' ? savedCols.compact : true;
     const nextDefaultVisible = buildDefaultVisible(nextCompact, !activeProjectId);
+    const finalVisible = savedCols?.visible && typeof savedCols.visible === 'object'
+      ? {
+          ...nextDefaultVisible,
+          ...savedCols.visible,
+          proyecto: !activeProjectId ? (savedCols.visible?.proyecto ?? true) : false,
+        }
+      : nextDefaultVisible;
+    const finalOrden = Array.isArray(savedCols?.orden) ? savedCols.orden : [];
     setProyecto(activeProject || null);
     setCompactCols(nextCompact);
-    setVisibleCols(
-      savedCols?.visible && typeof savedCols.visible === 'object'
-        ? {
-            ...nextDefaultVisible,
-            ...savedCols.visible,
-            proyecto: !activeProjectId ? (savedCols.visible?.proyecto ?? true) : false,
-          }
-        : nextDefaultVisible
-    );
-    setColumnasOrden(Array.isArray(savedCols?.orden) ? savedCols.orden : []);
+    setVisibleCols(finalVisible);
+    setColumnasOrden(finalOrden);
+    // Registramos las refs exactas que acabamos de aplicar para que el autosave
+    // no dispare un guardado inmediato con los mismos valores que recién hidratamos.
+    lastSavedPrefsRef.current = { compact: nextCompact, visible: finalVisible, orden: finalOrden };
     setPrefsHydrated(true);
   }, [activeProject, activeProjectId, buildDefaultVisible, empresa?.id, user?.ui_prefs]);
+
+  // Autosave: cualquier cambio en columnas visibles, orden o modo compacto
+  // se persiste solo (debounce 500ms). Cubre toggleCol, applyPreset, setCompactCols
+  // y drag-to-reorder. Se saltea cuando los valores actuales son los mismos
+  // (por referencia) que la última snapshot persistida o hidratada.
+  useEffect(() => {
+    if (!prefsHydrated) return;
+    const last = lastSavedPrefsRef.current;
+    if (
+      last
+      && last.compact === compactCols
+      && last.visible === visibleCols
+      && last.orden === columnasOrden
+    ) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      persistUserCajasPrefs({
+        compact: compactCols,
+        visible: visibleCols,
+        orden: columnasOrden,
+      }).catch((err) => {
+        console.error('[cajas] autosave de prefs falló:', err);
+      });
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [compactCols, visibleCols, columnasOrden, prefsHydrated, persistUserCajasPrefs]);
 
   // Si el usuario llega desde "Todos los movimientos" (vista=todos), mostrar
   // un aviso de que la vista fue integrada dentro de Caja.
