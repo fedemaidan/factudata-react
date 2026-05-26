@@ -50,7 +50,7 @@ import {
 } from 'src/components/movementFieldsConfig';
 import profileService from 'src/services/profileService';
 import MaterialesFacturaActions from 'src/components/stock/MaterialesFacturaActions';
-import { getProyectosByEmpresa } from 'src/services/proyectosService';
+import { getProyectosByEmpresa, getProyectosFromUser } from 'src/services/proyectosService';
 import ProrrateoDialog from 'src/components/ProrrateoDialog';
 import ConfirmarPagoDialog from 'src/components/pagos/ConfirmarPagoDialog';
 import TransferenciaInternaDialog from 'src/components/TransferenciaInternaDialog';
@@ -487,7 +487,15 @@ const MovementFormPage = () => {
       }
       
       setEmpresa(empresa);
-      const proyectosData = await getProyectosByEmpresa(empresa);
+      // Proyectos visibles para elegir: solo los asignados al usuario, no eliminados y activos.
+      // Admins (sin lista personal) caen al listado completo de la empresa, también filtrado.
+      const tieneAsignaciones = Array.isArray(user?.proyectos) && user.proyectos.length > 0;
+      const proyectosBase = tieneAsignaciones
+        ? await getProyectosFromUser(user)
+        : await getProyectosByEmpresa(empresa);
+      const proyectosData = (proyectosBase || []).filter(
+        (p) => p && p.eliminado !== true && p.activo !== false
+      );
       setProyectos(proyectosData);
       const cates = [...empresa.categorias, { name: 'Ingreso dinero', subcategorias: [] }, { name: 'Ajuste', subcategorias: ['Ajuste'] }];
       const provs = await proveedorService.getNombres(empresa.id);
