@@ -787,11 +787,18 @@ function TabPretendidos({ pretendidos, loading }) {
                 {p.monto_aprobado != null ? formatCurrencyWithCode(p.monto_aprobado) : '—'}
               </TableCell>
               <TableCell>
-                <Chip
-                  label={p.estado}
-                  size="small"
-                  color={p.estado === 'cerrado' ? 'success' : 'warning'}
-                />
+                {(() => {
+                  const esRechazado = p.estado === 'cerrado'
+                    && p.monto_aprobado != null
+                    && Number(p.monto_aprobado) === 0;
+                  return (
+                    <Chip
+                      label={esRechazado ? 'Rechazado' : p.estado}
+                      size="small"
+                      color={esRechazado ? 'error' : (p.estado === 'cerrado' ? 'success' : 'warning')}
+                    />
+                  );
+                })()}
               </TableCell>
             </TableRow>
           ))}
