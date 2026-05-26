@@ -754,19 +754,24 @@ const EVENT_TO_METRICA = {
     agendaron: 'agendaron',
 };
 
-function buildTotalesPorFuente(extraSteps, fuentes) {
+function buildTotalesFiltrados(extraSteps, { fuentes, campañas }) {
     const out = { visitasLanding: 0, abrioModal: 0, eligioSlot: 0, agendaron: 0, eligioCategoriaPost: 0, extraSteps: {} };
-    const set = new Set(fuentes);
-    Object.entries(extraSteps || {}).forEach(([k, v]) => {
-        if (!k.startsWith('src:')) return;
-        const parts = k.split(':');
-        if (parts.length < 3) return;
-        const dim = parts.slice(1, -1).join(':');
-        if (!set.has(dim)) return;
-        const ev = parts[parts.length - 1];
-        const metricaKey = EVENT_TO_METRICA[ev];
-        if (metricaKey) out[metricaKey] += v || 0;
-    });
+    const sumarPorPrefijo = (prefix, valores) => {
+        const set = new Set(valores);
+        Object.entries(extraSteps || {}).forEach(([k, v]) => {
+            if (!k.startsWith(prefix + ':')) return;
+            const parts = k.split(':');
+            if (parts.length < 3) return;
+            const dim = parts.slice(1, -1).join(':');
+            if (!set.has(dim)) return;
+            const ev = parts[parts.length - 1];
+            const metricaKey = EVENT_TO_METRICA[ev];
+            if (metricaKey) out[metricaKey] += v || 0;
+        });
+    };
+    // Solo se aplica un eje a la vez (no hay datos cruzados src×camp en extraSteps).
+    if (fuentes && fuentes.length > 0) sumarPorPrefijo('src', fuentes);
+    else if (campañas && campañas.length > 0) sumarPorPrefijo('camp', campañas);
     return out;
 }
 
@@ -777,6 +782,7 @@ const LandingFunnelPage = () => {
     const [fechaDesde, setFechaDesde] = useState(() => new Date('2026-05-25T00:00:00'));
     const [fechaHasta, setFechaHasta] = useState(() => new Date());
     const [fuentesFiltro, setFuentesFiltro] = useState([]); // [] = todas
+    const [campañasFiltro, setCampañasFiltro] = useState([]); // [] = todas
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
@@ -814,28 +820,31 @@ const LandingFunnelPage = () => {
     const rows = data?.rows || [];
     const rangoActivo = RANGOS_PRESET.find(r => r.key === rangoKey);
 
-    // Fuentes detectadas en extraSteps (`src:<fuente>:<evento>`)
-    const fuentesDetectadas = Array.from(new Set(
+    // Dimensiones detectadas en extraSteps (`src:` y `camp:`)
+    const detectarDimensiones = (prefix) => Array.from(new Set(
         Object.keys(totalesRaw.extraSteps || {})
-            .filter(k => k.startsWith('src:'))
+            .filter(k => k.startsWith(prefix + ':'))
             .map(k => {
                 const parts = k.split(':');
                 return parts.slice(1, -1).join(':');
             })
             .filter(Boolean)
     )).sort();
+    const fuentesDetectadas = detectarDimensiones('src');
+    const campañasDetectadas = detectarDimensiones('camp');
 
-    // Limpiar fuentes seleccionadas que ya no existen en el período actual
+    // Limpiar selecciones que ya no existen en el período actual
     useEffect(() => {
-        const filtradas = fuentesFiltro.filter(f => fuentesDetectadas.includes(f));
-        if (filtradas.length !== fuentesFiltro.length) {
-            setFuentesFiltro(filtradas);
-        }
-    }, [fuentesFiltro, fuentesDetectadas]);
+        const f = fuentesFiltro.filter(x => fuentesDetectadas.includes(x));
+        if (f.length !== fuentesFiltro.length) setFuentesFiltro(f);
+        const c = campañasFiltro.filter(x => campañasDetectadas.includes(x));
+        if (c.length !== campañasFiltro.length) setCampañasFiltro(c);
+    }, [fuentesFiltro, campañasFiltro, fuentesDetectadas, campañasDetectadas]);
 
-    const totales = fuentesFiltro.length === 0
-        ? totalesRaw
-        : buildTotalesPorFuente(totalesRaw.extraSteps, fuentesFiltro);
+    const hayFiltro = fuentesFiltro.length > 0 || campañasFiltro.length > 0;
+    const totales = hayFiltro
+        ? buildTotalesFiltrados(totalesRaw.extraSteps, { fuentes: fuentesFiltro, campañas: campañasFiltro })
+        : totalesRaw;
 
     return (
         <>
@@ -898,17 +907,36 @@ const LandingFunnelPage = () => {
                                 </Stack>
                             )}
                             {fuentesDetectadas.length > 0 && (
-                                <ToggleButtonGroup
-                                    size="small"
-                                    value={fuentesFiltro}
-                                    onChange={(_, v) => setFuentesFiltro(v || [])}
-                                >
-                                    {fuentesDetectadas.map(f => (
-                                        <Tooltip key={f} title={`Incluir fuente: ${f}`} placement="top" arrow>
-                                            <ToggleButton value={f} sx={{ fontFamily: 'monospace', textTransform: 'none' }}>{f}</ToggleButton>
-                                        </Tooltip>
-                                    ))}
-                                </ToggleButtonGroup>
+                                <Stack direction="row" spacing={0.5} alignItems="center">
+                                    <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>src:</Typography>
+                                    <ToggleButtonGroup
+                                        size="small"
+                                        value={fuentesFiltro}
+                                        onChange={(_, v) => { setFuentesFiltro(v || []); if (v && v.length) setCampañasFiltro([]); }}
+                                    >
+                                        {fuentesDetectadas.map(f => (
+                                            <Tooltip key={f} title={`Incluir fuente: ${f}`} placement="top" arrow>
+                                                <ToggleButton value={f} sx={{ fontFamily: 'monospace', textTransform: 'none' }}>{f}</ToggleButton>
+                                            </Tooltip>
+                                        ))}
+                                    </ToggleButtonGroup>
+                                </Stack>
+                            )}
+                            {campañasDetectadas.length > 0 && (
+                                <Stack direction="row" spacing={0.5} alignItems="center">
+                                    <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>camp:</Typography>
+                                    <ToggleButtonGroup
+                                        size="small"
+                                        value={campañasFiltro}
+                                        onChange={(_, v) => { setCampañasFiltro(v || []); if (v && v.length) setFuentesFiltro([]); }}
+                                    >
+                                        {campañasDetectadas.map(c => (
+                                            <Tooltip key={c} title={`Incluir campaña: ${c}`} placement="top" arrow>
+                                                <ToggleButton value={c} sx={{ fontFamily: 'monospace', textTransform: 'none' }}>{c}</ToggleButton>
+                                            </Tooltip>
+                                        ))}
+                                    </ToggleButtonGroup>
+                                </Stack>
                             )}
                             <Tooltip title="Refrescar datos">
                                 <span>
@@ -947,11 +975,22 @@ const LandingFunnelPage = () => {
                                 </Alert>
                             )}
 
-                            {fuentesFiltro.length > 0 && (
-                                <Alert severity="warning" sx={{ mb: -1 }} onClose={() => setFuentesFiltro([])}>
-                                    Filtrando funnel principal por {fuentesFiltro.length === 1 ? 'fuente' : 'fuentes'} <strong>{fuentesFiltro.join(', ')}</strong>. La tendencia diaria, embudo granular y tabla por día siguen mostrando el total — la fuente no está desagregada en esas vistas.
-                                </Alert>
-                            )}
+                            {hayFiltro && (() => {
+                                const esCamp = campañasFiltro.length > 0;
+                                const seleccionadas = esCamp ? campañasFiltro : fuentesFiltro;
+                                const label = esCamp
+                                    ? (seleccionadas.length === 1 ? 'campaña' : 'campañas')
+                                    : (seleccionadas.length === 1 ? 'fuente' : 'fuentes');
+                                return (
+                                    <Alert
+                                        severity="warning"
+                                        sx={{ mb: -1 }}
+                                        onClose={() => { setFuentesFiltro([]); setCampañasFiltro([]); }}
+                                    >
+                                        Filtrando funnel principal por {label} <strong>{seleccionadas.join(', ')}</strong>. La tendencia diaria, embudo granular y tabla por día siguen mostrando el total — la dimensión no está desagregada en esas vistas.
+                                    </Alert>
+                                );
+                            })()}
 
                             <SummaryCards totales={totales} />
 
