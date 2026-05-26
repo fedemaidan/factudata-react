@@ -219,7 +219,7 @@ const MovementFormPage = () => {
   const { showAlert: showGlobalAlert } = useAlert();
   const { setBreadcrumbs } = useBreadcrumbs();
   const router = useRouter();
-  const { movimientoId, proyectoId, proyectoName, lastPageUrl, lastPageName, showStockPopup } = router.query;
+  const { movimientoId, proyectoId, proyectoName, proveedorNombre, lastPageUrl, lastPageName, showStockPopup } = router.query;
   const isEditMode = Boolean(movimientoId);
 
   const [isInitialLoading, setIsInitialLoading] = useState(true);
@@ -490,6 +490,10 @@ const MovementFormPage = () => {
       setIngresoInfo(empresa.ingreso_info || {});
       setCategorias(cates);
       setProveedores([...provs, 'Ajuste']);
+
+      if (!isEditMode && proveedorNombre) {
+        formik.setFieldValue('nombre_proveedor', String(proveedorNombre), false);
+      }
       setTagsExtra(empresa.tags_extra || []);
       setMediosPago(empresa.medios_pago?.length ? empresa.medios_pago : mediosPago);
       setAsignados(Array.isArray(empresa.asignados) ? empresa.asignados.filter(Boolean) : []);

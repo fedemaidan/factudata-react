@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Head from 'next/head';
+import { useRouter } from 'next/router';
 import {
   Alert,
   Box,
@@ -16,6 +17,7 @@ import {
   InputAdornment,
   InputLabel,
   MenuItem,
+  IconButton,
   Paper,
   Select,
   Stack,
@@ -33,6 +35,7 @@ import {
 import AddIcon from '@mui/icons-material/Add';
 import BalanceIcon from '@mui/icons-material/Balance';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
+import PointOfSaleIcon from '@mui/icons-material/PointOfSale';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import SearchIcon from '@mui/icons-material/Search';
 import StarIcon from '@mui/icons-material/Star';
@@ -69,6 +72,7 @@ const renderEstadoCC = (resumen) => {
 
 function ProveedoresContent({ empresa, refreshKey }) {
   const { openDrawer } = useProveedorDrawer();
+  const router = useRouter();
   const empresaId = empresa?.id;
 
   const [proveedores, setProveedores] = useState([]);
@@ -509,6 +513,7 @@ function ProveedoresContent({ empresa, refreshKey }) {
                 <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>Último movimiento</TableCell>
                 <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>Último pago</TableCell>
                 <TableCell>Estado</TableCell>
+                <TableCell align="right" sx={{ width: 48 }} />
               </TableRow>
             </TableHead>
             <TableBody>
@@ -597,6 +602,20 @@ function ProveedoresContent({ empresa, refreshKey }) {
                       </Typography>
                     </TableCell>
                     <TableCell>{renderEstadoCC(r)}</TableCell>
+                    <TableCell align="right" onClick={(e) => e.stopPropagation()} sx={{ width: 48 }}>
+                      <Tooltip title="Cargar movimiento de caja">
+                        <IconButton
+                          size="small"
+                          color="primary"
+                          onClick={() => router.push({
+                            pathname: '/movementForm',
+                            query: { proveedorNombre: prov.nombre },
+                          })}
+                        >
+                          <PointOfSaleIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </TableCell>
                   </TableRow>
                 );
               })}
