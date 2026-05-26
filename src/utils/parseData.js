@@ -35,6 +35,7 @@ export const normalizeDate = (value) => {
 export const FILTER_ARRAY_KEYS = [
   'tipo', 'moneda', 'proveedores', 'categorias', 'subcategorias', 'usuarios',
   'medioPago', 'estados', 'etapa', 'cuentaInterna', 'tagsExtra', 'empresaFacturacion',
+  'asignados',
 ];
 
 /**
@@ -69,6 +70,7 @@ export const defaultMovimientosFilters = {
   estados: [],
   cuentaInterna: [],
   tagsExtra: [],
+  asignados: [],
   montoMin: '',
   montoMax: '',
   ordenarPor: 'fecha_factura',

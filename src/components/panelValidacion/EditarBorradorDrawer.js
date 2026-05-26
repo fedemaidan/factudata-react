@@ -74,6 +74,7 @@ function EditarBorradorFormContent({
       proveedores,
       categorias,
       categoriaSeleccionada,
+      asignados: Array.isArray(empresa?.asignados) ? empresa.asignados.filter(Boolean) : [],
       tagsExtra,
       mediosPago,
       empresa,

@@ -32,6 +32,7 @@ const BULK_FIELDS = [
   { name: 'nombre_proveedor', label: 'Proveedor',              type: 'autocomplete', optionsKey: 'proveedores' },
   { name: 'categoria',        label: 'Categoría',              type: 'select',       optionsKey: 'categorias' },
   { name: 'subcategoria',     label: 'Subcategoría',           type: 'select',       optionsKey: 'subcategorias' },
+  { name: 'asignado',         label: 'Asignado',               type: 'select',       optionsKey: 'asignados',  visibleIf: (empresa) => Array.isArray(empresa?.asignados) && empresa.asignados.length > 0 },
   { name: 'type',             label: 'Tipo',                   type: 'select',       options: ['ingreso', 'egreso'] },
   { name: 'moneda',           label: 'Moneda',                 type: 'select',       options: ['ARS', 'USD'] },
   { name: 'medio_pago',       label: 'Medio de Pago',          type: 'select',       optionsKey: 'mediosPago' },
@@ -69,6 +70,12 @@ const BulkEditDialog = ({ open, onClose, selectedCount, selectedIds, onDone, opt
 
   const getOptions = (field) => {
     if (field.options) return field.options;
+    // Para asignados: la lista master de empresa.asignados es la fuente de verdad
+    // (no los valores ya usados en DB). El campo es de texto libre conceptualmente,
+    // pero la UX espera un selector con TODOS los valores configurados.
+    if (field.optionsKey === 'asignados') {
+      return Array.isArray(empresa?.asignados) ? empresa.asignados.filter(Boolean) : [];
+    }
     if (field.optionsKey && options[field.optionsKey]) return options[field.optionsKey];
     if (field.optionsKey === 'subempresas') {
       return getSubempresasOptions(empresa);

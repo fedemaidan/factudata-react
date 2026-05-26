@@ -246,6 +246,7 @@ const MovementFormPage = () => {
   const [auditOpen, setAuditOpen] = useState(false);
   const accionesRef = useRef(null);
   const [mediosPago, setMediosPago] = useState(['Efectivo', 'Transferencia', 'Tarjeta', 'Mercado Pago', 'Cheque']);
+  const [asignados, setAsignados] = useState([]);
   const [urlTemporal, setUrlTemporal] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
   const fileInputRef = useRef(null);
@@ -491,6 +492,7 @@ const MovementFormPage = () => {
       setProveedores([...provs, 'Ajuste']);
       setTagsExtra(empresa.tags_extra || []);
       setMediosPago(empresa.medios_pago?.length ? empresa.medios_pago : mediosPago);
+      setAsignados(Array.isArray(empresa.asignados) ? empresa.asignados.filter(Boolean) : []);
 
       const obras = Array.isArray(empresa.obras) ? empresa.obras : [];
       setObrasEmpresa(obras);
@@ -772,6 +774,7 @@ const createdAtStr = (() => {
       nombre_proveedor: '',
       categoria: '',
       subcategoria: '',
+      asignado: '',
       estado: 'Pendiente',
       url_imagen: null,
       tags_extra: [],
@@ -1131,6 +1134,7 @@ const createdAtStr = (() => {
     proveedores,
     categorias,
     categoriaSeleccionada,
+    asignados,
     tagsExtra,
     mediosPago,
     isEditMode,
@@ -1222,7 +1226,7 @@ const createdAtStr = (() => {
                       const yesNo = (b) => (b ? 'Sí' : 'No');
                       const comprobanteDefaults = {
                         categoria: true, observacion: true, proveedor: true, proyecto: true,
-                        subcategoria: false, total_original: false, medio_pago: false,
+                        subcategoria: false, asignado: false, total_original: false, medio_pago: false,
                         tipo_factura: false, tags_extra: false, caja_chica: false,
                         impuestos: false, numero_factura: false, subtotal: false,
                         cuenta_interna: false, etapa: false, empresa_facturacion: false,
@@ -1232,7 +1236,7 @@ const createdAtStr = (() => {
                       };
                       const ingresoDefaults = {
                         observacion: true, medio_pago: false, categoria: false,
-                        subcategoria: false, tags_extra: false, dolar_referencia: false,
+                        subcategoria: false, asignado: false, tags_extra: false, dolar_referencia: false,
                       };
                       const tipoMov = V.type || 'egreso';
                       const rawInfo = tipoMov === 'ingreso' ? ingreso_info : comprobante_info;

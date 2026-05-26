@@ -53,6 +53,18 @@ const CAJA_SCOPE_FILTER_MAP = {
   type:       'tipo',
 };
 
+// Campos de caja virtual multi-valor → filtro multi-select que bloquean.
+// A diferencia de CAJA_SCOPE_FILTER_MAP, acá el lock viene de un array (puede
+// tener uno o varios valores) y se renderiza como selección fija de esos valores.
+const CAJA_SCOPE_MULTI_FILTER_MAP = {
+  categorias: 'categorias',
+  asignados: 'asignados',
+};
+
+// Sentinel para movimientos con asignado=null (espejo del backend).
+export const SIN_ASIGNAR_SENTINEL = '__sin_asignar__';
+const SIN_ASIGNAR_LABEL = 'Sin asignar';
+
 const DATE_KEYS = FILTER_DATE_KEYS;
 const TEXT_DRAFT_KEYS = ['palabras', 'observacion', 'codigoSync'];
 const serializeFilters = (f) => {
@@ -112,6 +124,18 @@ export const FilterBarCajaProyecto = ({
     if (!cajaScope) return {};
     return Object.entries(CAJA_SCOPE_FILTER_MAP).reduce((acc, [cajaKey, filterKey]) => {
       if (cajaScope[cajaKey]) acc[filterKey] = cajaScope[cajaKey];
+      return acc;
+    }, {});
+  }, [cajaScope]);
+
+  // Locks multi-valor: la caja fija varios valores del mismo filtro a la vez.
+  // p.ej. caja con categorias=['Materiales','Mano de obra'] → el filtro categorias
+  // queda fijado a esos dos valores y deshabilitado para el usuario.
+  const cajaScopeMultiLocks = useMemo(() => {
+    if (!cajaScope) return {};
+    return Object.entries(CAJA_SCOPE_MULTI_FILTER_MAP).reduce((acc, [cajaKey, filterKey]) => {
+      const vals = cajaScope[cajaKey];
+      if (Array.isArray(vals) && vals.length > 0) acc[filterKey] = vals;
       return acc;
     }, {});
   }, [cajaScope]);
@@ -194,6 +218,7 @@ export const FilterBarCajaProyecto = ({
     { name: 'proveedores', label: 'Proveedor', type: 'selectMultiple', optionsKey: 'proveedores', visibleIf: (emp) => emp?.comprobante_info?.proveedor || options?.proveedores?.length > 0 },
     { name: 'categorias', label: 'Categoría', type: 'selectMultiple', optionsKey: 'categorias', visibleIf: (emp) => (emp?.categorias?.length > 0) || (options?.categorias?.length > 0) },
     { name: 'subcategorias', label: 'Subcategoría', type: 'selectMultiple', optionsKey: 'subcategorias', visibleIf: (emp) => (emp?.comprobante_info?.subcategoria || options?.subcategorias?.length > 0) && (options?.subcategorias?.length > 0) },
+    { name: 'asignados', label: 'Asignado', type: 'selectMultiple', optionsKey: 'asignados', includeSinAsignar: true, visibleIf: (emp) => (emp?.asignados?.length > 0) || (options?.asignados?.length > 0) },
     { name: 'medioPago', label: 'Medio de pago', type: 'selectMultiple', optionsKey: 'mediosPago', visibleIf: (emp) => emp?.comprobante_info?.medio_pago || options?.mediosPago?.length > 0 },
     { name: 'etapa', label: 'Etapa', type: 'selectMultiple', optionsKey: 'etapas', visibleIf: (emp) => emp?.comprobante_info?.etapa || options?.etapas?.length > 0 },
     { name: 'estados', label: 'Estado', type: 'selectMultiple', options: ['Pendiente', 'Pagado'], visibleIf: (emp) => emp?.con_estados || options?.estados?.length > 0 },
@@ -265,6 +290,7 @@ export const FilterBarCajaProyecto = ({
     toArr(filters.proveedores).forEach((v) => add(`Prov: ${v}`, () => set('proveedores', toArr(filters.proveedores).filter((x) => x !== v)), 'proveedores'));
     toArr(filters.categorias).forEach((v) => add(`Cat: ${v}`, () => set('categorias', toArr(filters.categorias).filter((x) => x !== v)), 'categorias'));
     toArr(filters.subcategorias).forEach((v) => add(`Subcat: ${v}`, () => set('subcategorias', toArr(filters.subcategorias).filter((x) => x !== v)), 'subcategorias'));
+    toArr(filters.asignados).forEach((v) => add(`Asignado: ${v === SIN_ASIGNAR_SENTINEL ? SIN_ASIGNAR_LABEL : v}`, () => set('asignados', toArr(filters.asignados).filter((x) => x !== v)), 'asignados'));
     toArr(filters.medioPago).forEach((v) => add(`Medio: ${v}`, () => set('medioPago', toArr(filters.medioPago).filter((x) => x !== v)), 'medioPago'));
     toArr(filters.etapa).forEach((v) => add(`Etapa: ${v}`, () => set('etapa', toArr(filters.etapa).filter((x) => x !== v)), 'etapa'));
     toArr(filters.estados).forEach((v) => add(`Estado: ${v}`, () => set('estados', toArr(filters.estados).filter((x) => x !== v)), 'estados'));
@@ -366,15 +392,23 @@ export const FilterBarCajaProyecto = ({
       const isSub = filtro.name === 'subcategorias';
       const isSubDisabled = isSub && !(Array.isArray(filters.categorias) && filters.categorias.length > 0);
       const cajaLockValue = cajaScopeLocks[filtro.name];
-      const isLockedByCaja = !!cajaLockValue;
+      const cajaMultiLockValues = cajaScopeMultiLocks[filtro.name];
+      const isLockedByCaja = !!cajaLockValue || (Array.isArray(cajaMultiLockValues) && cajaMultiLockValues.length > 0);
       const isDisabled = isSubDisabled || isLockedByCaja;
       const tooltipTitle = isLockedByCaja
         ? `Fijado por la caja "${cajaScope?.nombre}"`
         : isSubDisabled
           ? 'Seleccioná una categoría primero para filtrar por subcategoría'
           : '';
-      const selectOptions = isSub ? subcategoriasDisponibles : (filtro.options || options[filtro.optionsKey] || []);
-      const displayValue = isLockedByCaja ? [cajaLockValue] : toArrLocal(value);
+      let selectOptions = isSub ? subcategoriasDisponibles : (filtro.options || options[filtro.optionsKey] || []);
+      if (filtro.includeSinAsignar && !selectOptions.includes(SIN_ASIGNAR_SENTINEL)) {
+        selectOptions = [SIN_ASIGNAR_SENTINEL, ...selectOptions];
+      }
+      let displayValue;
+      if (cajaMultiLockValues) displayValue = cajaMultiLockValues;
+      else if (cajaLockValue) displayValue = [cajaLockValue];
+      else displayValue = toArrLocal(value);
+      const renderOptLabel = (opt) => (opt === SIN_ASIGNAR_SENTINEL ? SIN_ASIGNAR_LABEL : opt);
 
       return (
         <Tooltip
@@ -386,8 +420,16 @@ export const FilterBarCajaProyecto = ({
           <Box sx={overrideSx || { minWidth: 0, width: '100%' }}>
             <FormControl sx={{ width: '100%' }} disabled={isDisabled} size="small">
               <InputLabel>{filtro.label}</InputLabel>
-              <Select multiple value={displayValue} onChange={(e) => set(filtro.name, e.target.value)} label={filtro.label} autoFocus={focusField === filtro.name} size="small">
-                {selectOptions.map((opt) => (<MenuItem key={opt} value={opt}>{opt}</MenuItem>))}
+              <Select
+                multiple
+                value={displayValue}
+                onChange={(e) => set(filtro.name, e.target.value)}
+                label={filtro.label}
+                autoFocus={focusField === filtro.name}
+                size="small"
+                renderValue={(selected) => (selected || []).map(renderOptLabel).join(', ')}
+              >
+                {selectOptions.map((opt) => (<MenuItem key={opt} value={opt}>{renderOptLabel(opt)}</MenuItem>))}
               </Select>
               {isSubDisabled && (
                 <FormHelperText>Seleccioná una categoría primero</FormHelperText>

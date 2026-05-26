@@ -143,6 +143,8 @@ const CajaTablaCell = ({ colKey, mov, amountColor, ctx, isProrrateo = false }) =
       );
     case 'subcategoria':
       return cell({ ...cellBase, minWidth: COLS.subcategoria }, mov.subcategoria);
+    case 'asignado':
+      return cell({ ...cellBase, minWidth: COLS.asignado || 160 }, mov.asignado || '—');
     case 'medioPago':
       return cell(
         { ...cellBase, minWidth: COLS.medioPago },

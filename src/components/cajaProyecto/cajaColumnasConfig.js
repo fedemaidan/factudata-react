@@ -17,6 +17,7 @@ export const CAJA_COL_DEFAULT_ORDER = [
   'montoAprobado',
   'categoria',
   'subcategoria',
+  'asignado',
   'medioPago',
   'proveedor',
   'obra',
@@ -50,6 +51,7 @@ const LABELS = {
   montoAprobado: 'Monto aprobado',
   categoria: 'Categoría',
   subcategoria: 'Subcategoría',
+  asignado: 'Asignado',
   medioPago: 'Medio de pago',
   proveedor: 'Proveedor',
   obra: 'Obra',
@@ -99,6 +101,9 @@ export function getCajaColumnasConfig(visibleCols, compactCols, empresa, options
   if (visibleCols?.categoria) result.push(['categoria', LABELS.categoria]);
   if (!compactCols && empresa?.comprobante_info?.subcategoria && visibleCols?.subcategoria) {
     result.push(['subcategoria', LABELS.subcategoria]);
+  }
+  if (empresa?.comprobante_info?.asignado && visibleCols?.asignado) {
+    result.push(['asignado', LABELS.asignado]);
   }
   if (empresa?.comprobante_info?.medio_pago && visibleCols?.medioPago) {
     result.push(['medioPago', LABELS.medioPago]);
@@ -162,6 +167,7 @@ export function getHeaderLabel(key, compactCols) {
     montoPagado: 'MONTO PAGADO',
     montoAprobado: 'MONTO APROBADO',
     subcategoria: 'SUBCATEGORÍA',
+    asignado: 'ASIGNADO',
     medioPago: 'MEDIO DE PAGO',
     proveedor: 'PROVEEDOR',
     obra: 'OBRA',
@@ -217,6 +223,7 @@ export function getHeaderCellSx(key, COLS, cellBase) {
     montoAprobado: { minWidth: COLS.montoAprobado, textAlign: 'right' },
     categoria: { minWidth: COLS.categoria },
     subcategoria: { minWidth: COLS.subcategoria },
+    asignado: { minWidth: COLS.asignado || 160 },
     medioPago: { minWidth: COLS.medioPago },
     proveedor: { minWidth: COLS.proveedor },
     obra: { minWidth: COLS.obra },
