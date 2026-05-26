@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
+  Autocomplete,
   Box,
   Chip,
   Paper,
@@ -10,12 +11,44 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  TextField,
   Typography,
 } from '@mui/material';
 import TrendingDownIcon from '@mui/icons-material/TrendingDown';
 import { formatValue } from 'src/tools/reportEngine';
 
-const MonthlyBudgetControlBlock = ({ data, displayCurrency, onDrillDown }) => {
+function getPresupuestoOptionId(presupuesto) {
+  return String(presupuesto?._id || presupuesto?.id || '').trim();
+}
+
+function getPresupuestoOptionLabel(presupuesto) {
+  if (presupuesto?._missingPresupuesto) return presupuesto.label;
+  const codigo = presupuesto?.codigo ? `#${presupuesto.codigo}` : 'Sin codigo';
+  const categorias = Array.isArray(presupuesto?.clasificaciones) && presupuesto.clasificaciones.length > 0
+    ? presupuesto.clasificaciones.map((c) => c?.categoria).filter(Boolean).join(' + ')
+    : (presupuesto?.rubro || 'General');
+  const proyecto = presupuesto?.proyecto_nombre || presupuesto?.nombre_proyecto || '';
+  const monto = presupuesto?.monto_ingresado ?? presupuesto?.monto;
+  const moneda = presupuesto?.moneda_display || presupuesto?.moneda || '';
+  const montoTxt = monto != null ? ` · ${Number(monto).toLocaleString('es-AR')} ${moneda}` : '';
+  return [codigo, categorias, proyecto].filter(Boolean).join(' · ') + montoTxt;
+}
+
+const MonthlyBudgetControlBlock = ({
+  data,
+  displayCurrency,
+  onDrillDown,
+  blockConfig,
+  presupuestos = [],
+  onBlockConfigChange,
+}) => {
+  const presupuestoIds = Array.isArray(blockConfig?.presupuesto_ids) ? blockConfig.presupuesto_ids : [];
+  const [localPresupuestoIds, setLocalPresupuestoIds] = useState(presupuestoIds);
+
+  useEffect(() => {
+    setLocalPresupuestoIds(presupuestoIds);
+  }, [blockConfig?.presupuesto_ids]);
+
   if (!data) return null;
 
   const {
@@ -29,6 +62,14 @@ const MonthlyBudgetControlBlock = ({ data, displayCurrency, onDrillDown }) => {
     totals,
   } = data;
   const amountLabel = campoMonto === 'subtotal' ? 'Subtotal neto' : 'Total';
+  const presupuestoOptions = (Array.isArray(presupuestos) ? presupuestos : [])
+    .filter((p) => getPresupuestoOptionId(p));
+  const selectedPresupuestos = localPresupuestoIds
+    .map((id) => (
+      presupuestoOptions.find((p) => getPresupuestoOptionId(p) === id)
+      || { _id: id, _missingPresupuesto: true, label: `Presupuesto guardado ${id.slice(-6)}` }
+    ))
+    .filter(Boolean);
 
   const formatDate = (value) => {
     if (!value) return '';
@@ -84,6 +125,39 @@ const MonthlyBudgetControlBlock = ({ data, displayCurrency, onDrillDown }) => {
               <Typography variant="body2" color="text.secondary">
                 Inicio: {formatDate(fechaInicio)}
               </Typography>
+            )}
+            {onBlockConfigChange && (
+              <Autocomplete
+                multiple
+                size="small"
+                options={presupuestoOptions}
+                value={selectedPresupuestos}
+                getOptionLabel={getPresupuestoOptionLabel}
+                isOptionEqualToValue={(option, value) => getPresupuestoOptionId(option) === getPresupuestoOptionId(value)}
+                onChange={(_, val) => {
+                  const nextIds = val.map(getPresupuestoOptionId).filter(Boolean);
+                  setLocalPresupuestoIds(nextIds);
+                  onBlockConfigChange({ presupuesto_ids: nextIds });
+                }}
+                renderTags={(value, getTagProps) =>
+                  value.map((option, index) => (
+                    <Chip
+                      key={getPresupuestoOptionId(option)}
+                      label={getPresupuestoOptionLabel(option)}
+                      size="small"
+                      {...getTagProps({ index })}
+                    />
+                  ))
+                }
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Presupuesto puntual"
+                    placeholder="Todos los presupuestos"
+                  />
+                )}
+                sx={{ maxWidth: 680, mt: 0.75 }}
+              />
             )}
           </Stack>
 

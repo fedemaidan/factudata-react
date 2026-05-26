@@ -185,7 +185,7 @@ const TEMPLATES = [
       fecha: { enabled: true, default_range: 'current_year' },
       proyectos: { enabled: true },
       tipo: { enabled: false, default_value: 'egreso' },
-      categorias: { enabled: true },
+      categorias: { enabled: false },
       moneda_equivalente: { enabled: true, default_values: ['ARS'] },
     },
     layout: [
@@ -195,6 +195,7 @@ const TEMPLATES = [
         tipo_presupuesto: 'egreso',
         campo_monto: 'subtotal',
         categorias_control: [],
+        presupuesto_ids: [],
         presupuesto_label: 'Egresos proyectados',
       },
     ],
