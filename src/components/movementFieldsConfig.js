@@ -10,6 +10,7 @@ export const DEFINICION_CAMPOS = [
   { section: 'basicos', name: 'detalle', label: 'Detalle', type: 'textarea', visibleIf: (info) => info.detalle, stitchBlock: 'details', stitchOrder: 80 },
   { section: 'basicos', name: 'categoria', label: 'Categoria', type: 'select', optionsKey: 'categorias', visibleIf: (info) => info.categoria, stitchBlock: 'classification', stitchOrder: 10 },
   { section: 'basicos', name: 'subcategoria', label: 'Subcategoria', type: 'select', optionsKey: 'subcategorias', visibleIf: (info) => info.subcategoria, stitchBlock: 'classification', stitchOrder: 20 },
+  { section: 'basicos', name: 'asignado', label: 'Asignado', type: 'select', optionsKey: 'asignados', visibleIf: (info) => info.asignado, stitchBlock: 'classification', stitchOrder: 25 },
   { section: 'basicos', name: 'obra', label: 'Obra', type: 'autocomplete', optionsKey: 'obras', visibleIf: (info) => info.obra, stitchBlock: 'classification', stitchOrder: 30 },
   { section: 'basicos', name: 'cliente', label: 'Cliente', type: 'autocomplete', optionsKey: 'clientes', visibleIf: (info) => info.cliente, stitchBlock: 'classification', stitchOrder: 40 },
   { section: 'extras', name: 'cuenta_interna', label: 'Cuenta Interna', type: 'select', optionsKey: 'cuentasInternas', visibleIf: (info) => info.cuenta_interna, stitchBlock: 'classification', stitchOrder: 50 },
@@ -37,6 +38,7 @@ export const COMPROBANTE_INFO_DEFAULT = {
   proveedor: true,
   proyecto: true,
   subcategoria: false,
+  asignado: false,
   total_original: false,
   medio_pago: false,
   tipo_factura: false,
@@ -62,6 +64,7 @@ export const INGRESO_INFO_DEFAULT = {
   medio_pago: false,
   categoria: false,
   subcategoria: false,
+  asignado: false,
   tags_extra: false,
   dolar_referencia: false,
 };
@@ -130,6 +133,7 @@ export const getOptionsFromContext = (key, context = {}) => {
     proveedores = [],
     categorias = [],
     categoriaSeleccionada = null,
+    asignados = [],
     tagsExtra = [],
     mediosPago = [],
     empresa = null,
@@ -145,6 +149,8 @@ export const getOptionsFromContext = (key, context = {}) => {
       return categorias.map((c) => c.name);
     case 'subcategorias':
       return categoriaSeleccionada?.subcategorias || [];
+    case 'asignados':
+      return asignados;
     case 'tagsExtra':
       return tagsExtra;
     case 'mediosPago':

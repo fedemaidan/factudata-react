@@ -24,6 +24,7 @@ import {
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { ProyectosDetails } from 'src/sections/empresa/proyectosDetails';
 import { CategoriasDetails } from 'src/sections/empresa/categoriasDetails';
+import { AsignadosDetails } from 'src/sections/empresa/asignadosDetails';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import Link from 'next/link';
 import { UsuariosDetails } from 'src/sections/empresa/usuariosDetails';
@@ -108,6 +109,7 @@ const EmpresaPage = () => {
     { value: 'registro_cliente', label: 'Registro Cliente', icon: <AssignmentIndIcon /> },
     { value: 'sub_empresas', label: 'SubEmpresas', icon: <CorporateFareIcon /> },
     { value: 'categorias_materiales', label: 'Categorías Materiales', icon: <InventoryIcon /> },
+    { value: 'asignados', label: 'Asignados', icon: <AssignmentIndIcon /> },
     { value: 'etapas', label: 'Etapas', icon: <TimelineIcon /> },
     { value: 'medios_pago', label: 'Medios de Pago', icon: <PaymentIcon /> },
     { value: 'impuestos', label: 'Impuestos', icon: <ReceiptIcon /> },
@@ -454,6 +456,7 @@ const EmpresaPage = () => {
                 {currentTab === 'usuarios' && <UsuariosDetails empresa={empresa}/>}
                 {currentTab === 'proyectos' && <ProyectosDetails empresa={empresa}/>} 
                 {currentTab === 'categorias' && <CategoriasDetails empresa={empresa}/>}
+                {currentTab === 'asignados' && <AsignadosDetails empresa={empresa} refreshEmpresa={() => empresaId && getEmpresaById(empresaId).then(setEmpresa)}/>}
                 {currentTab === 'categorias_materiales' && <CategoriasMaterialesDetails empresa={empresa}/>}
                 {currentTab === 'proveedores' && (
                   <Card elevation={0} sx={{ border: `1px solid ${theme.palette.divider}`, borderRadius: 2 }}>

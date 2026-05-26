@@ -29,6 +29,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
     proveedor: true,
     proyecto: true,
     subcategoria: false,
+    asignado: false,
     total_original: false,
     medio_pago: false,
     tipo_factura: false,
@@ -55,6 +56,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
     medio_pago: false,
     categoria: false,
     subcategoria: false,
+    asignado: false,
     tags_extra: false,
     dolar_referencia: false,
   };
@@ -274,6 +276,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
     "factura_cliente",
     "medio_pago",
     "detalle",
+    "asignado",
   ];
 
   const handleDolarAjusteChange = (event) => {

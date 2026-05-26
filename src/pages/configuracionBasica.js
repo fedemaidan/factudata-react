@@ -9,6 +9,7 @@ import { ProyectosDetails } from 'src/sections/empresa/proyectosDetails';
 import { getEmpresaById } from 'src/services/empresaService';
 import { ProveedoresDetails } from 'src/sections/empresa/proveedoresDetails';
 import { CategoriasDetails } from 'src/sections/empresa/categoriasDetails';
+import { AsignadosDetails } from 'src/sections/empresa/asignadosDetails';
 import { EtapasDetails } from 'src/sections/empresa/etapasDetails';
 import { MediosPagoDetails } from 'src/sections/empresa/mediosPagoDetails';
 import { ImpuestosDetails } from 'src/sections/empresa/impuestosDetails';
@@ -77,6 +78,7 @@ const ConfiguracionBasicaPage = () => {
               <Tab label="Proyectos" value="proyectos" />
               <Tab label="Proveedores" value="proveedores" />
               <Tab label="Categorias" value="categorias" />
+              <Tab label="Asignados" value="asignados" />
               <Tab label="Categorias Materiales" value="categorias_materiales" />
               <Tab label="Etapas" value="etapas" />
               <Tab label="Medios de pago" value="medios_pago" />
@@ -87,6 +89,7 @@ const ConfiguracionBasicaPage = () => {
             {currentTab === 'proyectos' && <ProyectosDetails empresa={empresa} onEmpresaChange={patchEmpresa} refreshEmpresa={refreshEmpresa}/>}
             {currentTab === 'proveedores' && <ProveedoresDetails empresa={empresa} onEmpresaChange={patchEmpresa} refreshEmpresa={refreshEmpresa}/>}
             {currentTab === 'categorias' && <CategoriasDetails empresa={empresa} onEmpresaChange={patchEmpresa} refreshEmpresa={refreshEmpresa}/>}
+            {currentTab === 'asignados' && <AsignadosDetails empresa={empresa} onEmpresaChange={patchEmpresa} refreshEmpresa={refreshEmpresa}/>}
             {currentTab === 'categorias_materiales' && <CategoriasMaterialesDetails empresa={empresa} refreshEmpresa={refreshEmpresa}/>}
             {currentTab === 'etapas' && <EtapasDetails empresa={empresa} onEmpresaChange={patchEmpresa} refreshEmpresa={refreshEmpresa}/>} 
             {currentTab === 'medios_pago' && <MediosPagoDetails empresa={empresa} onEmpresaChange={patchEmpresa} refreshEmpresa={refreshEmpresa}/>}

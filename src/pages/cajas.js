@@ -50,7 +50,7 @@ import { formatTimestamp } from 'src/utils/formatters';
 import { parseQueryParamList, FILTER_ARRAY_KEYS, FILTER_DATE_KEYS } from 'src/utils/parseData';
 import { safeRouterReplace } from 'src/utils/safeRouter';
 import { useMovimientosFilters } from 'src/hooks/useMovimientosFilters';
-import { FilterBarCajaProyecto } from 'src/components/FilterBarCajaProyecto';
+import { FilterBarCajaProyecto, SIN_ASIGNAR_SENTINEL } from 'src/components/FilterBarCajaProyecto';
 import ErrorBoundary from 'src/components/ErrorBoundary';
 import AsistenteFlotanteProyecto from 'src/components/asistenteFlotanteProyecto';
 import TransferenciaInternaDialog from 'src/components/TransferenciaInternaDialog';
@@ -90,6 +90,7 @@ const COLS = {
   montoAprobado: 170,
   categoria: 160,
   subcategoria: 160,
+  asignado: 160,
   medioPago: 150,
   proveedor: 220,
   observacion: 160,
@@ -409,6 +410,7 @@ const buildCajaDashboardParams = ({ filters, caja, page, limit, includeOptions =
   if (filters?.aprobacion) params.aprobacion = filters.aprobacion;
   assignArray('categorias', filters?.categorias);
   assignArray('subcategorias', filters?.subcategorias);
+  assignArray('asignados', filters?.asignados);
   assignArray('proveedores', filters?.proveedores);
   assignArray('medioPago', filters?.medioPago);
   assignArray('tipo', filters?.tipo);
@@ -437,6 +439,8 @@ const buildCajaDashboardParams = ({ filters, caja, page, limit, includeOptions =
   if (caja?.medio_pago) params.cajaMedioPago = caja.medio_pago;
   if (caja?.estado) params.cajaEstado = caja.estado;
   if (caja?.type) params.cajaTipo = caja.type;
+  assignArray('cajaCategorias', caja?.categorias);
+  assignArray('cajaAsignados', caja?.asignados);
   if (caja?.baseCalculo && caja.baseCalculo !== 'total') params.baseCalculo = caja.baseCalculo;
 
   return params;
@@ -450,6 +454,8 @@ const getCajaTotalsKey = (caja) => JSON.stringify({
   type: caja?.type || '',
   equivalencia: caja?.equivalencia || 'none',
   baseCalculo: caja?.baseCalculo || 'total',
+  categorias: Array.isArray(caja?.categorias) ? [...caja.categorias].sort() : [],
+  asignados: Array.isArray(caja?.asignados) ? [...caja.asignados].sort() : [],
 });
 
 const getCajaNetFromTotals = (caja, totals = EMPTY_CAJA_TOTALS) => {
@@ -855,6 +861,8 @@ const CajasPage = () => {
   const [estadoCaja, setEstadoCaja] = useState('');
   const [medioPagoCaja, setMedioPagoCaja] = useState('Efectivo');
   const [equivalenciaCaja, setEquivalenciaCaja] = useState('none'); // 'none' | 'usd_blue' | ...
+  const [categoriasCaja, setCategoriasCaja] = useState([]); // array de strings
+  const [asignadosCaja, setAsignadosCaja] = useState([]); // array de strings (puede incluir sentinel __sin_asignar__)
   const [editandoCaja, setEditandoCaja] = useState(null); // null o index de la caja
   // cajaSeleccionada eliminado: filters.caja es la única fuente de verdad
   const [prefsHydrated, setPrefsHydrated] = useState(false);
@@ -1071,6 +1079,7 @@ const persistUserCajasPrefs = useCallback(async (nextPrefs) => {
     montoAprobado: false,
     categoria: true,
     subcategoria: !compactValue && !!empresa?.comprobante_info?.subcategoria,
+    asignado: !!empresa?.comprobante_info?.asignado,
     medioPago: !!empresa?.comprobante_info?.medio_pago,
     proveedor: true,
     obra: false,
@@ -1258,6 +1267,8 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
     setTypeCaja(caja.type || '');
     setEstadoCaja(caja.estado || '');
     setBaseCalculoCaja(caja.baseCalculo || 'total');
+    setCategoriasCaja(Array.isArray(caja.categorias) ? caja.categorias : []);
+    setAsignadosCaja(Array.isArray(caja.asignados) ? caja.asignados : []);
     handleCloseCajaMenu();
     setEquivalenciaCaja(caja.equivalencia || 'none');
   };
@@ -1277,6 +1288,8 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
         ...(caja?.medio_pago ? { medioPago: [] } : {}),
         ...(caja?.estado     ? { estados: []   } : {}),
         ...(caja?.type       ? { tipo: []      } : {}),
+        ...(Array.isArray(caja?.categorias) && caja.categorias.length > 0 ? { categorias: [] } : {}),
+        ...(Array.isArray(caja?.asignados) && caja.asignados.length > 0 ? { asignados: [] } : {}),
       }));
     }
   }, [setFilters]);
@@ -2146,12 +2159,14 @@ const getTime = (v) => {
   const handleGuardarCaja = async () => {
     const nuevaCaja = {
       nombre: nombreCaja,
-      moneda: monedaCaja || '', 
+      moneda: monedaCaja || '',
       medio_pago: medioPagoCaja,
       estado: estadoCaja,
       equivalencia: equivalenciaCaja || 'none',
       type: typeCaja || '',
       baseCalculo: baseCalculoCaja || 'total',
+      categorias: Array.isArray(categoriasCaja) ? categoriasCaja : [],
+      asignados: Array.isArray(asignadosCaja) ? asignadosCaja : [],
       ...(savedViewMode ? { filterSet: serializeFilterSet(filters) } : {}),
     };
     
@@ -2178,6 +2193,8 @@ const getTime = (v) => {
     setEquivalenciaCaja('none');
     setTypeCaja('');
     setBaseCalculoCaja('total');
+    setCategoriasCaja([]);
+    setAsignadosCaja([]);
     setEditandoCaja(null);
     await updateEmpresaDetails(empresa.id, { cajas_virtuales: nuevasCajas });
   };
@@ -2760,6 +2777,42 @@ useEffect(() => {
             ))}
           </Select>
         </FormControl>
+        <FormControl fullWidth sx={{ mt: 2 }}>
+          <InputLabel>Categorías</InputLabel>
+          <Select
+            multiple
+            value={categoriasCaja}
+            onChange={(e) => setCategoriasCaja(typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value)}
+            label="Categorías"
+            renderValue={(selected) => (selected.length === 0 ? 'Todas' : selected.join(', '))}
+          >
+            {(Array.isArray(empresa?.categorias) ? empresa.categorias : [])
+              .map((c) => (typeof c === 'string' ? c : c?.name))
+              .filter(Boolean)
+              .map((nombre) => (
+                <MenuItem key={nombre} value={nombre}>{nombre}</MenuItem>
+              ))}
+          </Select>
+        </FormControl>
+        <FormControl fullWidth sx={{ mt: 2 }}>
+          <InputLabel>Asignado</InputLabel>
+          <Select
+            multiple
+            value={asignadosCaja}
+            onChange={(e) => setAsignadosCaja(typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value)}
+            label="Asignado"
+            renderValue={(selected) => (
+              selected.length === 0
+                ? 'Todos'
+                : selected.map((v) => (v === SIN_ASIGNAR_SENTINEL ? 'Sin asignar' : v)).join(', ')
+            )}
+          >
+            <MenuItem value={SIN_ASIGNAR_SENTINEL}>Sin asignar</MenuItem>
+            {(Array.isArray(empresa?.asignados) ? empresa.asignados.filter(Boolean) : []).map((nombre) => (
+              <MenuItem key={nombre} value={nombre}>{nombre}</MenuItem>
+            ))}
+          </Select>
+        </FormControl>
         {empresa?.con_estados && (
           <FormControl fullWidth sx={{ mt: 2 }}>
             <InputLabel>Estado</InputLabel>
@@ -2954,6 +3007,7 @@ useEffect(() => {
             <FormControlLabel control={<Checkbox size="small" checked={visibleCols.montoAprobado} onChange={() => toggleCol('montoAprobado')} />} label="Monto aprobado" />
             <FormControlLabel control={<Checkbox size="small" checked={visibleCols.categoria} onChange={() => toggleCol('categoria')} />} label={compactCols ? 'Categoría / Subcat.' : 'Categoría'} />
             {!compactCols && empresa?.comprobante_info?.subcategoria && <FormControlLabel control={<Checkbox size="small" checked={visibleCols.subcategoria} onChange={() => toggleCol('subcategoria')} />} label="Subcategoría" />}
+            {empresa?.comprobante_info?.asignado && <FormControlLabel control={<Checkbox size="small" checked={visibleCols.asignado} onChange={() => toggleCol('asignado')} />} label="Asignado" />}
             {empresa?.comprobante_info?.medio_pago && <FormControlLabel control={<Checkbox size="small" checked={visibleCols.medioPago} onChange={() => toggleCol('medioPago')} />} label="Medio de pago" />}
             <FormControlLabel control={<Checkbox size="small" checked={visibleCols.proveedor} onChange={() => toggleCol('proveedor')} />} label="Proveedor" />
             <FormControlLabel control={<Checkbox size="small" checked={visibleCols.obra} onChange={() => toggleCol('obra')} />} label="Obra" />
@@ -3375,6 +3429,7 @@ useEffect(() => {
         setSavedViewMode(true); setEditandoCaja(null);
         setNombreCaja(''); setMonedaCaja(''); setMedioPagoCaja('');
         setEstadoCaja(''); setEquivalenciaCaja('none'); setTypeCaja(''); setBaseCalculoCaja('total');
+        setCategoriasCaja([]); setAsignadosCaja([]);
         setShowCrearCaja(true); closeAllMenus();
       } },
     ],
