@@ -260,9 +260,14 @@ const MovementFormPage = () => {
   const [completarPagoDialogOpen, setCompletarPagoDialogOpen] = useState(false);
   const [completarPagoLoading, setCompletarPagoLoading] = useState(false);
 
-  // En edit mode, priorizar datos del movimiento sobre query params
-  const effectiveProyectoId = (isEditMode && movimiento?.proyecto_id) || proyectoId || null;
-  const effectiveProyectoName = (isEditMode && movimiento?.proyecto) || proyectoName || null;
+  // Selección manual de proyecto cuando no viene por query (ej. desde drawer de Proveedor)
+  // null = aún no eligió; { id: null, nombre: null } = eligió "Sin asignar"; { id, nombre } = proyecto real
+  const [proyectoManual, setProyectoManual] = useState(null);
+  const necesitaElegirProyecto = !isEditMode && !proyectoId && proyectoManual === null;
+
+  // En edit mode, priorizar datos del movimiento sobre query params; luego fallback a selección manual.
+  const effectiveProyectoId = (isEditMode && movimiento?.proyecto_id) || proyectoId || proyectoManual?.id || null;
+  const effectiveProyectoName = (isEditMode && movimiento?.proyecto) || proyectoName || proyectoManual?.nombre || null;
 
   // Setear breadcrumbs
   useEffect(() => {
@@ -1664,6 +1669,37 @@ const createdAtStr = (() => {
                     {isInitialLoading ? 'Reintentando…' : 'Reintentar'}
                   </button>
                 )}
+              </div>
+            </div>
+          </div>
+        ) : necesitaElegirProyecto ? (
+          <div className="flex flex-1 flex-col items-center justify-center px-4 py-8">
+            <div className="w-full max-w-md rounded-xl border border-divider bg-white p-6 shadow-sm">
+              <h2 className="text-center text-lg font-semibold text-neutral-900">¿A qué proyecto asignar este movimiento?</h2>
+              <p className="mt-2 text-center text-sm text-neutral-600">Podés elegir un proyecto o dejarlo sin asignar.</p>
+              <div className="mt-5 flex max-h-64 flex-col gap-2 overflow-y-auto">
+                {(proyectos || []).map((p) => (
+                  <button
+                    key={p._id || p.id}
+                    type="button"
+                    onClick={() => setProyectoManual({ id: p._id || p.id, nombre: p.nombre })}
+                    className="w-full rounded-lg border border-neutral-300 bg-white px-4 py-2 text-left text-sm font-medium text-neutral-800 hover:bg-neutral-50"
+                  >
+                    {p.nombre}
+                  </button>
+                ))}
+                {(!proyectos || proyectos.length === 0) && (
+                  <p className="px-1 text-xs text-neutral-500">No hay proyectos cargados en la empresa.</p>
+                )}
+              </div>
+              <div className="mt-4 border-t border-divider pt-4">
+                <button
+                  type="button"
+                  onClick={() => setProyectoManual({ id: null, nombre: null })}
+                  className="w-full rounded-lg border border-dashed border-neutral-400 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+                >
+                  Sin asignar proyecto
+                </button>
               </div>
             </div>
           </div>

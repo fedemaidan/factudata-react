@@ -44,6 +44,8 @@ import DescriptionIcon from '@mui/icons-material/Description';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import PaymentsIcon from '@mui/icons-material/Payments';
+import PointOfSaleIcon from '@mui/icons-material/PointOfSale';
+import { useRouter } from 'next/router';
 import RequestQuoteIcon from '@mui/icons-material/RequestQuote';
 import SaveIcon from '@mui/icons-material/Save';
 import StarBorderIcon from '@mui/icons-material/StarBorder';
@@ -561,6 +563,7 @@ function TabCuentaCorriente({
   loading,
   onRegistrarPago,
   onAnularPago,
+  onCargarMovimiento,
 }) {
   // ── Lookup de movimientos por id (para mostrar fecha+detalle en imputaciones) ──
   const movimientosPorId = useMemo(() => {
@@ -651,6 +654,16 @@ function TabCuentaCorriente({
             <Chip size="small" color="success" variant="outlined" label="Al día" />
           )}
         </Stack>
+        {onCargarMovimiento && (
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<PointOfSaleIcon fontSize="small" />}
+            onClick={onCargarMovimiento}
+          >
+            Cargar movimiento
+          </Button>
+        )}
         <Button
           variant="contained"
           size="small"
@@ -938,6 +951,7 @@ function TabPresupuestos({ presupuestos = [], loading, onRegistrarPresupuesto, p
 function ProveedorDrawer({ open, onClose, proveedorId, proveedorNombreHint, empresaId, categoriasEmpresa, onUpdate }) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const router = useRouter();
 
   const [tab, setTab] = useState(TAB_DATOS);
   const [data, setData] = useState(null); // { proveedor, movimientos, pagos, presupuesto, pretendidos }
@@ -1120,6 +1134,12 @@ function ProveedorDrawer({ open, onClose, proveedorId, proveedorNombreHint, empr
             loading={loading && !data}
             onRegistrarPago={() => setRegistrarPagoOpen(true)}
             onAnularPago={(pago) => { setPagoAAnular(pago); setAnularPagoOpen(true); }}
+            onCargarMovimiento={proveedor ? () => {
+              router.push({
+                pathname: '/movementForm',
+                query: { proveedorNombre: proveedor.nombre },
+              });
+            } : undefined}
           />
         )}
         {tab === TAB_PRESUPUESTOS && (
