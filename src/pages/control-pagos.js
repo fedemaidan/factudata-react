@@ -38,6 +38,7 @@ import AddIcon from '@mui/icons-material/Add';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import PaymentsIcon from '@mui/icons-material/Payments';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import PointOfSaleIcon from '@mui/icons-material/PointOfSale';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import SaveOutlinedIcon from '@mui/icons-material/SaveOutlined';
 import ViewColumnIcon from '@mui/icons-material/ViewColumn';
@@ -1400,6 +1401,30 @@ const PagosAprobacionesPage = () => {
                 )}
                 <Button type="button" variant="outlined" size="small" startIcon={<RefreshIcon />} onClick={handleRefresh} disabled={loadingMovimientos} sx={{ alignSelf: 'center', whiteSpace: 'nowrap' }}>
                   Actualizar
+                </Button>
+                <Button
+                  type="button"
+                  variant="contained"
+                  size="small"
+                  startIcon={<PointOfSaleIcon />}
+                  onClick={() => {
+                    const query = {};
+                    if (selectedProjects?.length === 1) {
+                      const p = selectedProjects[0];
+                      const pid = p?.id || p?._id;
+                      if (pid) query.proyectoId = pid;
+                      if (p?.nombre) query.proyectoName = p.nombre;
+                    }
+                    if (filterState?.proveedores?.length === 1) {
+                      const prov = filterState.proveedores[0];
+                      const nombre = typeof prov === 'string' ? prov : (prov?.nombre || prov?.label);
+                      if (nombre) query.proveedorNombre = nombre;
+                    }
+                    router.push({ pathname: '/movementForm', query });
+                  }}
+                  sx={{ alignSelf: 'center', whiteSpace: 'nowrap' }}
+                >
+                  Cargar movimiento
                 </Button>
               </Stack>
             </Paper>
