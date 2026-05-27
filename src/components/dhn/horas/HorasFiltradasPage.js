@@ -38,6 +38,10 @@ const getDefaultRange = () => {
 
 const readQS = (raw) => (Array.isArray(raw) ? raw[0] : raw);
 
+const DATE_PICKER_SLOT_PROPS = {
+  textField: { size: 'small', sx: { width: 180 } },
+};
+
 const HorasFiltradasPage = ({ filtroFijo, title, descripcion }) => {
   const router = useRouter();
 
@@ -192,14 +196,14 @@ const HorasFiltradasPage = ({ filtroFijo, title, descripcion }) => {
                 value={desdeParam ? dayjs(desdeParam) : null}
                 onChange={handleChangeDesde}
                 format="DD/MM/YYYY"
-                slotProps={{ textField: { size: 'small', sx: { width: 180 } } }}
+                slotProps={DATE_PICKER_SLOT_PROPS}
               />
               <DatePicker
                 label="Hasta"
                 value={hastaParam ? dayjs(hastaParam) : null}
                 onChange={handleChangeHasta}
                 format="DD/MM/YYYY"
-                slotProps={{ textField: { size: 'small', sx: { width: 180 } } }}
+                slotProps={DATE_PICKER_SLOT_PROPS}
               />
               <TextField
                 label="Buscar"
@@ -208,7 +212,7 @@ const HorasFiltradasPage = ({ filtroFijo, title, descripcion }) => {
                 onChange={(e) => filters.setQInput(e.target.value)}
                 sx={{ width: 240 }}
                 InputProps={{
-                  endAdornment: filters.qInput.length > 0 && (
+                  endAdornment: filters.qInput.length > 0 ? (
                     <InputAdornment position="end">
                       <IconButton
                         onClick={() => filters.setQInput('')}
@@ -219,17 +223,17 @@ const HorasFiltradasPage = ({ filtroFijo, title, descripcion }) => {
                         <ClearIcon />
                       </IconButton>
                     </InputAdornment>
-                  ),
+                  ) : null,
                 }}
               />
             </Box>
           </LocalizationProvider>
 
-          {isError && (
+          {isError ? (
             <Alert severity="error">
               {error?.message || 'Error al cargar las filas'}
             </Alert>
-          )}
+          ) : null}
 
           <TableComponent
             data={data}
