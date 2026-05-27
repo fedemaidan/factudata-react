@@ -4,7 +4,6 @@ const HorasNocturnasPage = () => (
   <HorasFiltradasPage
     filtroFijo="conNocturnas"
     title="Horas nocturnas"
-    descripcion="Trabajos diarios con alguna hora nocturna registrada (Noct., Noct. 50%, Noct. 100%)."
   />
 );
 

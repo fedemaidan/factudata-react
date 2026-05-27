@@ -10,7 +10,6 @@ import {
   InputAdornment,
   Stack,
   TextField,
-  Typography,
 } from '@mui/material';
 import ClearIcon from '@mui/icons-material/Clear';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -42,7 +41,7 @@ const DATE_PICKER_SLOT_PROPS = {
   textField: { size: 'small', sx: { width: 180 } },
 };
 
-const HorasFiltradasPage = ({ filtroFijo, title, descripcion }) => {
+const HorasFiltradasPage = ({ filtroFijo, title }) => {
   const router = useRouter();
 
   const desdeParam = useMemo(() => {
@@ -177,17 +176,6 @@ const HorasFiltradasPage = ({ filtroFijo, title, descripcion }) => {
       <Container maxWidth="xl">
         <Stack spacing={3}>
           <BackButton onClick={() => router.back()} />
-
-          <Box>
-            <Typography variant="h5" sx={{ fontWeight: 600 }}>
-              {title}
-            </Typography>
-            {descripcion ? (
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                {descripcion}
-              </Typography>
-            ) : null}
-          </Box>
 
           <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="es">
             <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
