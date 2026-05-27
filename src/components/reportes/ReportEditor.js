@@ -705,6 +705,7 @@ const ReportEditor = ({
         onSave={handleBlockSave}
         initialBlock={editingBlockIdx !== null ? config.layout[editingBlockIdx] : null}
         proyectos={proyectos}
+        presupuestos={presupuestos}
         sociosOptions={usuariosEmpresa}
         excludeOptions={excludeOptions}
       />

@@ -156,6 +156,40 @@ function presupuestoTieneProveedores(presupuesto) {
   return getPresupuestoProveedores(presupuesto).length > 0;
 }
 
+function getPresupuestoId(presupuesto) {
+  return String(presupuesto?._id || presupuesto?.id || presupuesto?.presupuesto_id || '').trim();
+}
+
+function movimientoMatchesPresupuesto(mov, presupuesto) {
+  if (!mov || !presupuesto) return false;
+  const tipoPresupuesto = presupuesto.tipo === 'ingreso' ? 'ingreso' : 'egreso';
+  if ((mov.type || mov.tipo) !== tipoPresupuesto) return false;
+
+  const { id: presupuestoProyectoId } = getPresupuestoProjectInfo(presupuesto);
+  if (presupuestoProyectoId && String(mov.proyecto_id || '') !== String(presupuestoProyectoId)) return false;
+
+  if (presupuesto.etapa && mov.etapa !== presupuesto.etapa) return false;
+
+  const proveedores = Array.isArray(presupuesto.proveedores) ? presupuesto.proveedores : [];
+  if (proveedores.length > 0) {
+    const movProveedor = mov.nombre_proveedor || mov.proveedor || '';
+    const okProveedor = proveedores.some((p) => String(p?.nombre || '') === String(movProveedor));
+    if (!okProveedor) return false;
+  }
+
+  const clasificaciones = Array.isArray(presupuesto.clasificaciones) ? presupuesto.clasificaciones : [];
+  if (clasificaciones.length > 0) {
+    return clasificaciones.some((c) => {
+      if (String(c?.categoria || '') !== String(mov.categoria || '')) return false;
+      const subs = Array.isArray(c?.subcategorias) ? c.subcategorias.filter(Boolean) : [];
+      if (subs.length === 0) return true;
+      return subs.includes(mov.subcategoria);
+    });
+  }
+
+  return true;
+}
+
 function getMovimientoUserCandidates(m) {
   const values = [];
 
@@ -1150,15 +1184,24 @@ export function processMonthlyBudgetControl(block, movimientos, presupuestos, cu
     : baseMovimientos;
   const runtimeProjectIds = new Set((extraContext?.filters?.proyectos || []).map((id) => String(id)));
   const runtimeCategorySet = toNormalizedSet(extraContext?.filters?.categorias || []);
+  const selectedPresupuestoIds = new Set(
+    (Array.isArray(block.presupuesto_ids) ? block.presupuesto_ids : [])
+      .map((id) => String(id || '').trim())
+      .filter(Boolean),
+  );
+  const hasPresupuestoScope = selectedPresupuestoIds.size > 0;
 
   let presFiltered = Array.isArray(presupuestos) ? [...presupuestos] : [];
   if (tipoTarget !== 'ambos') {
     presFiltered = presFiltered.filter((p) => (p.tipo || 'egreso') === tipoTarget);
   }
-  if (runtimeProjectIds.size > 0) {
+  if (hasPresupuestoScope) {
+    presFiltered = presFiltered.filter((p) => selectedPresupuestoIds.has(getPresupuestoId(p)));
+  }
+  if (!hasPresupuestoScope && runtimeProjectIds.size > 0) {
     presFiltered = presFiltered.filter((p) => runtimeProjectIds.has(getPresupuestoProjectInfo(p).id));
   }
-  if (runtimeCategorySet.size > 0) {
+  if (!hasPresupuestoScope && runtimeCategorySet.size > 0) {
     presFiltered = presFiltered.filter((p) =>
       getPresupuestoCategorias(p).some((cat) =>
         runtimeCategorySet.has(normalizeCategoryFilterValue(cat))
@@ -1170,8 +1213,11 @@ export function processMonthlyBudgetControl(block, movimientos, presupuestos, cu
   const hasCategorias = (p) => (Array.isArray(p?.clasificaciones) && p.clasificaciones.length > 0) || !!p?.rubro;
   const isGeneralPresupuesto = (p) => !hasCategorias(p) && !p?.etapa && !presupuestoTieneProveedores(p);
   const isCategoryOnlyPresupuesto = (p) => hasCategorias(p) && !p?.etapa && !presupuestoTieneProveedores(p);
-  const categoryBudgetItems = presFiltered.filter(isCategoryOnlyPresupuesto);
-  const generalBudgetItems = presFiltered.filter(isGeneralPresupuesto);
+  const categoryBudgetItems = hasPresupuestoScope ? presFiltered : presFiltered.filter(isCategoryOnlyPresupuesto);
+  const generalBudgetItems = hasPresupuestoScope ? [] : presFiltered.filter(isGeneralPresupuesto);
+  const presupuestoScopedMovimientos = hasPresupuestoScope
+    ? runtimeFilteredMovimientos.filter((m) => presFiltered.some((p) => movimientoMatchesPresupuesto(m, p)))
+    : runtimeFilteredMovimientos;
 
   const sumPresupuestos = (items) => items.reduce(
     (acc, p) => acc + Math.abs(getPresupuestoAmount(p, displayCurrency, cotizaciones)),
@@ -1179,14 +1225,15 @@ export function processMonthlyBudgetControl(block, movimientos, presupuestos, cu
   );
 
   let categories = configuredCategories;
-  if (categories.length === 0 && Array.isArray(extraContext?.filters?.categorias) && extraContext.filters.categorias.length > 0) {
+  if (!hasPresupuestoScope && categories.length === 0 && Array.isArray(extraContext?.filters?.categorias) && extraContext.filters.categorias.length > 0) {
     categories = sanitizeStringList(extraContext.filters.categorias);
   }
   if (categories.length === 0) {
     const byCategory = new Map();
     for (const p of categoryBudgetItems) {
       const monto = Math.abs(getPresupuestoAmount(p, displayCurrency, cotizaciones));
-      for (const label of getPresupuestoCategorias(p)) {
+      const presupuestoCategorias = hasPresupuestoScope && !hasCategorias(p) ? [] : getPresupuestoCategorias(p);
+      for (const label of presupuestoCategorias) {
         const key = normalizeCategoryFilterValue(label);
         const current = byCategory.get(key) || { label, total: 0 };
         current.total += monto;
@@ -1201,7 +1248,7 @@ export function processMonthlyBudgetControl(block, movimientos, presupuestos, cu
 
   if (categories.length === 0) {
     const byCategory = new Map();
-    for (const m of runtimeFilteredMovimientos) {
+    for (const m of presupuestoScopedMovimientos) {
       const label = m?.categoria || 'Sin categoría';
       const key = normalizeCategoryFilterValue(label);
       const current = byCategory.get(key) || { label, total: 0 };
@@ -1221,30 +1268,34 @@ export function processMonthlyBudgetControl(block, movimientos, presupuestos, cu
 
   let presupuestoTotal = Number(block.presupuesto_total_manual || 0);
   if (!Number.isFinite(presupuestoTotal) || presupuestoTotal <= 0) {
-    const generalTotal = sumPresupuestos(generalBudgetItems);
-    const selectedCategoryTotal = sumPresupuestos(
-      categoryBudgetItems.filter((p) =>
-        getPresupuestoCategorias(p).some((cat) =>
-          categoryKeySet.has(normalizeCategoryFilterValue(cat))
-        )
-      ),
-    );
-    const allCategoryTotal = sumPresupuestos(categoryBudgetItems);
-    const shouldScopeToVisibleCategories = categoryKeySet.size > 0;
-
-    // Misma intención que Control de Presupuestos:
-    // si hay presupuesto general de egresos, funciona como techo del proyectado;
-    // si las categorías asignadas superan ese techo, se muestra la suma real asignada.
-    if (shouldScopeToVisibleCategories && selectedCategoryTotal > 0) {
-      presupuestoTotal = selectedCategoryTotal;
+    if (hasPresupuestoScope) {
+      presupuestoTotal = sumPresupuestos(presFiltered);
     } else {
-      presupuestoTotal = generalTotal > 0
-        ? Math.max(generalTotal, allCategoryTotal)
-        : allCategoryTotal;
+      const generalTotal = sumPresupuestos(generalBudgetItems);
+      const selectedCategoryTotal = sumPresupuestos(
+        categoryBudgetItems.filter((p) =>
+          getPresupuestoCategorias(p).some((cat) =>
+            categoryKeySet.has(normalizeCategoryFilterValue(cat))
+          )
+        ),
+      );
+      const allCategoryTotal = sumPresupuestos(categoryBudgetItems);
+      const shouldScopeToVisibleCategories = categoryKeySet.size > 0;
+
+      // Misma intención que Control de Presupuestos:
+      // si hay presupuesto general de egresos, funciona como techo del proyectado;
+      // si las categorías asignadas superan ese techo, se muestra la suma real asignada.
+      if (shouldScopeToVisibleCategories && selectedCategoryTotal > 0) {
+        presupuestoTotal = selectedCategoryTotal;
+      } else {
+        presupuestoTotal = generalTotal > 0
+          ? Math.max(generalTotal, allCategoryTotal)
+          : allCategoryTotal;
+      }
     }
   }
 
-  let data = applyBlockFilters(runtimeFilteredMovimientos, {
+  let data = applyBlockFilters(presupuestoScopedMovimientos, {
     ...block,
     filtro_tipo: tipoTarget === 'ambos' ? null : tipoTarget,
   });

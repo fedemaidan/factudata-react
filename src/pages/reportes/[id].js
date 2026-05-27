@@ -246,6 +246,25 @@ const ReportDetailPage = () => {
     }
   };
 
+  const handleUpdateBlockConfig = async (blockIndex, patch) => {
+    if (!selectedReport || !Array.isArray(selectedReport.layout)) return;
+    const currentBlock = selectedReport.layout[blockIndex];
+    if (!currentBlock) return;
+
+    try {
+      const updatedLayout = selectedReport.layout.map((block, idx) => (
+        idx === blockIndex ? { ...block, ...patch } : block
+      ));
+      const updatedReport = { ...selectedReport, layout: updatedLayout };
+      const saved = await updateReport(updatedReport._id, updatedReport);
+      if (saved) {
+        await loadReportData(saved);
+      }
+    } catch (err) {
+      console.error('Error actualizando bloque:', err);
+    }
+  };
+
   const handleSaveEdit = async (updatedReport) => {
     setSaving(true);
     try {
@@ -440,6 +459,7 @@ const ReportDetailPage = () => {
                       displayCurrencies={displayCurrencies}
                       cotizaciones={cotizaciones}
                       reportContext={{ usuariosEmpresa, filters }}
+                      onBlockConfigChange={handleUpdateBlockConfig}
                     />
                   )}
 
@@ -471,6 +491,7 @@ const ReportDetailPage = () => {
         onSave={handleAddBlock}
         initialBlock={null}
         proyectos={proyectos}
+        presupuestos={presupuestos}
         sociosOptions={usuariosEmpresa}
       />
 
