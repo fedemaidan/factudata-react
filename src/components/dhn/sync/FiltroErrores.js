@@ -192,7 +192,7 @@ const FiltroErrores = ({
             <MenuItem value="">Todos</MenuItem>
             <MenuItem value="parte">Parte</MenuItem>
             <MenuItem value="licencia">Licencia</MenuItem>
-            <MenuItem value="horas">Horas</MenuItem>
+            <MenuItem value="horas">Fichadas</MenuItem>
           </TextField>
           <TextField
             select
