@@ -94,6 +94,11 @@ export default function EditarAcopioPage() {
 
   const [proveedoresOptions, setProveedoresOptions] = useState([]);
   const [proyectosOptions, setProyectosOptions] = useState([]);
+  // Vertical corralón: cuando el acopio es con cliente, hay que mostrar clientes y sucursales.
+  const [clientesOptions, setClientesOptions] = useState([]);
+  const [sucursalesOptions, setSucursalesOptions] = useState([]);
+  const [contraparteRol, setContraparteRol] = useState('proveedor');
+  const [sucursalId, setSucursalId] = useState('');
 
   const [codigo, setCodigo] = useState('');
 
@@ -179,6 +184,26 @@ const goNext = () => setCurrentIdx((i) => (i + 1) % (urls?.length || 0));
         setProveedor(acopioData.proveedor || '');
         setProyecto(acopioData.proyecto_id || acopioData.proyectoId || '');
         setDescripcion(acopioData.descripcion || '');
+
+        // Vertical corralón: detectar contraparte_rol y cargar clientes/sucursales si corresponde.
+        const rol = acopioData.contraparte_rol || 'proveedor';
+        setContraparteRol(rol);
+        setSucursalId(acopioData.sucursal_id || '');
+        if (empresa?.vertical === 'corralon') {
+          try {
+            const sucursalService = (await import('src/services/sucursalService')).default;
+            const sucList = await sucursalService.getByEmpresa(empresaId);
+            setSucursalesOptions(sucList || []);
+          } catch (_) {}
+          if (rol === 'cliente') {
+            try {
+              const clienteService = (await import('src/services/clienteService')).default;
+              const cList = await clienteService.getByEmpresa(empresaId);
+              setClientesOptions((cList || []).map((c) => c.nombre).filter(Boolean));
+            } catch (_) {}
+          }
+        }
+
         setInstruccionesExtraccion(acopioData.instrucciones_extraccion || '');
         
         // Usar el campo correcto del backend
@@ -378,13 +403,16 @@ const goNext = () => setCurrentIdx((i) => (i + 1) % (urls?.length || 0));
         await updateEmpresaDetails(empresaId, { proveedores: nuevos });
       }
 
-      // 2. Actualizar datos básicos del acopio (proveedor, proyecto, codigo, descripcion)
+      // 2. Actualizar datos básicos del acopio (proveedor/cliente, proyecto/sucursal, codigo, descripcion)
       const datosBasicos = {
         proveedor,
-        proyecto_id: proyecto,
         codigo,
         descripcion,
         instrucciones_extraccion: instruccionesExtraccion,
+        // Cuando es acopio con cliente (corralón), mandamos sucursal_id y NO proyecto.
+        ...(contraparteRol === 'cliente'
+          ? { sucursal_id: sucursalId || null, contraparte_rol: 'cliente' }
+          : { proyecto_id: proyecto }),
       };
       
       console.log('1. Actualizando datos básicos:', datosBasicos);
@@ -1056,28 +1084,50 @@ const goNext = () => setCurrentIdx((i) => (i + 1) % (urls?.length || 0));
                 </TextField>
                 <Autocomplete
                   freeSolo
-                  options={proveedoresOptions}
+                  options={contraparteRol === 'cliente' ? clientesOptions : proveedoresOptions}
                   value={proveedor}
                   onInputChange={(_, v) => setProveedor(v)}
-                  renderInput={(p) => <TextField {...p} label="Proveedor" size="small" />}
+                  renderInput={(p) => (
+                    <TextField
+                      {...p}
+                      label={contraparteRol === 'cliente' ? 'Cliente' : 'Proveedor'}
+                      size="small"
+                    />
+                  )}
                 />
-                <TextField
-                  select
-                  label="Proyecto"
-                  value={proyecto}
-                  onChange={(e) => setProyecto(e.target.value)}
-                  size="small"
-                  fullWidth
-                >
-                  <MenuItem value="">
-                    <em>Sin proyecto asignado</em>
-                  </MenuItem>
-                  {proyectosOptions.map((p) => (
-                    <MenuItem key={p.id} value={p.id}>
-                      {p.nombre}
+                {contraparteRol === 'cliente' ? (
+                  <TextField
+                    select
+                    label="Sucursal"
+                    value={sucursalId}
+                    onChange={(e) => setSucursalId(e.target.value)}
+                    size="small"
+                    fullWidth
+                  >
+                    <MenuItem value=""><em>Sin sucursal asignada</em></MenuItem>
+                    {sucursalesOptions.map((s) => (
+                      <MenuItem key={s._id || s.id} value={s._id || s.id}>{s.nombre}</MenuItem>
+                    ))}
+                  </TextField>
+                ) : (
+                  <TextField
+                    select
+                    label="Proyecto"
+                    value={proyecto}
+                    onChange={(e) => setProyecto(e.target.value)}
+                    size="small"
+                    fullWidth
+                  >
+                    <MenuItem value="">
+                      <em>Sin proyecto asignado</em>
                     </MenuItem>
-                  ))}
-                </TextField>
+                    {proyectosOptions.map((p) => (
+                      <MenuItem key={p.id} value={p.id}>
+                        {p.nombre}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                )}
               </Stack>
 
               {/* Descripción */}

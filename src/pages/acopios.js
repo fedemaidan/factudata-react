@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   Box,
   Button,
@@ -45,6 +45,10 @@ import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 import TooltipHelp from 'src/components/TooltipHelp';
 import { TOOLTIP_ACOPIOS } from 'src/constant/tooltipTexts';
+import { FormControl, InputLabel, Select, Tabs, Tab } from '@mui/material';
+import { useSucursalContext } from 'src/contexts/sucursal-context';
+import { useCorralonCopy } from 'src/i18n/corralonCopy';
+import sucursalService from 'src/services/sucursalService';
 
 const AcopiosPage = () => {
   const { user } = useAuthContext();
@@ -68,6 +72,41 @@ const AcopiosPage = () => {
   const [guardandoDescripcion, setGuardandoDescripcion] = useState(false);
   const [orderBy, setOrderBy] = useState('fecha');
   const [orderDir, setOrderDir] = useState('desc');
+  // Vertical corralón: filtro por contraparte (proveedor / cliente) y selector global de sucursal
+  const [empresaInfo, setEmpresaInfo] = useState(null);
+  const [filtroContraparte, setFiltroContraparte] = useState('proveedor'); // 'proveedor' | 'cliente'
+  const { sucursalId } = useSucursalContext();
+  const copy = useCorralonCopy(empresaInfo?.vertical);
+  const esCorralon = empresaInfo?.vertical === 'corralon';
+  // Mapa sucursal_id → nombre para mostrar en la columna "Sucursal" del listado (corralón).
+  const [sucursalesMap, setSucursalesMap] = useState({});
+  // Counts por rol de contraparte para los badges de los tabs (independientes del filtro de texto).
+  const contraparteCounts = useMemo(() => {
+    if (!esCorralon) return { proveedor: 0, cliente: 0 };
+    const c = { proveedor: 0, cliente: 0 };
+    for (const a of acopios) {
+      const rol = a.contraparte_rol || 'proveedor';
+      if (rol === 'cliente') c.cliente += 1; else c.proveedor += 1;
+    }
+    return c;
+  }, [acopios, esCorralon]);
+
+  useEffect(() => {
+    if (!empresaId) return;
+    getEmpresaById(empresaId).then(setEmpresaInfo).catch(() => {});
+  }, [empresaId]);
+
+  // Cargar sucursales si vertical corralón para mapear ID → nombre.
+  useEffect(() => {
+    if (!empresaId || !esCorralon) return;
+    sucursalService.getByEmpresa(empresaId)
+      .then((list) => {
+        const map = {};
+        (list || []).forEach((s) => { map[s._id || s.id] = s.nombre; });
+        setSucursalesMap(map);
+      })
+      .catch(() => {});
+  }, [empresaId, esCorralon]);
 
   // Setear breadcrumbs
   useEffect(() => {
@@ -197,12 +236,22 @@ const AcopiosPage = () => {
     fetchAcopios();
   }, [fetchAcopios]);
 
-  const acopiosFiltrados = acopios.filter(a =>
-    a.codigo?.toLowerCase().includes(filtroTexto.toLowerCase()) ||
-    a.proveedor?.toLowerCase().includes(filtroTexto.toLowerCase()) ||
-    a.proyecto_nombre?.toLowerCase().includes(filtroTexto.toLowerCase()) ||
-    a.descripcion?.toLowerCase().includes(filtroTexto.toLowerCase())
-  );
+  const acopiosFiltrados = acopios.filter(a => {
+    const matchTexto =
+      a.codigo?.toLowerCase().includes(filtroTexto.toLowerCase()) ||
+      a.proveedor?.toLowerCase().includes(filtroTexto.toLowerCase()) ||
+      a.proyecto_nombre?.toLowerCase().includes(filtroTexto.toLowerCase()) ||
+      a.descripcion?.toLowerCase().includes(filtroTexto.toLowerCase());
+    if (!matchTexto) return false;
+    if (esCorralon) {
+      const rol = a.contraparte_rol || 'proveedor';
+      if (rol !== filtroContraparte) return false;
+    }
+    if (esCorralon && sucursalId && a.sucursal_id && a.sucursal_id !== sucursalId) {
+      return false;
+    }
+    return true;
+  });
 
   const handleSort = (column) => {
     if (orderBy === column) {
@@ -280,20 +329,34 @@ const AcopiosPage = () => {
           </Stack>
         </Stack>
 
-        <TextField
-          placeholder="Buscar por código, proveedor, proyecto o descripción"
-          value={filtroTexto}
-          onChange={(e) => setFiltroTexto(e.target.value)}
-          fullWidth
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <SearchIcon />
-              </InputAdornment>
-            )
-          }}
-          sx={{ mb: 3 }}
-        />
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mb: 3 }}>
+          <TextField
+            placeholder="Buscar por código, proveedor, proyecto o descripción"
+            value={filtroTexto}
+            onChange={(e) => setFiltroTexto(e.target.value)}
+            fullWidth
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon />
+                </InputAdornment>
+              )
+            }}
+          />
+        </Stack>
+
+        {esCorralon && (
+          <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
+            <Tabs
+              value={filtroContraparte}
+              onChange={(_, v) => setFiltroContraparte(v)}
+              aria-label="Tipo de contraparte del acopio"
+            >
+              <Tab value="proveedor" label={`📤 Acopios a proveedor (${contraparteCounts.proveedor})`} />
+              <Tab value="cliente" label={`📥 Acopios de cliente (${contraparteCounts.cliente})`} />
+            </Tabs>
+          </Box>
+        )}
 
         <Table>
           <TableHead>
@@ -305,10 +368,16 @@ const AcopiosPage = () => {
                 <TableSortLabel active={orderBy === 'codigo'} direction={orderBy === 'codigo' ? orderDir : 'asc'} onClick={() => handleSort('codigo')}>Código</TableSortLabel>
               </TableCell>
               <TableCell sortDirection={orderBy === 'proveedor' ? orderDir : false}>
-                <TableSortLabel active={orderBy === 'proveedor'} direction={orderBy === 'proveedor' ? orderDir : 'asc'} onClick={() => handleSort('proveedor')}>Proveedor</TableSortLabel>
+                <TableSortLabel active={orderBy === 'proveedor'} direction={orderBy === 'proveedor' ? orderDir : 'asc'} onClick={() => handleSort('proveedor')}>
+                  {esCorralon
+                    ? (filtroContraparte === 'cliente' ? 'Cliente' : 'Proveedor')
+                    : 'Proveedor'}
+                </TableSortLabel>
               </TableCell>
               <TableCell sortDirection={orderBy === 'proyecto' ? orderDir : false}>
-                <TableSortLabel active={orderBy === 'proyecto'} direction={orderBy === 'proyecto' ? orderDir : 'asc'} onClick={() => handleSort('proyecto')}>Proyecto</TableSortLabel>
+                <TableSortLabel active={orderBy === 'proyecto'} direction={orderBy === 'proyecto' ? orderDir : 'asc'} onClick={() => handleSort('proyecto')}>
+                  {esCorralon ? 'Sucursal' : 'Proyecto'}
+                </TableSortLabel>
               </TableCell>
               <TableCell>Tipo</TableCell>
               <TableCell>Estado</TableCell>
@@ -357,8 +426,12 @@ const AcopiosPage = () => {
                     </Stack>
                   </Box>
                 </TableCell>
-                <TableCell>{acopio.proveedor}</TableCell>
-                <TableCell>{acopio.proyecto_nombre}</TableCell>
+                <TableCell>{acopio.proveedor || '—'}</TableCell>
+                <TableCell>
+                  {esCorralon
+                    ? (acopio.sucursal_id ? (sucursalesMap[acopio.sucursal_id] || '—') : '—')
+                    : acopio.proyecto_nombre}
+                </TableCell>
                 <TableCell>
                   <Chip label={acopio.tipo || 'materiales'} color={acopio.tipo == 'lista_precios' ? 'info': 'default' } size="small" />
                   </TableCell>

@@ -6,6 +6,9 @@ import movimientosService from 'src/services/movimientosService'; // Asegúrate 
 import { useAuthContext } from 'src/contexts/auth-context';
 import {getEmpresaDetailsFromUser} from 'src/services/empresaService';
 import proveedorService from 'src/services/proveedorService';
+import clienteService from 'src/services/clienteService';
+import sucursalService from 'src/services/sucursalService';
+import { useSucursalContext } from 'src/contexts/sucursal-context';
 import { useRouter } from 'next/router';
 
 const AddMovementPage = () => {
@@ -32,6 +35,11 @@ const AddMovementPage = () => {
     {value: 'ARS', name: 'ARS - Pesos'},
   ]);
   const [isLoading, setIsLoading] = useState(false);
+  // Vertical corralón: clientes (para movimientos de ingreso CC) y sucursales
+  const [clientes, setClientes] = useState([]);
+  const [sucursales, setSucursales] = useState([]);
+  const { sucursalId: sucursalGlobal } = useSucursalContext();
+  const esCorralon = empresa?.vertical === 'corralon';
 
 
   useEffect(() => {
@@ -47,6 +55,16 @@ const AddMovementPage = () => {
         setCategorias(cates)
         const provNombres = await proveedorService.getNombres(empresa.id);
         setProveedores([...provNombres, 'Ajuste'])
+        if (empresa?.vertical === 'corralon') {
+          try {
+            const [cls, sucs] = await Promise.all([
+              clienteService.getByEmpresa(empresa.id).catch(() => []),
+              sucursalService.getByEmpresa(empresa.id).catch(() => []),
+            ]);
+            setClientes(cls || []);
+            setSucursales(sucs || []);
+          } catch { /* ignore */ }
+        }
 
         formik.setValues({
           
@@ -71,6 +89,8 @@ const AddMovementPage = () => {
       total: '',
       moneda: '',
       nombre_proveedor: '',
+      cliente_id: '',
+      sucursal_id: sucursalGlobal || '',
       categoria: '',
       subcategoria: '',
       observacion: '',
@@ -199,6 +219,46 @@ const AddMovementPage = () => {
                   ))}
                 </Select>
               </FormControl>
+      {esCorralon && formik.values.tipo === 'ingreso' && (
+        <FormControl fullWidth margin="normal">
+          <InputLabel id={`label-cliente`}>Cliente (CC)</InputLabel>
+          <Select
+            labelId={`label-cliente`}
+            id="cliente_id"
+            name="cliente_id"
+            label="Cliente (CC)"
+            value={formik.values.cliente_id}
+            onChange={formik.handleChange}
+          >
+            <MenuItem value="">— Sin cliente —</MenuItem>
+            {clientes.map((c) => (
+              <MenuItem key={c._id || c.id} value={c._id || c.id}>
+                {c.nombre}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+      )}
+      {esCorralon && sucursales.length > 0 && (
+        <FormControl fullWidth margin="normal">
+          <InputLabel id={`label-sucursal`}>Sucursal</InputLabel>
+          <Select
+            labelId={`label-sucursal`}
+            id="sucursal_id"
+            name="sucursal_id"
+            label="Sucursal"
+            value={formik.values.sucursal_id}
+            onChange={formik.handleChange}
+          >
+            <MenuItem value="">— Todas —</MenuItem>
+            {sucursales.map((s) => (
+              <MenuItem key={s._id || s.id} value={s._id || s.id}>
+                {s.nombre}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+      )}
       <FormControl fullWidth margin="normal">
             <InputLabel id={`label-categorias`}>Categorías</InputLabel>
             <Select

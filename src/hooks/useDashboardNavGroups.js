@@ -33,6 +33,7 @@ async function buildDefaultGroups({ user, empresa, permisosUsuario }) {
   const esAdmin =
     permisosUsuario.includes("VER_CAJAS") &&
     !permisosUsuario.includes("CREAR_EGRESO_SIMPLIFICADO");
+  const esCorralon = empresa?.vertical === "corralon";
   const groups = [];
 
   // ——— INICIO ———
@@ -40,6 +41,9 @@ async function buildDefaultGroups({ user, empresa, permisosUsuario }) {
   inicioItems.push({ title: "Asistente IA (Beta)", path: "/agente", icon: icon(AutoAwesomeRoundedIcon) });
   if (user?.admin) {
     inicioItems.push({ title: "Panel de Control", path: "/control-panel", icon: icon(AdminPanelSettingsIcon) });
+  }
+  if (esCorralon) {
+    inicioItems.push({ title: "Dashboard corralón", path: `/dashboard-corralon?empresaId=${empId}`, icon: icon(DashboardIcon) });
   }
   if (esAdmin) {
     inicioItems.push({ title: "Resumen general", path: `/vistaResumen?empresaId=${empId}`, icon: icon(DashboardIcon) });
@@ -64,13 +68,23 @@ async function buildDefaultGroups({ user, empresa, permisosUsuario }) {
   if (permisosUsuario.includes("VER_CONTROL_PAGOS")) {
     finanzasItems.push({ title: "Control de pagos", path: "/control-pagos", icon: icon(LocalAtm) });
   }
-  if (permisosUsuario.includes("GESTIONAR_PROVEEDORES") || permisosUsuario.includes("VER_CUENTA_CORRIENTE_PROVEEDORES")) {
+  // Corralón: forzamos "Proveedores" aunque el usuario no tenga el permiso explícito,
+  // porque para un corralón es operación core (CC con proveedores).
+  if (permisosUsuario.includes("GESTIONAR_PROVEEDORES") || permisosUsuario.includes("VER_CUENTA_CORRIENTE_PROVEEDORES") || esCorralon) {
     finanzasItems.push({ title: "Proveedores", path: "/proveedores", icon: icon(StoreIcon) });
   }
-  if (permisosUsuario.includes("VER_PLANES_COBRO")) {
+  if (esCorralon) {
+    finanzasItems.push({ title: "Clientes", path: "/clientes", icon: icon(PeopleIcon) });
+    finanzasItems.push({ title: "Grupos de cliente", path: "/grupos-cliente", icon: icon(PeopleIcon) });
+    finanzasItems.push({ title: "Cobros de cliente", path: "/cobros-cliente/nuevo", icon: icon(AttachMoneyIcon) });
+    finanzasItems.push({ title: "Ventas contra entrega", path: "/ventas-contra-entrega", icon: icon(PaymentsIcon) });
+  }
+  if (permisosUsuario.includes("VER_PLANES_COBRO") && !esCorralon) {
+    // Plan de cobros (PlanCobroModel) es para constructoras. En corralón no aplica.
     finanzasItems.push({ title: "Plan de cobros", path: "cobros", icon: icon(AttachMoneyIcon) });
   }
-  if (esAdmin) {
+  if (esAdmin && !esCorralon) {
+    // Control de presupuestos / presupuestos profesionales son de obra (constructora).
     finanzasItems.push({ title: "Control presupuestos", path: "/control-presupuestos", icon: icon(NoteAltIcon) });
     if (permisosUsuario.includes("VER_PRESUPUESTOS_PROFESIONALES")) {
       finanzasItems.push({ title: "Presupuestos profesionales", path: "/presupuestosProfesionales", icon: icon(NoteAltIcon) });
@@ -80,7 +94,8 @@ async function buildDefaultGroups({ user, empresa, permisosUsuario }) {
 
   // ——— MATERIALES ———
   const materialesItems = [];
-  if (permisosUsuario.includes("VER_STOCK_MATERIALES")) {
+  // Corralón: forzar entrada de stock aunque no tenga el permiso explícito.
+  if (permisosUsuario.includes("VER_STOCK_MATERIALES") || esCorralon) {
     materialesItems.push({ title: "Stock de materiales", path: `/stockMateriales?empresaId=${empId}`, icon: icon(InventoryIcon) });
   }
   if (permisosUsuario.includes("VER_INVENTARIO_PRODUCTOS")) {
@@ -153,6 +168,9 @@ async function buildDefaultGroups({ user, empresa, permisosUsuario }) {
   const configItems = [];
   if (user?.admin) {
     configItems.push({ title: "Configurar " + empresa.nombre, path: `empresa?empresaId=${empId}`, icon: icon(SettingsIcon) });
+  }
+  if (esCorralon) {
+    configItems.push({ title: "Sucursales", path: "/sucursales", icon: icon(StoreIcon) });
   }
   if (permisosUsuario.includes("ADMIN_USUARIOS")) {
     configItems.push({ title: "Administración", path: `/configuracionBasica/?empresaId=${empId}`, icon: icon(SettingsIcon) });

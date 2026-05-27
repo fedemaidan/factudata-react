@@ -1,0 +1,805 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import Head from 'next/head';
+import NextLink from 'next/link';
+import {
+  Alert,
+  Autocomplete,
+  Box,
+  Button,
+  Checkbox,
+  Chip,
+  CircularProgress,
+  Container,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  IconButton,
+  InputAdornment,
+  Paper,
+  Snackbar,
+  Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
+  TextField,
+  Tooltip,
+  Typography,
+} from '@mui/material';
+import GroupsIcon from '@mui/icons-material/Groups';
+import AddIcon from '@mui/icons-material/Add';
+import RefreshIcon from '@mui/icons-material/Refresh';
+import SearchIcon from '@mui/icons-material/Search';
+import LinkIcon from '@mui/icons-material/Link';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import UploadFileIcon from '@mui/icons-material/UploadFile';
+import EditIcon from '@mui/icons-material/Edit';
+import ImportarClientes from 'src/components/clientes/ImportarClientes';
+import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
+import { useAuthContext } from 'src/contexts/auth-context';
+import { useSucursalContext } from 'src/contexts/sucursal-context';
+import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
+import clienteService from 'src/services/clienteService';
+import grupoClienteService from 'src/services/grupoClienteService';
+import { formatCurrencyWithCode } from 'src/utils/formatters';
+import MenuItem from '@mui/material/MenuItem';
+
+const renderEstadoCC = (resumen) => {
+  if (!resumen) return <Chip size="small" label="—" variant="outlined" />;
+  const saldo = resumen.saldo || 0;
+  if (resumen.tiene_vencidas) return <Chip size="small" label="Vencida" color="error" />;
+  if (saldo > 0.005) return <Chip size="small" label="Debe" color="warning" />;
+  if (saldo < -0.005) return <Chip size="small" label="A favor" color="info" />;
+  return <Chip size="small" label="Al día" color="success" variant="outlined" />;
+};
+
+function ClientesContent({ empresa }) {
+  const empresaId = empresa?.id;
+  const { sucursalId } = useSucursalContext();
+
+  const esCorralon = empresa?.vertical === 'corralon';
+  const [clientes, setClientes] = useState([]);
+  const [resumenMap, setResumenMap] = useState({});
+  const [grupos, setGrupos] = useState([]);
+  const [filtroGrupo, setFiltroGrupo] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [busqueda, setBusqueda] = useState('');
+
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [nuevo, setNuevo] = useState({ nombre: '', cuit: '', email: '', telefono: '' });
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState('');
+  // Edición inline desde el listado
+  const [editOpen, setEditOpen] = useState(false);
+  const [editing, setEditing] = useState(null); // cliente original
+  const [editForm, setEditForm] = useState({
+    nombre: '', razon_social: '', cuit: '', direccion: '', telefono: '', email: '',
+    condicion_iva: '', descuento_default: '', limite_credito: '', notas: '', grupo_id: '',
+  });
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editError, setEditError] = useState('');
+  // Multiselección + bulk asignar a grupo
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkMode, setBulkMode] = useState('existente'); // 'existente' | 'nuevo'
+  const [bulkGrupo, setBulkGrupo] = useState(null);      // grupo seleccionado (existente)
+  const [bulkNuevoNombre, setBulkNuevoNombre] = useState(''); // nombre grupo nuevo
+  const [bulkSaving, setBulkSaving] = useState(false);
+  const [bulkError, setBulkError] = useState('');
+
+  const [linkSnack, setLinkSnack] = useState('');
+
+  const fetchData = useCallback(async () => {
+    if (!empresaId) return;
+    setLoading(true);
+    setError('');
+    try {
+      const [list, resumen, gruposList] = await Promise.all([
+        clienteService.getByEmpresaFull(empresaId, { incluirArchivados: true }),
+        clienteService.getResumenFinanciero(empresaId).catch(() => []),
+        esCorralon ? grupoClienteService.getByEmpresa(empresaId).catch(() => []) : Promise.resolve([]),
+      ]);
+      setClientes(list || []);
+      const map = {};
+      (resumen || []).forEach((r) => {
+        map[r.cliente_id] = r;
+      });
+      setResumenMap(map);
+      setGrupos(gruposList || []);
+    } catch {
+      setError('Error al cargar clientes');
+    } finally {
+      setLoading(false);
+    }
+  }, [empresaId, esCorralon]);
+
+  const grupoById = useMemo(() => {
+    const m = {};
+    for (const g of grupos) m[g._id] = g;
+    return m;
+  }, [grupos]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  const filtrados = useMemo(() => {
+    const q = busqueda.toLowerCase().trim();
+    return (clientes || []).filter((c) => {
+      if (c.archivado) return false;
+      if (sucursalId && c.sucursal_id && c.sucursal_id !== sucursalId) return false;
+      if (filtroGrupo) {
+        if (filtroGrupo === '__sin_grupo__') {
+          if (c.grupo_id) return false;
+        } else if (c.grupo_id !== filtroGrupo) {
+          return false;
+        }
+      }
+      if (!q) return true;
+      const matchNombre = (c.nombre || '').toLowerCase().includes(q);
+      const matchCuit = (c.cuit || '').includes(q);
+      return matchNombre || matchCuit;
+    });
+  }, [clientes, busqueda, sucursalId, filtroGrupo]);
+
+  const handleCrear = async () => {
+    if (!nuevo.nombre.trim()) {
+      setCreateError('El nombre es obligatorio');
+      return;
+    }
+    setCreating(true);
+    setCreateError('');
+    try {
+      await clienteService.crear(empresaId, nuevo);
+      setDialogOpen(false);
+      setNuevo({ nombre: '', cuit: '', email: '', telefono: '' });
+      await fetchData();
+    } catch {
+      setCreateError('Error al crear el cliente');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  // ─── Multiselección ──────────────────────────────────────────────────────
+  const toggleSelect = (id) => {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  };
+  const isSelected = (id) => selectedIds.includes(id);
+  const allFiltradosSelected = filtrados.length > 0
+    && filtrados.every((c) => selectedIds.includes(c._id || c.id));
+  const someFiltradosSelected = filtrados.some((c) => selectedIds.includes(c._id || c.id));
+  const toggleSelectAll = () => {
+    if (allFiltradosSelected) {
+      const ids = new Set(filtrados.map((c) => c._id || c.id));
+      setSelectedIds((prev) => prev.filter((x) => !ids.has(x)));
+    } else {
+      const nuevos = filtrados.map((c) => c._id || c.id);
+      setSelectedIds((prev) => Array.from(new Set([...prev, ...nuevos])));
+    }
+  };
+
+  const openBulkAsignar = () => {
+    setBulkOpen(true);
+    setBulkMode('existente');
+    setBulkGrupo(null);
+    setBulkNuevoNombre('');
+    setBulkError('');
+  };
+
+  const handleBulkAsignar = async () => {
+    setBulkError('');
+    if (bulkMode === 'existente' && !bulkGrupo) { setBulkError('Elegí un grupo'); return; }
+    if (bulkMode === 'nuevo' && !bulkNuevoNombre.trim()) { setBulkError('Ingresá el nombre del grupo'); return; }
+    setBulkSaving(true);
+    try {
+      let grupoId = bulkGrupo?._id;
+      if (bulkMode === 'nuevo') {
+        const nuevo = await grupoClienteService.crear(empresaId, { nombre: bulkNuevoNombre.trim() });
+        grupoId = nuevo?._id || nuevo?.id;
+      }
+      if (!grupoId) throw new Error('No se pudo obtener el grupo destino');
+      // Update cliente por cliente. Para v1 alcanza; bulk endpoint se puede sumar después.
+      for (const id of selectedIds) {
+        try { await clienteService.actualizar(empresaId, id, { grupo_id: grupoId }); }
+        catch (e) { console.warn('No se pudo asignar', id, e); }
+      }
+      setBulkOpen(false);
+      setSelectedIds([]);
+      await fetchData();
+    } catch (err) {
+      setBulkError(err?.response?.data?.error || err?.message || 'Error al asignar al grupo');
+    } finally {
+      setBulkSaving(false);
+    }
+  };
+
+  const handleBulkQuitar = async () => {
+    if (!selectedIds.length) return;
+    setBulkSaving(true);
+    try {
+      for (const id of selectedIds) {
+        try { await clienteService.actualizar(empresaId, id, { grupo_id: null }); } catch (_) {}
+      }
+      setBulkOpen(false);
+      setSelectedIds([]);
+      await fetchData();
+    } finally {
+      setBulkSaving(false);
+    }
+  };
+
+  const openEditDialog = (c) => {
+    setEditing(c);
+    setEditForm({
+      nombre: c.nombre || '',
+      razon_social: c.razon_social || '',
+      cuit: c.cuit || '',
+      direccion: c.direccion || '',
+      telefono: c.telefono || '',
+      email: c.email || '',
+      condicion_iva: c.condicion_iva || '',
+      descuento_default: c.descuento_default ?? '',
+      limite_credito: c.limite_credito ?? '',
+      notas: c.notas || '',
+      grupo_id: c.grupo_id || '',
+    });
+    setEditError('');
+    setEditOpen(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editing) return;
+    if (!editForm.nombre.trim()) { setEditError('El nombre es obligatorio'); return; }
+    setSavingEdit(true);
+    setEditError('');
+    try {
+      const id = editing._id || editing.id;
+      const payload = { ...editForm };
+      // Normalizar numéricos
+      payload.descuento_default = payload.descuento_default === '' ? null : Number(payload.descuento_default);
+      payload.limite_credito = payload.limite_credito === '' ? null : Number(payload.limite_credito);
+      payload.condicion_iva = payload.condicion_iva || null;
+      payload.grupo_id = payload.grupo_id || null;
+      await clienteService.actualizar(empresaId, id, payload);
+      setEditOpen(false);
+      setEditing(null);
+      await fetchData();
+    } catch (err) {
+      setEditError(err?.response?.data?.error || err?.message || 'Error al actualizar cliente');
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const handleGenerarLink = async (c) => {
+    try {
+      const { url, token } = await clienteService.generarTokenPublico(
+        empresaId,
+        c._id || c.id
+      );
+      // Si el backend no devolvió url completa (o vino relativa), la armamos con el origin.
+      let finalUrl = url;
+      if (!finalUrl || finalUrl.startsWith('/')) {
+        const path = finalUrl?.startsWith('/') ? finalUrl : `/consulta-saldo/${token}`;
+        finalUrl = `${window.location.origin}${path}`;
+      }
+      try {
+        await navigator.clipboard.writeText(finalUrl);
+        setLinkSnack(`Link copiado: ${finalUrl}`);
+      } catch {
+        setLinkSnack(`Link: ${finalUrl}`);
+      }
+    } catch {
+      setError('Error al generar el link público');
+    }
+  };
+
+  return (
+    <Container maxWidth="xl" sx={{ py: 3 }}>
+      <Stack
+        direction="row"
+        alignItems="center"
+        justifyContent="space-between"
+        sx={{ mb: 2 }}
+      >
+        <Box>
+          <Typography variant="h5" fontWeight={600}>
+            Clientes
+          </Typography>
+          {!loading && (
+            <Typography variant="body2" color="text.secondary">
+              {filtrados.length} activo{filtrados.length !== 1 ? 's' : ''}
+              {sucursalId && ' · filtrado por sucursal'}
+            </Typography>
+          )}
+        </Box>
+        <Stack direction="row" spacing={1}>
+          <Tooltip title="Actualizar">
+            <span>
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={fetchData}
+                disabled={loading}
+                sx={{ minWidth: 0, px: 1 }}
+              >
+                <RefreshIcon fontSize="small" />
+              </Button>
+            </span>
+          </Tooltip>
+          <Button
+            variant="outlined"
+            startIcon={<UploadFileIcon />}
+            onClick={() => setImportOpen(true)}
+          >
+            Importar Excel
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => setDialogOpen(true)}
+          >
+            Nuevo cliente
+          </Button>
+        </Stack>
+      </Stack>
+
+      <ImportarClientes
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        empresaId={empresaId}
+        onDone={() => fetchData()}
+      />
+
+      {/* Toolbar bulk: solo aparece cuando hay clientes seleccionados (vertical corralón) */}
+      {esCorralon && selectedIds.length > 0 && (
+        <Paper
+          variant="outlined"
+          sx={{
+            mb: 2, p: 1.5, display: 'flex', alignItems: 'center', gap: 2,
+            bgcolor: 'primary.lighter', borderColor: 'primary.light',
+          }}
+        >
+          <Typography variant="body2" sx={{ flexGrow: 1 }}>
+            <strong>{selectedIds.length}</strong> cliente{selectedIds.length !== 1 ? 's' : ''} seleccionado{selectedIds.length !== 1 ? 's' : ''}
+          </Typography>
+          <Button size="small" onClick={() => setSelectedIds([])}>Limpiar</Button>
+          <Button
+            size="small"
+            variant="contained"
+            startIcon={<GroupsIcon />}
+            onClick={openBulkAsignar}
+          >
+            Asignar a grupo
+          </Button>
+        </Paper>
+      )}
+
+      <Paper variant="outlined" sx={{ mb: 2, p: 1.5 }}>
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+          <TextField
+            size="small"
+            fullWidth
+            placeholder="Buscar por nombre o CUIT…"
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon fontSize="small" />
+                </InputAdornment>
+              ),
+            }}
+          />
+          {esCorralon && grupos.length > 0 && (
+            <TextField
+              size="small"
+              select
+              label="Grupo"
+              value={filtroGrupo}
+              onChange={(e) => setFiltroGrupo(e.target.value)}
+              sx={{ minWidth: 200 }}
+            >
+              <MenuItem value="">Todos</MenuItem>
+              <MenuItem value="__sin_grupo__">Sin grupo</MenuItem>
+              {grupos.map((g) => (
+                <MenuItem key={g._id} value={g._id}>{g.nombre}</MenuItem>
+              ))}
+            </TextField>
+          )}
+        </Stack>
+      </Paper>
+
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
+          {error}
+        </Alert>
+      )}
+
+      <Paper variant="outlined">
+        {loading && clientes.length === 0 ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', p: 5 }}>
+            <CircularProgress size={32} />
+          </Box>
+        ) : filtrados.length === 0 ? (
+          <Box sx={{ p: 4, textAlign: 'center' }}>
+            <Typography color="text.secondary">
+              {busqueda ? 'Sin resultados' : 'No hay clientes todavía.'}
+            </Typography>
+          </Box>
+        ) : (
+          <Table size="small">
+            <TableHead>
+              <TableRow sx={{ bgcolor: 'background.neutral' }}>
+                {esCorralon && (
+                  <TableCell padding="checkbox">
+                    <Checkbox
+                      indeterminate={someFiltradosSelected && !allFiltradosSelected}
+                      checked={allFiltradosSelected}
+                      onChange={toggleSelectAll}
+                    />
+                  </TableCell>
+                )}
+                <TableCell>Nombre</TableCell>
+                <TableCell>CUIT</TableCell>
+                {esCorralon && <TableCell>Grupo</TableCell>}
+                <TableCell align="right">Saldo CC</TableCell>
+                <TableCell>Estado</TableCell>
+                <TableCell align="right">Acciones</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {filtrados.map((c) => {
+                const id = c._id || c.id;
+                const r = resumenMap[id];
+                return (
+                  <TableRow key={id} hover selected={isSelected(id)}>
+                    {esCorralon && (
+                      <TableCell padding="checkbox">
+                        <Checkbox
+                          checked={isSelected(id)}
+                          onChange={() => toggleSelect(id)}
+                        />
+                      </TableCell>
+                    )}
+                    <TableCell>
+                      <NextLink href={`/cliente/${id}`} passHref legacyBehavior>
+                        <a style={{ color: '#1976d2', textDecoration: 'none' }}>
+                          <Typography
+                            variant="body2"
+                            fontWeight={500}
+                            sx={{ '&:hover': { textDecoration: 'underline' }, cursor: 'pointer' }}
+                          >
+                            {c.nombre}
+                          </Typography>
+                        </a>
+                      </NextLink>
+                    </TableCell>
+                    <TableCell>{c.cuit || '—'}</TableCell>
+                    {esCorralon && (
+                      <TableCell>
+                        {c.grupo_id && grupoById[c.grupo_id] ? (
+                          <NextLink href={`/grupo-cliente/${c.grupo_id}`} passHref legacyBehavior>
+                            <a style={{ textDecoration: 'none' }}>
+                              <Chip
+                                size="small"
+                                label={grupoById[c.grupo_id].nombre}
+                                sx={{
+                                  bgcolor: grupoById[c.grupo_id].color || undefined,
+                                  color: grupoById[c.grupo_id].color ? '#fff' : undefined,
+                                  cursor: 'pointer',
+                                }}
+                              />
+                            </a>
+                          </NextLink>
+                        ) : (
+                          <Typography variant="caption" color="text.disabled">—</Typography>
+                        )}
+                      </TableCell>
+                    )}
+                    <TableCell align="right">
+                      {r ? formatCurrencyWithCode(r.saldo || 0) : '—'}
+                    </TableCell>
+                    <TableCell>{renderEstadoCC(r)}</TableCell>
+                    <TableCell align="right">
+                      <Tooltip title="Editar">
+                        <IconButton size="small" onClick={() => openEditDialog(c)}>
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Generar link público de consulta">
+                        <IconButton size="small" onClick={() => handleGenerarLink(c)}>
+                          <LinkIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        )}
+      </Paper>
+
+      <Dialog
+        open={dialogOpen}
+        onClose={() => !creating && setDialogOpen(false)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Nuevo cliente</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <TextField
+              autoFocus
+              fullWidth
+              label="Nombre"
+              value={nuevo.nombre}
+              onChange={(e) => setNuevo({ ...nuevo, nombre: e.target.value })}
+            />
+            <TextField
+              fullWidth
+              label="CUIT"
+              value={nuevo.cuit}
+              onChange={(e) => setNuevo({ ...nuevo, cuit: e.target.value })}
+            />
+            <TextField
+              fullWidth
+              label="Email"
+              value={nuevo.email}
+              onChange={(e) => setNuevo({ ...nuevo, email: e.target.value })}
+            />
+            <TextField
+              fullWidth
+              label="Teléfono"
+              value={nuevo.telefono}
+              onChange={(e) => setNuevo({ ...nuevo, telefono: e.target.value })}
+            />
+            {createError && <Alert severity="error">{createError}</Alert>}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDialogOpen(false)} disabled={creating}>
+            Cancelar
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleCrear}
+            disabled={creating || !nuevo.nombre.trim()}
+          >
+            {creating ? 'Creando…' : 'Crear'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Modal de edición de cliente */}
+      <Dialog
+        open={editOpen}
+        onClose={() => !savingEdit && setEditOpen(false)}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle>Editar cliente</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <TextField
+              autoFocus fullWidth label="Nombre" required
+              value={editForm.nombre}
+              onChange={(e) => setEditForm({ ...editForm, nombre: e.target.value })}
+            />
+            <TextField
+              fullWidth label="Razón social"
+              value={editForm.razon_social}
+              onChange={(e) => setEditForm({ ...editForm, razon_social: e.target.value })}
+            />
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+              <TextField
+                fullWidth label="CUIT"
+                value={editForm.cuit}
+                onChange={(e) => setEditForm({ ...editForm, cuit: e.target.value })}
+              />
+              <TextField
+                fullWidth select label="Condición IVA"
+                value={editForm.condicion_iva}
+                onChange={(e) => setEditForm({ ...editForm, condicion_iva: e.target.value })}
+              >
+                <MenuItem value=""><em>—</em></MenuItem>
+                <MenuItem value="consumidor_final">Consumidor final</MenuItem>
+                <MenuItem value="monotributo">Monotributo</MenuItem>
+                <MenuItem value="responsable_inscripto">Responsable inscripto</MenuItem>
+                <MenuItem value="exento">Exento</MenuItem>
+              </TextField>
+            </Stack>
+            <TextField
+              fullWidth label="Dirección"
+              value={editForm.direccion}
+              onChange={(e) => setEditForm({ ...editForm, direccion: e.target.value })}
+            />
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+              <TextField
+                fullWidth label="Teléfono"
+                value={editForm.telefono}
+                onChange={(e) => setEditForm({ ...editForm, telefono: e.target.value })}
+              />
+              <TextField
+                fullWidth label="Email"
+                value={editForm.email}
+                onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+              />
+            </Stack>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+              <TextField
+                fullWidth label="Descuento default (%)" type="number"
+                value={editForm.descuento_default}
+                onChange={(e) => setEditForm({ ...editForm, descuento_default: e.target.value })}
+              />
+              <TextField
+                fullWidth label="Límite de crédito" type="number"
+                value={editForm.limite_credito}
+                onChange={(e) => setEditForm({ ...editForm, limite_credito: e.target.value })}
+              />
+            </Stack>
+            <TextField
+              fullWidth select label="Grupo"
+              value={editForm.grupo_id}
+              onChange={(e) => setEditForm({ ...editForm, grupo_id: e.target.value })}
+            >
+              <MenuItem value=""><em>Sin grupo</em></MenuItem>
+              {grupos.map((g) => (
+                <MenuItem key={g._id} value={g._id}>{g.nombre}</MenuItem>
+              ))}
+            </TextField>
+            <TextField
+              fullWidth multiline minRows={2} label="Notas"
+              value={editForm.notas}
+              onChange={(e) => setEditForm({ ...editForm, notas: e.target.value })}
+            />
+            {editError && <Alert severity="error">{editError}</Alert>}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditOpen(false)} disabled={savingEdit}>Cancelar</Button>
+          <Button
+            variant="contained"
+            onClick={handleSaveEdit}
+            disabled={savingEdit || !editForm.nombre.trim()}
+          >
+            {savingEdit ? 'Guardando…' : 'Guardar'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Modal: asignar bulk a grupo */}
+      <Dialog
+        open={bulkOpen}
+        onClose={() => !bulkSaving && setBulkOpen(false)}
+        fullWidth
+        maxWidth="xs"
+      >
+        <DialogTitle>Asignar {selectedIds.length} cliente{selectedIds.length !== 1 ? 's' : ''} a grupo</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <Stack direction="row" spacing={1}>
+              <Button
+                size="small"
+                variant={bulkMode === 'existente' ? 'contained' : 'outlined'}
+                onClick={() => setBulkMode('existente')}
+              >Grupo existente</Button>
+              <Button
+                size="small"
+                variant={bulkMode === 'nuevo' ? 'contained' : 'outlined'}
+                onClick={() => setBulkMode('nuevo')}
+              >Crear nuevo</Button>
+            </Stack>
+
+            {bulkMode === 'existente' ? (
+              <Autocomplete
+                options={grupos}
+                getOptionLabel={(g) => g?.nombre || ''}
+                value={bulkGrupo}
+                onChange={(_, v) => setBulkGrupo(v)}
+                renderInput={(p) => <TextField {...p} label="Grupo destino" autoFocus />}
+                isOptionEqualToValue={(a, b) => (a?._id || a?.id) === (b?._id || b?.id)}
+              />
+            ) : (
+              <TextField
+                autoFocus
+                label="Nombre del nuevo grupo"
+                value={bulkNuevoNombre}
+                onChange={(e) => setBulkNuevoNombre(e.target.value)}
+                fullWidth
+              />
+            )}
+
+            {bulkError && <Alert severity="error">{bulkError}</Alert>}
+
+            <Typography variant="caption" color="text.secondary">
+              Si alguno de los clientes ya pertenecía a otro grupo, su grupo va a ser reemplazado.
+            </Typography>
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ justifyContent: 'space-between', px: 3 }}>
+          <Button
+            color="error"
+            size="small"
+            onClick={handleBulkQuitar}
+            disabled={bulkSaving}
+          >
+            Quitar del grupo
+          </Button>
+          <Box>
+            <Button onClick={() => setBulkOpen(false)} disabled={bulkSaving}>Cancelar</Button>
+            <Button
+              variant="contained"
+              onClick={handleBulkAsignar}
+              disabled={bulkSaving || (bulkMode === 'existente' ? !bulkGrupo : !bulkNuevoNombre.trim())}
+            >
+              {bulkSaving ? 'Asignando…' : 'Asignar'}
+            </Button>
+          </Box>
+        </DialogActions>
+      </Dialog>
+
+      <Snackbar
+        open={!!linkSnack}
+        autoHideDuration={6000}
+        onClose={() => setLinkSnack('')}
+        message={linkSnack}
+        action={
+          <IconButton
+            size="small"
+            color="inherit"
+            onClick={() => {
+              const url = linkSnack.replace(/^Link( copiado)?:\s*/, '');
+              navigator.clipboard?.writeText(url);
+            }}
+          >
+            <ContentCopyIcon fontSize="small" />
+          </IconButton>
+        }
+      />
+    </Container>
+  );
+}
+
+const Page = () => {
+  const { user } = useAuthContext();
+  const [empresa, setEmpresa] = useState(null);
+
+  useEffect(() => {
+    getEmpresaDetailsFromUser(user).then(setEmpresa);
+  }, [user]);
+
+  if (empresa && empresa.vertical !== 'corralon') {
+    return (
+      <DashboardLayout>
+        <Head>
+          <title>Clientes</title>
+        </Head>
+        <Container maxWidth="lg" sx={{ py: 4 }}>
+          <Alert severity="warning">
+            Esta sección está disponible solo para corralones.
+          </Alert>
+        </Container>
+      </DashboardLayout>
+    );
+  }
+
+  return (
+    <>
+      <Head>
+        <title>Clientes</title>
+      </Head>
+      <ClientesContent empresa={empresa} />
+    </>
+  );
+};
+
+Page.getLayout = (page) => <DashboardLayout>{page}</DashboardLayout>;
+
+export default Page;

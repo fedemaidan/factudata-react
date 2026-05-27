@@ -18,6 +18,7 @@ import 'src/styles/react-datepicker.css';
 import 'src/styles/tailwind.css';
 import { QueryCache, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AlertProvider, useAlert } from 'src/contexts/alert-context';
+import { SucursalProvider } from 'src/contexts/sucursal-context';
 
 const clientSideEmotionCache = createEmotionCache();
 
@@ -158,6 +159,7 @@ const App = (props) => {
             <CssBaseline />
             <AlertProvider>
               <BreadcrumbsProvider>
+                <SucursalProvider>
                 <ReactQueryProvider>
                   <ClarityIdentifier />
                   <AuthConsumer>
@@ -170,6 +172,7 @@ const App = (props) => {
                     }
                   </AuthConsumer>
                 </ReactQueryProvider>
+                </SucursalProvider>
               </BreadcrumbsProvider>
             </AlertProvider>
           </ThemeProvider>
