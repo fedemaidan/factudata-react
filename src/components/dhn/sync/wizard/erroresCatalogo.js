@@ -55,14 +55,14 @@ export const ERRORES_POR_DOCUMENTO = {
       label: "Horas nocturnas",
       accentColor: "#3f51b5",
       filtros: {},
-      todo: true,
+      customRoute: "/dhn/horas/nocturnas",
     },
     {
       key: "horasNoRedondeadas",
       label: "Horas no redondeadas",
       accentColor: "#f9a825",
       filtros: {},
-      todo: true,
+      customRoute: "/dhn/horas/no-redondeadas",
     },
   ],
 };

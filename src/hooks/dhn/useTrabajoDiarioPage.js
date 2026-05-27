@@ -51,16 +51,29 @@ const getDayRange = (diaISO) => {
   return { from: start.toISOString(), to: end.toISOString() };
 };
 
+const getCustomRange = (fromISO, toISO) => {
+  if (!fromISO || !toISO) return null;
+  const start = new Date(fromISO);
+  const end = new Date(toISO);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
+  start.setHours(0, 0, 0, 0);
+  end.setHours(23, 59, 59, 999);
+  return { from: start.toISOString(), to: end.toISOString() };
+};
+
 export default function useTrabajoDiarioPage(options = {}) {
   const {
     enabled = true,
     mesParam,
     diaISO,
+    fromISO,
+    toISO,
     trabajadorId,
     incluirTrabajador = true,
     defaultLimit = 200,
     defaultSort,
     onOpenComprobante,
+    filtroFijo,
   } = options || {};
 
   const {
@@ -115,7 +128,10 @@ export default function useTrabajoDiarioPage(options = {}) {
 
   const monthRange = getMonthRange(mesParam);
   const dayRange = getDayRange(diaISO);
-  const range = monthRange || dayRange;
+  const customRange = getCustomRange(fromISO, toISO);
+  const range = monthRange || dayRange || customRange;
+
+  const filtroAplicado = filtroFijo || filtro;
 
   const fetchData = async () => {
     if (!enabled) return buildInitialData;
@@ -126,7 +142,7 @@ export default function useTrabajoDiarioPage(options = {}) {
       offset,
       sort,
       ...(estado && estado !== 'todos' ? { estado } : {}),
-      ...(filtro ? { filtro } : {}),
+      ...(filtroAplicado ? { filtro: filtroAplicado } : {}),
       ...(q?.trim() ? { q: q.trim() } : {}),
     };
 
@@ -152,7 +168,7 @@ export default function useTrabajoDiarioPage(options = {}) {
     refetch,
   } = useFetch(
     fetchData,
-    [enabled, mesParam, diaISO, range?.from, range?.to, trabajadorId, estado, filtro, limit, offset, sort, q],
+    [enabled, mesParam, diaISO, range?.from, range?.to, trabajadorId, estado, filtroAplicado, limit, offset, sort, q],
     {
       enabled,
       initialData: buildInitialData,

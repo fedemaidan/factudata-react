@@ -108,6 +108,16 @@ const WizardErroresSync = () => {
   const handleConfirm = () => {
     if (!seleccionCompleta || !documentoActual) return;
 
+    if (errorActual && errorActual.customRoute) {
+      const query = {};
+      if (quincenaActual) {
+        query.desde = quincenaActual.desde;
+        query.hasta = quincenaActual.hasta;
+      }
+      router.push({ pathname: errorActual.customRoute, query });
+      return;
+    }
+
     const query = { tipo: documentoActual.tipoBackend };
     if (quincenaActual) {
       query.fechaDetectadaDesde = quincenaActual.desde;
