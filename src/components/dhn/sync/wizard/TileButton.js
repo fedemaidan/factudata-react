@@ -1,8 +1,8 @@
 import { ButtonBase, Stack, Typography, alpha } from "@mui/material";
 
 const SIZES = {
-  lg: { minWidth: 200, minHeight: 140, padding: 3, labelVariant: "h5" },
-  md: { minWidth: 150, minHeight: 100, padding: 2, labelVariant: "h6" },
+  lg: { minWidth: 180, minHeight: 100, padding: 2, labelVariant: "h6" },
+  md: { minWidth: 140, minHeight: 80, padding: 1.5, labelVariant: "subtitle1" },
 };
 
 const TileButton = ({

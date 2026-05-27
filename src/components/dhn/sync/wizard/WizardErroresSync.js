@@ -9,10 +9,12 @@ import {
   Typography,
 } from "@mui/material";
 import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
+import VisibilityIcon from "@mui/icons-material/Visibility";
 import { getQuincenas } from "src/utils/dhn/quincenas";
 import FilaQuincenas from "./FilaQuincenas";
-import FilaCategorias, { CATEGORIAS } from "./FilaCategorias";
-import FilaTiposDocumento from "./FilaTiposDocumento";
+import FilaDocumento from "./FilaDocumento";
+import FilaTipoError from "./FilaTipoError";
+import { DOCUMENTOS, getErrorByKey } from "./erroresCatalogo";
 
 const StepHeader = ({ index, title, hint }) => (
   <Stack spacing={0.5}>
@@ -56,9 +58,8 @@ const WizardErroresSync = () => {
   );
 
   const [selectedQuincenaKey, setSelectedQuincenaKey] = useState(null);
-  const [advancedSelected, setAdvancedSelected] = useState(false);
-  const [selectedCategoriaKey, setSelectedCategoriaKey] = useState(null);
-  const [selectedTipoDocumento, setSelectedTipoDocumento] = useState(null);
+  const [selectedDocumentoKey, setSelectedDocumentoKey] = useState(null);
+  const [selectedErrorKey, setSelectedErrorKey] = useState(null);
 
   const handleVerAnteriores = () => setQuincenaOffset((prev) => prev + QUINCENA_COUNT);
   const handleVerMasRecientes = () =>
@@ -70,9 +71,14 @@ const WizardErroresSync = () => {
     }
   }, [quincenas, selectedQuincenaKey]);
 
-  const categoriaActual = useMemo(
-    () => CATEGORIAS.find((c) => c.key === selectedCategoriaKey) || null,
-    [selectedCategoriaKey]
+  const documentoActual = useMemo(
+    () => DOCUMENTOS.find((d) => d.key === selectedDocumentoKey) || null,
+    [selectedDocumentoKey]
+  );
+
+  const errorActual = useMemo(
+    () => getErrorByKey(selectedDocumentoKey, selectedErrorKey),
+    [selectedDocumentoKey, selectedErrorKey]
   );
 
   const quincenaActual = useMemo(
@@ -81,73 +87,77 @@ const WizardErroresSync = () => {
   );
 
   const handleSelectQuincena = (key) => {
-    setAdvancedSelected(false);
-    setSelectedQuincenaKey(key);
+    setSelectedQuincenaKey((prev) => (prev === key ? null : key));
   };
 
-  const handleSelectAdvanced = () => {
-    setSelectedQuincenaKey(null);
-    setSelectedCategoriaKey(null);
-    setSelectedTipoDocumento(null);
-    setAdvancedSelected(true);
+  const handleSelectDocumento = (key) => {
+    setSelectedDocumentoKey((prev) => (prev === key ? null : key));
+    setSelectedErrorKey(null);
   };
 
-  const handleSelectCategoria = (key) => {
-    setSelectedCategoriaKey(key);
-    setSelectedTipoDocumento(null);
+  const handleSelectError = (key) => {
+    setSelectedErrorKey((prev) => (prev === key ? null : key));
   };
 
-  const requiresDocumento = Boolean(categoriaActual?.requiresDocumento);
-  const documentoOk = !requiresDocumento || Boolean(selectedTipoDocumento);
-  const seleccionCompleta =
-    advancedSelected || (Boolean(selectedQuincenaKey) && Boolean(selectedCategoriaKey) && documentoOk);
+  const handleVerTodos = () => {
+    router.push("/dhn/sync/errores");
+  };
 
-  const ctaLabel = advancedSelected ? "Ir a configuración avanzada" : "Ver errores";
+  const seleccionCompleta = Boolean(selectedDocumentoKey);
 
   const handleConfirm = () => {
-    if (advancedSelected) {
-      router.push("/dhn/sync/errores");
-      return;
-    }
-    if (!seleccionCompleta || !quincenaActual || !categoriaActual) return;
+    if (!seleccionCompleta || !documentoActual) return;
 
-    const query = {
-      fechaDetectadaDesde: quincenaActual.desde,
-      fechaDetectadaHasta: quincenaActual.hasta,
-    };
-    if (categoriaActual.status) {
-      query.estado = categoriaActual.status;
+    const query = { tipo: documentoActual.tipoBackend };
+    if (quincenaActual) {
+      query.fechaDetectadaDesde = quincenaActual.desde;
+      query.fechaDetectadaHasta = quincenaActual.hasta;
     }
-    if (categoriaActual.requiresDocumento && selectedTipoDocumento) {
-      query.tipo = selectedTipoDocumento;
+    if (errorActual && errorActual.filtros) {
+      if (errorActual.filtros.estado) query.estado = errorActual.filtros.estado;
+      if (errorActual.filtros.search) query.search = errorActual.filtros.search;
     }
     router.push({ pathname: "/dhn/sync/errores", query });
   };
 
   return (
-    <Container maxWidth="lg" sx={{ py: { xs: 3, md: 5 } }}>
-      <Stack spacing={4}>
-        <Stack spacing={1}>
-          <Typography variant="h4" sx={{ fontWeight: 700 }}>
-            ¿Qué errores querés revisar?
+    <Container maxWidth="lg" sx={{ py: { xs: 2, md: 2.5 } }}>
+      <Stack spacing={2.5}>
+        <Stack
+          direction={{ xs: "column", sm: "row" }}
+          spacing={1.5}
+          justifyContent="space-between"
+          alignItems={{ xs: "flex-start", sm: "center" }}
+        >
+          <Typography variant="body2" color="text.secondary" sx={{ flex: 1, minWidth: 0 }}>
+            Elegí qué documento querés ver. Filtrar por período y tipo de error es opcional.
           </Typography>
-          <Typography variant="body1" color="text.secondary">
-            Elegí un período y un tipo de error para ver los registros que coinciden.
-          </Typography>
+          <Button
+            variant="text"
+            startIcon={<VisibilityIcon />}
+            onClick={handleVerTodos}
+            size="small"
+            sx={{
+              fontWeight: 500,
+              color: "text.secondary",
+              alignSelf: { xs: "flex-start", sm: "center" },
+              whiteSpace: "nowrap",
+            }}
+          >
+            Ver todos los errores
+          </Button>
         </Stack>
 
-        <Stack spacing={2}>
+        <Stack spacing={1.5}>
           <StepHeader
             index={1}
             title="Elegí el período"
-            hint="O usá la configuración avanzada para filtrar manualmente."
+            hint="Opcional. Si no elegís ninguna, vamos a mostrar errores de todos los períodos."
           />
           <FilaQuincenas
             quincenas={quincenas}
             selectedKey={selectedQuincenaKey}
-            advancedSelected={advancedSelected}
             onSelectQuincena={handleSelectQuincena}
-            onSelectAdvanced={handleSelectAdvanced}
             onVerAnteriores={handleVerAnteriores}
             onVerMasRecientes={handleVerMasRecientes}
             canVerMasRecientes={quincenaOffset > 0}
@@ -155,55 +165,51 @@ const WizardErroresSync = () => {
           />
         </Stack>
 
-        <Stack spacing={2}>
+        <Stack spacing={1.5}>
           <StepHeader
             index={2}
-            title="Elegí el tipo de error"
-            hint={
-              advancedSelected
-                ? "Desactivado: estás usando configuración avanzada."
-                : "Para duplicados y falta trabajador vas a tener que elegir también el documento."
-            }
+            title="Elegí el tipo de documento"
+            hint="Elegí qué tipo de documento querés revisar."
           />
-          <FilaCategorias
-            selectedKey={selectedCategoriaKey}
-            onSelect={handleSelectCategoria}
-            disabled={advancedSelected}
+          <FilaDocumento
+            selectedKey={selectedDocumentoKey}
+            onSelect={handleSelectDocumento}
           />
-
-          <Collapse in={!advancedSelected && Boolean(categoriaActual?.requiresDocumento)} timeout={250}>
-            <Box sx={{ pt: 1.5 }}>
-              {categoriaActual?.requiresDocumento ? (
-                <FilaTiposDocumento
-                  label={`Tipo de documento para ${categoriaActual.label.toLowerCase()}`}
-                  opciones={categoriaActual.opcionesDocumento}
-                  selectedTipo={selectedTipoDocumento}
-                  onSelect={setSelectedTipoDocumento}
-                  accentColor={categoriaActual.accentColor}
-                />
-              ) : null}
-            </Box>
-          </Collapse>
         </Stack>
+
+        <Collapse in={Boolean(selectedDocumentoKey)} timeout={250}>
+          <Stack spacing={1.5}>
+            <StepHeader
+              index={3}
+              title="Elegí el tipo de error"
+              hint="Opcional. Si no elegís ninguno, vamos a mostrar todos los errores del documento."
+            />
+            <FilaTipoError
+              documentoKey={selectedDocumentoKey}
+              selectedKey={selectedErrorKey}
+              onSelect={handleSelectError}
+            />
+          </Stack>
+        </Collapse>
 
         <Box
           sx={{
             position: "sticky",
-            bottom: 16,
+            bottom: 8,
             display: "flex",
             justifyContent: "flex-end",
-            pt: 2,
+            pt: 1,
           }}
         >
           <Button
             variant="contained"
-            size="large"
+            size="medium"
             endIcon={<ArrowForwardIcon />}
             disabled={!seleccionCompleta}
             onClick={handleConfirm}
-            sx={{ px: 4, py: 1.5, borderRadius: 2, fontWeight: 600 }}
+            sx={{ px: 3, py: 1, borderRadius: 2, fontWeight: 600 }}
           >
-            {ctaLabel}
+            Ver errores
           </Button>
         </Box>
       </Stack>

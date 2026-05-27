@@ -1,11 +1,9 @@
 import { IconButton, Stack, Tooltip } from "@mui/material";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
-import TuneIcon from "@mui/icons-material/Tune";
 import TileButton from "./TileButton";
 
 const QUINCENA_ACCENT = "#2e7d32";
-const AVANZADA_ACCENT = "#546e7a";
 
 const NavIconButton = ({ ariaLabel, tooltip, onClick, icon }) => (
   <Tooltip title={tooltip} arrow>
@@ -38,9 +36,7 @@ const NavIconButton = ({ ariaLabel, tooltip, onClick, icon }) => (
 const FilaQuincenas = ({
   quincenas,
   selectedKey,
-  advancedSelected,
   onSelectQuincena,
-  onSelectAdvanced,
   onVerAnteriores,
   onVerMasRecientes,
   canVerMasRecientes = false,
@@ -58,9 +54,8 @@ const FilaQuincenas = ({
         key={q.key}
         label={q.label}
         subtitle={mostrandoActual && idx === quincenas.length - 1 ? "Actual" : null}
-        selected={selectedKey === q.key && !advancedSelected}
+        selected={selectedKey === q.key}
         accentColor={QUINCENA_ACCENT}
-        disabled={advancedSelected}
         onClick={() => onSelectQuincena(q.key)}
       />
     ))}
@@ -72,18 +67,6 @@ const FilaQuincenas = ({
         icon={<ChevronRightIcon fontSize="small" />}
       />
     ) : null}
-    <TileButton
-      label={
-        <Stack direction="row" spacing={1} alignItems="center" justifyContent="center">
-          <TuneIcon fontSize="small" />
-          <span>Configuración avanzada</span>
-        </Stack>
-      }
-      subtitle="Filtros manuales"
-      selected={advancedSelected}
-      accentColor={AVANZADA_ACCENT}
-      onClick={onSelectAdvanced}
-    />
   </Stack>
 );
 

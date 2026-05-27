@@ -47,6 +47,11 @@ const buildInitialFilters = (query = {}) => {
   const hasta = parseDateParam(query.fechaDetectadaHasta);
   if (desde) initial.fechaDetectadaDesde = desde;
   if (hasta) initial.fechaDetectadaHasta = hasta;
+  if (typeof query.search === "string" && query.search.trim()) {
+    const trimmed = query.search.trim();
+    initial.searchTerm = trimmed;
+    initial.searchQuery = trimmed;
+  }
   return initial;
 };
 
