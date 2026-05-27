@@ -72,8 +72,18 @@ const GRANULAR_ERRORES = [
 
 // Abandonos: cierres del modal en cada step.
 const GRANULAR_CIERRES = [
+    { key: 'close_step_DatosA', label: 'Cerró en datos (A)', emoji: '🚪', color: '#94a3b8', desc: 'Variante A: cerró sin completar el form inicial' },
     { key: 'close_step_1',  label: 'Cerró en horario',  emoji: '🚪', color: '#94a3b8', desc: 'Cerró el modal viendo el calendario' },
     { key: 'close_step_2',  label: 'Cerró en form',     emoji: '🚪', color: '#94a3b8', desc: 'Cerró el modal viendo el form de datos' },
+];
+
+// Variante A (form-first): pasos exclusivos del flujo nuevo.
+// Estos extraSteps los emite el modal sólo cuando _variant === 'A'.
+const GRANULAR_VARIANTE_A = [
+    { key: 'view_datos_a',                 label: 'Vio form datos (A)',         emoji: '📝', color: '#0ea5e9', desc: 'Variante A: el modal abrió en el form inicial' },
+    { key: 'focus_form',                   label: 'Tocó un campo',              emoji: '👆', color: '#06b6d4', desc: 'Primer focus en cualquier input (compartido con B)' },
+    { key: 'submit_datos_a',               label: 'Completó datos (A)',         emoji: '🎯', color: '#10b981', desc: 'Variante A: submit del form inicial — acá dispara ViewContent del Pixel' },
+    { key: 'submit_datos_a_validation_error', label: 'Error validación (A)',    emoji: '⚠️', color: '#f59e0b', desc: 'Variante A: faltaba nombre o email/WA inválido en el form inicial' },
 ];
 
 // Totales históricos congelados del A/B test finalizado (para mostrar como contexto)
@@ -339,6 +349,47 @@ function EmbudoGranular({ totales }) {
                     : 'Sin datos granulares todavía — se llenarán a medida que entren visitas con el tracking nuevo'}
             />
             <CardContent sx={{ pt: 0 }}>
+                {/* Variante A: form-first. Sólo se muestra si hubo aperturas en A. */}
+                {(totales.extraSteps?.view_datos_a || totales.extraSteps?.submit_datos_a) ? (
+                    <Box mb={3}>
+                        <Typography variant="overline" sx={{ fontWeight: 600, color: '#0ea5e9' }}>
+                            🅰️ Variante A — form-first (datos antes del calendario)
+                        </Typography>
+                        <TableContainer component={Paper} variant="outlined">
+                            <Table size="small">
+                                <TableBody>
+                                    {GRANULAR_VARIANTE_A.map(e => {
+                                        const val = totales.extraSteps?.[e.key] || 0;
+                                        const base = totales.extraSteps?.view_datos_a || 0;
+                                        const crBase = base > 0 ? pct(val, base) : '—';
+                                        return (
+                                            <TableRow key={e.key}>
+                                                <TableCell>
+                                                    <Tooltip title={e.desc} placement="top" arrow>
+                                                        <Typography variant="body2" sx={{ cursor: 'help', fontWeight: val > 0 ? 600 : 400, color: val > 0 ? e.color : 'text.secondary' }}>
+                                                            {e.emoji} {e.label}
+                                                        </Typography>
+                                                    </Tooltip>
+                                                </TableCell>
+                                                <TableCell align="right">
+                                                    <Typography variant="body2" sx={{ fontWeight: 700, color: val > 0 ? e.color : 'text.disabled' }}>
+                                                        {val > 0 ? val.toLocaleString('es-AR') : '—'}
+                                                    </Typography>
+                                                </TableCell>
+                                                <TableCell align="right" sx={{ width: 100 }}>
+                                                    <Typography variant="caption" color="text.secondary">
+                                                        {val > 0 && crBase !== '—' ? `${crBase} vs vio` : ''}
+                                                    </Typography>
+                                                </TableCell>
+                                            </TableRow>
+                                        );
+                                    })}
+                                </TableBody>
+                            </Table>
+                        </TableContainer>
+                    </Box>
+                ) : null}
+
                 {/* Happy path: tocó horario → vio form → tocó campo → intentó submit → agendó */}
                 <Typography variant="overline" color="text.secondary" sx={{ fontWeight: 600 }}>
                     Happy path
@@ -479,6 +530,7 @@ function EmbudoGranular({ totales }) {
                         ...GRANULAR_FUNNEL.filter(s => s.source === 'extra').map(s => s.key),
                         ...GRANULAR_ERRORES.map(s => s.key),
                         ...GRANULAR_CIERRES.map(s => s.key),
+                        ...GRANULAR_VARIANTE_A.map(s => s.key),
                     ]);
                     const otros = Object.entries(totales.extraSteps || {})
                         // Excluir las claves de atribución (van a su propio bloque)
@@ -511,6 +563,161 @@ function EmbudoGranular({ totales }) {
                         </Box>
                     );
                 })()}
+            </CardContent>
+        </Card>
+    );
+}
+
+// ─── Panel A vs B (form-first vs calendar-first) ──────────
+// Lee directamente totales.byVariant que ya viene en /api/agendar/stats.
+// Hipótesis: A captura más leads aunque baje el agendamiento puro, porque
+// los partial-leads (datos completos sin slot) se recuperan por WhatsApp.
+
+const VARIANTE_METRICAS = [
+    { key: 'visitasLanding', label: 'Visitas',        emoji: '👁️' },
+    { key: 'abrioModal',     label: 'Abrió modal',    emoji: '📆' },
+    { key: 'eligioSlot',     label: 'Eligió horario', emoji: '🕐' },
+    { key: 'agendaron',      label: 'Agendaron',      emoji: '✅' },
+];
+
+function VariantePanel({ totales }) {
+    const byVariant = totales.byVariant || { A: {}, B: {} };
+    const A = byVariant.A || {};
+    const B = byVariant.B || {};
+
+    const sumA = VARIANTE_METRICAS.reduce((acc, m) => acc + (A[m.key] || 0), 0);
+    const sumB = VARIANTE_METRICAS.reduce((acc, m) => acc + (B[m.key] || 0), 0);
+    const hayData = sumA > 0 || sumB > 0;
+
+    // Lead parciales por variante (vienen del map extraSteps con clave dinámica).
+    const parcialesA = totales.extraSteps?.lead_parcial_var_A || 0;
+    const parcialesB = totales.extraSteps?.lead_parcial_var_B || 0;
+
+    // CR clave: agendaron / visitasLanding por variante. Define la hipótesis del test.
+    const crA = A.visitasLanding > 0 ? (A.agendaron || 0) / A.visitasLanding * 100 : null;
+    const crB = B.visitasLanding > 0 ? (B.agendaron || 0) / B.visitasLanding * 100 : null;
+    const lift = crA != null && crB != null && crA > 0
+        ? ((crB / crA - 1) * 100).toFixed(2)
+        : null;
+
+    return (
+        <Card sx={{ borderLeft: '4px solid #8b5cf6' }}>
+            <CardHeader
+                title="🆎 Variante A (form-first) vs B (calendar-first)"
+                subheader={hayData
+                    ? 'Split del A/B test — la PII de datos en A debería capturar leads aunque no agenden'
+                    : 'Sin tráfico particionado todavía — los contadores empiezan cuando entren visitas con el split activo'}
+            />
+            <CardContent sx={{ pt: 0 }}>
+                <TableContainer component={Paper} variant="outlined">
+                    <Table size="small">
+                        <TableHead>
+                            <TableRow>
+                                <TableCell><strong>Métrica</strong></TableCell>
+                                <TableCell align="right"><strong>A (form-first)</strong></TableCell>
+                                <TableCell align="right"><strong>B (calendar-first)</strong></TableCell>
+                                <TableCell align="right">
+                                    <Tooltip title="Diferencia absoluta B − A" placement="top" arrow>
+                                        <strong style={{ cursor: 'help' }}>Δ</strong>
+                                    </Tooltip>
+                                </TableCell>
+                            </TableRow>
+                        </TableHead>
+                        <TableBody>
+                            {VARIANTE_METRICAS.map((m, i) => {
+                                const va = A[m.key] || 0;
+                                const vb = B[m.key] || 0;
+                                const prev = i > 0 ? VARIANTE_METRICAS[i - 1] : null;
+                                const crAStep = prev ? pct(va, A[prev.key] || 0) : null;
+                                const crBStep = prev ? pct(vb, B[prev.key] || 0) : null;
+                                return (
+                                    <TableRow key={m.key} sx={{ '&:hover': { bgcolor: 'action.hover' } }}>
+                                        <TableCell>
+                                            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                                {m.emoji} {m.label}
+                                            </Typography>
+                                        </TableCell>
+                                        <TableCell align="right">
+                                            <Typography variant="body2" sx={{ fontWeight: 700, color: va > 0 ? '#0ea5e9' : 'text.disabled' }}>
+                                                {va > 0 ? va.toLocaleString('es-AR') : '—'}
+                                            </Typography>
+                                            {crAStep && crAStep !== '—' && (
+                                                <Typography variant="caption" color="text.secondary" display="block">{crAStep} vs ant.</Typography>
+                                            )}
+                                        </TableCell>
+                                        <TableCell align="right">
+                                            <Typography variant="body2" sx={{ fontWeight: 700, color: vb > 0 ? '#10b981' : 'text.disabled' }}>
+                                                {vb > 0 ? vb.toLocaleString('es-AR') : '—'}
+                                            </Typography>
+                                            {crBStep && crBStep !== '—' && (
+                                                <Typography variant="caption" color="text.secondary" display="block">{crBStep} vs ant.</Typography>
+                                            )}
+                                        </TableCell>
+                                        <TableCell align="right">
+                                            <Typography variant="caption" sx={{
+                                                fontWeight: 600,
+                                                color: vb - va > 0 ? '#10b981' : vb - va < 0 ? '#ef4444' : 'text.disabled',
+                                            }}>
+                                                {va === 0 && vb === 0 ? '—' : (vb - va > 0 ? '+' : '') + (vb - va).toLocaleString('es-AR')}
+                                            </Typography>
+                                        </TableCell>
+                                    </TableRow>
+                                );
+                            })}
+                            <TableRow sx={{ bgcolor: 'action.hover' }}>
+                                <TableCell>
+                                    <Tooltip title="Leads parciales: dejaron datos pero no agendaron. Sólo aplica a variante A — en B no hay form antes del slot." placement="top" arrow>
+                                        <Typography variant="body2" sx={{ cursor: 'help', fontWeight: 600 }}>
+                                            📝 Leads parciales
+                                        </Typography>
+                                    </Tooltip>
+                                </TableCell>
+                                <TableCell align="right">
+                                    <Typography variant="body2" sx={{ fontWeight: 700, color: parcialesA > 0 ? '#0ea5e9' : 'text.disabled' }}>
+                                        {parcialesA > 0 ? parcialesA.toLocaleString('es-AR') : '—'}
+                                    </Typography>
+                                </TableCell>
+                                <TableCell align="right">
+                                    <Typography variant="body2" sx={{ fontWeight: 700, color: parcialesB > 0 ? '#10b981' : 'text.disabled' }}>
+                                        {parcialesB > 0 ? parcialesB.toLocaleString('es-AR') : '—'}
+                                    </Typography>
+                                </TableCell>
+                                <TableCell align="right">—</TableCell>
+                            </TableRow>
+                        </TableBody>
+                    </Table>
+                </TableContainer>
+
+                {hayData && (
+                    <Box mt={2} display="flex" gap={2} flexWrap="wrap">
+                        <Chip
+                            size="small"
+                            label={`CR agendar/visita A: ${crA != null ? crA.toFixed(2) + '%' : '—'}`}
+                            sx={{ bgcolor: '#0ea5e9', color: '#fff' }}
+                        />
+                        <Chip
+                            size="small"
+                            label={`CR agendar/visita B: ${crB != null ? crB.toFixed(2) + '%' : '—'}`}
+                            sx={{ bgcolor: '#10b981', color: '#fff' }}
+                        />
+                        {lift != null && (
+                            <Chip
+                                size="small"
+                                label={`Lift B vs A: ${Number(lift) > 0 ? '+' : ''}${lift}%`}
+                                sx={{
+                                    bgcolor: Number(lift) > 0 ? '#10b981' : '#ef4444',
+                                    color: '#fff',
+                                    fontWeight: 700,
+                                }}
+                            />
+                        )}
+                    </Box>
+                )}
+
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 2, display: 'block' }}>
+                    💡 La hipótesis de A es <em>capturar más leads (incluyendo parciales)</em>, aunque el % de
+                    agendamiento puro caiga. Sumá leads parciales + agendaron al evaluar A.
+                </Typography>
             </CardContent>
         </Card>
     );
@@ -1005,6 +1212,8 @@ const LandingFunnelPage = () => {
                             </Grid>
 
                             <EmbudoGranular totales={totales} />
+
+                            <VariantePanel totales={totales} />
 
                             <AtribucionTabla
                                 extraSteps={totales.extraSteps}
