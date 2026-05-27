@@ -35,7 +35,10 @@ import {
   ListItem,
   ListItemText,
   Collapse,
+  InputAdornment,
+  Popover,
 } from '@mui/material';
+import CalculateOutlinedIcon from '@mui/icons-material/CalculateOutlined';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import TuneIcon from '@mui/icons-material/Tune';
 import CloseIcon from '@mui/icons-material/Close';
@@ -222,6 +225,42 @@ const PresupuestoDrawer = ({
   const [confirmGuardar, setConfirmGuardar] = useState(false);
   const [confirmSalir, setConfirmSalir] = useState(false);
   const [recalculando, setRecalculando] = useState(false);
+
+  // === Estado: Calculadora de m² (sutil, opt-in) ===
+  const calcM2AnchorRef = useRef(null);
+  const [calcM2Open, setCalcM2Open] = useState(false);
+  const [calcM2Val, setCalcM2Val] = useState('');
+  const [calcPrecioM2, setCalcPrecioM2] = useState('');
+
+  // Recuerda el último $/m² usado por moneda en localStorage
+  useEffect(() => {
+    if (!calcM2Open) return;
+    try {
+      const raw = localStorage.getItem('sorby:presupuesto:lastPrecioM2');
+      const data = raw ? JSON.parse(raw) : {};
+      const last = data?.[moneda];
+      if (last != null) setCalcPrecioM2((prev) => prev || String(last));
+    } catch { /* noop */ }
+  }, [calcM2Open, moneda]);
+
+  const calcM2Num = parseFloat(String(calcM2Val).replace(',', '.'));
+  const calcPrecioM2Num = parseFloat(String(calcPrecioM2).replace(',', '.'));
+  const calcM2Total = (Number.isFinite(calcM2Num) && Number.isFinite(calcPrecioM2Num))
+    ? calcM2Num * calcPrecioM2Num
+    : null;
+
+  const aplicarCalcM2 = () => {
+    if (calcM2Total == null || calcM2Total <= 0) return;
+    setMonto(String(Math.round(calcM2Total * 100) / 100));
+    // Persistí el último $/m² para esta moneda
+    try {
+      const raw = localStorage.getItem('sorby:presupuesto:lastPrecioM2');
+      const data = raw ? JSON.parse(raw) : {};
+      data[moneda] = calcPrecioM2Num;
+      localStorage.setItem('sorby:presupuesto:lastPrecioM2', JSON.stringify(data));
+    } catch { /* noop */ }
+    setCalcM2Open(false);
+  };
 
   /** Archivos seleccionados antes de crear el presupuesto (se suben tras el POST) */
   const [pendingAdjuntosFiles, setPendingAdjuntosFiles] = useState([]);
@@ -1072,6 +1111,22 @@ const PresupuestoDrawer = ({
                     onChange={(e) => setMonto(e.target.value)}
                     placeholder={tipo === 'ingreso' ? 'Ej: 10000000' : 'Ej: 5000000'}
                     autoFocus
+                    InputProps={tipo === 'egreso' ? {
+                      endAdornment: (
+                        <InputAdornment position="end">
+                          <Tooltip title="Calcular por m²">
+                            <IconButton
+                              ref={calcM2AnchorRef}
+                              size="small"
+                              onClick={() => setCalcM2Open(true)}
+                              sx={{ opacity: 0.4, '&:hover': { opacity: 1 } }}
+                            >
+                              <CalculateOutlinedIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        </InputAdornment>
+                      ),
+                    } : undefined}
                   />
                   <ToggleButtonGroup
                     value={moneda}
@@ -1087,6 +1142,58 @@ const PresupuestoDrawer = ({
                     <ToggleButton value="USD">USD</ToggleButton>
                   </ToggleButtonGroup>
                 </Stack>
+
+                {/* Calculadora de m² — sutil, sólo gastos */}
+                <Popover
+                  open={calcM2Open}
+                  anchorEl={calcM2AnchorRef.current}
+                  onClose={() => setCalcM2Open(false)}
+                  anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+                  transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+                  slotProps={{ paper: { sx: { p: 1.5, width: 280 } } }}
+                >
+                  <Stack spacing={1.25}>
+                    <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                      Calcular monto por m²
+                    </Typography>
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <TextField
+                        label="m²"
+                        type="number"
+                        size="small"
+                        value={calcM2Val}
+                        onChange={(e) => setCalcM2Val(e.target.value)}
+                        autoFocus
+                        fullWidth
+                      />
+                      <Typography color="text.secondary">×</Typography>
+                      <TextField
+                        label={`${moneda}/m²`}
+                        type="number"
+                        size="small"
+                        value={calcPrecioM2}
+                        onChange={(e) => setCalcPrecioM2(e.target.value)}
+                        InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment> }}
+                        fullWidth
+                      />
+                    </Stack>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', pt: 0.5 }}>
+                      <Typography variant="body2" fontWeight={600}>
+                        {calcM2Total != null
+                          ? `= $${calcM2Total.toLocaleString('es-AR', { maximumFractionDigits: 2 })} ${moneda}`
+                          : '—'}
+                      </Typography>
+                      <Button
+                        size="small"
+                        variant="contained"
+                        onClick={aplicarCalcM2}
+                        disabled={calcM2Total == null || calcM2Total <= 0}
+                      >
+                        Aplicar
+                      </Button>
+                    </Box>
+                  </Stack>
+                </Popover>
                 {monto && parseFloat(monto) > 0 && (
                   <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
                     {moneda === 'USD' ? 'USD ' : '$'}
