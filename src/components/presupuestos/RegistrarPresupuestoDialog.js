@@ -4,7 +4,7 @@
  * etapa/categoría opcionales.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Autocomplete,
@@ -15,14 +15,44 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  IconButton,
   InputAdornment,
   MenuItem,
+  Popover,
   Stack,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
+import CalculateOutlinedIcon from '@mui/icons-material/CalculateOutlined';
 import PresupuestoService from 'src/services/presupuestoService';
 import { getProyectosByEmpresaId } from 'src/services/proyectosService';
+
+// Key para recordar el último $/m² usado (por moneda) en localStorage.
+const LS_PRECIO_M2_KEY = 'sorby:presupuesto:lastPrecioM2';
+
+const readLastPrecioM2 = (moneda) => {
+  try {
+    const raw = localStorage.getItem(LS_PRECIO_M2_KEY);
+    if (!raw) return '';
+    const data = JSON.parse(raw);
+    const v = data?.[moneda];
+    return v != null ? String(v) : '';
+  } catch {
+    return '';
+  }
+};
+
+const saveLastPrecioM2 = (moneda, valor) => {
+  try {
+    const raw = localStorage.getItem(LS_PRECIO_M2_KEY);
+    const data = raw ? JSON.parse(raw) : {};
+    data[moneda] = valor;
+    localStorage.setItem(LS_PRECIO_M2_KEY, JSON.stringify(data));
+  } catch {
+    // noop
+  }
+};
 
 const MONEDAS = [
   { value: 'ARS', label: 'ARS' },
@@ -93,6 +123,34 @@ export default function RegistrarPresupuestoDialog({
       .finally(() => setLoadingProyectos(false));
   }, [open, empresaId]);
 
+  // ── Calculadora de m² (sólo mano de obra) ─────────────────────────────────
+  const esManoDeObra = proveedor?.tipo === 'mano_de_obra';
+  const calcAnchorRef = useRef(null);
+  const [calcOpen, setCalcOpen] = useState(false);
+  const [calcM2, setCalcM2] = useState('');
+  const [calcPrecio, setCalcPrecio] = useState('');
+
+  // Cuando se abre la calculadora, prefill $/m² con el último usado para esa moneda
+  useEffect(() => {
+    if (!calcOpen) return;
+    setCalcPrecio((prev) => prev || readLastPrecioM2(moneda));
+  }, [calcOpen, moneda]);
+
+  const calcM2Num = parseFloat(String(calcM2).replace(',', '.'));
+  const calcPrecioNum = parseFloat(String(calcPrecio).replace(',', '.'));
+  const calcTotal = (Number.isFinite(calcM2Num) && Number.isFinite(calcPrecioNum))
+    ? calcM2Num * calcPrecioNum
+    : null;
+  const calcAplicable = calcTotal !== null && calcTotal > 0;
+
+  const handleAplicarCalc = () => {
+    if (!calcAplicable) return;
+    // Redondeo a 2 decimales para evitar arrastres tipo 99.99999
+    setMonto(String(Math.round(calcTotal * 100) / 100));
+    saveLastPrecioM2(moneda, calcPrecioNum);
+    setCalcOpen(false);
+  };
+
   if (!proveedor) return null;
 
   const montoNum = parseFloat(String(monto).replace(',', '.'));
@@ -158,11 +216,79 @@ export default function RegistrarPresupuestoDialog({
               type="number"
               value={monto}
               onChange={(e) => setMonto(e.target.value)}
-              InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment> }}
+              InputProps={{
+                startAdornment: <InputAdornment position="start">$</InputAdornment>,
+                endAdornment: esManoDeObra ? (
+                  <InputAdornment position="end">
+                    <Tooltip title="Calcular por m²">
+                      <IconButton
+                        ref={calcAnchorRef}
+                        size="small"
+                        onClick={() => setCalcOpen(true)}
+                        sx={{ opacity: 0.4, '&:hover': { opacity: 1 } }}
+                      >
+                        <CalculateOutlinedIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  </InputAdornment>
+                ) : undefined,
+              }}
               fullWidth
               autoFocus
               required
             />
+
+            {/* Calculadora de m² — sutil, sólo para mano de obra */}
+            <Popover
+              open={calcOpen}
+              anchorEl={calcAnchorRef.current}
+              onClose={() => setCalcOpen(false)}
+              anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+              transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+              slotProps={{ paper: { sx: { p: 1.5, width: 280 } } }}
+            >
+              <Stack spacing={1.25}>
+                <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                  Calcular monto por m²
+                </Typography>
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <TextField
+                    label="m²"
+                    type="number"
+                    size="small"
+                    value={calcM2}
+                    onChange={(e) => setCalcM2(e.target.value)}
+                    autoFocus
+                    fullWidth
+                  />
+                  <Typography color="text.secondary">×</Typography>
+                  <TextField
+                    label={`${moneda}/m²`}
+                    type="number"
+                    size="small"
+                    value={calcPrecio}
+                    onChange={(e) => setCalcPrecio(e.target.value)}
+                    InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment> }}
+                    fullWidth
+                  />
+                </Stack>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', pt: 0.5 }}>
+                  <Typography variant="body2" fontWeight={600}>
+                    {calcAplicable
+                      ? `= $${calcTotal.toLocaleString('es-AR', { maximumFractionDigits: 2 })} ${moneda}`
+                      : '—'}
+                  </Typography>
+                  <Button
+                    size="small"
+                    variant="contained"
+                    onClick={handleAplicarCalc}
+                    disabled={!calcAplicable}
+                  >
+                    Aplicar
+                  </Button>
+                </Box>
+              </Stack>
+            </Popover>
             <TextField
               select
               label="Moneda"

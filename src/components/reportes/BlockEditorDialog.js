@@ -147,6 +147,7 @@ function defaultBlock(type) {
         tipo_presupuesto: 'egreso',
         campo_monto: 'subtotal',
         categorias_control: [],
+        presupuesto_ids: [],
         presupuesto_total_manual: null,
         presupuesto_label: 'Egresos proyectados',
         obra_nombre: '',
@@ -230,6 +231,7 @@ const BlockEditorDialog = ({
   onSave,
   initialBlock,
   proyectos = [],
+  presupuestos = [],
   sociosOptions = [],
   excludeOptions = {},
 }) => {
@@ -367,7 +369,7 @@ const BlockEditorDialog = ({
             <BudgetVsActualConfig block={block} onChange={updateBlock} excludeOptions={excludeOptions} />
           )}
           {block.type === 'monthly_budget_control' && (
-            <MonthlyBudgetControlConfig block={block} onChange={updateBlock} excludeOptions={excludeOptions} />
+            <MonthlyBudgetControlConfig block={block} onChange={updateBlock} presupuestos={presupuestos} />
           )}
           {block.type === 'category_budget_matrix' && (
             <CategoryBudgetMatrixConfig block={block} onChange={updateBlock} proyectos={proyectos} />
@@ -864,12 +866,62 @@ function BudgetVsActualConfig({ block, onChange, excludeOptions = {} }) {
   );
 }
 
-function MonthlyBudgetControlConfig({ block, onChange, excludeOptions = {} }) {
+function getPresupuestoOptionId(presupuesto) {
+  return String(presupuesto?._id || presupuesto?.id || '').trim();
+}
+
+function getPresupuestoOptionLabel(presupuesto) {
+  if (presupuesto?._missingPresupuesto) return presupuesto.label;
+  const codigo = presupuesto?.codigo ? `#${presupuesto.codigo}` : 'Sin código';
+  const categorias = Array.isArray(presupuesto?.clasificaciones) && presupuesto.clasificaciones.length > 0
+    ? presupuesto.clasificaciones.map((c) => c?.categoria).filter(Boolean).join(' + ')
+    : (presupuesto?.rubro || 'General');
+  const proyecto = presupuesto?.proyecto_nombre || presupuesto?.nombre_proyecto || '';
+  const monto = presupuesto?.monto_ingresado ?? presupuesto?.monto;
+  const moneda = presupuesto?.moneda_display || presupuesto?.moneda || '';
+  const montoTxt = monto != null ? ` · ${Number(monto).toLocaleString('es-AR')} ${moneda}` : '';
+  return [codigo, categorias, proyecto].filter(Boolean).join(' · ') + montoTxt;
+}
+
+function MonthlyBudgetControlConfig({ block, onChange, presupuestos = [] }) {
+  const presupuestoIds = Array.isArray(block.presupuesto_ids) ? block.presupuesto_ids : [];
+  const presupuestoOptions = (Array.isArray(presupuestos) ? presupuestos : [])
+    .filter((p) => getPresupuestoOptionId(p));
+  const selectedPresupuestos = presupuestoIds
+    .map((id) => (
+      presupuestoOptions.find((p) => getPresupuestoOptionId(p) === id)
+      || { _id: id, _missingPresupuesto: true, label: `Presupuesto guardado ${id.slice(-6)}` }
+    ))
+    .filter(Boolean);
+
   return (
     <Stack spacing={2}>
       <Alert severity="info" variant="outlined" sx={{ py: 0.5 }}>
         Armá una planilla mensual: columnas por categoría, total del mes, acumulado y porcentaje de avance contra los egresos proyectados.
       </Alert>
+
+      <Autocomplete
+        multiple
+        size="small"
+        options={presupuestoOptions}
+        value={selectedPresupuestos}
+        getOptionLabel={getPresupuestoOptionLabel}
+        isOptionEqualToValue={(option, value) => getPresupuestoOptionId(option) === getPresupuestoOptionId(value)}
+        onChange={(_, val) => onChange('presupuesto_ids', val.map(getPresupuestoOptionId).filter(Boolean))}
+        renderTags={(value, getTagProps) =>
+          value.map((option, index) => (
+            <Chip key={getPresupuestoOptionId(option)} label={getPresupuestoOptionLabel(option)} size="small" {...getTagProps({ index })} />
+          ))
+        }
+        renderInput={(params) => (
+          <TextField
+            {...params}
+            label="Presupuesto puntual"
+            placeholder="Opcional: elegí uno o varios presupuestos"
+            helperText="Si elegís presupuesto(s), el bloque no mezcla otros presupuestos de la obra."
+          />
+        )}
+      />
 
       <TextField
         label="Nombre de la obra"
@@ -878,29 +930,6 @@ function MonthlyBudgetControlConfig({ block, onChange, excludeOptions = {} }) {
         size="small"
         fullWidth
         placeholder="Ej: YPF Caja Edificada Contrato 6"
-      />
-
-      <Autocomplete
-        multiple
-        freeSolo
-        size="small"
-        options={excludeOptions.categorias || []}
-        filterSelectedOptions
-        value={block.categorias_control || []}
-        onChange={(_, val) => onChange('categorias_control', sanitizeExcludeValues(val))}
-        renderTags={(value, getTagProps) =>
-          value.map((option, index) => (
-            <Chip key={option} label={option} size="small" {...getTagProps({ index })} />
-          ))
-        }
-        renderInput={(params) => (
-          <TextField
-            {...params}
-            label="Categorías del presupuesto"
-            placeholder="Ej: Jornales, Materiales neto, Servicios neto"
-            helperText="Si lo dejás vacío, toma las 3 categorías con mayor presupuesto."
-          />
-        )}
       />
 
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>

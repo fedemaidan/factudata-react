@@ -28,6 +28,7 @@ import {
   TableCell,
   TableHead,
   TableRow,
+  TableSortLabel,
   Tabs,
   TextField,
   Tooltip,
@@ -317,6 +318,45 @@ const METODO_PAGO_LABEL = {
   otro: 'Otro',
 };
 
+// Extrae el timestamp embebido en un ObjectId de Mongo (primeros 4 bytes = segundos).
+// Sirve como fallback cuando el backend no devuelve createdAt explícitamente.
+const objectIdToMs = (id) => {
+  if (!id || typeof id !== 'string' || id.length < 8) return 0;
+  const hex = id.slice(0, 8);
+  if (!/^[0-9a-f]+$/i.test(hex)) return 0;
+  const secs = parseInt(hex, 16);
+  if (!Number.isFinite(secs)) return 0;
+  return secs * 1000;
+};
+
+// Devuelve un timestamp (ms) "de carga". Prioridad:
+//   1) createdAt / created_at  (timestamps automáticos de Mongoose)
+//   2) fecha_creacion           (campo legacy de MovimientoCaja, default Date.now al crear)
+//   3) ObjectId embedded timestamp (fallback para docs muy viejos)
+const getCreadoMs = (doc) => {
+  if (!doc) return 0;
+  const candidates = [doc.createdAt, doc.created_at, doc.fecha_creacion];
+  for (const c of candidates) {
+    if (!c) continue;
+    const t = new Date(c).getTime();
+    if (Number.isFinite(t) && t > 0) return t;
+  }
+  return objectIdToMs(doc._id || doc.id);
+};
+
+// Formatea un createdAt como "DD/MM HH:mm" (corto, para columna).
+const formatCreadoEn = (val) => {
+  if (!val) return '—';
+  const ms = typeof val === 'number' ? val : new Date(val).getTime();
+  if (!Number.isFinite(ms) || ms <= 0) return '—';
+  const d = new Date(ms);
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mi = String(d.getMinutes()).padStart(2, '0');
+  return `${dd}/${mm} ${hh}:${mi}`;
+};
+
 function FilaPago({ row, onAnular, movimientosPorId = {} }) {
   const [expandido, setExpandido] = useState(false);
   const pago = row.pago;
@@ -324,6 +364,16 @@ function FilaPago({ row, onAnular, movimientosPorId = {} }) {
   const tieneImputaciones = (pago.imputaciones || []).length > 0;
   const tieneComprobantes = (pago.comprobantes || []).length > 0;
   const expandible = tieneImputaciones || tieneComprobantes;
+
+  const obrasImputadas = useMemo(() => {
+    const set = new Set();
+    (pago.imputaciones || []).forEach((imp) => {
+      const mov = movimientosPorId[String(imp.movimiento_id)];
+      const obra = mov?.proyecto_nombre || mov?.proyectoNombre;
+      if (obra) set.add(obra);
+    });
+    return [...set];
+  }, [pago.imputaciones, movimientosPorId]);
 
   return (
     <>
@@ -362,6 +412,21 @@ function FilaPago({ row, onAnular, movimientosPorId = {} }) {
             )}
           </Stack>
         </TableCell>
+        <TableCell sx={{ maxWidth: 140 }}>
+          {obrasImputadas.length === 0 ? (
+            <Typography variant="body2" color="text.disabled">—</Typography>
+          ) : (
+            <Tooltip title={obrasImputadas.join(', ')}>
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+              >
+                {obrasImputadas.length === 1 ? obrasImputadas[0] : `${obrasImputadas[0]} +${obrasImputadas.length - 1}`}
+              </Typography>
+            </Tooltip>
+          )}
+        </TableCell>
         <TableCell align="right" />
         <TableCell align="right" sx={{ color: anulado ? 'text.disabled' : 'success.main', fontWeight: 600 }}>
           {formatCurrencyWithCode(pago.monto_bruto)}
@@ -382,6 +447,9 @@ function FilaPago({ row, onAnular, movimientosPorId = {} }) {
             </Typography>
           )}
         </TableCell>
+        <TableCell sx={{ whiteSpace: 'nowrap', color: 'text.disabled', fontSize: '0.75rem' }}>
+          {formatCreadoEn(getCreadoMs(pago))}
+        </TableCell>
         <TableCell sx={{ width: 32, p: 0.5 }}>
           {!anulado && onAnular && (
             <Tooltip title="Anular pago">
@@ -395,7 +463,7 @@ function FilaPago({ row, onAnular, movimientosPorId = {} }) {
 
       {expandible && (
         <TableRow>
-          <TableCell colSpan={7} sx={{ py: 0, px: 0, borderBottom: expandido ? undefined : 'none' }}>
+          <TableCell colSpan={9} sx={{ py: 0, px: 0, borderBottom: expandido ? undefined : 'none' }}>
             <Collapse in={expandido} timeout="auto" unmountOnExit>
               <Box sx={{ px: 2, py: 1.5, bgcolor: 'grey.50' }}>
                 {tieneImputaciones && (
@@ -508,6 +576,15 @@ function FilaMovimiento({ row }) {
           </Tooltip>
         </Stack>
       </TableCell>
+      <TableCell sx={{ maxWidth: 140 }}>
+        <Typography
+          variant="body2"
+          color="text.secondary"
+          sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+        >
+          {m.proyecto_nombre || m.proyectoNombre || '—'}
+        </Typography>
+      </TableCell>
       <TableCell align="right" sx={{ color: 'error.main', fontWeight: 500 }}>
         {formatCurrencyWithCode(m.total, m.moneda)}
       </TableCell>
@@ -551,6 +628,9 @@ function FilaMovimiento({ row }) {
           </Typography>
         )}
       </TableCell>
+      <TableCell sx={{ whiteSpace: 'nowrap', color: 'text.disabled', fontSize: '0.75rem' }}>
+        {formatCreadoEn(getCreadoMs(m))}
+      </TableCell>
       <TableCell sx={{ width: 32 }} />
     </TableRow>
   );
@@ -565,6 +645,11 @@ function TabCuentaCorriente({
   onAnularPago,
   onCargarMovimiento,
 }) {
+  // Orden seleccionado por el usuario.
+  //  - 'fecha'    → ordena por día calendario (fecha_factura/fecha_pago), desempate por createdAt
+  //  - 'creadoEn' → ordena puramente por timestamp de carga (createdAt)
+  // Siempre descendente: lo más reciente arriba.
+  const [sortBy, setSortBy] = useState('fecha');
   // ── Lookup de movimientos por id (para mostrar fecha+detalle en imputaciones) ──
   const movimientosPorId = useMemo(() => {
     const map = {};
@@ -577,13 +662,29 @@ function TabCuentaCorriente({
 
   // ── Construir extracto unificado ──────────────────────────────────────────
   const filas = useMemo(() => {
+    // Normaliza una fecha a su "día" (timestamp de medianoche local) para que
+    // movimientos y pagos del mismo día calendario se desempaten por orden
+    // de carga (createdAt) y no por horarios artificiales.
+    const toDay = (val) => {
+      if (!val) return 0;
+      const d = new Date(val);
+      if (Number.isNaN(d.getTime())) return 0;
+      return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    };
+    const toMs = (val) => {
+      if (!val) return 0;
+      const t = new Date(val).getTime();
+      return Number.isFinite(t) ? t : 0;
+    };
+
     const items = [];
 
     (movimientos || []).forEach((m) => {
-      const fecha = m.fecha_factura || m.createdAt;
+      const fechaRef = m.fecha_factura || m.createdAt || m.created_at;
       items.push({
         tipo: 'movimiento',
-        fecha: fecha ? new Date(fecha).getTime() : 0,
+        dia: toDay(fechaRef),
+        creadoEn: getCreadoMs(m) || toMs(fechaRef),
         debe: m.total || 0,
         haber: 0,
         movimiento: m,
@@ -594,9 +695,11 @@ function TabCuentaCorriente({
     (pagos || []).forEach((p) => {
       // Solo pagos activos afectan el saldo; los anulados se muestran pero con haber=0
       const haber = p.estado === 'activo' ? (p.monto_bruto || 0) : 0;
+      const fechaRef = p.fecha_pago || p.createdAt || p.created_at;
       items.push({
         tipo: 'pago',
-        fecha: p.fecha_pago ? new Date(p.fecha_pago).getTime() : 0,
+        dia: toDay(fechaRef),
+        creadoEn: getCreadoMs(p) || toMs(fechaRef),
         debe: 0,
         haber,
         pago: p,
@@ -604,8 +707,17 @@ function TabCuentaCorriente({
       });
     });
 
-    // Orden cronológico ascendente para calcular saldo acumulado de cada fila
-    items.sort((a, b) => a.fecha - b.fecha);
+    // Orden cronológico ascendente, según el criterio elegido por el usuario.
+    //  - 'fecha':    día calendario primero, createdAt como desempate
+    //  - 'creadoEn': directamente por createdAt
+    items.sort((a, b) => {
+      if (sortBy === 'creadoEn') {
+        if (a.creadoEn !== b.creadoEn) return a.creadoEn - b.creadoEn;
+        return a.dia - b.dia;
+      }
+      if (a.dia !== b.dia) return a.dia - b.dia;
+      return a.creadoEn - b.creadoEn;
+    });
 
     let saldo = 0;
     const withSaldo = items.map((it) => {
@@ -615,7 +727,7 @@ function TabCuentaCorriente({
 
     // Mostrar lo más nuevo arriba (el saldo de cada fila sigue siendo el acumulado hasta esa fecha)
     return withSaldo.reverse();
-  }, [movimientos, pagos]);
+  }, [movimientos, pagos, sortBy]);
 
   const totales = useMemo(() => {
     const totalFacturado = (movimientos || []).reduce((s, m) => s + (m.total || 0), 0);
@@ -707,11 +819,33 @@ function TabCuentaCorriente({
             <TableHead>
               <TableRow sx={{ bgcolor: 'background.neutral' }}>
                 <TableCell sx={{ width: 28 }} />
-                <TableCell>Fecha</TableCell>
+                <TableCell sortDirection={sortBy === 'fecha' ? 'desc' : false}>
+                  <TableSortLabel
+                    active={sortBy === 'fecha'}
+                    direction="desc"
+                    onClick={() => setSortBy('fecha')}
+                    hideSortIcon={sortBy !== 'fecha'}
+                  >
+                    Fecha
+                  </TableSortLabel>
+                </TableCell>
                 <TableCell>Detalle</TableCell>
+                <TableCell>Obra</TableCell>
                 <TableCell align="right">Debe</TableCell>
                 <TableCell align="right">Haber</TableCell>
                 <TableCell align="right">Saldo</TableCell>
+                <TableCell sortDirection={sortBy === 'creadoEn' ? 'desc' : false}>
+                  <Tooltip title="Cuándo se cargó en el sistema">
+                    <TableSortLabel
+                      active={sortBy === 'creadoEn'}
+                      direction="desc"
+                      onClick={() => setSortBy('creadoEn')}
+                      hideSortIcon={sortBy !== 'creadoEn'}
+                    >
+                      Creado
+                    </TableSortLabel>
+                  </Tooltip>
+                </TableCell>
                 <TableCell sx={{ width: 32 }} />
               </TableRow>
             </TableHead>

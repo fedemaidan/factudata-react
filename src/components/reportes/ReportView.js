@@ -31,7 +31,15 @@ const BLOCK_COMPONENTS = {
  * @param {Array}  movimientos   - Movimientos ya filtrados por filtros globales
  * @param {Array}  presupuestos  - Presupuestos de control (opcional)
  */
-const ReportView = ({ reportConfig, movimientos = [], presupuestos = [], displayCurrencies, cotizaciones, reportContext = {} }) => {
+const ReportView = ({
+  reportConfig,
+  movimientos = [],
+  presupuestos = [],
+  displayCurrencies,
+  cotizaciones,
+  reportContext = {},
+  onBlockConfigChange,
+}) => {
   const currencies = displayCurrencies && displayCurrencies.length > 0
     ? displayCurrencies
     : [reportConfig?.display_currency || 'ARS'];
@@ -116,10 +124,15 @@ const ReportView = ({ reportConfig, movimientos = [], presupuestos = [], display
               )}
               <Component
                 data={block.data}
+                blockConfig={layoutBlock}
+                presupuestos={presupuestos}
                 displayCurrency={primaryCurrency}
                 displayCurrencies={currencies}
                 cotizaciones={cotizaciones}
                 onDrillDown={handleDrillDown}
+                onBlockConfigChange={onBlockConfigChange
+                  ? (patch) => onBlockConfigChange(idx, patch)
+                  : undefined}
               />
             </Grid>
           );
