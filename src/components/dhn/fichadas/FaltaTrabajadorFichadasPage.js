@@ -381,21 +381,32 @@ const FaltaTrabajadorFichadasPage = () => {
                   ) : items.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
-                        <Stack spacing={0.5} alignItems="center">
+                        <Stack spacing={0.5} alignItems="center" sx={{ maxWidth: 720, mx: 'auto' }}>
                           <Typography variant="body2" color="text.secondary">
-                            No hay archivos con trabajadores no identificados pendientes en el período seleccionado.
+                            {stats?.archivosTotalEnPeriodo === 0
+                              ? 'No se procesaron Excels de fichadas en este período.'
+                              : 'No hay archivos con trabajadores no identificados pendientes en el período seleccionado.'}
                           </Typography>
-                          {stats && stats.archivosConNoIdentificados > 0 && stats.archivosFullIgnorados === stats.archivosConNoIdentificados ? (
+                          {stats ? (
                             <Typography variant="caption" color="text.secondary">
-                              Los {stats.archivosConNoIdentificados} archivo
-                              {stats.archivosConNoIdentificados === 1 ? '' : 's'} con trabajadores no identificados del período
-                              {' '}solo contienen trabajadores ya marcados como ignorados.
+                              Procesados en el período: {stats.archivosTotalEnPeriodo} Excel
+                              {stats.archivosTotalEnPeriodo === 1 ? '' : 's'} • con no identificados:{' '}
+                              {stats.archivosConNoIdentificados}
+                              {stats.archivosFullIgnorados > 0
+                                ? ` (${stats.archivosFullIgnorados} con todos ignorados)`
+                                : ''}
+                              .
                             </Typography>
                           ) : null}
                           {stats && stats.ignoradosEnPeriodoFichadas > 0 ? (
                             <Typography variant="caption" color="text.secondary">
                               {stats.ignoradosEnPeriodoFichadas} fichada
-                              {stats.ignoradosEnPeriodoFichadas === 1 ? '' : 's'} fueron skipeadas porque pertenecen a trabajadores ya marcados como ignorados.
+                              {stats.ignoradosEnPeriodoFichadas === 1 ? '' : 's'} fueron skipeadas al procesar porque pertenecen a trabajadores marcados como ignorados (mensuales/externos).
+                            </Typography>
+                          ) : null}
+                          {stats && stats.archivosTotalEnPeriodo > 0 && stats.ignoradosEnPeriodoFichadas === 0 && stats.archivosConNoIdentificados === 0 ? (
+                            <Typography variant="caption" color="text.disabled" sx={{ mt: 1, fontStyle: 'italic' }}>
+                              Tip: los conteos de "fichadas ignoradas" solo se persisten para Excels procesados después del último deploy. Si esperabas ver más detalle, re-sincronizá los Excels desde el wizard.
                             </Typography>
                           ) : null}
                         </Stack>
