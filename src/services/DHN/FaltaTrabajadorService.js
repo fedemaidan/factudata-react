@@ -28,6 +28,7 @@ const FaltaTrabajadorService = {
         total: Number.isFinite(data.total) ? data.total : 0,
         limit: Number.isFinite(data.limit) ? data.limit : (limit ?? 50),
         offset: Number.isFinite(data.offset) ? data.offset : (offset ?? 0),
+        stats: data.stats || null,
       };
     } catch (error) {
       const message =

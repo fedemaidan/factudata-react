@@ -126,6 +126,7 @@ const FaltaTrabajadorFichadasPage = () => {
   }, [searchInput]);
 
   const [items, setItems] = useState([]);
+  const [stats, setStats] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [selectedIds, setSelectedIds] = useState(() => new Set());
@@ -148,10 +149,12 @@ const FaltaTrabajadorFichadasPage = () => {
         sortDirection: 'desc',
       });
       setItems(Array.isArray(result.items) ? result.items : []);
+      setStats(result?.stats || null);
       setSelectedIds(new Set());
     } catch (e) {
       setErrorMessage(e?.message || 'Error al cargar la lista');
       setItems([]);
+      setStats(null);
     } finally {
       setIsLoading(false);
     }
@@ -316,6 +319,26 @@ const FaltaTrabajadorFichadasPage = () => {
             <Alert severity="error">{errorMessage}</Alert>
           ) : null}
 
+          {stats && stats.trabajadoresIgnoradosFiltrados > 0 ? (
+            <Alert severity="info" variant="outlined" icon={false} sx={{ py: 0.5 }}>
+              <Typography variant="body2">
+                En el período, {stats.trabajadoresIgnoradosFiltrados} ocurrencia
+                {stats.trabajadoresIgnoradosFiltrados === 1 ? '' : 's'} de trabajadores no identificados
+                {stats.archivosFullIgnorados > 0 ? (
+                  <>
+                    {' '}corresponden a trabajadores ya marcados como ignorados y no aparecen acá
+                    {stats.archivosFullIgnorados > 0
+                      ? ` (${stats.archivosFullIgnorados} archivo${stats.archivosFullIgnorados === 1 ? '' : 's'} sin nada pendiente)`
+                      : ''}
+                    .
+                  </>
+                ) : (
+                  ' corresponden a trabajadores ya marcados como ignorados y no aparecen acá.'
+                )}
+              </Typography>
+            </Alert>
+          ) : null}
+
           <Paper variant="outlined">
             <TableContainer>
               <Table size="small">
@@ -346,9 +369,22 @@ const FaltaTrabajadorFichadasPage = () => {
                   ) : items.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
-                        <Typography variant="body2" color="text.secondary">
-                          No hay archivos con trabajadores no identificados pendientes en el período seleccionado.
-                        </Typography>
+                        {stats && stats.archivosConNoIdentificados > 0 && stats.archivosFullIgnorados === stats.archivosConNoIdentificados ? (
+                          <Stack spacing={0.5} alignItems="center">
+                            <Typography variant="body2" color="text.secondary">
+                              No hay nada pendiente por resolver.
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              Los {stats.archivosConNoIdentificados} archivo
+                              {stats.archivosConNoIdentificados === 1 ? '' : 's'} con trabajadores no identificados del período
+                              {' '}solo contienen trabajadores ya marcados como ignorados.
+                            </Typography>
+                          </Stack>
+                        ) : (
+                          <Typography variant="body2" color="text.secondary">
+                            No hay archivos con trabajadores no identificados pendientes en el período seleccionado.
+                          </Typography>
+                        )}
                       </TableCell>
                     </TableRow>
                   ) : (
