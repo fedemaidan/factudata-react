@@ -319,23 +319,35 @@ const FaltaTrabajadorFichadasPage = () => {
             <Alert severity="error">{errorMessage}</Alert>
           ) : null}
 
-          {stats && stats.trabajadoresIgnoradosFiltrados > 0 ? (
+          {stats && (
+            stats.trabajadoresIgnoradosFiltrados > 0 ||
+            stats.ignoradosEnPeriodoFichadas > 0
+          ) ? (
             <Alert severity="info" variant="outlined" icon={false} sx={{ py: 0.5 }}>
-              <Typography variant="body2">
-                En el período, {stats.trabajadoresIgnoradosFiltrados} ocurrencia
-                {stats.trabajadoresIgnoradosFiltrados === 1 ? '' : 's'} de trabajadores no identificados
-                {stats.archivosFullIgnorados > 0 ? (
-                  <>
-                    {' '}corresponden a trabajadores ya marcados como ignorados y no aparecen acá
+              <Stack spacing={0.25}>
+                {stats.ignoradosEnPeriodoFichadas > 0 ? (
+                  <Typography variant="body2">
+                    En el período, {stats.ignoradosEnPeriodoFichadas} fichada
+                    {stats.ignoradosEnPeriodoFichadas === 1 ? '' : 's'} de trabajadores marcados como
+                    {' '}<strong>ignorados</strong> (mensuales/externos) ya estaban skipeadas al procesar
+                    {stats.archivosConIgnoradosEnPeriodo > 0
+                      ? ` (en ${stats.archivosConIgnoradosEnPeriodo} archivo${stats.archivosConIgnoradosEnPeriodo === 1 ? '' : 's'})`
+                      : ''}
+                    .
+                  </Typography>
+                ) : null}
+                {stats.trabajadoresIgnoradosFiltrados > 0 ? (
+                  <Typography variant="body2">
+                    Además, {stats.trabajadoresIgnoradosFiltrados} ocurrencia
+                    {stats.trabajadoresIgnoradosFiltrados === 1 ? '' : 's'} que habían quedado como
+                    {' '}no identificadas se filtran ahora porque sus trabajadores fueron marcados como ignorados
                     {stats.archivosFullIgnorados > 0
                       ? ` (${stats.archivosFullIgnorados} archivo${stats.archivosFullIgnorados === 1 ? '' : 's'} sin nada pendiente)`
                       : ''}
                     .
-                  </>
-                ) : (
-                  ' corresponden a trabajadores ya marcados como ignorados y no aparecen acá.'
-                )}
-              </Typography>
+                  </Typography>
+                ) : null}
+              </Stack>
             </Alert>
           ) : null}
 
@@ -369,22 +381,24 @@ const FaltaTrabajadorFichadasPage = () => {
                   ) : items.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
-                        {stats && stats.archivosConNoIdentificados > 0 && stats.archivosFullIgnorados === stats.archivosConNoIdentificados ? (
-                          <Stack spacing={0.5} alignItems="center">
-                            <Typography variant="body2" color="text.secondary">
-                              No hay nada pendiente por resolver.
-                            </Typography>
+                        <Stack spacing={0.5} alignItems="center">
+                          <Typography variant="body2" color="text.secondary">
+                            No hay archivos con trabajadores no identificados pendientes en el período seleccionado.
+                          </Typography>
+                          {stats && stats.archivosConNoIdentificados > 0 && stats.archivosFullIgnorados === stats.archivosConNoIdentificados ? (
                             <Typography variant="caption" color="text.secondary">
                               Los {stats.archivosConNoIdentificados} archivo
                               {stats.archivosConNoIdentificados === 1 ? '' : 's'} con trabajadores no identificados del período
                               {' '}solo contienen trabajadores ya marcados como ignorados.
                             </Typography>
-                          </Stack>
-                        ) : (
-                          <Typography variant="body2" color="text.secondary">
-                            No hay archivos con trabajadores no identificados pendientes en el período seleccionado.
-                          </Typography>
-                        )}
+                          ) : null}
+                          {stats && stats.ignoradosEnPeriodoFichadas > 0 ? (
+                            <Typography variant="caption" color="text.secondary">
+                              {stats.ignoradosEnPeriodoFichadas} fichada
+                              {stats.ignoradosEnPeriodoFichadas === 1 ? '' : 's'} fueron skipeadas porque pertenecen a trabajadores ya marcados como ignorados.
+                            </Typography>
+                          ) : null}
+                        </Stack>
                       </TableCell>
                     </TableRow>
                   ) : (
