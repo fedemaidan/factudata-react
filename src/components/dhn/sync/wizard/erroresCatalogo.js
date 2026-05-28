@@ -48,7 +48,8 @@ export const ERRORES_POR_DOCUMENTO = {
       key: "faltaTrabajador",
       label: "Falta trabajador",
       accentColor: "#d32f2f",
-      filtros: { search: "Trabajadores no identificados" },
+      filtros: {},
+      customRoute: "/dhn/fichadas/falta-trabajador",
     },
     {
       key: "horasNocturnas",
