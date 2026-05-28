@@ -12,9 +12,9 @@ const pretendidosService = {
     return data?.items || [];
   },
 
-  async crear({ empresaId, proyectoId, proyectoNombre, proveedorId, semana, montoPretendido, descripcion }) {
+  async crear({ empresaId, proyectoId, proyectoNombre, proveedorId, semana, montoPretendido, descripcion, presupuestoId }) {
     const { data } = await api.post('/pretendidos', {
-      empresaId, proyectoId, proyectoNombre, proveedorId, semana, montoPretendido, descripcion,
+      empresaId, proyectoId, proyectoNombre, proveedorId, semana, montoPretendido, descripcion, presupuestoId,
     });
     return data;
   },
@@ -24,9 +24,9 @@ const pretendidosService = {
     return data;
   },
 
-  async actualizar(pretendidoId, { semana, montoPretendido, descripcion, proveedorId, proyectoId, proyectoNombre } = {}) {
+  async actualizar(pretendidoId, { semana, montoPretendido, descripcion, proveedorId, proyectoId, proyectoNombre, presupuestoId } = {}) {
     const { data } = await api.put(`/pretendidos/${pretendidoId}`, {
-      semana, montoPretendido, descripcion, proveedorId, proyectoId, proyectoNombre,
+      semana, montoPretendido, descripcion, proveedorId, proyectoId, proyectoNombre, presupuestoId,
     });
     return data;
   },
