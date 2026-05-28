@@ -33,6 +33,17 @@ export function getAmount(mov, displayCurrency = 'ARS', campo = 'total') {
       : (mov.subtotal ?? mov.total ?? mov.monto ?? 0);
   }
 
+  if (displayCurrency === 'USD') {
+    const baseAmount = campo === 'subtotal'
+      ? (mov.subtotal ?? mov.total ?? mov.monto ?? 0)
+      : (mov.total ?? mov.monto ?? 0);
+    if ((mov?.moneda || 'ARS') === 'ARS' && Number(mov?.dolar_referencia) > 0) {
+      return Number(baseAmount || 0) / Number(mov.dolar_referencia);
+    }
+    const dolarField = campo === 'subtotal' ? mov?.subtotal_dolar : mov?.total_dolar;
+    if (dolarField != null && !isNaN(dolarField)) return Number(dolarField);
+  }
+
   const key = CURRENCY_FIELD[displayCurrency];
   if (!key) return mov.total ?? mov.monto ?? 0;
 
@@ -41,6 +52,35 @@ export function getAmount(mov, displayCurrency = 'ARS', campo = 'total') {
 
   // Fallback: si no tiene equivalencia, devolver monto original
   return mov.total ?? mov.monto ?? 0;
+}
+
+function getConvertedAmount(mov, displayCurrency = 'ARS', campo = 'total') {
+  if (displayCurrency === 'original') return getAmount(mov, displayCurrency, campo);
+
+  if (displayCurrency === 'USD') {
+    const baseAmount = campo === 'subtotal'
+      ? (mov.subtotal ?? mov.total ?? mov.monto ?? 0)
+      : (mov.total ?? mov.monto ?? 0);
+    if ((mov?.moneda || 'ARS') === 'ARS' && Number(mov?.dolar_referencia) > 0) {
+      return Number(baseAmount || 0) / Number(mov.dolar_referencia);
+    }
+    const dolarField = campo === 'subtotal' ? mov?.subtotal_dolar : mov?.total_dolar;
+    if (dolarField != null && !isNaN(dolarField)) return Number(dolarField);
+  }
+
+  const key = CURRENCY_FIELD[displayCurrency];
+  if (!key) return getAmount(mov, displayCurrency, campo);
+
+  const val = mov?.equivalencias?.[campo]?.[key];
+  if (val != null && !isNaN(val)) return val;
+
+  if (mov?.moneda === displayCurrency) {
+    return campo === 'total'
+      ? (mov.total ?? mov.monto ?? 0)
+      : (mov.subtotal ?? mov.total ?? mov.monto ?? 0);
+  }
+
+  return 0;
 }
 
 /**
@@ -454,6 +494,13 @@ export function applyBlockFilters(movimientos, block) {
       const set = toNormalizedSet(fe.etapas);
       result = result.filter((m) => set.has(normalizeFilterText(m.etapa)));
     }
+    if (fe.moneda_movimiento && (!Array.isArray(fe.moneda_movimiento) || fe.moneda_movimiento.length > 0)) {
+      const monedas = Array.isArray(fe.moneda_movimiento)
+        ? fe.moneda_movimiento
+        : [fe.moneda_movimiento];
+      const set = toNormalizedSet(monedas);
+      result = result.filter((m) => set.has(normalizeFilterText(m.moneda)));
+    }
   }
 
   // ─── Exclusiones: ocultar items específicos ───
@@ -513,6 +560,35 @@ export function aggregate(values, operacion) {
   return fn(values);
 }
 
+function signedAmount(mov, currency, campo = 'total') {
+  const amount = Math.abs(getConvertedAmount(mov, currency, campo));
+  return mov?.type === 'ingreso' ? amount : -amount;
+}
+
+function filterMovimientosForColumn(items, column) {
+  let result = items;
+  if (column.filtro_tipo) {
+    result = result.filter((m) => m.type === column.filtro_tipo);
+  }
+  if (column.moneda_movimiento) {
+    const monedas = Array.isArray(column.moneda_movimiento)
+      ? column.moneda_movimiento
+      : [column.moneda_movimiento];
+    const set = toNormalizedSet(monedas);
+    result = result.filter((m) => set.has(normalizeFilterText(m.moneda)));
+  }
+  return result;
+}
+
+function calculateSummaryColumn(items, column, currency) {
+  const campo = column.campo || 'total';
+  if (column.operacion === 'saldo_neto') {
+    return sum(items.map((m) => signedAmount(m, currency, campo)));
+  }
+  const values = items.map((m) => getAmount(m, currency, campo));
+  return aggregate(values, column.operacion);
+}
+
 function findLinkedBudgetVsActualBlock(metricBlock, reportConfig) {
   const layout = reportConfig?.layout;
   if (!Array.isArray(layout) || layout.length === 0) return null;
@@ -566,6 +642,48 @@ export function groupBy(movimientos, campo) {
     map.get(key).push(m);
   }
   return map;
+}
+
+function buildProjectNameMap(projects = []) {
+  const map = new Map();
+  for (const p of Array.isArray(projects) ? projects : []) {
+    const id = p?.id || p?._id || p?.proyecto_id;
+    const name = p?.nombre || p?.proyecto || p?.name || p?.label;
+    if (id && name) map.set(String(id), name);
+  }
+  return map;
+}
+
+function getProjectLabelFromMovement(mov) {
+  return mov?.proyecto_nombre || mov?.proyecto || mov?.nombre_proyecto || 'Sin proyecto';
+}
+
+function groupMovimientosByProject(movimientos, extraContext = {}) {
+  const projectNameById = buildProjectNameMap(extraContext?.proyectos);
+  const map = new Map();
+
+  for (const mov of movimientos) {
+    const projectId = mov?.proyecto_id ? String(mov.proyecto_id) : '';
+    const fallbackName = getProjectLabelFromMovement(mov);
+    const key = projectId || `nombre:${fallbackName}`;
+    const current = map.get(key) || {
+      key,
+      label: projectNameById.get(projectId) || fallbackName,
+      items: [],
+    };
+
+    const canonicalName = projectNameById.get(projectId);
+    if (canonicalName) {
+      current.label = canonicalName;
+    } else if (fallbackName && fallbackName.length > String(current.label || '').length) {
+      current.label = fallbackName;
+    }
+
+    current.items.push(mov);
+    map.set(key, current);
+  }
+
+  return [...map.values()].map((group) => [group.label, group.items]);
 }
 
 // ─── Procesadores de bloques ───
@@ -638,9 +756,11 @@ export function processMetricCards(block, movimientos, _presupuestos, currencies
  * Procesa un bloque summary_table
  * @returns {{ headers, rows, totals }}
  */
-export function processSummaryTable(block, movimientos, _presupuestos, currencies) {
+export function processSummaryTable(block, movimientos, _presupuestos, currencies, _cotizaciones, extraContext = {}) {
   const data = applyBlockFilters(movimientos, block);
-  const grouped = groupBy(data, block.agrupar_por);
+  const groupedEntries = block.agrupar_por === 'proyecto'
+    ? groupMovimientosByProject(data, extraContext)
+    : [...groupBy(data, block.agrupar_por).entries()];
   const columnas = block.columnas || [{ id: 'total', titulo: 'Total', operacion: 'sum', campo: 'total', formato: 'currency' }];
   const primaryCurrency = currencies[0];
   const isMulti = currencies.length > 1;
@@ -648,7 +768,9 @@ export function processSummaryTable(block, movimientos, _presupuestos, currencie
   // Expandir columnas: si multi-moneda y formato currency, replicar por moneda
   const expandedCols = [];
   for (const col of columnas) {
-    if (isMulti && (col.formato === 'currency' || !col.formato)) {
+    if (col.display_currency) {
+      expandedCols.push({ ...col, currency: col.display_currency, _id: col.id });
+    } else if (isMulti && (col.formato === 'currency' || !col.formato)) {
       for (const cur of currencies) {
         expandedCols.push({ ...col, currency: cur, _id: `${col.id}__${cur}` });
       }
@@ -668,6 +790,7 @@ export function processSummaryTable(block, movimientos, _presupuestos, currencie
         formato: ec.formato || defaultFmt,
         currency: ec.currency,
         filtro_tipo: ec.filtro_tipo || null,
+        operacion: ec.operacion || 'sum',
       };
     }),
     ...(block.mostrar_porcentaje ? [{ id: '_porcentaje', titulo: '%', formato: 'percentage' }] : []),
@@ -682,14 +805,11 @@ export function processSummaryTable(block, movimientos, _presupuestos, currencie
 
   // Rows
   let rows = [];
-  for (const [grupo, items] of grouped) {
+  for (const [grupo, items] of groupedEntries) {
     const row = { grupo, _count: items.length, _movimientos: items };
     for (const ec of expandedCols) {
-      const columnItems = ec.filtro_tipo
-        ? items.filter((m) => m.type === ec.filtro_tipo)
-        : items;
-      const values = columnItems.map((m) => getAmount(m, ec.currency, ec.campo || 'total'));
-      row[ec._id] = aggregate(values, ec.operacion);
+      const columnItems = filterMovimientosForColumn(items, ec);
+      row[ec._id] = calculateSummaryColumn(columnItems, ec, ec.currency);
     }
     if (block.mostrar_porcentaje && totalGeneral > 0) {
       const firstEc = expandedCols[0];

@@ -25,6 +25,13 @@ const SummaryTableBlock = ({ data, displayCurrency, onDrillDown }) => {
     return null;
   };
 
+  const getValueTone = (header, value) => {
+    if (header?.operacion !== 'saldo_neto' || typeof value !== 'number') return getColumnTone(header);
+    if (value < 0) return { color: 'error.main' };
+    if (value > 0) return { color: 'success.main' };
+    return null;
+  };
+
   const handleRowClick = (row) => {
     if (onDrillDown && row._movimientos?.length > 0) {
       onDrillDown(row._movimientos, row.grupo);
@@ -102,10 +109,13 @@ const SummaryTableBlock = ({ data, displayCurrency, onDrillDown }) => {
                       </Box>
                     </Box>
                   ) : (
+                    (() => {
+                      const tone = getValueTone(h, row[h.id]);
+                      return (
                     <Typography
                       variant="body2"
-                      color={getColumnTone(h)?.color || 'text.primary'}
-                      fontWeight={getColumnTone(h) ? 700 : 400}
+                      color={tone?.color || 'text.primary'}
+                      fontWeight={tone ? 700 : 400}
                     >
                       {formatValue(
                         row[h.id],
@@ -113,6 +123,8 @@ const SummaryTableBlock = ({ data, displayCurrency, onDrillDown }) => {
                         h.currency || displayCurrency,
                       )}
                     </Typography>
+                      );
+                    })()
                   )}
                 </TableCell>
               ))}
@@ -140,7 +152,19 @@ const SummaryTableBlock = ({ data, displayCurrency, onDrillDown }) => {
                   ) : h.id === '_porcentaje' ? (
                     formatValue(totals._porcentaje, 'percentage')
                   ) : (
-                    formatValue(totals[h.id], h.formato || 'currency', h.currency || displayCurrency)
+                    (() => {
+                      const tone = getValueTone(h, totals[h.id]);
+                      return (
+                        <Typography
+                          component="span"
+                          variant="body2"
+                          color={tone?.color || 'inherit'}
+                          fontWeight={700}
+                        >
+                          {formatValue(totals[h.id], h.formato || 'currency', h.currency || displayCurrency)}
+                        </Typography>
+                      );
+                    })()
                   )}
                 </TableCell>
               ))}

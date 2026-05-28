@@ -273,7 +273,7 @@ const PublicReportPage = () => {
             disabled={filteredMovimientos.length === 0}
             onClick={async () => {
               try {
-                const results = executeReport(report, filteredMovimientos, presupuestos, displayCurrencies, null, { filters });
+                const results = executeReport(report, filteredMovimientos, presupuestos, displayCurrencies, null, { filters, proyectos: availableOptions.proyectos || [] });
                 const res = await axios.post(
                   `${config.apiUrl}/reports/export-pdf`,
                   {
@@ -323,7 +323,7 @@ const PublicReportPage = () => {
           presupuestos={presupuestos}
           displayCurrencies={displayCurrencies}
           cotizaciones={null}
-          reportContext={{ filters }}
+          reportContext={{ filters, proyectos: availableOptions.proyectos || [] }}
         />
 
         {/* Footer */}
