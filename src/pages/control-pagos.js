@@ -151,10 +151,13 @@ function PresupuestoInfoProveedor({ presupuestos, proyectoId, proyectosMap, load
   );
 }
 
-function NuevoPretendidoDialog({ open, onClose, proyectos, proveedores, onCrear, creating, editando, onEditar, saving, onEliminar, deleting }) {
+function NuevoPretendidoDialog({ open, onClose, proyectos, proveedores, onCrear, creating, editando, onEditar, saving, onEliminar, deleting, empresaId }) {
   const [form, setForm] = useState({
-    proveedorId: '', proyectoId: '', semana: getLunesDeEstaSemana(), monto: '', descripcion: '',
+    proveedorId: '', proyectoId: '', semana: getLunesDeEstaSemana(), monto: '', descripcion: '', presupuestoId: '',
   });
+  // Presupuestos del proveedor seleccionado (todos sus proyectos). null = aún no cargado.
+  const [presupuestosProveedor, setPresupuestosProveedor] = useState(null);
+  const [loadingPresupuestos, setLoadingPresupuestos] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -166,22 +169,71 @@ function NuevoPretendidoDialog({ open, onClose, proyectos, proveedores, onCrear,
         semana: semanaIso,
         monto: String(editando.monto_pretendido ?? ''),
         descripcion: editando.descripcion || '',
+        presupuestoId: editando.presupuesto_id || '',
       });
     } else {
-      setForm({ proveedorId: '', proyectoId: '', semana: getLunesDeEstaSemana(), monto: '', descripcion: '' });
+      setForm({ proveedorId: '', proyectoId: '', semana: getLunesDeEstaSemana(), monto: '', descripcion: '', presupuestoId: '' });
     }
+    setPresupuestosProveedor(null);
   }, [open, editando]);
+
+  // Cargar presupuestos del proveedor cuando cambia
+  useEffect(() => {
+    if (!open || !empresaId || !form.proveedorId) {
+      setPresupuestosProveedor(null);
+      return;
+    }
+    const prov = proveedores.find((p) => p._id === form.proveedorId);
+    if (!prov?.nombre) return;
+    let cancelled = false;
+    setLoadingPresupuestos(true);
+    PresupuestoService.listarPorProveedor(empresaId, prov.nombre)
+      .then((items) => { if (!cancelled) setPresupuestosProveedor(items || []); })
+      .catch(() => { if (!cancelled) setPresupuestosProveedor([]); })
+      .finally(() => { if (!cancelled) setLoadingPresupuestos(false); });
+    return () => { cancelled = true; };
+  }, [open, empresaId, form.proveedorId, proveedores]);
+
+  // Candidatos = presupuestos del proveedor en la obra elegida
+  const candidatos = useMemo(() => {
+    if (!presupuestosProveedor || !form.proyectoId) return [];
+    return presupuestosProveedor.filter((b) => b.proyecto_id === form.proyectoId);
+  }, [presupuestosProveedor, form.proyectoId]);
+
+  // Auto-asignar cuando hay exactamente uno
+  useEffect(() => {
+    if (candidatos.length === 1) {
+      const only = candidatos[0]._id || candidatos[0].id;
+      if (form.presupuestoId !== only) setForm((prev) => ({ ...prev, presupuestoId: only }));
+    } else if (candidatos.length === 0 && form.presupuestoId) {
+      setForm((prev) => ({ ...prev, presupuestoId: '' }));
+    } else if (candidatos.length > 1 && form.presupuestoId) {
+      // Si el seleccionado ya no está entre los candidatos (cambió proveedor/obra), limpiar
+      const stillValid = candidatos.some((c) => (c._id || c.id) === form.presupuestoId);
+      if (!stillValid) setForm((prev) => ({ ...prev, presupuestoId: '' }));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [candidatos]);
 
   const set = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
   const isLoading = editando ? saving : creating;
-  const canSubmit = !isLoading && form.proveedorId && form.proyectoId && form.semana && form.monto;
+  const requierePresupuesto = candidatos.length > 1;
+  const canSubmit = !isLoading
+    && form.proveedorId && form.proyectoId && form.semana && form.monto
+    && (!requierePresupuesto || form.presupuestoId);
 
   const handleSubmit = () => {
     if (!canSubmit) return;
-    const payload = { ...form, descripcion: form.descripcion.trim() };
+    const payload = {
+      ...form,
+      descripcion: form.descripcion.trim(),
+      presupuestoId: form.presupuestoId || null,
+    };
     if (editando) onEditar(editando._id || editando.id, payload);
     else onCrear(payload);
   };
+
+  const presupuestoSeleccionado = candidatos.find((c) => (c._id || c.id) === form.presupuestoId) || null;
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
@@ -214,6 +266,54 @@ function NuevoPretendidoDialog({ open, onClose, proyectos, proveedores, onCrear,
             isOptionEqualToValue={(o, v) => o.id === v.id}
             renderInput={(params) => <TextField {...params} label="Obra" />}
           />
+          {form.proveedorId && form.proyectoId && (
+            <Box>
+              {loadingPresupuestos && presupuestosProveedor === null ? (
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <CircularProgress size={14} />
+                  <Typography variant="caption" color="text.secondary">Buscando presupuestos…</Typography>
+                </Stack>
+              ) : candidatos.length === 0 ? (
+                <Alert severity="info" sx={{ py: 0.5 }}>
+                  <Typography variant="caption">
+                    Este proveedor no tiene presupuesto en esta obra. El pretendido se cargará sin vincular.
+                  </Typography>
+                </Alert>
+              ) : candidatos.length === 1 ? (
+                <Typography variant="caption" color="text.secondary">
+                  Se vinculará al presupuesto:{' '}
+                  <strong>
+                    {candidatos[0].codigo ? `#${candidatos[0].codigo} · ` : ''}
+                    {(candidatos[0].clasificaciones?.[0]?.categoria) || 'Sin categoría'}
+                    {candidatos[0].clasificaciones?.[0]?.subcategorias?.[0] ? ` / ${candidatos[0].clasificaciones[0].subcategorias[0]}` : ''}
+                    {' · '}{formatCurrencyWithCode(candidatos[0].monto, candidatos[0].moneda)}
+                  </strong>
+                </Typography>
+              ) : (
+                <Autocomplete
+                  options={candidatos}
+                  value={presupuestoSeleccionado}
+                  onChange={(_, v) => set('presupuestoId', v?._id || v?.id || '')}
+                  getOptionLabel={(o) => {
+                    if (!o) return '';
+                    const cat = o.clasificaciones?.[0]?.categoria || 'Sin categoría';
+                    const sub = o.clasificaciones?.[0]?.subcategorias?.[0];
+                    const codigo = o.codigo ? `#${o.codigo} · ` : '';
+                    return `${codigo}${cat}${sub ? ` / ${sub}` : ''} · ${formatCurrencyWithCode(o.monto, o.moneda)}`;
+                  }}
+                  isOptionEqualToValue={(o, v) => (o._id || o.id) === (v._id || v.id)}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label="Presupuesto"
+                      required
+                      helperText={`Este proveedor tiene ${candidatos.length} presupuestos en esta obra — elegí uno.`}
+                    />
+                  )}
+                />
+              )}
+            </Box>
+          )}
           <Stack direction="row" spacing={1} alignItems="center">
             <TextField
               label="Semana (lunes)"
@@ -324,6 +424,7 @@ function PretendidosPanel({ pretendidos, loading, proyectos, proveedoresManoObra
         onClose={() => { setDialogOpen(false); setEditando(null); }}
         proyectos={proyectos}
         proveedores={proveedoresManoObra}
+        empresaId={empresaId}
         onCrear={onCrear}
         creating={creating}
         editando={editando}
@@ -367,7 +468,14 @@ function PretendidosPanel({ pretendidos, loading, proyectos, proveedoresManoObra
                   const isSaving = savingId === (p._id || p.id);
                   const montoInput = montosCierre[p._id || p.id] ?? String(p.monto_pretendido);
                   const presupuestosRow = presupuestosByProveedor[p.proveedor_nombre];
-                  const mismaObra = presupuestosRow?.filter((b) => b.proyecto_id === p.proyecto_id) ?? null;
+                  const mismaObraTodos = presupuestosRow?.filter((b) => b.proyecto_id === p.proyecto_id) ?? null;
+                  // Si el pretendido ya está vinculado, mostramos solo ese presupuesto;
+                  // si no, todos los de la obra (legacy / por elegir).
+                  const mismaObra = mismaObraTodos === null
+                    ? null
+                    : (p.presupuesto_id
+                      ? mismaObraTodos.filter((b) => (b._id || b.id) === p.presupuesto_id)
+                      : mismaObraTodos);
                   const otrasObras = presupuestosRow?.filter((b) => b.proyecto_id !== p.proyecto_id) ?? [];
                   return (
                     <TableRow
@@ -1297,7 +1405,7 @@ const PagosAprobacionesPage = () => {
     }
   }, [empresa?.id]);
 
-  const handleCrearPretendido = useCallback(async ({ proveedorId, proyectoId, semana, monto, descripcion }) => {
+  const handleCrearPretendido = useCallback(async ({ proveedorId, proyectoId, semana, monto, descripcion, presupuestoId }) => {
     const proyecto = proyectos.find((p) => p.id === proyectoId);
     setCreatingPretendido(true);
     try {
@@ -1309,6 +1417,7 @@ const PagosAprobacionesPage = () => {
         semana,
         montoPretendido: Number(monto),
         descripcion,
+        presupuestoId: presupuestoId || null,
       });
       setFeedback({ severity: 'success', message: 'Pretendido cargado.' });
       fetchPretendidos();
@@ -1335,7 +1444,7 @@ const PagosAprobacionesPage = () => {
   const [savingEditPretendidoId, setSavingEditPretendidoId] = useState(null);
   const [deletingPretendidoId, setDeletingPretendidoId] = useState(null);
 
-  const handleEditarPretendido = useCallback(async (pretendidoId, { proveedorId, proyectoId, semana, monto, descripcion }) => {
+  const handleEditarPretendido = useCallback(async (pretendidoId, { proveedorId, proyectoId, semana, monto, descripcion, presupuestoId }) => {
     const proyecto = proyectos.find((p) => p.id === proyectoId);
     setSavingEditPretendidoId(pretendidoId);
     try {
@@ -1346,6 +1455,7 @@ const PagosAprobacionesPage = () => {
         semana,
         montoPretendido: Number(monto),
         descripcion,
+        presupuestoId: presupuestoId === '' ? null : presupuestoId,
       });
       setFeedback({ severity: 'success', message: 'Pretendido actualizado.' });
       fetchPretendidos();
