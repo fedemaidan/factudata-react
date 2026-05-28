@@ -59,8 +59,18 @@ const TABS = [
 const renderEstadoCC = (resumen) => {
   if (!resumen) return <Chip size="small" label="—" variant="outlined" />;
   const saldo = resumen.saldo || 0;
+  const facturasAbiertas = resumen.cantidad_facturas_abiertas || 0;
   if (resumen.tiene_vencidas) return <Chip size="small" label="Vencida" color="error" />;
   if (saldo > 0.005) return <Chip size="small" label="Con deuda" color="warning" />;
+  // Caso especial: facturas abiertas pero saldo neto ≤ 0 → hay saldo a favor
+  // sin imputar que podría cerrar todo. El usuario debería notarlo desde la lista.
+  if (facturasAbiertas > 0) {
+    return (
+      <Tooltip title={`${facturasAbiertas} factura(s) abierta(s) con saldo a favor sin imputar. Abrí el proveedor y usá "Imputar saldo a favor".`}>
+        <Chip size="small" label="Imputar saldo" color="secondary" />
+      </Tooltip>
+    );
+  }
   if (saldo < -0.005) return <Chip size="small" label="A favor" color="info" />;
   return <Chip size="small" label="Al día" color="success" variant="outlined" />;
 };
@@ -128,7 +138,10 @@ function ProveedoresContent({ empresa, refreshKey }) {
       const id = p._id || p.id;
       const r = resumenMap[id];
       const archivado = !!p.archivado;
-      const enDeuda = (r?.saldo || 0) > 0.005;
+      // "Con deuda" incluye:
+      //   - saldo neto > 0 (debe plata)
+      //   - O facturas abiertas con saldo a favor pendiente de imputar (caso a resolver)
+      const enDeuda = (r?.saldo || 0) > 0.005 || (r?.cantidad_facturas_abiertas || 0) > 0;
 
       // Filtro por tab
       if (tab === 'favoritos'  && (!p.favorito || archivado)) return false;
@@ -194,7 +207,7 @@ function ProveedoresContent({ empresa, refreshKey }) {
         c.todos += 1;
         if (r?.ultimo_movimiento) c.recientes += 1;
         if (p.favorito) c.favoritos += 1;
-        if ((r?.saldo || 0) > 0.005) c.con_deuda += 1;
+        if ((r?.saldo || 0) > 0.005 || (r?.cantidad_facturas_abiertas || 0) > 0) c.con_deuda += 1;
       }
     });
     return c;

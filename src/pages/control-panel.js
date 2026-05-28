@@ -132,6 +132,7 @@ const ControlPanelPage = () => {
         { title: 'Reuniones', description: 'Agenda y seguimiento de reuniones', icon: TodayIcon, color: 'primary', path: '/sdr/reuniones' },
         { title: 'Funnel', description: 'Embudo y estado del pipeline', icon: FilterListIcon, color: 'warning', path: '/funnel' },
         { title: 'Landing Funnel', description: 'Optimización de landing pages', icon: ScienceIcon, color: 'secondary', path: '/landingFunnel' },
+        { title: 'Funnel V2 (por variante)', description: 'A/B con filtro de atribución, embudo por variante', icon: ScienceIcon, color: 'secondary', path: '/funnelV2' },
       ],
     },
     {

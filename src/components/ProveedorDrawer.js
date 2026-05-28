@@ -37,6 +37,7 @@ import {
 import { useTheme } from '@mui/material/styles';
 import useMediaQuery from '@mui/material/useMediaQuery';
 import AttachmentIcon from '@mui/icons-material/Attachment';
+import BalanceIcon from '@mui/icons-material/Balance';
 import BlockIcon from '@mui/icons-material/Block';
 import CallMergeIcon from '@mui/icons-material/CallMerge';
 import CheckIcon from '@mui/icons-material/Check';
@@ -644,6 +645,8 @@ function TabCuentaCorriente({
   onRegistrarPago,
   onAnularPago,
   onCargarMovimiento,
+  onImputarSaldoFavor,
+  imputarSaldoFavorLoading = false,
 }) {
   // Orden seleccionado por el usuario.
   //  - 'fecha'    → ordena por día calendario (fecha_factura/fecha_pago), desempate por createdAt
@@ -741,6 +744,34 @@ function TabCuentaCorriente({
     };
   }, [movimientos, pagos]);
 
+  // Pendiente de imputar: total de saldo a favor en pagos activos + pendiente
+  // real en facturas. Si los dos son > 0, el botón "Imputar saldo a favor"
+  // tiene sentido (puede cerrar facturas sin necesidad de un pago nuevo).
+  const imputableInfo = useMemo(() => {
+    const sinImputar = (pagos || [])
+      .filter((p) => p.estado === 'activo')
+      .reduce((s, p) => s + (Number(p.monto_sin_imputar) || 0), 0);
+    let pendienteTotal = 0;
+    let facturasPendientes = 0;
+    (movimientos || []).forEach((m) => {
+      const total = Number(m.total) || 0;
+      const pagado = Number(m.monto_pagado) || 0;
+      const pend = Math.max(0, total - pagado);
+      if (pend > 0.005) {
+        pendienteTotal += pend;
+        facturasPendientes += 1;
+      }
+    });
+    const aImputar = Math.min(sinImputar, pendienteTotal);
+    return {
+      sinImputar,
+      pendienteTotal,
+      facturasPendientes,
+      aImputar,
+      mostrar: sinImputar > 0.005 && pendienteTotal > 0.005,
+    };
+  }, [movimientos, pagos]);
+
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
@@ -766,6 +797,22 @@ function TabCuentaCorriente({
             <Chip size="small" color="success" variant="outlined" label="Al día" />
           )}
         </Stack>
+        {imputableInfo.mostrar && onImputarSaldoFavor && (
+          <Tooltip title={`Reparte ${formatCurrencyWithCode(imputableInfo.aImputar)} de saldo a favor sobre ${imputableInfo.facturasPendientes} factura(s) pendiente(s) (FIFO por fecha).`}>
+            <span>
+              <Button
+                variant="contained"
+                color="secondary"
+                size="small"
+                startIcon={<BalanceIcon fontSize="small" />}
+                onClick={onImputarSaldoFavor}
+                disabled={imputarSaldoFavorLoading}
+              >
+                {imputarSaldoFavorLoading ? 'Imputando…' : 'Imputar saldo a favor'}
+              </Button>
+            </span>
+          </Tooltip>
+        )}
         {onCargarMovimiento && (
           <Button
             variant="outlined"
@@ -1108,6 +1155,10 @@ function ProveedorDrawer({ open, onClose, proveedorId, proveedorNombreHint, empr
   // Dialog presupuesto
   const [registrarPresupuestoOpen, setRegistrarPresupuestoOpen] = useState(false);
 
+  // Imputar saldo a favor (reparte monto_sin_imputar entre facturas pendientes)
+  const [imputarSaldoFavorLoading, setImputarSaldoFavorLoading] = useState(false);
+  const [imputarSaldoFavorMsg, setImputarSaldoFavorMsg] = useState(null);
+
   // Proyectos de la empresa (para resolver nombre desde proyecto_id en la tab Presupuestos)
   const [proyectos, setProyectos] = useState([]);
 
@@ -1118,12 +1169,49 @@ function ProveedorDrawer({ open, onClose, proveedorId, proveedorNombreHint, empr
     try {
       const result = await proveedorService.getCuentaCorriente(empresaId, proveedorId, null, proveedorNombreHint);
       setData(result);
-    } catch {
-      setError('Error al cargar el proveedor');
+    } catch (err) {
+      const body = err?.response?.data;
+      if (body?.code === 'PROVEEDOR_NO_VINCULADO') {
+        const nombre = body.nombre_en_movimientos;
+        const cant = body.movimientos_afectados || 0;
+        setError(
+          nombre
+            ? `Este movimiento referencia "${nombre}" pero el id_proveedor (${body.id_recibido}) está roto. ${cant > 0 ? `Afecta ${cant} movimiento(s). ` : ''}Editá el movimiento y reasignalo al proveedor correcto, o creá "${nombre}" como proveedor nuevo si no existe.`
+            : `El id_proveedor (${body.id_recibido}) está roto. No hay proveedor con ese id ni nombre en los movimientos.`,
+        );
+      } else {
+        setError('Error al cargar el proveedor');
+      }
     } finally {
       setLoading(false);
     }
   }, [proveedorId, empresaId, proveedorNombreHint]);
+
+  const handleImputarSaldoFavor = useCallback(async () => {
+    if (!proveedorId || !empresaId) return;
+    setImputarSaldoFavorLoading(true);
+    setImputarSaldoFavorMsg(null);
+    try {
+      const result = await proveedorService.imputarSaldoAFavor(empresaId, proveedorId);
+      if (result?.sin_saldo_a_favor) {
+        setImputarSaldoFavorMsg({ severity: 'info', text: 'No hay saldo a favor para imputar.' });
+      } else if (result?.sin_facturas_pendientes) {
+        setImputarSaldoFavorMsg({ severity: 'info', text: 'No hay facturas pendientes para imputar.' });
+      } else {
+        setImputarSaldoFavorMsg({
+          severity: 'success',
+          text: `Se imputó ${result.monto_imputado != null ? `$${Number(result.monto_imputado).toLocaleString('es-AR')}` : ''} sobre ${result.movimientos_modificados} factura(s).`,
+        });
+      }
+      await fetchData();
+      onUpdate?.();
+    } catch (err) {
+      console.error('Error imputando saldo a favor:', err);
+      setImputarSaldoFavorMsg({ severity: 'error', text: 'No se pudo imputar el saldo a favor.' });
+    } finally {
+      setImputarSaldoFavorLoading(false);
+    }
+  }, [proveedorId, empresaId, fetchData, onUpdate]);
 
   useEffect(() => {
     if (open) {
@@ -1268,20 +1356,33 @@ function ProveedorDrawer({ open, onClose, proveedorId, proveedorNombreHint, empr
           />
         )}
         {tab === TAB_CUENTA && (
-          <TabCuentaCorriente
-            movimientos={data?.movimientos}
-            pagos={data?.pagos}
-            presupuesto={data?.presupuesto}
-            loading={loading && !data}
-            onRegistrarPago={() => setRegistrarPagoOpen(true)}
-            onAnularPago={(pago) => { setPagoAAnular(pago); setAnularPagoOpen(true); }}
-            onCargarMovimiento={proveedor ? () => {
-              router.push({
-                pathname: '/movementForm',
-                query: { proveedorNombre: proveedor.nombre },
-              });
-            } : undefined}
-          />
+          <>
+            {imputarSaldoFavorMsg && (
+              <Alert
+                severity={imputarSaldoFavorMsg.severity}
+                onClose={() => setImputarSaldoFavorMsg(null)}
+                sx={{ mx: 2, mt: 1.5 }}
+              >
+                {imputarSaldoFavorMsg.text}
+              </Alert>
+            )}
+            <TabCuentaCorriente
+              movimientos={data?.movimientos}
+              pagos={data?.pagos}
+              presupuesto={data?.presupuesto}
+              loading={loading && !data}
+              onRegistrarPago={() => setRegistrarPagoOpen(true)}
+              onAnularPago={(pago) => { setPagoAAnular(pago); setAnularPagoOpen(true); }}
+              onCargarMovimiento={proveedor ? () => {
+                router.push({
+                  pathname: '/movementForm',
+                  query: { proveedorNombre: proveedor.nombre },
+                });
+              } : undefined}
+              onImputarSaldoFavor={handleImputarSaldoFavor}
+              imputarSaldoFavorLoading={imputarSaldoFavorLoading}
+            />
+          </>
         )}
         {tab === TAB_PRESUPUESTOS && (
           <TabPresupuestos

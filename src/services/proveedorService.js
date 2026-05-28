@@ -132,6 +132,32 @@ const proveedorService = {
     );
     return data;
   },
+
+  /**
+   * Reparte el monto_sin_imputar de los pagos activos del proveedor sobre las
+   * facturas pendientes (FIFO por fecha). Útil cuando hay saldo a favor +
+   * facturas abiertas: cierra todo lo que se pueda con lo que ya existe,
+   * sin generar un pago nuevo.
+   */
+  async imputarSaldoAFavor(empresaId, proveedorId) {
+    const { data } = await api.post(
+      `/empresa/${empresaId}/proveedores/${proveedorId}/imputar-saldo-favor`,
+    );
+    return data;
+  },
+
+  /**
+   * Reasigna movimientos/pagos/presupuestos huérfanos a un proveedor destino.
+   * @param {string} empresaId
+   * @param {{ destino_id: string, id_legacy?: string, nombre_origen?: string }} payload
+   */
+  async rebind(empresaId, payload) {
+    const { data } = await api.post(
+      `/empresa/${empresaId}/proveedores/rebind`,
+      payload,
+    );
+    return data;
+  },
 };
 
 export default proveedorService;

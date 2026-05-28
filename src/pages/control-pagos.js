@@ -35,7 +35,11 @@ import {
   Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
+import LinkOffIcon from '@mui/icons-material/LinkOff';
 import PaymentsIcon from '@mui/icons-material/Payments';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import PointOfSaleIcon from '@mui/icons-material/PointOfSale';
@@ -53,6 +57,7 @@ import { puedeCompletarPagoEgreso } from 'src/utils/movimientoPagoCompleto';
 import pretendidosService from 'src/services/pretendidosService';
 import ConfirmarPagoDialog from 'src/components/pagos/ConfirmarPagoDialog';
 import proveedorService from 'src/services/proveedorService';
+import ResolverProveedorDialog from 'src/components/proveedores/ResolverProveedorDialog';
 import PresupuestoService from 'src/services/presupuestoService';
 import ProveedorDrawer from 'src/components/ProveedorDrawer';
 
@@ -735,6 +740,14 @@ const PagosAprobacionesPage = () => {
   const [imputarOpen, setImputarOpen] = useState(false);
   const [confirmarPagoOpen, setConfirmarPagoOpen] = useState(false);
   const [movimientosParaConfirmar, setMovimientosParaConfirmar] = useState([]);
+  // "Eliminar movimientos" — borra los seleccionados (soft delete vía endpoint existente).
+  const [eliminarOpen, setEliminarOpen] = useState(false);
+  const [eliminarLoading, setEliminarLoading] = useState(false);
+
+  // "Marcar como pagadas" — cierra movimientos seleccionados sin generar PagoProveedor.
+  // Útil para gastos sin proveedor o pagos hechos fuera del sistema.
+  const [marcarPagadasOpen, setMarcarPagadasOpen] = useState(false);
+  const [marcarPagadasLoading, setMarcarPagadasLoading] = useState(false);
 
   // ProveedorDrawer
   const [provDrawerOpen, setProvDrawerOpen] = useState(false);
@@ -752,6 +765,10 @@ const PagosAprobacionesPage = () => {
   const [pretendidos, setPretendidos] = useState([]);
   const [loadingPretendidos, setLoadingPretendidos] = useState(false);
   const [proveedoresManoObra, setProveedoresManoObra] = useState([]);
+
+  // Resolver proveedor (vínculo roto o no cargado) — abre dialog para
+  // fusionar/crear/dejar así.
+  const [resolverDialog, setResolverDialog] = useState({ open: false, idLegacy: null, nombre: '' });
   const [savingPretendidoId, setSavingPretendidoId] = useState(null);
   const [creatingPretendido, setCreatingPretendido] = useState(false);
   const [hiddenColumns, setHiddenColumns] = useState(() => {
@@ -788,6 +805,17 @@ const PagosAprobacionesPage = () => {
     () => Object.fromEntries(proyectos.map((proyecto) => [proyecto.id, proyecto])),
     [proyectos]
   );
+
+  // Set de ids válidos de proveedores. Sirve para detectar movs con
+  // id_proveedor "roto" (apunta a un id que no existe).
+  const proveedoresIdsValidos = useMemo(() => {
+    const s = new Set();
+    (proveedoresManoObra || []).forEach((p) => {
+      const id = p._id || p.id;
+      if (id) s.add(String(id));
+    });
+    return s;
+  }, [proveedoresManoObra]);
 
   const summary = useMemo(() => {
     const totalVisible = movimientos.reduce((acc, movimiento) => acc + (Number(movimiento.total) || 0), 0);
@@ -1159,6 +1187,88 @@ const PagosAprobacionesPage = () => {
     fetchMovimientos();
   }, [fetchMovimientos]);
 
+  // ── "Eliminar movimientos" ──────────────────────────────────────────────────
+  const handleConfirmarEliminar = useCallback(async () => {
+    if (selectedMovimientos.length === 0) return;
+    setEliminarLoading(true);
+    setFeedback(null);
+    try {
+      const results = await Promise.all(selectedMovimientos.map(async (m) => {
+        const ok = await movimientosService.deleteMovimientoById(m.id);
+        return { id: m.id, ok: !!ok };
+      }));
+      const okCount = results.filter((r) => r.ok).length;
+      if (okCount === 0) {
+        setFeedback({ severity: 'error', message: 'No se pudo eliminar ningún movimiento.' });
+      } else if (okCount === results.length) {
+        setFeedback({ severity: 'success', message: `Se eliminaron ${okCount} movimiento(s).` });
+      } else {
+        setFeedback({ severity: 'warning', message: `Se eliminaron ${okCount} de ${results.length} movimiento(s).` });
+      }
+      setEliminarOpen(false);
+      setSelectedIds(new Set());
+      fetchMovimientos();
+    } catch (err) {
+      console.error('Error eliminando movimientos:', err);
+      setFeedback({ severity: 'error', message: 'Error al eliminar movimientos.' });
+    } finally {
+      setEliminarLoading(false);
+    }
+  }, [selectedMovimientos, fetchMovimientos]);
+
+  // ── "Marcar como pagadas" ───────────────────────────────────────────────────
+  // Cierra los movimientos seleccionados (monto_pagado = total, estado = 'Pagado')
+  // SIN generar un PagoProveedor. Pensado para gastos sin proveedor o pagos
+  // hechos fuera del sistema que sólo necesitan dejarse de ver como pendientes.
+  const handleConfirmarMarcarComoPagadas = useCallback(async () => {
+    if (selectedPayableMovimientos.length === 0) return;
+    setMarcarPagadasLoading(true);
+    setFeedback(null);
+    try {
+      const nombreUsuario = getNombreUsuario(user);
+      const marcaFecha = new Date().toISOString().slice(0, 10);
+      const comentarioTexto = `[Ajuste ${marcaFecha}] Cerrado manualmente sin pago asociado.`;
+      const results = await Promise.all(selectedPayableMovimientos.map(async (movimiento) => {
+        // 1) Cierre del movimiento (sólo monto_pagado y estado — NO se toca observaciones).
+        const patch = {
+          monto_pagado: Number(movimiento.total) || 0,
+          estado: 'Pagado',
+        };
+        const response = await movimientosService.updateMovimiento(
+          movimiento.id,
+          { ...movimiento, ...patch },
+          nombreUsuario
+        );
+        if (response?.error) return { id: movimiento.id, ok: false };
+
+        // 2) Comentario de auditoría — best effort, no rompe el cierre si falla.
+        try {
+          await movimientosService.addComentario(movimiento.id, comentarioTexto);
+        } catch (commentErr) {
+          console.warn('No se pudo agregar el comentario de ajuste a', movimiento.id, commentErr);
+        }
+        return { id: movimiento.id, ok: true };
+      }));
+
+      const okCount = results.filter((r) => r.ok).length;
+      if (okCount === 0) {
+        setFeedback({ severity: 'error', message: 'No se pudo cerrar ningún movimiento.' });
+      } else if (okCount === results.length) {
+        setFeedback({ severity: 'success', message: `Se cerraron ${okCount} movimiento(s) como pagados.` });
+      } else {
+        setFeedback({ severity: 'warning', message: `Se cerraron ${okCount} de ${results.length} movimiento(s).` });
+      }
+      setMarcarPagadasOpen(false);
+      setSelectedIds(new Set());
+      fetchMovimientos();
+    } catch (err) {
+      console.error('Error marcando como pagadas:', err);
+      setFeedback({ severity: 'error', message: 'Error al cerrar los movimientos.' });
+    } finally {
+      setMarcarPagadasLoading(false);
+    }
+  }, [selectedPayableMovimientos, user, fetchMovimientos]);
+
   const fetchPretendidos = useCallback(async () => {
     if (!empresa?.id || activeTab !== 'pretendidos') return;
     setLoadingPretendidos(true);
@@ -1509,6 +1619,34 @@ const PagosAprobacionesPage = () => {
                       ))}
                     </Box>
                   </Popover>
+                  <Tooltip title="Cerrar los seleccionados sin generar un pago. Útil para gastos sin proveedor o pagos hechos fuera del sistema.">
+                    <span>
+                      <Button
+                        type="button"
+                        variant="outlined"
+                        color="warning"
+                        startIcon={<CheckCircleOutlineIcon fontSize="small" />}
+                        onClick={() => setMarcarPagadasOpen(true)}
+                        disabled={selectedPayableMovimientos.length === 0}
+                      >
+                        {`Marcar como pagadas (${selectedPayableMovimientos.length})`}
+                      </Button>
+                    </span>
+                  </Tooltip>
+                  <Tooltip title="Eliminar los movimientos seleccionados. Los pagos imputados se mantienen y quedan como saldo a favor.">
+                    <span>
+                      <Button
+                        type="button"
+                        variant="outlined"
+                        color="error"
+                        startIcon={<DeleteOutlineIcon fontSize="small" />}
+                        onClick={() => setEliminarOpen(true)}
+                        disabled={selectedMovimientos.length === 0}
+                      >
+                        {`Eliminar (${selectedMovimientos.length})`}
+                      </Button>
+                    </span>
+                  </Tooltip>
                   <Button
                     type="button"
                     variant="contained"
@@ -1589,22 +1727,57 @@ const PagosAprobacionesPage = () => {
 
                           {visibleColumns.map((column) => {
                             if (column.key === 'nombre_proveedor') {
+                              const idProv = movimiento.id_proveedor;
+                              const tieneId = !!idProv;
+                              const idValido = tieneId && proveedoresIdsValidos.has(String(idProv));
+                              // Estado del vínculo:
+                              //   ok        → id_proveedor matchea un proveedor cargado
+                              //   roto      → tiene id_proveedor pero no matchea (legacy/huérfano)
+                              //   no_cargado→ no tiene id_proveedor (solo nombre)
+                              const estadoLink = idValido ? 'ok' : (tieneId ? 'roto' : 'no_cargado');
                               return (
                                 <TableCell key={`${movimiento.id}-${column.key}`} sx={{ whiteSpace: 'nowrap' }}>
                                   <Stack direction="row" alignItems="center" spacing={0.5}>
                                     <span>{movimiento.nombre_proveedor || '-'}</span>
-                                    {openProveedorDrawer && (
-                                      <Tooltip title={movimiento.id_proveedor ? 'Ver ficha del proveedor' : 'Proveedor no cargado'}>
-                                        <span>
-                                          <IconButton
-                                            size="small"
-                                            disabled={!movimiento.id_proveedor}
-                                            onClick={(e) => { e.stopPropagation(); openProveedorDrawer(movimiento.id_proveedor, movimiento.nombre_proveedor); }}
-                                            sx={{ opacity: 0.5, '&:hover': { opacity: 1 } }}
-                                          >
-                                            <InfoOutlinedIcon fontSize="inherit" />
-                                          </IconButton>
-                                        </span>
+                                    {estadoLink === 'ok' && openProveedorDrawer && (
+                                      <Tooltip title="Ver ficha del proveedor">
+                                        <IconButton
+                                          size="small"
+                                          onClick={(e) => { e.stopPropagation(); openProveedorDrawer(idProv, movimiento.nombre_proveedor); }}
+                                          sx={{ opacity: 0.5, '&:hover': { opacity: 1 } }}
+                                        >
+                                          <InfoOutlinedIcon fontSize="inherit" />
+                                        </IconButton>
+                                      </Tooltip>
+                                    )}
+                                    {estadoLink === 'roto' && (
+                                      <Tooltip title="Vínculo roto: el id_proveedor no existe. Click para resolver.">
+                                        <IconButton
+                                          size="small"
+                                          color="warning"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setResolverDialog({ open: true, idLegacy: idProv, nombre: movimiento.nombre_proveedor || '' });
+                                          }}
+                                          sx={{ opacity: 0.8, '&:hover': { opacity: 1 } }}
+                                        >
+                                          <LinkOffIcon fontSize="inherit" />
+                                        </IconButton>
+                                      </Tooltip>
+                                    )}
+                                    {estadoLink === 'no_cargado' && movimiento.nombre_proveedor && (
+                                      <Tooltip title="Proveedor no cargado. Click para vincular.">
+                                        <IconButton
+                                          size="small"
+                                          color="default"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setResolverDialog({ open: true, idLegacy: null, nombre: movimiento.nombre_proveedor || '' });
+                                          }}
+                                          sx={{ opacity: 0.6, '&:hover': { opacity: 1 } }}
+                                        >
+                                          <HelpOutlineIcon fontSize="inherit" />
+                                        </IconButton>
                                       </Tooltip>
                                     )}
                                   </Stack>
@@ -1778,6 +1951,107 @@ const PagosAprobacionesPage = () => {
         movimientos={movimientosParaConfirmar}
       />
 
+      {/* Dialog: Marcar como pagadas — cierra sin generar PagoProveedor */}
+      <Dialog
+        open={marcarPagadasOpen}
+        onClose={marcarPagadasLoading ? undefined : () => setMarcarPagadasOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Marcar como pagadas</DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={1.5}>
+            <Typography variant="body2">
+              Vas a cerrar <strong>{selectedPayableMovimientos.length}</strong> movimiento(s) como
+              pagado(s) <strong>sin generar un pago a proveedor</strong>.
+            </Typography>
+            {(() => {
+              const sinProv = selectedPayableMovimientos.filter((m) => !m.id_proveedor && !m.nombre_proveedor).length;
+              const conProv = selectedPayableMovimientos.length - sinProv;
+              return (
+                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                  {sinProv > 0 && (
+                    <Chip size="small" color="warning" variant="outlined" label={`${sinProv} sin proveedor`} />
+                  )}
+                  {conProv > 0 && (
+                    <Chip size="small" color="default" variant="outlined" label={`${conProv} con proveedor`} />
+                  )}
+                </Stack>
+              );
+            })()}
+            <Alert severity="info" variant="outlined">
+              Se marcan como Pagado con monto_pagado = total y se agrega un comentario
+              de auditoría en cada movimiento. <strong>No se crea un Pago</strong> y
+              <strong> no se toca el campo Observaciones</strong>. Si necesitás registrar
+              un pago real (con método, comprobante, retenciones, etc.), usá "Pagar" en su lugar.
+            </Alert>
+            {selectedPayableMovimientos.some((m) => m.id_proveedor || m.nombre_proveedor) && (
+              <Alert severity="warning" variant="outlined">
+                Hay movimientos <strong>con proveedor</strong> en la selección. Cerrarlos por acá
+                <em> no</em> va a aparecer en su cuenta corriente como pago. Si querés que figure
+                en la CC del proveedor, usá "Pagar".
+              </Alert>
+            )}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setMarcarPagadasOpen(false)} disabled={marcarPagadasLoading}>
+            Cancelar
+          </Button>
+          <Button
+            variant="contained"
+            color="warning"
+            onClick={handleConfirmarMarcarComoPagadas}
+            disabled={marcarPagadasLoading || selectedPayableMovimientos.length === 0}
+            startIcon={marcarPagadasLoading ? <CircularProgress size={16} /> : <CheckCircleOutlineIcon fontSize="small" />}
+          >
+            {marcarPagadasLoading ? 'Cerrando…' : `Cerrar ${selectedPayableMovimientos.length}`}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Dialog: Eliminar movimientos seleccionados */}
+      <Dialog
+        open={eliminarOpen}
+        onClose={eliminarLoading ? undefined : () => setEliminarOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Eliminar movimientos</DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={2}>
+            <Typography variant="body2">
+              Vas a eliminar <strong>{selectedMovimientos.length}</strong> movimiento(s) seleccionado(s).
+              Esta acción no es reversible desde la UI.
+            </Typography>
+            {selectedMovimientos.some((m) => (Number(m.monto_pagado) || 0) > 0.005) && (
+              <Alert severity="warning" variant="outlined">
+                Algunos movimientos tienen pagos imputados. Al eliminarlos, los pagos quedan
+                con saldo a favor (sin imputar) en la cuenta corriente del proveedor.
+              </Alert>
+            )}
+            <Alert severity="error" variant="outlined">
+              Asegurate de que no estés borrando movimientos legítimos. Si solo querés que dejen
+              de aparecer en "Por pagar", usá "Marcar como pagadas" en su lugar.
+            </Alert>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEliminarOpen(false)} disabled={eliminarLoading}>
+            Cancelar
+          </Button>
+          <Button
+            variant="contained"
+            color="error"
+            onClick={handleConfirmarEliminar}
+            disabled={eliminarLoading || selectedMovimientos.length === 0}
+            startIcon={eliminarLoading ? <CircularProgress size={16} /> : <DeleteOutlineIcon fontSize="small" />}
+          >
+            {eliminarLoading ? 'Eliminando…' : `Eliminar ${selectedMovimientos.length}`}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       <ProveedorDrawer
         open={provDrawerOpen}
         onClose={() => setProvDrawerOpen(false)}
@@ -1786,6 +2060,24 @@ const PagosAprobacionesPage = () => {
         empresaId={empresa?.id}
         categoriasEmpresa={empresa?.categorias || []}
         onUpdate={() => {}}
+      />
+
+      <ResolverProveedorDialog
+        open={resolverDialog.open}
+        onClose={() => setResolverDialog({ open: false, idLegacy: null, nombre: '' })}
+        onResolved={(result) => {
+          setResolverDialog({ open: false, idLegacy: null, nombre: '' });
+          setFeedback({
+            severity: 'success',
+            message: `Reasignado a "${result?.destino?.nombre}": ${result?.movimientos_actualizados || 0} mov, ${result?.pagos_actualizados || 0} pago(s), ${result?.presupuestos_actualizados || 0} presup.`,
+          });
+          fetchMovimientos();
+          fetchProveedoresManoObra();
+        }}
+        empresaId={empresa?.id}
+        idLegacy={resolverDialog.idLegacy}
+        nombreOrigen={resolverDialog.nombre}
+        proveedores={proveedoresManoObra}
       />
     </DashboardLayout>
   );
