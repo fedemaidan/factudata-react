@@ -30,7 +30,6 @@ import ValidacionLoteStep from './steps/ValidacionLoteStep';
 import { mapExtractedToForm, emptyForm, copyShareableFields } from './cargaMasivaMap';
 import { buildMovimientoPayloadFromBatchItem } from './buildBatchMovimientoPayload';
 import {
-  pickRandomFiles,
   buildContextoCuestionarioTexto,
   preguntasEstanCompletas,
 } from './cargaMasivaPreguntasUtils';
@@ -44,6 +43,19 @@ import PasoControlEntidadesOcr from 'src/sections/importMovimientos/PasoControlE
 
 const STEPS_OCR = ['Archivos', 'Contexto', 'Control', 'Validación'];
 const STEPS_TABULAR = ['Planilla', 'Categorías', 'Proveedores', 'Aclaraciones', 'Validación', 'Resumen'];
+
+// Texto legible para cada etapa del flujo v2 (evita términos técnicos de cola).
+const ESTADO_LABEL = {
+  pendiente: 'En proceso…',
+  parseando_pdf: 'Convirtiendo el archivo en imágenes…',
+  generando_preguntas: 'Revisando una muestra y preparando preguntas…',
+  esperando_respuestas: 'Listo para responder',
+  extrayendo: 'Leyendo los comprobantes…',
+  esperando_validacion: 'Listo para validar',
+  escribiendo_drive: 'Guardando en Drive y Sheets…',
+  completado: 'Completado',
+  error: 'Error',
+};
 
 const initialContexto = () => ({
   proyecto_id: '',
@@ -113,6 +125,9 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
   const [respuestasGpt, setRespuestasGpt] = useState({});
   const [preguntasLoading, setPreguntasLoading] = useState(false);
   const [preguntasError, setPreguntasError] = useState('');
+  // Flujo v2 (CargaMasivaStatus): id del status y etapa actual del worker.
+  const [cargaStatusId, setCargaStatusId] = useState(null);
+  const [cargaEstado, setCargaEstado] = useState(null);
   const [importWizardData, setImportWizardData] = useState(initialImportWizardData);
   const [tabularLoading, setTabularLoading] = useState(false);
   const [tabularError, setTabularError] = useState('');
@@ -151,6 +166,8 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
     setRespuestasGpt({});
     setPreguntasError('');
     setPreguntasLoading(false);
+    setCargaStatusId(null);
+    setCargaEstado(null);
     setImportWizardData(initialImportWizardData());
     setTabularError('');
     setTabularLoading(false);
@@ -296,34 +313,45 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
       setRespuestasGpt({});
       setPreguntasError('');
       setBatchItems([]);
+      setCargaStatusId(null);
+      setCargaEstado(null);
     }
     setCargaModo(value);
   };
 
-  const fetchPreguntasYAvanzar = useCallback(async () => {
+  // v2: sube los archivos crudos, arranca el flujo en el worker (parseo del PDF +
+  // generación de preguntas sobre una muestra de páginas) y pollea hasta que el
+  // status quede en `esperando_respuestas`. Recién ahí mostramos las preguntas.
+  const iniciarYEsperarPreguntas = useCallback(async () => {
     if (files.length === 0) return;
     setPreguntasError('');
     setPreguntasLoading(true);
     try {
-      const muestra = pickRandomFiles(files, 5);
       const metadata_lote = {
         total: files.length,
         archivos: files.map((f) => ({ name: f.name, type: f.type, size: f.size })),
       };
-      const res = await movimientosService.sugerirPreguntasCargaMasiva(muestra, metadata_lote);
-      if (res.error) {
-        throw new Error(res.message || 'Error al generar preguntas');
-      }
-      const preguntas = Array.isArray(res.data?.preguntas) ? res.data.preguntas : [];
+      const ini = await movimientosService.iniciarCargaMasivaV2(files, {
+        metadata_lote,
+        ...(pdfSplitPerPage ? { pdf_split_per_page: true } : {}),
+      });
+      if (ini.error) throw new Error(ini.message || 'Error al iniciar la carga masiva');
+      const sid = ini.data?.statusId;
+      setCargaStatusId(sid);
+      const wait = await movimientosService.esperarEstadoCargaMasiva(sid, ['esperando_respuestas'], {
+        onEstado: (e) => setCargaEstado(e),
+      });
+      if (wait.error) throw new Error(wait.message || 'Error preparando la carga masiva');
+      const preguntas = Array.isArray(wait.data?.preguntas) ? wait.data.preguntas : [];
       setPreguntasGpt(preguntas);
       setRespuestasGpt({});
       setActiveStep(1);
     } catch (e) {
-      setPreguntasError(e.message || 'Error al generar preguntas');
+      setPreguntasError(e.message || 'Error al preparar la carga masiva');
     } finally {
       setPreguntasLoading(false);
     }
-  }, [files]);
+  }, [files, pdfSplitPerPage]);
 
   const handleRespuestasGptPatch = useCallback((qid, patch) => {
     setRespuestasGpt((prev) => ({
@@ -337,13 +365,22 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
     setAnalyzeLoading(true);
     setAnalyzeProgress({ completed: 0, total: files.length });
     try {
-      const res = await movimientosService.analizarCargaMasiva(files, payloadContextoLote, {
+      // v2: enviamos las respuestas + el contexto del lote (proyecto, defaults) y
+      // pooleamos hasta que el worker termine la extracción (esperando_validacion).
+      const resp = await movimientosService.responderPreguntasCargaMasiva(
+        cargaStatusId,
+        respuestasGpt,
+        payloadContextoLote,
+      );
+      if (resp.error) throw new Error(resp.message || 'Error al enviar las respuestas');
+      const res = await movimientosService.esperarEstadoCargaMasiva(cargaStatusId, ['esperando_validacion'], {
         onProgress: ({ completed, total }) => setAnalyzeProgress({ completed, total }),
+        onEstado: (e) => setCargaEstado(e),
       });
       if (res.error) {
         throw new Error(res.message || 'Error al analizar');
       }
-      const rawItems = res.data?.items || [];
+      const rawItems = res.data?.propuestos || [];
       const mapped = rawItems.map((it, i) => {
         const safeName = (it.originalname || 'file').replace(/\s/g, '_');
         const pageSuffix = it.page ? `-p${it.page}` : '';
@@ -372,7 +409,7 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
 
   const handleOcrNext = async () => {
     if (activeStep === 0) {
-      await fetchPreguntasYAvanzar();
+      await iniciarYEsperarPreguntas();
       return;
     }
     if (activeStep === 1) {
@@ -545,7 +582,7 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
           userPhone: user.phone,
         }),
       );
-      const res = await movimientosService.confirmarCargaMasiva(movimientos);
+      const res = await movimientosService.confirmarCargaMasiva(movimientos, cargaStatusId);
       if (res.error) {
         throw new Error(res.message || 'Error al crear movimientos');
       }
@@ -801,7 +838,7 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
                       severity="error"
                       sx={{ mb: 2 }}
                       action={
-                        <Button color="inherit" size="small" onClick={fetchPreguntasYAvanzar} disabled={preguntasLoading}>
+                        <Button color="inherit" size="small" onClick={iniciarYEsperarPreguntas} disabled={preguntasLoading}>
                           Reintentar
                         </Button>
                       }
@@ -825,7 +862,10 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
                     >
                       <CircularProgress />
                       <Typography variant="body2" color="text.secondary" textAlign="center" px={2}>
-                        Analizando la muestra del lote (preguntas extra solo si hace falta)…
+                        {ESTADO_LABEL[cargaEstado] || 'Preparando la carga masiva…'}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" textAlign="center" px={2}>
+                        Subimos el archivo y lo preparamos en el servidor. Puede tardar si es un PDF grande.
                       </Typography>
                     </Stack>
                   )}
