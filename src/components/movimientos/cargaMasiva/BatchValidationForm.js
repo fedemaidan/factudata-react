@@ -127,7 +127,14 @@ const BatchValidationForm = ({
   );
 
   const shouldShowProyecto = Boolean(camposConfig.proyecto);
-  const formatFecha = (val) => formatTimestamp(val) || '';
+  // Si el valor ya viene como YYYY-MM-DD (lo que produce toDateInputValue y lo
+  // que espera <input type="date">), lo usamos tal cual. Pasarlo por
+  // formatTimestamp haría un round-trip por Date que, para fechas a medianoche
+  // UTC, resta un día en zonas horarias negativas (ej. GMT-3 mostraba 14 en vez de 15).
+  const formatFecha = (val) => {
+    if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(val)) return val;
+    return formatTimestamp(val) || '';
+  };
 
   const handleFieldChange = (name, value) => onFormChange({ ...form, [name]: value });
 
