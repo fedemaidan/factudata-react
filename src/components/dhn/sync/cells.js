@@ -7,6 +7,7 @@ import EditIcon from "@mui/icons-material/Edit";
 import MergeTypeIcon from "@mui/icons-material/MergeType";
 import BlockIcon from "@mui/icons-material/Block";
 import TrabajoRegistradoService from "src/services/dhn/TrabajoRegistradoService";
+import TrabajadorChip from "src/components/dhn/TrabajadorChip";
 import { getStatusChipConfig } from "src/utils/dhn/syncHelpers";
 import { buildFechaDetectadaPatch } from "src/utils/dhn/trabajoRegistradoHelpers";
 import { parsearTrabajadoresNoIdentificados, parsearConteoIdentificados } from "src/utils/dhn/trabajadoresHelpers";
@@ -484,27 +485,10 @@ export const ObservacionCell = ({ row, handleResolverTrabajador }) => {
               No identificados:
             </Box>
             {trabajadoresNoIdentificados.map((trabajador, idx) => (
-              <Chip
+              <TrabajadorChip
                 key={idx}
-                label={`${trabajador.nombre} ${trabajador.apellido} (${trabajador.dni})`}
-                size="small"
-                variant="outlined"
-                color="primary"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleResolverTrabajador(trabajador, row?.url_storage, row);
-                }}
-                sx={{
-                  cursor: "pointer",
-                  borderColor: "primary.main",
-                  color: "primary.main",
-                  transition: "all .2s ease",
-                  "&:hover": {
-                    backgroundColor: "rgba(25, 118, 210, 0.12)",
-                    color: "primary.dark",
-                    borderColor: "primary.dark",
-                  },
-                }}
+                trabajador={trabajador}
+                onClick={(t) => handleResolverTrabajador(t, row?.url_storage, row)}
               />
             ))}
           </Box>
