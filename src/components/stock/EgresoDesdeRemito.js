@@ -43,12 +43,13 @@ import movimientosService from 'src/services/movimientosService';
 
 const STEPS = ['Subir Remito', 'Revisar Materiales', 'Confirmar Egreso'];
 
-export default function EgresoDesdeRemito({ 
-  open, 
-  onClose, 
-  onSuccess, 
-  user, 
-  proyectos = [] 
+export default function EgresoDesdeRemito({
+  open,
+  onClose,
+  onSuccess,
+  user,
+  proyectos = [],
+  labelEntidad = 'Proyecto', // 'Sucursal' en corralón
 }) {
   // Estado del stepper
   const [activeStep, setActiveStep] = useState(0);
@@ -669,9 +670,9 @@ export default function EgresoDesdeRemito({
       
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
         <FormControl sx={{ minWidth: 250 }}>
-          <InputLabel>Proyecto / Obra destino</InputLabel>
+          <InputLabel>{labelEntidad === 'Sucursal' ? 'Sucursal destino' : 'Proyecto / Obra destino'}</InputLabel>
           <Select
-            label="Proyecto / Obra destino"
+            label={labelEntidad === 'Sucursal' ? 'Sucursal destino' : 'Proyecto / Obra destino'}
             value={proyectoSeleccionado}
             onChange={(e) => setProyectoSeleccionado(e.target.value)}
           >

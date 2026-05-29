@@ -77,6 +77,7 @@ async function buildDefaultGroups({ user, empresa, permisosUsuario }) {
     finanzasItems.push({ title: "Clientes", path: "/clientes", icon: icon(PeopleIcon) });
     finanzasItems.push({ title: "Grupos de cliente", path: "/grupos-cliente", icon: icon(PeopleIcon) });
     finanzasItems.push({ title: "Cobros de cliente", path: "/cobros-cliente/nuevo", icon: icon(AttachMoneyIcon) });
+    finanzasItems.push({ title: "Ventas", path: "/ventas", icon: icon(PaymentsIcon) });
     finanzasItems.push({ title: "Ventas contra entrega", path: "/ventas-contra-entrega", icon: icon(PaymentsIcon) });
   }
   if (permisosUsuario.includes("VER_PLANES_COBRO") && !esCorralon) {
