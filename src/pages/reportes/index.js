@@ -177,6 +177,32 @@ const TEMPLATES = [
     ],
   },
   {
+    nombre: 'Saldo por Proyecto',
+    descripcion: 'Saldo neto por proyecto en ARS, ARS convertido a USD, caja USD y total USD',
+    display_currency: 'ARS',
+    datasets: { movimientos: true, presupuestos: false },
+    filtros_schema: {
+      fecha: { enabled: false },
+      proyectos: { enabled: false },
+      tipo: { enabled: false },
+      categorias: { enabled: false },
+    },
+    layout: [
+      {
+        type: 'summary_table',
+        titulo: 'Saldos por Proyecto',
+        agrupar_por: 'proyecto',
+        columnas: [
+          { id: 'saldo_ars', titulo: 'Saldo ARS', operacion: 'saldo_neto', campo: 'total', formato: 'currency', moneda_movimiento: 'ARS', display_currency: 'ARS' },
+          { id: 'saldo_ars_usd', titulo: 'Saldo ARS a USD', operacion: 'saldo_neto', campo: 'total', formato: 'currency', moneda_movimiento: 'ARS', display_currency: 'USD' },
+          { id: 'saldo_usd', titulo: 'Saldo USD', operacion: 'saldo_neto', campo: 'total', formato: 'currency', moneda_movimiento: 'USD', display_currency: 'USD' },
+          { id: 'total_usd', titulo: 'Total USD', operacion: 'saldo_neto', campo: 'total', formato: 'currency', moneda_movimiento: ['ARS', 'USD'], display_currency: 'USD' },
+        ],
+        mostrar_total: true,
+      },
+    ],
+  },
+  {
     nombre: 'Control Presupuestario Mensual',
     descripcion: 'Seguimiento mensual por categorías, total acumulado y % de avance',
     display_currency: 'ARS',

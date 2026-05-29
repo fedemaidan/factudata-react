@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
+import { useRouter } from "next/router";
 import { Container, Box, Snackbar, Alert, Button, Stack, Typography } from "@mui/material";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import { Layout as DashboardLayout } from "src/layouts/dashboard/layout";
 import TableComponent from "src/components/TableComponent";
 import DhnDriveService from "src/services/dhn/cargarUrlDriveService";
@@ -24,9 +26,38 @@ import FiltroErrores from "src/components/dhn/sync/FiltroErrores";
 
 const DEFAULT_PAGE_LIMIT = 50;
 
-const SyncErrorsPage = () => {
+const VALID_TIPOS = ["parte", "licencia", "horas"];
+const VALID_ESTADOS = ["ok", "incompleto", "error", "duplicado", "ignored"];
+
+const parseDateParam = (value) => {
+  if (typeof value !== "string" || !value) return null;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+
+const buildInitialFilters = (query = {}) => {
+  const initial = {};
+  if (typeof query.tipo === "string" && VALID_TIPOS.includes(query.tipo)) {
+    initial.tipo = query.tipo;
+  }
+  if (typeof query.estado === "string" && VALID_ESTADOS.includes(query.estado)) {
+    initial.estado = query.estado;
+  }
+  const desde = parseDateParam(query.fechaDetectadaDesde);
+  const hasta = parseDateParam(query.fechaDetectadaHasta);
+  if (desde) initial.fechaDetectadaDesde = desde;
+  if (hasta) initial.fechaDetectadaHasta = hasta;
+  if (typeof query.search === "string" && query.search.trim()) {
+    const trimmed = query.search.trim();
+    initial.searchTerm = trimmed;
+    initial.searchQuery = trimmed;
+  }
+  return initial;
+};
+
+const SyncErrorsContent = ({ initialFilters }) => {
+  const router = useRouter();
   const [items, setItems] = useState([]);
-  console.log("[DHN Errores] SyncErrorsPage", items);
   const [isLoading, setIsLoading] = useState(true);
   const [alert, setAlert] = useState({ open: false, message: "", severity: "error" });
   const [pagination, setPagination] = useState({
@@ -37,6 +68,7 @@ const SyncErrorsPage = () => {
   const [resolvedPayloads, setResolvedPayloads] = useState({});
   const { limit: paginationLimit, offset: paginationOffset } = pagination;
   const filterContext = useErroresSyncFilters({
+    initialFilters,
     onSearchApply: () =>
       setPagination((prev) => ({
         ...prev,
@@ -643,6 +675,17 @@ const SyncErrorsPage = () => {
         </Snackbar>
 
         <Stack>
+          <Box sx={{ display: "flex", justifyContent: "flex-start", mb: 1 }}>
+            <Button
+              variant="text"
+              size="small"
+              startIcon={<ArrowBackIcon />}
+              onClick={() => router.push("/dhn/sync")}
+              sx={{ textTransform: "none", fontWeight: 500 }}
+            >
+              Cambiar filtros
+            </Button>
+          </Box>
           <FiltroErrores
             filterContext={filterContext}
             onActualizar={fetchDetails}
@@ -875,6 +918,19 @@ const SyncErrorsPage = () => {
       </Container>
     </DashboardLayout>
   );
+};
+
+const SyncErrorsPage = () => {
+  const router = useRouter();
+  if (!router.isReady) {
+    return (
+      <DashboardLayout title="Errores de sincronización">
+        <Container maxWidth="xl" />
+      </DashboardLayout>
+    );
+  }
+  const initialFilters = buildInitialFilters(router.query);
+  return <SyncErrorsContent initialFilters={initialFilters} />;
 };
 
 export default SyncErrorsPage;

@@ -23,6 +23,7 @@ const BLOCK_TYPES = [
 
 const OPERACIONES = [
   { value: 'sum', label: 'Suma' },
+  { value: 'saldo_neto', label: 'Saldo neto' },
   { value: 'count', label: 'Contar' },
   { value: 'avg', label: 'Promedio' },
   { value: 'min', label: 'Mínimo' },
@@ -52,6 +53,20 @@ const FILTRO_TIPOS = [
   { value: '', label: 'Todos' },
   { value: 'egreso', label: 'Solo Egresos' },
   { value: 'ingreso', label: 'Solo Ingresos' },
+];
+
+const MONEDAS_MOVIMIENTO = [
+  { value: '', label: 'Todas' },
+  { value: 'ARS', label: 'Solo ARS' },
+  { value: 'USD', label: 'Solo USD' },
+  { value: 'CAC', label: 'Solo CAC' },
+];
+
+const MONEDAS_CALCULO = [
+  { value: '', label: 'Moneda del reporte' },
+  { value: 'ARS', label: 'ARS' },
+  { value: 'USD', label: 'USD Blue' },
+  { value: 'CAC', label: 'CAC' },
 ];
 
 const AGRUPAR_POR = [
@@ -581,7 +596,7 @@ function SummaryTableConfig({ block, onChange, excludeOptions = {} }) {
                 label="Operación"
                 onChange={(e) => updateColumna(idx, 'operacion', e.target.value)}
               >
-                {OPERACIONES.filter((o) => ['sum', 'count', 'avg'].includes(o.value)).map((o) => (
+                {OPERACIONES.filter((o) => ['sum', 'saldo_neto', 'count', 'avg'].includes(o.value)).map((o) => (
                   <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>
                 ))}
               </Select>
@@ -607,6 +622,30 @@ function SummaryTableConfig({ block, onChange, excludeOptions = {} }) {
               >
                 {FILTRO_TIPOS.map((ft) => (
                   <MenuItem key={ft.value} value={ft.value}>{ft.label}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <FormControl size="small" sx={{ flex: 1, minWidth: 130 }}>
+              <InputLabel>Moneda mov.</InputLabel>
+              <Select
+                value={Array.isArray(c.moneda_movimiento) ? (c.moneda_movimiento[0] || '') : (c.moneda_movimiento || '')}
+                label="Moneda mov."
+                onChange={(e) => updateColumna(idx, 'moneda_movimiento', e.target.value || null)}
+              >
+                {MONEDAS_MOVIMIENTO.map((m) => (
+                  <MenuItem key={m.value} value={m.value}>{m.label}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <FormControl size="small" sx={{ flex: 1, minWidth: 150 }}>
+              <InputLabel>Calcular en</InputLabel>
+              <Select
+                value={c.display_currency || ''}
+                label="Calcular en"
+                onChange={(e) => updateColumna(idx, 'display_currency', e.target.value || null)}
+              >
+                {MONEDAS_CALCULO.map((m) => (
+                  <MenuItem key={m.value} value={m.value}>{m.label}</MenuItem>
                 ))}
               </Select>
             </FormControl>

@@ -202,7 +202,7 @@ const ReportDetailPage = () => {
       presupuestos,
       displayCurrencies,
       cotizaciones,
-      { usuariosEmpresa, filters },
+      { usuariosEmpresa, filters, proyectos },
     );
     exportReportToXLSX(selectedReport, results, filteredMovimientos, displayCurrencies);
   };
@@ -218,7 +218,7 @@ const ReportDetailPage = () => {
         displayCurrencies,
         cotizaciones,
         filters,
-        reportContext: { usuariosEmpresa, filters },
+        reportContext: { usuariosEmpresa, filters, proyectos },
       });
     } catch (err) {
       console.error('Error exportando PDF:', err);
@@ -458,7 +458,7 @@ const ReportDetailPage = () => {
                       presupuestos={presupuestos}
                       displayCurrencies={displayCurrencies}
                       cotizaciones={cotizaciones}
-                      reportContext={{ usuariosEmpresa, filters }}
+                      reportContext={{ usuariosEmpresa, filters, proyectos }}
                       onBlockConfigChange={handleUpdateBlockConfig}
                     />
                   )}
