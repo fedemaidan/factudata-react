@@ -56,6 +56,10 @@ const DrillDownDialog = ({ open, onClose, movimientos = [], titulo = '', display
 
     if (currency === 'USD') {
       if (monedaMov === 'USD') return total;
+      if (monedaMov === 'ARS' && Number(mov?.dolar_referencia) > 0) {
+        return total / Number(mov.dolar_referencia);
+      }
+      if (mov?.total_dolar != null && !isNaN(mov.total_dolar)) return Number(mov.total_dolar);
       if (eqTotal.usd_blue != null && !isNaN(eqTotal.usd_blue)) return Number(eqTotal.usd_blue);
       return null;
     }
