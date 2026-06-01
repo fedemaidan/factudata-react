@@ -5,7 +5,6 @@ import {
   Paper, Typography, Chip, TablePagination, IconButton, Stack, Box,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
-import DownloadIcon from '@mui/icons-material/Download';
 import ImageIcon from '@mui/icons-material/Image';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import { formatValue } from 'src/tools/reportEngine';
@@ -26,6 +25,7 @@ const DrillDownDialog = ({ open, onClose, movimientos = [], titulo = '', display
   const [imgPreview, setImgPreview] = useState({ open: false, url: null });
   const [showUsd, setShowUsd] = useState(false);
   const [showCac, setShowCac] = useState(false);
+  const [nativeCurrencyFilter, setNativeCurrencyFilter] = useState('ALL');
   const rowsPerPage = 25;
 
   const openImg = (url) => setImgPreview({ open: true, url });
@@ -40,6 +40,7 @@ const DrillDownDialog = ({ open, onClose, movimientos = [], titulo = '', display
     if (!open) return;
     setShowUsd(false);
     setShowCac(false);
+    setNativeCurrencyFilter('ALL');
     setPage(0);
   }, [open, displayCurrency]);
 
@@ -88,12 +89,16 @@ const DrillDownDialog = ({ open, onClose, movimientos = [], titulo = '', display
   };
 
   const sortedMovs = useMemo(() => {
-    return [...movimientos].sort((a, b) => {
+    const filtered = nativeCurrencyFilter === 'ALL'
+      ? movimientos
+      : movimientos.filter((m) => String(m.moneda || displayCurrency).toUpperCase() === nativeCurrencyFilter);
+
+    return [...filtered].sort((a, b) => {
       const da = a.fecha_factura?.toDate?.() || a.fecha_factura?.seconds ? new Date(a.fecha_factura.seconds * 1000) : new Date(a.fecha_factura || a.fecha || 0);
       const db = b.fecha_factura?.toDate?.() || b.fecha_factura?.seconds ? new Date(b.fecha_factura.seconds * 1000) : new Date(b.fecha_factura || b.fecha || 0);
       return db.getTime() - da.getTime();
     });
-  }, [movimientos]);
+  }, [movimientos, nativeCurrencyFilter, displayCurrency]);
 
   const visibleRows = useMemo(
     () => sortedMovs.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage),
@@ -106,21 +111,25 @@ const DrillDownDialog = ({ open, onClose, movimientos = [], titulo = '', display
     let running = 0;
 
     for (const m of ordered) {
-      const amount = getAmountByCurrency(m, 'ARS');
+      const amount = nativeCurrencyFilter === 'ALL'
+        ? Number(m?.total ?? m?.monto ?? 0)
+        : getAmountByCurrency(m, nativeCurrencyFilter);
       if (amount != null && !isNaN(amount)) {
-        running += Number(amount);
+        running += m.type === 'egreso' ? -Math.abs(Number(amount)) : Math.abs(Number(amount));
       }
       map[m.id] = running;
     }
 
     return map;
-  }, [sortedMovs]);
+  }, [sortedMovs, nativeCurrencyFilter, displayCurrency]);
 
   const totalesPorMoneda = useMemo(() => {
     const map = {};
     for (const m of movimientos) {
       const cur = m.moneda || displayCurrency;
-      map[cur] = (map[cur] || 0) + (m.total ?? m.monto ?? 0);
+      const amount = Number(m.total ?? m.monto ?? 0);
+      if (isNaN(amount)) continue;
+      map[cur] = (map[cur] || 0) + (m.type === 'egreso' ? -Math.abs(amount) : Math.abs(amount));
     }
     return map;
   }, [movimientos, displayCurrency]);
@@ -135,11 +144,43 @@ const DrillDownDialog = ({ open, onClose, movimientos = [], titulo = '', display
             </Typography>
             <Stack direction="row" spacing={1} alignItems="center">
               <Typography variant="body2" color="text.secondary">
-                {movimientos.length} movimientos
+                {sortedMovs.length} de {movimientos.length} movimientos
               </Typography>
-              <Chip label="ARS" size="small" color="primary" variant="filled" />
               <Chip
-                label="USD"
+                label="Todos"
+                size="small"
+                color="default"
+                variant={nativeCurrencyFilter === 'ALL' ? 'filled' : 'outlined'}
+                onClick={() => {
+                  setNativeCurrencyFilter('ALL');
+                  setPage(0);
+                }}
+                sx={{ cursor: 'pointer' }}
+              />
+              <Chip
+                label="Movimientos ARS"
+                size="small"
+                color="primary"
+                variant={nativeCurrencyFilter === 'ARS' ? 'filled' : 'outlined'}
+                onClick={() => {
+                  setNativeCurrencyFilter('ARS');
+                  setPage(0);
+                }}
+                sx={{ cursor: 'pointer' }}
+              />
+              <Chip
+                label="Movimientos USD"
+                size="small"
+                color="success"
+                variant={nativeCurrencyFilter === 'USD' ? 'filled' : 'outlined'}
+                onClick={() => {
+                  setNativeCurrencyFilter('USD');
+                  setPage(0);
+                }}
+                sx={{ cursor: 'pointer' }}
+              />
+              <Chip
+                label="Equiv. USD"
                 size="small"
                 color="success"
                 variant={showUsd ? 'filled' : 'outlined'}
@@ -157,7 +198,7 @@ const DrillDownDialog = ({ open, onClose, movimientos = [], titulo = '', display
               {Object.entries(totalesPorMoneda).map(([cur, total]) => (
                 <Chip
                   key={cur}
-                  label={formatValue(total, 'currency', cur)}
+                  label={`Saldo ${formatValue(total, 'currency', cur)}`}
                   size="small"
                   color="primary"
                   variant="outlined"
@@ -180,15 +221,15 @@ const DrillDownDialog = ({ open, onClose, movimientos = [], titulo = '', display
                 <TableCell sx={{ fontWeight: 700, backgroundColor: 'grey.100' }}>Categoría</TableCell>
                 <TableCell sx={{ fontWeight: 700, backgroundColor: 'grey.100' }}>Proveedor</TableCell>
                 <TableCell sx={{ fontWeight: 700, backgroundColor: 'grey.100' }}>Proyecto</TableCell>
-                <TableCell sx={{ fontWeight: 700, backgroundColor: 'grey.100' }}>Etapa</TableCell>
+                <TableCell sx={{ fontWeight: 700, backgroundColor: 'grey.100' }}>Subcategoría</TableCell>
                 <TableCell sx={{ fontWeight: 700, backgroundColor: 'grey.100' }}>Usuario</TableCell>
                 <TableCell sx={{ fontWeight: 700, backgroundColor: 'grey.100' }} align="right">
-                  Monto (ARS)
+                  Monto ({nativeCurrencyFilter === 'ALL' ? 'original' : nativeCurrencyFilter})
                 </TableCell>
                 <TableCell sx={{ fontWeight: 700, backgroundColor: 'grey.100' }} align="right">
-                  Acumulado (ARS)
+                  Saldo acum. ({nativeCurrencyFilter === 'ALL' ? 'original' : nativeCurrencyFilter})
                 </TableCell>
-                {showUsd && <TableCell sx={{ fontWeight: 700, backgroundColor: 'grey.100', color: 'success.main' }} align="right">USD</TableCell>}
+                {showUsd && <TableCell sx={{ fontWeight: 700, backgroundColor: 'grey.100', color: 'success.main' }} align="right">Equiv. USD</TableCell>}
                 {showCac && <TableCell sx={{ fontWeight: 700, backgroundColor: 'grey.100', color: 'secondary.main' }} align="right">CAC</TableCell>}
                 <TableCell sx={{ fontWeight: 700, backgroundColor: 'grey.100' }}>Notas</TableCell>
                 <TableCell sx={{ fontWeight: 700, backgroundColor: 'grey.100', textAlign: 'center' }}>Archivo</TableCell>
@@ -211,13 +252,21 @@ const DrillDownDialog = ({ open, onClose, movimientos = [], titulo = '', display
                   <TableCell>{m.categoria || '-'}</TableCell>
                   <TableCell>{m.nombre_proveedor || '-'}</TableCell>
                   <TableCell>{m.proyecto || '-'}</TableCell>
-                  <TableCell>{m.etapa || '-'}</TableCell>
+                  <TableCell>{m.subcategoria || '-'}</TableCell>
                   <TableCell>{m.usuario_nombre || m.usuario || '-'}</TableCell>
                   <TableCell align="right" sx={{ whiteSpace: 'nowrap', fontWeight: 500 }}>
-                    {formatCurrencyValue(getAmountByCurrency(m, 'ARS'), 'ARS')}
+                    {formatCurrencyValue(
+                      nativeCurrencyFilter === 'ALL'
+                        ? Number(m?.total ?? m?.monto ?? 0)
+                        : getAmountByCurrency(m, nativeCurrencyFilter),
+                      nativeCurrencyFilter === 'ALL' ? (m.moneda || displayCurrency) : nativeCurrencyFilter,
+                    )}
                   </TableCell>
                   <TableCell align="right" sx={{ whiteSpace: 'nowrap', color: 'text.secondary', fontWeight: 500 }}>
-                    {formatCurrencyValue(acumuladoById[m.id], 'ARS')}
+                    {formatCurrencyValue(
+                      acumuladoById[m.id],
+                      nativeCurrencyFilter === 'ALL' ? (m.moneda || displayCurrency) : nativeCurrencyFilter,
+                    )}
                   </TableCell>
                   {showUsd && (
                     <TableCell align="right" sx={{ whiteSpace: 'nowrap', color: 'success.main' }}>
