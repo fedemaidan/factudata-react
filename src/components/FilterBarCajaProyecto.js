@@ -17,6 +17,12 @@ import { subDays, startOfMonth, endOfMonth } from 'date-fns';
 import FiltrosGuardadosService from 'src/services/filtrosGuardadosService';
 import { FILTER_ARRAY_KEYS, FILTER_DATE_KEYS, defaultMovimientosFilters } from 'src/utils/parseData';
 
+// El calendario de react-datepicker se renderiza en un portal a <body> para
+// escapar el `overflow: hidden` del contenedor de filtros, y con posición fixed
+// para no quedar tapado por las celdas sticky de la tabla (ver react-datepicker.css).
+const DATEPICKER_PORTAL_ID = 'datepicker-portal';
+const DATEPICKER_POPPER_PROPS = { strategy: 'fixed' };
+
 const DEBUG_CAJA_FILTERBAR = process.env.NODE_ENV !== 'production';
 
 const formatDebugValue = (value) => {
@@ -660,6 +666,8 @@ export const FilterBarCajaProyecto = ({
           {/* Rango de fechas compacto */}
           <Stack direction="row" spacing={0.5} alignItems="center" sx={{ flexShrink: 0 }}>
             <DatePicker
+              portalId={DATEPICKER_PORTAL_ID}
+              popperProps={DATEPICKER_POPPER_PROPS}
               selected={filters.fechaDesde}
               onChange={(date) => set('fechaDesde', date)}
               selectsStart
@@ -672,6 +680,8 @@ export const FilterBarCajaProyecto = ({
             />
             <Typography variant="body2" color="text.secondary" sx={{ px: 0.25 }}>–</Typography>
             <DatePicker
+              portalId={DATEPICKER_PORTAL_ID}
+              popperProps={DATEPICKER_POPPER_PROPS}
               selected={filters.fechaHasta}
               onChange={(date) => set('fechaHasta', date)}
               selectsEnd
@@ -773,6 +783,8 @@ export const FilterBarCajaProyecto = ({
               </Typography>
               <Stack direction="row" spacing={1} alignItems="center">
                 <DatePicker
+                  portalId={DATEPICKER_PORTAL_ID}
+                  popperProps={DATEPICKER_POPPER_PROPS}
                   selected={filters.fechaPagoDesde}
                   onChange={(date) => set('fechaPagoDesde', date)}
                   selectsStart
@@ -784,6 +796,8 @@ export const FilterBarCajaProyecto = ({
                   customInput={<DateInput />}
                 />
                 <DatePicker
+                  portalId={DATEPICKER_PORTAL_ID}
+                  popperProps={DATEPICKER_POPPER_PROPS}
                   selected={filters.fechaPagoHasta}
                   onChange={(date) => set('fechaPagoHasta', date)}
                   selectsEnd
@@ -805,6 +819,8 @@ export const FilterBarCajaProyecto = ({
           </Typography>
           <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: 'wrap', rowGap: 1 }}>
             <DatePicker
+              portalId={DATEPICKER_PORTAL_ID}
+              popperProps={DATEPICKER_POPPER_PROPS}
               selected={filters.fechaCreacionDesde}
               onChange={(date) => set('fechaCreacionDesde', date)}
               selectsStart
@@ -816,6 +832,8 @@ export const FilterBarCajaProyecto = ({
               customInput={<DateInput />}
             />
             <DatePicker
+              portalId={DATEPICKER_PORTAL_ID}
+              popperProps={DATEPICKER_POPPER_PROPS}
               selected={filters.fechaCreacionHasta}
               onChange={(date) => set('fechaCreacionHasta', date)}
               selectsEnd
@@ -828,6 +846,8 @@ export const FilterBarCajaProyecto = ({
               customInput={<DateInput />}
             />
             <DatePicker
+              portalId={DATEPICKER_PORTAL_ID}
+              popperProps={DATEPICKER_POPPER_PROPS}
               selected={filters.fechaModificacionDesde}
               onChange={(date) => set('fechaModificacionDesde', date)}
               selectsStart
@@ -839,6 +859,8 @@ export const FilterBarCajaProyecto = ({
               customInput={<DateInput />}
             />
             <DatePicker
+              portalId={DATEPICKER_PORTAL_ID}
+              popperProps={DATEPICKER_POPPER_PROPS}
               selected={filters.fechaModificacionHasta}
               onChange={(date) => set('fechaModificacionHasta', date)}
               selectsEnd
