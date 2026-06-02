@@ -55,18 +55,34 @@ function repartirLargestRemainder(totalCentavos, items) {
 const aCentavos = (n) => Math.round((Number(n) || 0) * 100);
 const deCentavos = (c) => Math.round(c) / 100;
 
+const numOrNull = (v) =>
+  v != null && v !== '' && !Number.isNaN(Number(v)) ? Number(v) : null;
+
 export function plantillaRubrosToPresupuestoRubros(rubros = []) {
-  return (rubros || []).map((r) => ({
-    nombre: r.nombre || '',
-    monto: 0,
-    incidencia_objetivo_pct: parseIncidenciaSugerida(r.incidencia_pct_sugerida),
-    tareas: (r.tareas || []).map((t) => ({
+  return (rubros || []).map((r) => {
+    const tareas = (r.tareas || []).map((t) => ({
       descripcion: t.descripcion || '',
-      monto: null,
-      cantidad: t.cantidad || null,
+      // Valor unitario, cantidad y unidad preestablecidos en la plantilla
+      // (quedan editables en el presupuesto antes de guardar).
+      monto: numOrNull(t.monto),
+      cantidad: numOrNull(t.cantidad),
+      unidad: typeof t.unidad === 'string' ? t.unidad : '',
       incidencia_objetivo_pct: parseIncidenciaSugerida(t.incidencia_pct_sugerida),
-    })),
-  }));
+    }));
+    // El monto del rubro es derivado si los subrubros tienen valor; si no, se usa
+    // el monto preestablecido del rubro suelto.
+    const sumaEfectiva = tareas.reduce(
+      (s, t) => s + (Number(t.cantidad) || 1) * (Number(t.monto) || 0),
+      0
+    );
+    const montoRubro = sumaEfectiva > 0 ? sumaEfectiva : numOrNull(r.monto) || 0;
+    return {
+      nombre: r.nombre || '',
+      monto: montoRubro,
+      incidencia_objetivo_pct: parseIncidenciaSugerida(r.incidencia_pct_sugerida),
+      tareas,
+    };
+  });
 }
 
 export function sumaIncidenciasObjetivo(rubros) {
