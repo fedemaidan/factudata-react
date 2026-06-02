@@ -664,7 +664,7 @@ const PasoRevisarCategorias = forwardRef(({
                                   ? `Variante de "${categoria.mapeoA}"`
                                   : categoria.estado === 'nueva'
                                     ? 'Nueva - Se creará'
-                                    : 'Existe en Sorby'
+                                    : 'Ya existe'
                             }
                             color={
                               categoria.accion === 'mapear_a_existente'

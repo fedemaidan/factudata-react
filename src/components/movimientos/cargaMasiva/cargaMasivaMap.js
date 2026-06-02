@@ -1,27 +1,40 @@
-import { formatTimestamp } from 'src/utils/formatters';
-
 /**
  * Normaliza a YYYY-MM-DD para input type="date".
+ *
+ * Usa componentes UTC para los timestamps/ISO: las fechas de movimientos se persisten
+ * ancladas a las 13:30 (mediodía), así que el día calendario en UTC es estable y evita
+ * el corrimiento de -1 día que daban los getters locales en zonas negativas (UTC-3) cuando
+ * la fecha venía como medianoche UTC / ISO desde el OCR de fotos.
  */
 export function toDateInputValue(v) {
   if (!v && v !== 0) return '';
+  // Ya viene como YYYY-MM-DD
   if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
-  const ft = formatTimestamp(v);
-  if (ft && /^\d{4}-\d{2}-\d{2}$/.test(ft)) return ft;
+  // DD/MM/YYYY
   if (typeof v === 'string' && /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(v.trim())) {
     const [d, m, y] = v.trim().split('/');
     return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
   }
-  if (typeof v === 'string') {
-    const d = new Date(v);
-    if (!Number.isNaN(d.getTime())) {
-      const y = d.getFullYear();
-      const mo = String(d.getMonth() + 1).padStart(2, '0');
-      const da = String(d.getDate()).padStart(2, '0');
-      return `${y}-${mo}-${da}`;
+  // Firestore Timestamp ({seconds}/{_seconds} o .toDate()), ISO string, Date o epoch ms
+  let ms = null;
+  if (typeof v === 'object') {
+    if (typeof v.toDate === 'function') ms = v.toDate().getTime();
+    else {
+      const seconds = v.seconds !== undefined ? v.seconds : v._seconds;
+      if (seconds !== undefined) ms = seconds * 1000;
     }
+  } else if (typeof v === 'string') {
+    const parsed = Date.parse(v);
+    if (!Number.isNaN(parsed)) ms = parsed;
+  } else if (typeof v === 'number') {
+    ms = v;
   }
-  return '';
+  if (ms === null) return '';
+  const d = new Date(ms);
+  const y = d.getUTCFullYear();
+  const mo = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const da = String(d.getUTCDate()).padStart(2, '0');
+  return `${y}-${mo}-${da}`;
 }
 
 /**
