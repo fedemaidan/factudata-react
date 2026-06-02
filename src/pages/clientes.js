@@ -38,7 +38,9 @@ import UploadFileIcon from '@mui/icons-material/UploadFile';
 import EditIcon from '@mui/icons-material/Edit';
 import ImportarClientes from 'src/components/clientes/ImportarClientes';
 import ClienteDetalleDrawer from 'src/components/clientes/ClienteDetalleDrawer';
+import ClienteFormDrawer from 'src/components/clientes/ClienteFormDrawer';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
+import { useRouter } from 'next/router';
 import { useAuthContext } from 'src/contexts/auth-context';
 import { useSucursalContext } from 'src/contexts/sucursal-context';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
@@ -57,6 +59,7 @@ const renderEstadoCC = (resumen) => {
 };
 
 function ClientesContent({ empresa }) {
+  const router = useRouter();
   const empresaId = empresa?.id;
   const { sucursalId } = useSucursalContext();
 
@@ -69,21 +72,8 @@ function ClientesContent({ empresa }) {
   const [error, setError] = useState('');
   const [busqueda, setBusqueda] = useState('');
 
-  const [dialogOpen, setDialogOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
-  const [nuevo, setNuevo] = useState({ nombre: '', cuit: '', email: '', telefono: '' });
-  const [creating, setCreating] = useState(false);
-  const [createError, setCreateError] = useState('');
-  // Edición inline desde el listado
-  const [editOpen, setEditOpen] = useState(false);
-  const [editing, setEditing] = useState(null); // cliente original
-  const [editForm, setEditForm] = useState({
-    nombre: '', razon_social: '', cuit: '', direccion: '', telefono: '', email: '',
-    condicion_iva: '', descuento_default: '', limite_credito: '', notas: '', grupo_id: '',
-    tipo_fiscal: '', notas_pricing: '', ocasional: false,
-  });
-  const [savingEdit, setSavingEdit] = useState(false);
-  const [editError, setEditError] = useState('');
+  // Alta/edición de cliente: ClienteFormDrawer (ver formDrawer state abajo).
   // Multiselección + bulk asignar a grupo
   const [selectedIds, setSelectedIds] = useState([]);
   const [bulkOpen, setBulkOpen] = useState(false);
@@ -95,6 +85,7 @@ function ClientesContent({ empresa }) {
 
   const [linkSnack, setLinkSnack] = useState('');
   const [detalleId, setDetalleId] = useState(null);
+  const [formDrawer, setFormDrawer] = useState({ open: false, cliente: null });
 
   const fetchData = useCallback(async () => {
     if (!empresaId) return;
@@ -130,6 +121,16 @@ function ClientesContent({ empresa }) {
     fetchData();
   }, [fetchData]);
 
+  // Deep-link: ?cliente=<id> abre el drawer de detalle (redirect de /cliente/[id]).
+  useEffect(() => {
+    if (router.query?.cliente) {
+      setDetalleId(String(router.query.cliente));
+      const { cliente, ...rest } = router.query;
+      router.replace({ pathname: '/clientes', query: rest }, undefined, { shallow: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router.query?.cliente]);
+
   const filtrados = useMemo(() => {
     const q = busqueda.toLowerCase().trim();
     return (clientes || []).filter((c) => {
@@ -150,25 +151,6 @@ function ClientesContent({ empresa }) {
       return matchNombre || matchCuit;
     });
   }, [clientes, busqueda, sucursalId, filtroGrupo]);
-
-  const handleCrear = async () => {
-    if (!nuevo.nombre.trim()) {
-      setCreateError('El nombre es obligatorio');
-      return;
-    }
-    setCreating(true);
-    setCreateError('');
-    try {
-      await clienteService.crear(empresaId, nuevo);
-      setDialogOpen(false);
-      setNuevo({ nombre: '', cuit: '', email: '', telefono: '' });
-      await fetchData();
-    } catch {
-      setCreateError('Error al crear el cliente');
-    } finally {
-      setCreating(false);
-    }
-  };
 
   // ─── Multiselección ──────────────────────────────────────────────────────
   const toggleSelect = (id) => {
@@ -238,52 +220,8 @@ function ClientesContent({ empresa }) {
     }
   };
 
-  const openEditDialog = (c) => {
-    setEditing(c);
-    setEditForm({
-      nombre: c.nombre || '',
-      razon_social: c.razon_social || '',
-      cuit: c.cuit || '',
-      direccion: c.direccion || '',
-      telefono: c.telefono || '',
-      email: c.email || '',
-      condicion_iva: c.condicion_iva || '',
-      descuento_default: c.descuento_default ?? '',
-      limite_credito: c.limite_credito ?? '',
-      notas: c.notas || '',
-      grupo_id: c.grupo_id || '',
-      tipo_fiscal: c.tipo_fiscal || '',
-      notas_pricing: c.notas_pricing || '',
-      ocasional: !!c.ocasional,
-    });
-    setEditError('');
-    setEditOpen(true);
-  };
-
-  const handleSaveEdit = async () => {
-    if (!editing) return;
-    if (!editForm.nombre.trim()) { setEditError('El nombre es obligatorio'); return; }
-    setSavingEdit(true);
-    setEditError('');
-    try {
-      const id = editing._id || editing.id;
-      const payload = { ...editForm };
-      // Normalizar numéricos
-      payload.descuento_default = payload.descuento_default === '' ? null : Number(payload.descuento_default);
-      payload.limite_credito = payload.limite_credito === '' ? null : Number(payload.limite_credito);
-      payload.condicion_iva = payload.condicion_iva || null;
-      payload.grupo_id = payload.grupo_id || null;
-      payload.tipo_fiscal = payload.tipo_fiscal || null;
-      await clienteService.actualizar(empresaId, id, payload);
-      setEditOpen(false);
-      setEditing(null);
-      await fetchData();
-    } catch (err) {
-      setEditError(err?.response?.data?.error || err?.message || 'Error al actualizar cliente');
-    } finally {
-      setSavingEdit(false);
-    }
-  };
+  // Editar y nuevo van por el drawer (ClienteFormDrawer).
+  const openEditDialog = (c) => setFormDrawer({ open: true, cliente: c });
 
   const handleGenerarLink = async (c) => {
     try {
@@ -351,7 +289,7 @@ function ClientesContent({ empresa }) {
           <Button
             variant="contained"
             startIcon={<AddIcon />}
-            onClick={() => setDialogOpen(true)}
+            onClick={() => setFormDrawer({ open: true, cliente: null })}
           >
             Nuevo cliente
           </Button>
@@ -537,174 +475,6 @@ function ClientesContent({ empresa }) {
         )}
       </Paper>
 
-      <Dialog
-        open={dialogOpen}
-        onClose={() => !creating && setDialogOpen(false)}
-        maxWidth="xs"
-        fullWidth
-      >
-        <DialogTitle>Nuevo cliente</DialogTitle>
-        <DialogContent>
-          <Stack spacing={2} sx={{ mt: 1 }}>
-            <TextField
-              autoFocus
-              fullWidth
-              label="Nombre"
-              value={nuevo.nombre}
-              onChange={(e) => setNuevo({ ...nuevo, nombre: e.target.value })}
-            />
-            <TextField
-              fullWidth
-              label="CUIT"
-              value={nuevo.cuit}
-              onChange={(e) => setNuevo({ ...nuevo, cuit: e.target.value })}
-            />
-            <TextField
-              fullWidth
-              label="Email"
-              value={nuevo.email}
-              onChange={(e) => setNuevo({ ...nuevo, email: e.target.value })}
-            />
-            <TextField
-              fullWidth
-              label="Teléfono"
-              value={nuevo.telefono}
-              onChange={(e) => setNuevo({ ...nuevo, telefono: e.target.value })}
-            />
-            {createError && <Alert severity="error">{createError}</Alert>}
-          </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDialogOpen(false)} disabled={creating}>
-            Cancelar
-          </Button>
-          <Button
-            variant="contained"
-            onClick={handleCrear}
-            disabled={creating || !nuevo.nombre.trim()}
-          >
-            {creating ? 'Creando…' : 'Crear'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Modal de edición de cliente */}
-      <Dialog
-        open={editOpen}
-        onClose={() => !savingEdit && setEditOpen(false)}
-        fullWidth
-        maxWidth="sm"
-      >
-        <DialogTitle>Editar cliente</DialogTitle>
-        <DialogContent>
-          <Stack spacing={2} sx={{ mt: 1 }}>
-            <TextField
-              autoFocus fullWidth label="Nombre" required
-              value={editForm.nombre}
-              onChange={(e) => setEditForm({ ...editForm, nombre: e.target.value })}
-            />
-            <TextField
-              fullWidth label="Razón social"
-              value={editForm.razon_social}
-              onChange={(e) => setEditForm({ ...editForm, razon_social: e.target.value })}
-            />
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-              <TextField
-                fullWidth label="CUIT"
-                value={editForm.cuit}
-                onChange={(e) => setEditForm({ ...editForm, cuit: e.target.value })}
-              />
-              <TextField
-                fullWidth select label="Condición IVA"
-                value={editForm.condicion_iva}
-                onChange={(e) => setEditForm({ ...editForm, condicion_iva: e.target.value })}
-              >
-                <MenuItem value=""><em>—</em></MenuItem>
-                <MenuItem value="consumidor_final">Consumidor final</MenuItem>
-                <MenuItem value="monotributo">Monotributo</MenuItem>
-                <MenuItem value="responsable_inscripto">Responsable inscripto</MenuItem>
-                <MenuItem value="exento">Exento</MenuItem>
-              </TextField>
-            </Stack>
-            <TextField
-              fullWidth label="Dirección"
-              value={editForm.direccion}
-              onChange={(e) => setEditForm({ ...editForm, direccion: e.target.value })}
-            />
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-              <TextField
-                fullWidth label="Teléfono"
-                value={editForm.telefono}
-                onChange={(e) => setEditForm({ ...editForm, telefono: e.target.value })}
-              />
-              <TextField
-                fullWidth label="Email"
-                value={editForm.email}
-                onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
-              />
-            </Stack>
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-              <TextField
-                fullWidth label="Descuento default (%)" type="number"
-                value={editForm.descuento_default}
-                onChange={(e) => setEditForm({ ...editForm, descuento_default: e.target.value })}
-              />
-              <TextField
-                fullWidth select label="Tipo fiscal"
-                value={editForm.tipo_fiscal}
-                onChange={(e) => setEditForm({ ...editForm, tipo_fiscal: e.target.value })}
-              >
-                <MenuItem value=""><em>—</em></MenuItem>
-                <MenuItem value="persona">Persona</MenuItem>
-                <MenuItem value="srl">SRL</MenuItem>
-                <MenuItem value="fideicomiso">Fideicomiso</MenuItem>
-              </TextField>
-            </Stack>
-            <TextField
-              fullWidth label="Notas de precio (referencia)"
-              placeholder='Ej: "medio IVA", "ojo no paga rápido"'
-              value={editForm.notas_pricing}
-              onChange={(e) => setEditForm({ ...editForm, notas_pricing: e.target.value })}
-            />
-            <TextField
-              fullWidth select label="Grupo"
-              value={editForm.grupo_id}
-              onChange={(e) => setEditForm({ ...editForm, grupo_id: e.target.value })}
-            >
-              <MenuItem value=""><em>Sin grupo</em></MenuItem>
-              {grupos.map((g) => (
-                <MenuItem key={g._id} value={g._id}>{g.nombre}</MenuItem>
-              ))}
-            </TextField>
-            <TextField
-              fullWidth multiline minRows={2} label="Notas"
-              value={editForm.notas}
-              onChange={(e) => setEditForm({ ...editForm, notas: e.target.value })}
-            />
-            {editError && <Alert severity="error">{editError}</Alert>}
-          </Stack>
-        </DialogContent>
-        <DialogActions>
-          {editForm.ocasional && (
-            <Button
-              color="warning"
-              sx={{ mr: 'auto' }}
-              disabled={savingEdit}
-              onClick={() => setEditForm({ ...editForm, ocasional: false })}
-            >
-              Promover a cliente
-            </Button>
-          )}
-          <Button onClick={() => setEditOpen(false)} disabled={savingEdit}>Cancelar</Button>
-          <Button
-            variant="contained"
-            onClick={handleSaveEdit}
-            disabled={savingEdit || !editForm.nombre.trim()}
-          >
-            {savingEdit ? 'Guardando…' : 'Guardar'}
-          </Button>
-        </DialogActions>
-      </Dialog>
 
       {/* Modal: asignar bulk a grupo */}
       <Dialog
@@ -804,6 +574,15 @@ function ClientesContent({ empresa }) {
         onClose={() => setDetalleId(null)}
         onChanged={() => fetchData()}
         onEdit={(c) => { setDetalleId(null); openEditDialog(c); }}
+      />
+
+      <ClienteFormDrawer
+        open={formDrawer.open}
+        cliente={formDrawer.cliente}
+        empresaId={empresaId}
+        grupos={grupos}
+        onClose={() => setFormDrawer({ open: false, cliente: null })}
+        onSaved={() => fetchData()}
       />
     </Container>
   );
