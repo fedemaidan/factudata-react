@@ -75,7 +75,7 @@ export const SideNavDHN = ({
     },
     {
       title: "Errores",
-      path: "/dhn/sync/errores",
+      path: "/dhn/sync",
       icon: <SvgIcon fontSize="small"><ErrorOutlineIcon /></SvgIcon>,
     },
     {

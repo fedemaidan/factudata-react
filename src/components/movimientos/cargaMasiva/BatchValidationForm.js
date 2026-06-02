@@ -19,8 +19,8 @@ import {
   getOptionsFromContext,
 } from 'src/components/movementFieldsConfig';
 import { formatNumberWithThousands, parsearMonto } from 'src/utils/celulandia/separacionMiles';
-import { formatTimestamp } from 'src/utils/formatters';
 import { normalizarNombre } from 'src/utils/normalizarNombre';
+import { toDateInputValue } from './cargaMasivaMap';
 
 const MONEY_FIELDS = new Set([
   'total',
@@ -127,14 +127,9 @@ const BatchValidationForm = ({
   );
 
   const shouldShowProyecto = Boolean(camposConfig.proyecto);
-  // Si el valor ya viene como YYYY-MM-DD (lo que produce toDateInputValue y lo
-  // que espera <input type="date">), lo usamos tal cual. Pasarlo por
-  // formatTimestamp haría un round-trip por Date que, para fechas a medianoche
-  // UTC, resta un día en zonas horarias negativas (ej. GMT-3 mostraba 14 en vez de 15).
-  const formatFecha = (val) => {
-    if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(val)) return val;
-    return formatTimestamp(val) || '';
-  };
+  // input type="date" requiere YYYY-MM-DD. toDateInputValue normaliza con componentes UTC
+  // (evita el -1 día que daba formatTimestamp con getters locales en UTC-3).
+  const formatFecha = (val) => toDateInputValue(val);
 
   const handleFieldChange = (name, value) => onFormChange({ ...form, [name]: value });
 

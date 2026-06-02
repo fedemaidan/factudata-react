@@ -396,6 +396,7 @@ function FilaPago({ row, onAnular, movimientosPorId = {} }) {
         <TableCell sx={{ whiteSpace: 'nowrap' }}>
           {pago.fecha_pago ? formatTimestamp(pago.fecha_pago, 'DIA/MES/ANO') : '—'}
         </TableCell>
+        <TableCell />
         <TableCell>
           <Stack direction="row" spacing={0.5} alignItems="center">
             <PaymentsIcon fontSize="small" sx={{ color: anulado ? 'text.disabled' : 'success.main' }} />
@@ -464,7 +465,7 @@ function FilaPago({ row, onAnular, movimientosPorId = {} }) {
 
       {expandible && (
         <TableRow>
-          <TableCell colSpan={9} sx={{ py: 0, px: 0, borderBottom: expandido ? undefined : 'none' }}>
+          <TableCell colSpan={10} sx={{ py: 0, px: 0, borderBottom: expandido ? undefined : 'none' }}>
             <Collapse in={expandido} timeout="auto" unmountOnExit>
               <Box sx={{ px: 2, py: 1.5, bgcolor: 'grey.50' }}>
                 {tieneImputaciones && (
@@ -566,6 +567,22 @@ function FilaMovimiento({ row }) {
       <TableCell sx={{ width: 28 }} />
       <TableCell sx={{ whiteSpace: 'nowrap' }}>
         {m.fecha_factura ? formatTimestamp(m.fecha_factura, 'DIA/MES/ANO') : '—'}
+      </TableCell>
+      <TableCell sx={{ whiteSpace: 'nowrap' }}>
+        <Typography
+          component="a"
+          href={`/movementForm?movimientoId=${m._id || m.id}&lastPageName=Proveedor&lastPageUrl=${typeof window !== 'undefined' ? window.location.pathname + window.location.search : ''}`}
+          target="_blank"
+          rel="noopener"
+          variant="body2"
+          sx={{
+            color: m.codigo_operacion ? 'primary.main' : 'text.disabled',
+            textDecoration: 'none',
+            '&:hover': { color: 'primary.main', textDecoration: 'underline' },
+          }}
+        >
+          {m.codigo_operacion || 'ver'}
+        </Typography>
       </TableCell>
       <TableCell sx={{ maxWidth: 180 }}>
         <Stack direction="row" spacing={0.5} alignItems="center">
@@ -876,6 +893,7 @@ function TabCuentaCorriente({
                     Fecha
                   </TableSortLabel>
                 </TableCell>
+                <TableCell>Código</TableCell>
                 <TableCell>Detalle</TableCell>
                 <TableCell>Obra</TableCell>
                 <TableCell align="right">Debe</TableCell>

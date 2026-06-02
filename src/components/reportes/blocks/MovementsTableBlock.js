@@ -1,14 +1,19 @@
 import React, { useState, useMemo } from 'react';
 import {
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
-  Paper, Typography, TablePagination, Chip, Box,
+  Paper, Typography, TablePagination, Chip, Box, IconButton, Dialog,
+  DialogTitle, DialogContent,
 } from '@mui/material';
+import CloseIcon from '@mui/icons-material/Close';
+import ImageIcon from '@mui/icons-material/Image';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import { formatValue } from 'src/tools/reportEngine';
 
 const COLUMN_LABELS = {
   fecha_factura: 'Fecha',
   tipo: 'Tipo',
   categoria: 'Categoría',
+  subcategoria: 'Subcategoría',
   proveedor_nombre: 'Proveedor',
   proyecto_nombre: 'Proyecto',
   monto_display: 'Monto',
@@ -21,6 +26,7 @@ const COLUMN_LABELS = {
   etapa: 'Etapa',
   estado: 'Estado',
   usuario_nombre: 'Usuario',
+  archivo: 'Archivo',
 };
 
 /** Resuelve label de columna, incluyendo columnas multi-moneda dinámicas */
@@ -48,10 +54,10 @@ const formatDate = (d) => {
 
 const MovementsTableBlock = ({ data, displayCurrency }) => {
   const [page, setPage] = useState(0);
+  const [imgPreview, setImgPreview] = useState({ open: false, url: null });
 
-  if (!data) return null;
-
-  const { columnas, rows, pageSize, totalRows } = data;
+  const { columnas = [], rows = [], pageSize, totalRows = 0 } = data || {};
+  const tableCurrency = data?.displayCurrency || displayCurrency;
   const rowsPerPage = pageSize || 25;
 
   const visibleRows = useMemo(
@@ -59,10 +65,12 @@ const MovementsTableBlock = ({ data, displayCurrency }) => {
     [rows, page, rowsPerPage],
   );
 
+  if (!data) return null;
+
   const renderCell = (row, col) => {
     // Columnas multi-moneda dinámicas (monto_display__ARS, ingreso_display__USD, etc.)
     if (col.match(/^(monto_display|subtotal_display|ingreso_display|egreso_display)__/)) {
-      const [base, currency] = col.split('__');
+      const [, currency] = col.split('__');
       const val = row[col];
       if (val == null) return '';
       return formatValue(val, 'currency', currency);
@@ -81,21 +89,35 @@ const MovementsTableBlock = ({ data, displayCurrency }) => {
           />
         );
       case 'monto_display':
-        return formatValue(row.monto_display, 'currency', displayCurrency);
+        return formatValue(row.monto_display, 'currency', tableCurrency);
       case 'subtotal_display':
-        return formatValue(row.subtotal_display, 'currency', displayCurrency);
+        return formatValue(row.subtotal_display, 'currency', tableCurrency);
       case 'ingreso_display':
-        return row.ingreso_display != null ? formatValue(row.ingreso_display, 'currency', displayCurrency) : '';
+        return row.ingreso_display != null ? formatValue(row.ingreso_display, 'currency', tableCurrency) : '';
       case 'egreso_display':
-        return row.egreso_display != null ? formatValue(row.egreso_display, 'currency', displayCurrency) : '';
+        return row.egreso_display != null ? formatValue(row.egreso_display, 'currency', tableCurrency) : '';
       case 'moneda':
         return row.moneda || 'ARS';
+      case 'subcategoria':
+        return row.subcategoria || '-';
       case 'proveedor_nombre':
         return row.nombre_proveedor || '-';
       case 'proyecto_nombre':
         return row.proyecto || '-';
       case 'medioPago':
         return row.medio_pago || '-';
+      case 'usuario_nombre':
+        return row.usuario_nombre || row.usuario || '-';
+      case 'archivo':
+        return row.url_imagen ? (
+          <IconButton
+            size="small"
+            onClick={() => setImgPreview({ open: true, url: row.url_imagen })}
+            title="Ver comprobante"
+          >
+            <ImageIcon fontSize="small" />
+          </IconButton>
+        ) : '-';
       case 'notas':
         return (
           <Typography
@@ -168,6 +190,52 @@ const MovementsTableBlock = ({ data, displayCurrency }) => {
           labelDisplayedRows={({ from, to, count }) => `${from}-${to} de ${count}`}
         />
       )}
+      <Dialog open={imgPreview.open} onClose={() => setImgPreview({ open: false, url: null })} maxWidth="md" fullWidth>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          Comprobante
+          <Box>
+            {imgPreview.url && (
+              <IconButton
+                size="small"
+                component="a"
+                href={imgPreview.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                sx={{ mr: 1 }}
+              >
+                <OpenInNewIcon fontSize="small" />
+              </IconButton>
+            )}
+            <IconButton size="small" onClick={() => setImgPreview({ open: false, url: null })}>
+              <CloseIcon fontSize="small" />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+        <DialogContent dividers>
+          {imgPreview.url ? (
+            String(imgPreview.url).toLowerCase().includes('.pdf') ? (
+              <Box sx={{ height: '70vh' }}>
+                <iframe
+                  src={imgPreview.url}
+                  style={{ width: '100%', height: '100%', border: 'none' }}
+                  title="PDF Preview"
+                />
+              </Box>
+            ) : (
+              <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+                <Box
+                  component="img"
+                  src={imgPreview.url}
+                  alt="Comprobante"
+                  sx={{ maxWidth: '100%', maxHeight: '70vh', objectFit: 'contain' }}
+                />
+              </Box>
+            )
+          ) : (
+            <Typography color="text.secondary">Cargando...</Typography>
+          )}
+        </DialogContent>
+      </Dialog>
     </Box>
   );
 };

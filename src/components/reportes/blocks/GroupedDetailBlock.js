@@ -17,6 +17,7 @@ const COLUMN_LABELS = {
   fecha_factura: 'Fecha',
   tipo: 'Tipo',
   categoria: 'Categoría',
+  subcategoria: 'Subcategoría',
   proveedor_nombre: 'Proveedor',
   proyecto_nombre: 'Proyecto',
   monto_display: 'Monto',
@@ -55,9 +56,13 @@ const GroupedDetailBlock = ({ data, displayCurrency, displayCurrencies, onDrillD
   const [selectedGroup, setSelectedGroup] = useState(null); // null = todos
   const [page, setPage] = useState(0);
 
-  if (!data) return null;
-
-  const { groups, columnas, pageSize, currencies, chipsStyle } = data;
+  const {
+    groups = [],
+    columnas = [],
+    pageSize,
+    currencies,
+    chipsStyle,
+  } = data || {};
   const rowsPerPage = pageSize || 25;
   const isMulti = currencies && currencies.length > 1;
 
@@ -95,6 +100,8 @@ const GroupedDetailBlock = ({ data, displayCurrency, displayCurrencies, onDrillD
     () => sortedMovs.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage),
     [sortedMovs, page, rowsPerPage],
   );
+
+  if (!data) return null;
 
   // Reset page on group change
   const handleSelectGroup = (key) => {
@@ -137,6 +144,8 @@ const GroupedDetailBlock = ({ data, displayCurrency, displayCurrencies, onDrillD
         return row.type === 'egreso' ? formatValue(getAmount(row, displayCurrency, 'total'), 'currency', displayCurrency) : '';
       case 'moneda':
         return row.moneda || 'ARS';
+      case 'subcategoria':
+        return row.subcategoria || '-';
       case 'proveedor_nombre':
         return row.nombre_proveedor || '-';
       case 'proyecto_nombre':

@@ -51,10 +51,7 @@ const TrabajoRegistradoService = {
   },
 
   getByRange: async (fromDate, toDate, params = {}) => {
-    console.log("fromDate", fromDate)
-    console.log("toDate", toDate)
-    console.log("params", params)
-    const { limit = 500, offset = 0, estado, filtro } = params;
+    const { limit = 500, offset = 0, estado, filtro, q, sort } = params;
 
     const start = new Date(fromDate);
     start.setHours(0, 0, 0, 0);
@@ -69,9 +66,10 @@ const TrabajoRegistradoService = {
     });
     if (estado) queryParams.append('estado', estado);
     if (filtro) queryParams.append('filtro', filtro);
+    if (q) queryParams.append('q', q);
+    if (sort) queryParams.append('sort', sort);
 
     const response = await api.get(`/dhn/trabajo-diario-registrado?${queryParams}`);
-    console.log("response", response.data)
     return response.data;
   },
 

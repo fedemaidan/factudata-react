@@ -31,7 +31,17 @@ const TrabajadorService = {
   update: async (id, data) => {
     const response = await api.put(`/dhn/trabajadores/${id}`, data);
     return response.data;
-  }
+  },
+
+  ignorarDetectado: async ({ nombre, apellido, dni, motivoIgnorar }) => {
+    const response = await api.post(`/dhn/trabajadores/ignorar-detectado`, {
+      nombre,
+      apellido,
+      dni,
+      motivoIgnorar,
+    });
+    return response.data;
+  },
 }
 
 export default TrabajadorService;

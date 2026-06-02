@@ -43,10 +43,13 @@ const DEFAULT_FILTERS = {
   estado: "",
 };
 
-const useErroresSyncFilters = ({ onSearchApply } = {}) => {
+const useErroresSyncFilters = ({ onSearchApply, initialFilters } = {}) => {
   const searchInputRef = useRef(null);
   const isSearchTriggeredByInputRef = useRef(false);
-  const [filters, setFilters] = useState(DEFAULT_FILTERS);
+  const [filters, setFilters] = useState(() => ({
+    ...DEFAULT_FILTERS,
+    ...(initialFilters || {}),
+  }));
   const [searchVersion, setSearchVersion] = useState(0);
   const [filtersAnchorEl, setFiltersAnchorEl] = useState(null);
 

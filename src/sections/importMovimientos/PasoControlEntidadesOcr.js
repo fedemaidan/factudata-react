@@ -49,7 +49,7 @@ function buildFilas(items, getValor, catalogo, getNombreCatalogo, excluidas) {
   });
 }
 
-function FilaTabla({ fila, onAccionChange }) {
+function FilaTabla({ fila, onAccionChange, permitirSinAsignar = false }) {
   const chipColor = fila.estado === 'nueva' ? 'warning' : fila.estado === 'variante' ? 'info' : 'success';
   const chipLabel =
     fila.estado === 'variante'
@@ -65,6 +65,9 @@ function FilaTabla({ fila, onAccionChange }) {
           { value: 'usar_existente', label: `✓ Usar "${fila.coincidencia}"` },
           { value: 'crear_nueva', label: `✨ Crear como "${fila.detectado}"` },
         ];
+  if (permitirSinAsignar) {
+    opciones.push({ value: 'dejar_sin_asignar', label: '⏸️ Dejar sin asignar' });
+  }
 
   return (
     <TableRow>
@@ -142,7 +145,10 @@ const PasoControlEntidadesOcr = forwardRef(
         submitStep: async () => {
           const mapeoCat = new Map();
           filasCategorias.forEach((f) => {
-            const final = f.accion === 'usar_existente' && f.coincidencia ? f.coincidencia : f.detectado;
+            let final;
+            if (f.accion === 'dejar_sin_asignar') final = '';
+            else if (f.accion === 'usar_existente' && f.coincidencia) final = f.coincidencia;
+            else final = f.detectado;
             mapeoCat.set(f.detectadoNorm, final);
           });
           const mapeoProv = new Map();
@@ -156,7 +162,9 @@ const PasoControlEntidadesOcr = forwardRef(
               if (it.omitido) return it;
               const cat = it.form?.categoria;
               const prov = it.form?.nombre_proveedor;
-              const catFinal = cat ? mapeoCat.get(normalizarNombre(cat)) || cat : cat;
+              const catNorm = cat ? normalizarNombre(cat) : null;
+              // Usar .has() para respetar '' (dejar sin asignar), que con `|| cat` volvería a la original.
+              const catFinal = catNorm && mapeoCat.has(catNorm) ? mapeoCat.get(catNorm) : cat;
               const provFinal = prov ? mapeoProv.get(normalizarNombre(prov)) || prov : prov;
               if (catFinal === cat && provFinal === prov) return it;
               return {
@@ -201,7 +209,12 @@ const PasoControlEntidadesOcr = forwardRef(
                   </TableHead>
                   <TableBody>
                     {filasCategorias.map((f) => (
-                      <FilaTabla key={f.detectadoNorm} fila={f} onAccionChange={onAccionCategoria} />
+                      <FilaTabla
+                        key={f.detectadoNorm}
+                        fila={f}
+                        onAccionChange={onAccionCategoria}
+                        permitirSinAsignar
+                      />
                     ))}
                   </TableBody>
                 </Table>

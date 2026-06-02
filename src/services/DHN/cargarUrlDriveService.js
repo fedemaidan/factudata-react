@@ -199,6 +199,25 @@ const DhnDriveService = {
     }
   },
 
+  resyncUrlStorageBulk: async (urlStorageIds = [], extra = {}) => {
+    if (!Array.isArray(urlStorageIds) || urlStorageIds.length === 0) {
+      return { ok: false, error: { code: 0, message: "urlStorageIds es requerido" } };
+    }
+    try {
+      const payload = { urlStorageIds, ...(extra && typeof extra === "object" ? extra : {}) };
+      const response = await api.post(`/dhn/sync/url/resync-bulk`, payload);
+      return response?.data;
+    } catch (error) {
+      const code = error?.response?.status ?? 0;
+      const message =
+        error?.response?.data?.error?.message ||
+        error?.response?.data?.message ||
+        error?.message ||
+        "Error de red";
+      return { ok: false, error: { code, message } };
+    }
+  },
+
   getTrabajoById: async (id) => {
     if (!id) {
       return { ok: false, error: { code: 0, message: "id es requerido" } };

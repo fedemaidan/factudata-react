@@ -20,12 +20,18 @@ import {
     CircularProgress,
     Alert,
     Stack,
+    Button,
+    Collapse,
     IconButton,
     Tooltip,
     ToggleButton,
     ToggleButtonGroup,
 } from '@mui/material';
-import { Refresh as RefreshIcon } from '@mui/icons-material';
+import {
+    Refresh as RefreshIcon,
+    FileDownloadOutlined as DownloadIcon,
+    HistoryToggleOff as HistoryIcon,
+} from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import landingStatsService from 'src/services/landingStatsService';
@@ -40,60 +46,40 @@ const toYMD = (d) => {
 
 const Chart = dynamic(() => import('react-apexcharts'), { ssr: false });
 
-// ─── Config ──────────────────────────────────────────────
+// Fecha de corte: el flujo nuevo (landing → WhatsApp → agente) arranca el 1-jun-2026.
+// Antes de esta fecha la data corresponde al flujo viejo (modal web), que se muestra
+// sólo en la tabla histórica oculta.
+const CORTE_FLUJO_NUEVO = '2026-06-01';
 
-// Funnel principal (variante B ganadora — categoría es post-booking).
-// `eligioCategoria` legacy (pre-booking del A/B viejo) ya no se incrementa,
-// así que se quita del funnel para evitar CR inflados (>100%).
+// Go-live de la instrumentación de los pasos del flujo de WhatsApp (fue_whatsapp,
+// eligio_tipo_empresa, califico, dejo_email). LandingStats guarda por día, así que
+// el 2026-06-01 quedó parcial/sucio (Visitas todo el día, pasos nuevos solo
+// post-deploy). El preset arranca el primer día COMPLETO ya instrumentado para
+// no distorsionar las conversiones.
+const INICIO_FUNNEL_WA = '2026-06-02';
+
+// ─── Config: embudo nuevo (landing → WhatsApp) ───────────
+// Cada paso lee su valor de `metricaVal()` (ver abajo), que mapea la métrica al
+// campo correcto del payload de /api/agendar/stats. Algunos pasos intermedios del
+// flujo de WhatsApp todavía NO están instrumentados en el backend: leen claves de
+// `extraSteps` que hoy no se emiten y aparecen en "—" hasta que se cuenten.
 const METRICAS = [
-    { key: 'visitasLanding',     label: 'Visitas',          emoji: '👁️', color: '#6366f1', desc: 'Llegaron a la landing' },
-    { key: 'abrioModal',         label: 'Abrió modal',      emoji: '📆', color: '#0ea5e9', desc: 'Hicieron clic en "Agendar"' },
-    { key: 'eligioSlot',         label: 'Eligió horario',   emoji: '🕐', color: '#f59e0b', desc: 'Seleccionaron un slot' },
-    { key: 'agendaron',          label: 'Agendaron',        emoji: '✅', color: '#10b981', desc: 'Confirmaron la reunión' },
-    { key: 'eligioCategoriaPost', label: 'Eligió rubro',    emoji: '🏷️', color: '#8b5cf6', desc: 'Eligieron rubro después de agendar (opcional)' },
+    { key: 'visita',            label: 'Visitas',          emoji: '👁️', color: '#6366f1', desc: 'Llegaron a la landing',                 instrumentado: true },
+    { key: 'fueWhatsapp',       label: 'Click agendar',    emoji: '💬', color: '#25d366', desc: 'Click en "Agendar" → abrió WhatsApp',    instrumentado: true },
+    { key: 'nuevoContacto',     label: 'Nuevo Contacto',   emoji: '📲', color: '#22c55e', desc: 'Llegó el mensaje de WhatsApp',           instrumentado: true },
+    { key: 'eligioTipoEmpresa', label: 'Respondió rubro',  emoji: '🏷️', color: '#0ea5e9', desc: 'Respondió el tipo de empresa en WA',     instrumentado: true },
+    { key: 'califico',          label: 'Respondió obras',  emoji: '🏗️', color: '#f59e0b', desc: 'Respondió obras/sucursales (Lead)',      instrumentado: true },
+    { key: 'agendo',            label: 'Agendó',           emoji: '✅', color: '#10b981', desc: 'Confirmó la reunión (Schedule)',         instrumentado: true },
+    { key: 'dejoEmail',         label: 'Dejó email',       emoji: '📧', color: '#8b5cf6', desc: 'Dejó el email post-agenda',              instrumentado: true },
 ];
 
-// Embudo granular dentro del modal — viene de LandingStats.extraSteps.
-// Orden lógico del recorrido del usuario una vez que tocó un horario.
-const GRANULAR_FUNNEL = [
-    { key: 'eligioSlot',                 source: 'top',   label: 'Tocó horario',           emoji: '🕐', color: '#f59e0b', desc: 'Click en una píldora de slot (== eligioSlot)' },
-    { key: 'view_datos',                 source: 'extra', label: 'Vio form datos',         emoji: '📝', color: '#0ea5e9', desc: 'El step 2 se renderizó (form visible)' },
-    { key: 'focus_form',                 source: 'extra', label: 'Tocó un campo',          emoji: '👆', color: '#06b6d4', desc: 'Primer focus en cualquier input' },
-    { key: 'submit_attempt',             source: 'extra', label: 'Intentó confirmar',     emoji: '🚀', color: '#8b5cf6', desc: 'Clickeó "Confirmar agendamiento"' },
-    { key: 'agendaron',                  source: 'top',   label: 'Agendaron',              emoji: '✅', color: '#10b981', desc: 'Backend devolvió ok' },
+// Métricas del flujo VIEJO (modal web) — sólo para la tabla histórica pre 1-jun.
+const METRICAS_HIST = [
+    { key: 'visitasLanding', label: 'Visitas',        emoji: '👁️', color: '#6366f1' },
+    { key: 'abrioModal',     label: 'Abrió modal',    emoji: '📆', color: '#0ea5e9' },
+    { key: 'eligioSlot',     label: 'Eligió horario', emoji: '🕐', color: '#f59e0b' },
+    { key: 'agendaron',      label: 'Agendaron',      emoji: '✅', color: '#10b981' },
 ];
-
-// Errores que cortan el flujo en el form — no son parte del happy path.
-const GRANULAR_ERRORES = [
-    { key: 'submit_validation_error',    label: 'Error validación local',   emoji: '⚠️', color: '#f59e0b', desc: 'Faltaba nombre o email mal formado' },
-    { key: 'submit_backend_error',       label: 'Error backend',            emoji: '❌', color: '#ef4444', desc: 'POST /book devolvió ok:false' },
-    { key: 'submit_network_error',       label: 'Error red',                emoji: '🌐', color: '#ef4444', desc: 'fetch tiró excepción (CORS / 5xx / sin conexión)' },
-];
-
-// Abandonos: cierres del modal en cada step.
-const GRANULAR_CIERRES = [
-    { key: 'close_step_DatosA', label: 'Cerró en datos (A)', emoji: '🚪', color: '#94a3b8', desc: 'Variante A: cerró sin completar el form inicial' },
-    { key: 'close_step_1',  label: 'Cerró en horario',  emoji: '🚪', color: '#94a3b8', desc: 'Cerró el modal viendo el calendario' },
-    { key: 'close_step_2',  label: 'Cerró en form',     emoji: '🚪', color: '#94a3b8', desc: 'Cerró el modal viendo el form de datos' },
-];
-
-// Variante A (form-first): pasos exclusivos del flujo nuevo.
-// Estos extraSteps los emite el modal sólo cuando _variant === 'A'.
-const GRANULAR_VARIANTE_A = [
-    { key: 'view_datos_a',                 label: 'Vio form datos (A)',         emoji: '📝', color: '#0ea5e9', desc: 'Variante A: el modal abrió en el form inicial' },
-    { key: 'focus_form',                   label: 'Tocó un campo',              emoji: '👆', color: '#06b6d4', desc: 'Primer focus en cualquier input (compartido con B)' },
-    { key: 'submit_datos_a',               label: 'Completó datos (A)',         emoji: '🎯', color: '#10b981', desc: 'Variante A: submit del form inicial — acá dispara ViewContent del Pixel' },
-    { key: 'submit_datos_a_validation_error', label: 'Error validación (A)',    emoji: '⚠️', color: '#f59e0b', desc: 'Variante A: faltaba nombre o email/WA inválido en el form inicial' },
-];
-
-// Totales históricos congelados del A/B test finalizado (para mostrar como contexto)
-const HISTORICO = {
-    visitasLanding: 1819,
-    abrioModal: 155,
-    eligioCategoria: null, // no trackeado en el A/B test
-    eligioSlot: 45,
-    agendaron: 24,
-};
 
 // ─── Helpers ──────────────────────────────────────────────
 
@@ -108,18 +94,38 @@ function formatFechaDia(f) {
     return `${d}/${m}`;
 }
 
+/**
+ * Valor de una métrica del embudo nuevo. `src` puede ser `totales` o una fila
+ * diaria — ambos tienen campos planos + `extraSteps` como objeto. Centraliza el
+ * mapeo métrica → campo del backend para que los componentes no lo repitan.
+ */
+function metricaVal(src, key) {
+    if (!src) return 0;
+    const ex = src.extraSteps || {};
+    switch (key) {
+        case 'visita':            return Number(src.visitasLanding ?? src.visita ?? 0);
+        case 'fueWhatsapp':       return Number(ex.fue_whatsapp ?? ex.lead_whatsapp ?? 0);
+        case 'nuevoContacto':     return Number(ex.nuevo_contacto ?? 0);
+        case 'eligioTipoEmpresa': return Number(ex.eligio_tipo_empresa ?? 0);
+        case 'califico':          return Number(ex.califico ?? 0);
+        case 'agendo':            return Number(src.agendaron ?? ex.agendo ?? 0);
+        case 'dejoEmail':         return Number(ex.dejo_email ?? 0);
+        default:                  return Number(src[key] ?? 0);
+    }
+}
+
 // ─── Tarjetas de resumen ──────────────────────────────────
 
 function SummaryCards({ totales }) {
     return (
         <Grid container spacing={2}>
             {METRICAS.map((m, i) => {
-                const val = totales[m.key] || 0;
-                const prevVal = i > 0 ? (totales[METRICAS[i - 1].key] || 0) : null;
+                const val = metricaVal(totales, m.key);
+                const prevVal = i > 0 ? metricaVal(totales, METRICAS[i - 1].key) : null;
                 const conversion = prevVal !== null ? pct(val, prevVal) : null;
 
                 return (
-                    <Grid item xs={12} sm={6} md={3} key={m.key}>
+                    <Grid item xs={12} sm={6} md={2} key={m.key}>
                         <Card sx={{ borderTop: `3px solid ${m.color}`, height: '100%' }}>
                             <CardContent>
                                 <Typography variant="caption" color="text.secondary" gutterBottom display="block">
@@ -132,7 +138,7 @@ function SummaryCards({ totales }) {
                                     {conversion && conversion !== '—' && (
                                         <Chip
                                             size="small"
-                                            label={`${conversion} del paso ant.`}
+                                            label={conversion}
                                             sx={{ bgcolor: `${m.color}18`, color: m.color, fontWeight: 600, fontSize: 11 }}
                                         />
                                     )}
@@ -140,9 +146,9 @@ function SummaryCards({ totales }) {
                                 <Typography variant="body2" sx={{ mt: 0.5, color: 'text.secondary' }}>
                                     {m.emoji} {m.label}
                                 </Typography>
-                                {m.key === 'visitasLanding' && val === 0 && (
-                                    <Typography variant="caption" color="text.disabled" display="block" sx={{ mt: 0.5 }}>
-                                        Sin visitas en el período
+                                {!m.instrumentado && (
+                                    <Typography variant="caption" color="warning.main" display="block" sx={{ mt: 0.5 }}>
+                                        ⚠️ Pendiente de instrumentar
                                     </Typography>
                                 )}
                             </CardContent>
@@ -157,42 +163,30 @@ function SummaryCards({ totales }) {
 // ─── Funnel visual ────────────────────────────────────────
 
 function FunnelVisual({ totales }) {
-    // Primer métrica con valor > 0 como referencia del 100% visual
-    const metricaBase = METRICAS.find(m => totales[m.key] > 0);
-    const baseVal = metricaBase ? (totales[metricaBase.key] || 1) : 1;
+    const metricaBase = METRICAS.find(m => metricaVal(totales, m.key) > 0);
+    const baseVal = metricaBase ? (metricaVal(totales, metricaBase.key) || 1) : 1;
 
     return (
         <Card sx={{ height: '100%' }}>
             <CardHeader
                 title="🔽 Embudo de conversión"
-                subheader={`Período seleccionado — desde el nuevo tracking (may 2026)`}
+                subheader="Landing → WhatsApp → agenda (flujo nuevo, desde jun 2026)"
             />
             <CardContent>
                 <Stack spacing={2}>
                     {METRICAS.map((m, i) => {
-                        const val = totales[m.key] || 0;
-                        const prevVal = i > 0 ? (totales[METRICAS[i - 1].key] || 0) : null;
+                        const val = metricaVal(totales, m.key);
+                        const prevVal = i > 0 ? metricaVal(totales, METRICAS[i - 1].key) : null;
                         const stepPct = prevVal !== null ? pct(val, prevVal) : null;
                         const barPct = baseVal > 0 ? Math.max((val / baseVal) * 100, val > 0 ? 3 : 0) : 0;
 
                         return (
                             <Box key={m.key}>
                                 <Stack direction="row" alignItems="center" spacing={1.5}>
-                                    <Typography
-                                        variant="body2"
-                                        sx={{ minWidth: 130, fontWeight: 500 }}
-                                    >
+                                    <Typography variant="body2" sx={{ minWidth: 130, fontWeight: 500 }}>
                                         {m.emoji} {m.label}
                                     </Typography>
-                                    <Box
-                                        sx={{
-                                            flex: 1,
-                                            bgcolor: 'action.hover',
-                                            borderRadius: 1,
-                                            overflow: 'hidden',
-                                            height: 32,
-                                        }}
-                                    >
+                                    <Box sx={{ flex: 1, bgcolor: 'action.hover', borderRadius: 1, overflow: 'hidden', height: 32 }}>
                                         <Box
                                             sx={{
                                                 height: '100%',
@@ -207,10 +201,7 @@ function FunnelVisual({ totales }) {
                                             }}
                                         >
                                             {val > 0 && (
-                                                <Typography
-                                                    variant="caption"
-                                                    sx={{ color: 'white', fontWeight: 700, whiteSpace: 'nowrap' }}
-                                                >
+                                                <Typography variant="caption" sx={{ color: 'white', fontWeight: 700, whiteSpace: 'nowrap' }}>
                                                     {val.toLocaleString('es-AR')}
                                                 </Typography>
                                             )}
@@ -225,11 +216,7 @@ function FunnelVisual({ totales }) {
                                     </Typography>
                                 </Stack>
                                 {i < METRICAS.length - 1 && (
-                                    <Typography
-                                        variant="caption"
-                                        color="text.disabled"
-                                        sx={{ display: 'block', pl: '146px', lineHeight: 1.2 }}
-                                    >
+                                    <Typography variant="caption" color="text.disabled" sx={{ display: 'block', pl: '146px', lineHeight: 1.2 }}>
                                         ↓
                                     </Typography>
                                 )}
@@ -237,23 +224,6 @@ function FunnelVisual({ totales }) {
                         );
                     })}
                 </Stack>
-
-                {/* Contexto histórico */}
-                <Box sx={{ mt: 3, p: 1.5, bgcolor: 'action.hover', borderRadius: 1 }}>
-                    <Typography variant="caption" color="text.secondary" display="block" gutterBottom>
-                        📌 Histórico A/B test (congelado, previo al nuevo tracking):
-                    </Typography>
-                    <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                        {METRICAS.filter(m => HISTORICO[m.key] != null).map(m => (
-                            <Chip
-                                key={m.key}
-                                size="small"
-                                label={`${m.emoji} ${HISTORICO[m.key].toLocaleString('es-AR')}`}
-                                sx={{ bgcolor: `${m.color}18`, color: m.color, fontSize: 11 }}
-                            />
-                        ))}
-                    </Stack>
-                </Box>
             </CardContent>
         </Card>
     );
@@ -262,7 +232,9 @@ function FunnelVisual({ totales }) {
 // ─── Gráfico de tendencia ─────────────────────────────────
 
 function TendenciaChart({ rows }) {
-    if (!rows || rows.length === 0) {
+    const safeRows = (rows || []).filter(r => r && r.fecha);
+
+    if (safeRows.length === 0) {
         return (
             <Card sx={{ height: '100%' }}>
                 <CardHeader title="📈 Tendencia diaria" />
@@ -277,15 +249,12 @@ function TendenciaChart({ rows }) {
         );
     }
 
-    const mostrarVisitas = rows.some(r => Number(r.visitasLanding) > 0);
-    const seriesVisibles = METRICAS.filter(m => m.key !== 'visitasLanding' || mostrarVisitas);
-    const safeRows = rows.filter(r => r && r.fecha);
-
+    // Sólo graficamos métricas con algún dato — evita series planas en cero.
+    const seriesVisibles = METRICAS.filter(m => safeRows.some(r => metricaVal(r, m.key) > 0));
     const series = seriesVisibles.map(m => ({
         name: `${m.emoji} ${m.label}`,
-        data: safeRows.map(r => Number(r[m.key]) || 0),
+        data: safeRows.map(r => metricaVal(r, m.key)),
     }));
-
     const categorias = safeRows.map(r => formatFechaDia(r.fecha));
 
     const options = {
@@ -298,17 +267,9 @@ function TendenciaChart({ rows }) {
             animations: { enabled: false },
         },
         colors: seriesVisibles.map(m => m.color),
-        xaxis: {
-            categories: categorias,
-            labels: { style: { fontSize: '11px' } },
-        },
-        yaxis: {
-            labels: { style: { fontSize: '11px' }, formatter: (v) => (v == null ? '' : String(v)) },
-            min: 0,
-        },
-        plotOptions: {
-            bar: { columnWidth: '75%', borderRadius: 3, borderRadiusApplication: 'end' },
-        },
+        xaxis: { categories: categorias, labels: { style: { fontSize: '11px' } } },
+        yaxis: { labels: { style: { fontSize: '11px' }, formatter: (v) => (v == null ? '' : String(v)) }, min: 0 },
+        plotOptions: { bar: { columnWidth: '75%', borderRadius: 3, borderRadiusApplication: 'end' } },
         dataLabels: { enabled: false },
         legend: { position: 'top', horizontalAlign: 'right', fontSize: '12px' },
         grid: { borderColor: '#e5e7eb', yaxis: { lines: { show: true } }, xaxis: { lines: { show: false } } },
@@ -321,403 +282,112 @@ function TendenciaChart({ rows }) {
         <Card sx={{ height: '100%' }}>
             <CardHeader title="📈 Tendencia diaria" />
             <CardContent sx={{ pt: 0 }}>
-                <Chart type="bar" series={series} options={options} height={280} />
-            </CardContent>
-        </Card>
-    );
-}
-
-// ─── Embudo granular del modal (eventos extraSteps) ──────
-// Une los counters principales (eligioSlot, agendaron) con los granulares
-// (view_datos, focus_form, submit_attempt, errores y cierres) para revelar
-// exactamente dónde se cae la gente DENTRO del modal.
-
-function getStepValue(totales, step) {
-    if (step.source === 'top') return totales[step.key] || 0;
-    return totales.extraSteps?.[step.key] || 0;
-}
-
-function EmbudoGranular({ totales }) {
-    const hayDatosGranulares = totales.extraSteps && Object.keys(totales.extraSteps).length > 0;
-
-    return (
-        <Card sx={{ borderLeft: '4px solid #0ea5e9' }}>
-            <CardHeader
-                title="🔍 Embudo granular dentro del modal"
-                subheader={hayDatosGranulares
-                    ? 'Eventos finos del flujo de agendamiento — revela el lugar exacto del abandono'
-                    : 'Sin datos granulares todavía — se llenarán a medida que entren visitas con el tracking nuevo'}
-            />
-            <CardContent sx={{ pt: 0 }}>
-                {/* Variante A: form-first. Sólo se muestra si hubo aperturas en A. */}
-                {(totales.extraSteps?.view_datos_a || totales.extraSteps?.submit_datos_a) ? (
-                    <Box mb={3}>
-                        <Typography variant="overline" sx={{ fontWeight: 600, color: '#0ea5e9' }}>
-                            🅰️ Variante A — form-first (datos antes del calendario)
+                {seriesVisibles.length === 0 ? (
+                    <Box display="flex" justifyContent="center" alignItems="center" minHeight={200}>
+                        <Typography variant="body2" color="text.secondary">
+                            Sin métricas con datos todavía
                         </Typography>
-                        <TableContainer component={Paper} variant="outlined">
-                            <Table size="small">
-                                <TableBody>
-                                    {GRANULAR_VARIANTE_A.map(e => {
-                                        const val = totales.extraSteps?.[e.key] || 0;
-                                        const base = totales.extraSteps?.view_datos_a || 0;
-                                        const crBase = base > 0 ? pct(val, base) : '—';
-                                        return (
-                                            <TableRow key={e.key}>
-                                                <TableCell>
-                                                    <Tooltip title={e.desc} placement="top" arrow>
-                                                        <Typography variant="body2" sx={{ cursor: 'help', fontWeight: val > 0 ? 600 : 400, color: val > 0 ? e.color : 'text.secondary' }}>
-                                                            {e.emoji} {e.label}
-                                                        </Typography>
-                                                    </Tooltip>
-                                                </TableCell>
-                                                <TableCell align="right">
-                                                    <Typography variant="body2" sx={{ fontWeight: 700, color: val > 0 ? e.color : 'text.disabled' }}>
-                                                        {val > 0 ? val.toLocaleString('es-AR') : '—'}
-                                                    </Typography>
-                                                </TableCell>
-                                                <TableCell align="right" sx={{ width: 100 }}>
-                                                    <Typography variant="caption" color="text.secondary">
-                                                        {val > 0 && crBase !== '—' ? `${crBase} vs vio` : ''}
-                                                    </Typography>
-                                                </TableCell>
-                                            </TableRow>
-                                        );
-                                    })}
-                                </TableBody>
-                            </Table>
-                        </TableContainer>
                     </Box>
-                ) : null}
-
-                {/* Happy path: tocó horario → vio form → tocó campo → intentó submit → agendó */}
-                <Typography variant="overline" color="text.secondary" sx={{ fontWeight: 600 }}>
-                    Happy path
-                </Typography>
-                <TableContainer component={Paper} variant="outlined" sx={{ mb: 3 }}>
-                    <Table size="small">
-                        <TableHead>
-                            <TableRow>
-                                <TableCell><strong>Paso</strong></TableCell>
-                                <TableCell align="right"><strong>Conteo</strong></TableCell>
-                                <TableCell align="right">
-                                    <Tooltip title="Conversión desde el paso inmediatamente anterior" placement="top" arrow>
-                                        <strong style={{ cursor: 'help' }}>CR paso ant.</strong>
-                                    </Tooltip>
-                                </TableCell>
-                                <TableCell align="right">
-                                    <Tooltip title="Conversión desde 'Tocó horario'" placement="top" arrow>
-                                        <strong style={{ cursor: 'help' }}>CR vs horario</strong>
-                                    </Tooltip>
-                                </TableCell>
-                                <TableCell><strong>Descripción</strong></TableCell>
-                            </TableRow>
-                        </TableHead>
-                        <TableBody>
-                            {GRANULAR_FUNNEL.map((m, i) => {
-                                const val = getStepValue(totales, m);
-                                const prev = i > 0 ? GRANULAR_FUNNEL[i - 1] : null;
-                                const prevVal = prev ? getStepValue(totales, prev) : null;
-                                const base = getStepValue(totales, GRANULAR_FUNNEL[0]);
-                                const crStep = prev ? pct(val, prevVal) : null;
-                                const crBase = i > 0 ? pct(val, base) : null;
-                                return (
-                                    <TableRow key={m.key} sx={{ '&:hover': { bgcolor: 'action.hover' } }}>
-                                        <TableCell>
-                                            <Typography variant="body2" sx={{ fontWeight: 600, color: m.color }}>
-                                                {m.emoji} {m.label}
-                                            </Typography>
-                                        </TableCell>
-                                        <TableCell align="right">
-                                            <Typography variant="body2" sx={{ fontWeight: 700, color: val > 0 ? m.color : 'text.disabled' }}>
-                                                {val > 0 ? val.toLocaleString('es-AR') : '—'}
-                                            </Typography>
-                                        </TableCell>
-                                        <TableCell align="right">
-                                            <Typography variant="caption" sx={{ color: crStep && crStep !== '—' ? m.color : 'text.disabled', fontWeight: 600 }}>
-                                                {crStep || '—'}
-                                            </Typography>
-                                        </TableCell>
-                                        <TableCell align="right">
-                                            <Typography variant="caption" color="text.secondary">
-                                                {crBase || '—'}
-                                            </Typography>
-                                        </TableCell>
-                                        <TableCell>
-                                            <Typography variant="caption" color="text.secondary">{m.desc}</Typography>
-                                        </TableCell>
-                                    </TableRow>
-                                );
-                            })}
-                        </TableBody>
-                    </Table>
-                </TableContainer>
-
-                {/* Errores y abandonos en una grilla compacta */}
-                <Grid container spacing={2}>
-                    <Grid item xs={12} md={6}>
-                        <Typography variant="overline" color="text.secondary" sx={{ fontWeight: 600 }}>
-                            Errores al confirmar
-                        </Typography>
-                        <TableContainer component={Paper} variant="outlined">
-                            <Table size="small">
-                                <TableBody>
-                                    {GRANULAR_ERRORES.map(e => {
-                                        const val = totales.extraSteps?.[e.key] || 0;
-                                        const submits = totales.extraSteps?.submit_attempt || 0;
-                                        const pctSubmit = submits > 0 ? pct(val, submits) : '—';
-                                        return (
-                                            <TableRow key={e.key}>
-                                                <TableCell>
-                                                    <Tooltip title={e.desc} placement="top" arrow>
-                                                        <Typography variant="body2" sx={{ cursor: 'help', fontWeight: val > 0 ? 600 : 400, color: val > 0 ? e.color : 'text.secondary' }}>
-                                                            {e.emoji} {e.label}
-                                                        </Typography>
-                                                    </Tooltip>
-                                                </TableCell>
-                                                <TableCell align="right">
-                                                    <Typography variant="body2" sx={{ fontWeight: 700, color: val > 0 ? e.color : 'text.disabled' }}>
-                                                        {val > 0 ? val.toLocaleString('es-AR') : '—'}
-                                                    </Typography>
-                                                </TableCell>
-                                                <TableCell align="right" sx={{ width: 80 }}>
-                                                    <Typography variant="caption" color="text.secondary">
-                                                        {val > 0 && pctSubmit !== '—' ? `${pctSubmit} subm.` : ''}
-                                                    </Typography>
-                                                </TableCell>
-                                            </TableRow>
-                                        );
-                                    })}
-                                </TableBody>
-                            </Table>
-                        </TableContainer>
-                    </Grid>
-                    <Grid item xs={12} md={6}>
-                        <Typography variant="overline" color="text.secondary" sx={{ fontWeight: 600 }}>
-                            Abandonos por step
-                        </Typography>
-                        <TableContainer component={Paper} variant="outlined">
-                            <Table size="small">
-                                <TableBody>
-                                    {GRANULAR_CIERRES.map(c => {
-                                        const val = totales.extraSteps?.[c.key] || 0;
-                                        return (
-                                            <TableRow key={c.key}>
-                                                <TableCell>
-                                                    <Tooltip title={c.desc} placement="top" arrow>
-                                                        <Typography variant="body2" sx={{ cursor: 'help', fontWeight: val > 0 ? 600 : 400 }}>
-                                                            {c.emoji} {c.label}
-                                                        </Typography>
-                                                    </Tooltip>
-                                                </TableCell>
-                                                <TableCell align="right">
-                                                    <Typography variant="body2" sx={{ fontWeight: 700, color: val > 0 ? c.color : 'text.disabled' }}>
-                                                        {val > 0 ? val.toLocaleString('es-AR') : '—'}
-                                                    </Typography>
-                                                </TableCell>
-                                            </TableRow>
-                                        );
-                                    })}
-                                </TableBody>
-                            </Table>
-                        </TableContainer>
-                    </Grid>
-                </Grid>
-
-                {/* Eventos crudos que llegaron pero no encajan en las categorías arriba */}
-                {hayDatosGranulares && (() => {
-                    const conocidos = new Set([
-                        ...GRANULAR_FUNNEL.filter(s => s.source === 'extra').map(s => s.key),
-                        ...GRANULAR_ERRORES.map(s => s.key),
-                        ...GRANULAR_CIERRES.map(s => s.key),
-                        ...GRANULAR_VARIANTE_A.map(s => s.key),
-                    ]);
-                    const otros = Object.entries(totales.extraSteps || {})
-                        // Excluir las claves de atribución (van a su propio bloque)
-                        .filter(([k]) => !conocidos.has(k) && !k.startsWith('src:') && !k.startsWith('camp:'))
-                        .sort((a, b) => b[1] - a[1]);
-                    if (otros.length === 0) return null;
-                    return (
-                        <Box mt={3}>
-                            <Typography variant="overline" color="text.secondary" sx={{ fontWeight: 600 }}>
-                                Otros eventos
-                            </Typography>
-                            <TableContainer component={Paper} variant="outlined">
-                                <Table size="small">
-                                    <TableBody>
-                                        {otros.map(([k, v]) => (
-                                            <TableRow key={k}>
-                                                <TableCell>
-                                                    <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>{k}</Typography>
-                                                </TableCell>
-                                                <TableCell align="right">
-                                                    <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                                                        {v.toLocaleString('es-AR')}
-                                                    </Typography>
-                                                </TableCell>
-                                            </TableRow>
-                                        ))}
-                                    </TableBody>
-                                </Table>
-                            </TableContainer>
-                        </Box>
-                    );
-                })()}
+                ) : (
+                    <Chart type="bar" series={series} options={options} height={280} />
+                )}
             </CardContent>
         </Card>
     );
 }
 
-// ─── Panel A vs B (form-first vs calendar-first) ──────────
-// Lee directamente totales.byVariant que ya viene en /api/agendar/stats.
-// Hipótesis: A captura más leads aunque baje el agendamiento puro, porque
-// los partial-leads (datos completos sin slot) se recuperan por WhatsApp.
+// ─── Atribución por fuente / campaña de Meta ─────────────────
+// Parsea las claves `src:<source>:<event>` y `camp:<campaign>:<event>` de
+// extraSteps, mapeando los eventos crudos a los pasos del embudo nuevo. Permite
+// ver el funnel completo por campaña de Meta.
+const RAW_EVENT_A_PASO = {
+    visita: 'visita',
+    fue_whatsapp: 'fueWhatsapp',
+    lead_whatsapp: 'fueWhatsapp',
+    nuevo_contacto: 'nuevoContacto',
+    eligio_tipo_empresa: 'eligioTipoEmpresa',
+    califico: 'califico',
+    agendaron: 'agendo',
+    agendo: 'agendo',
+    dejo_email: 'dejoEmail',
+};
 
-const VARIANTE_METRICAS = [
-    { key: 'visitasLanding', label: 'Visitas',        emoji: '👁️' },
-    { key: 'abrioModal',     label: 'Abrió modal',    emoji: '📆' },
-    { key: 'eligioSlot',     label: 'Eligió horario', emoji: '🕐' },
-    { key: 'agendaron',      label: 'Agendaron',      emoji: '✅' },
-];
+function parseAttributionBreakdown(extraSteps, prefix /* 'src' | 'camp' */) {
+    const buckets = {}; // { dim: { paso: count } }
+    Object.entries(extraSteps || {}).forEach(([k, v]) => {
+        if (!k.startsWith(prefix + ':')) return;
+        const parts = k.split(':');
+        if (parts.length < 3) return;
+        const dim = parts.slice(1, -1).join(':'); // permite ':' dentro del nombre
+        const evRaw = parts[parts.length - 1];
+        const paso = RAW_EVENT_A_PASO[evRaw];
+        if (!paso) return; // ignora eventos del flujo viejo (abrioModal, eligioSlot…)
+        if (!buckets[dim]) buckets[dim] = {};
+        buckets[dim][paso] = (buckets[dim][paso] || 0) + (v || 0);
+    });
+    return buckets;
+}
 
-function VariantePanel({ totales }) {
-    const byVariant = totales.byVariant || { A: {}, B: {} };
-    const A = byVariant.A || {};
-    const B = byVariant.B || {};
+function AtribucionTabla({ extraSteps, prefix, title, dimLabel }) {
+    const buckets = parseAttributionBreakdown(extraSteps, prefix);
+    const rows = Object.entries(buckets)
+        .map(([dim, pasos]) => ({ dim, ...pasos }))
+        .sort((a, b) => (b.visita || b.fueWhatsapp || 0) - (a.visita || a.fueWhatsapp || 0));
 
-    const sumA = VARIANTE_METRICAS.reduce((acc, m) => acc + (A[m.key] || 0), 0);
-    const sumB = VARIANTE_METRICAS.reduce((acc, m) => acc + (B[m.key] || 0), 0);
-    const hayData = sumA > 0 || sumB > 0;
-
-    // Lead parciales por variante (vienen del map extraSteps con clave dinámica).
-    const parcialesA = totales.extraSteps?.lead_parcial_var_A || 0;
-    const parcialesB = totales.extraSteps?.lead_parcial_var_B || 0;
-
-    // CR clave: agendaron / visitasLanding por variante. Define la hipótesis del test.
-    const crA = A.visitasLanding > 0 ? (A.agendaron || 0) / A.visitasLanding * 100 : null;
-    const crB = B.visitasLanding > 0 ? (B.agendaron || 0) / B.visitasLanding * 100 : null;
-    const lift = crA != null && crB != null && crA > 0
-        ? ((crB / crA - 1) * 100).toFixed(2)
-        : null;
+    if (rows.length === 0) {
+        return (
+            <Card sx={{ borderLeft: '4px solid #8b5cf6' }}>
+                <CardHeader title={title} subheader="Sin datos todavía — aparecerán cuando lleguen visitas con UTM/campaña" />
+            </Card>
+        );
+    }
 
     return (
         <Card sx={{ borderLeft: '4px solid #8b5cf6' }}>
             <CardHeader
-                title="🆎 Variante A (form-first) vs B (calendar-first)"
-                subheader={hayData
-                    ? 'Split del A/B test — la PII de datos en A debería capturar leads aunque no agenden'
-                    : 'Sin tráfico particionado todavía — los contadores empiezan cuando entren visitas con el split activo'}
+                title={title}
+                subheader={`${rows.length} ${dimLabel}${rows.length > 1 ? 's' : ''} detectada${rows.length > 1 ? 's' : ''} — embudo por dimensión`}
             />
             <CardContent sx={{ pt: 0 }}>
                 <TableContainer component={Paper} variant="outlined">
                     <Table size="small">
                         <TableHead>
                             <TableRow>
-                                <TableCell><strong>Métrica</strong></TableCell>
-                                <TableCell align="right"><strong>A (form-first)</strong></TableCell>
-                                <TableCell align="right"><strong>B (calendar-first)</strong></TableCell>
+                                <TableCell><strong>{dimLabel.charAt(0).toUpperCase() + dimLabel.slice(1)}</strong></TableCell>
+                                {METRICAS.map(m => (
+                                    <TableCell key={m.key} align="right"><strong>{m.emoji} {m.label}</strong></TableCell>
+                                ))}
                                 <TableCell align="right">
-                                    <Tooltip title="Diferencia absoluta B − A" placement="top" arrow>
-                                        <strong style={{ cursor: 'help' }}>Δ</strong>
+                                    <Tooltip title="Tasa agenda / visita" placement="top" arrow>
+                                        <strong style={{ cursor: 'help' }}>CR</strong>
                                     </Tooltip>
                                 </TableCell>
                             </TableRow>
                         </TableHead>
                         <TableBody>
-                            {VARIANTE_METRICAS.map((m, i) => {
-                                const va = A[m.key] || 0;
-                                const vb = B[m.key] || 0;
-                                const prev = i > 0 ? VARIANTE_METRICAS[i - 1] : null;
-                                const crAStep = prev ? pct(va, A[prev.key] || 0) : null;
-                                const crBStep = prev ? pct(vb, B[prev.key] || 0) : null;
+                            {rows.map(r => {
+                                const cr = r.visita > 0 ? pct(r.agendo || 0, r.visita) : '—';
                                 return (
-                                    <TableRow key={m.key} sx={{ '&:hover': { bgcolor: 'action.hover' } }}>
+                                    <TableRow key={r.dim} sx={{ '&:hover': { bgcolor: 'action.hover' } }}>
                                         <TableCell>
-                                            <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                                                {m.emoji} {m.label}
-                                            </Typography>
+                                            <Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 600 }}>{r.dim}</Typography>
                                         </TableCell>
+                                        {METRICAS.map(m => (
+                                            <TableCell key={m.key} align="right">
+                                                <Typography variant="body2" sx={{ color: (r[m.key] || 0) > 0 ? m.color : 'text.disabled', fontWeight: (r[m.key] || 0) > 0 ? 700 : 400 }}>
+                                                    {r[m.key] > 0 ? r[m.key].toLocaleString('es-AR') : '—'}
+                                                </Typography>
+                                            </TableCell>
+                                        ))}
                                         <TableCell align="right">
-                                            <Typography variant="body2" sx={{ fontWeight: 700, color: va > 0 ? '#0ea5e9' : 'text.disabled' }}>
-                                                {va > 0 ? va.toLocaleString('es-AR') : '—'}
-                                            </Typography>
-                                            {crAStep && crAStep !== '—' && (
-                                                <Typography variant="caption" color="text.secondary" display="block">{crAStep} vs ant.</Typography>
-                                            )}
-                                        </TableCell>
-                                        <TableCell align="right">
-                                            <Typography variant="body2" sx={{ fontWeight: 700, color: vb > 0 ? '#10b981' : 'text.disabled' }}>
-                                                {vb > 0 ? vb.toLocaleString('es-AR') : '—'}
-                                            </Typography>
-                                            {crBStep && crBStep !== '—' && (
-                                                <Typography variant="caption" color="text.secondary" display="block">{crBStep} vs ant.</Typography>
-                                            )}
-                                        </TableCell>
-                                        <TableCell align="right">
-                                            <Typography variant="caption" sx={{
-                                                fontWeight: 600,
-                                                color: vb - va > 0 ? '#10b981' : vb - va < 0 ? '#ef4444' : 'text.disabled',
-                                            }}>
-                                                {va === 0 && vb === 0 ? '—' : (vb - va > 0 ? '+' : '') + (vb - va).toLocaleString('es-AR')}
-                                            </Typography>
+                                            <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary' }}>{cr}</Typography>
                                         </TableCell>
                                     </TableRow>
                                 );
                             })}
-                            <TableRow sx={{ bgcolor: 'action.hover' }}>
-                                <TableCell>
-                                    <Tooltip title="Leads parciales: dejaron datos pero no agendaron. Sólo aplica a variante A — en B no hay form antes del slot." placement="top" arrow>
-                                        <Typography variant="body2" sx={{ cursor: 'help', fontWeight: 600 }}>
-                                            📝 Leads parciales
-                                        </Typography>
-                                    </Tooltip>
-                                </TableCell>
-                                <TableCell align="right">
-                                    <Typography variant="body2" sx={{ fontWeight: 700, color: parcialesA > 0 ? '#0ea5e9' : 'text.disabled' }}>
-                                        {parcialesA > 0 ? parcialesA.toLocaleString('es-AR') : '—'}
-                                    </Typography>
-                                </TableCell>
-                                <TableCell align="right">
-                                    <Typography variant="body2" sx={{ fontWeight: 700, color: parcialesB > 0 ? '#10b981' : 'text.disabled' }}>
-                                        {parcialesB > 0 ? parcialesB.toLocaleString('es-AR') : '—'}
-                                    </Typography>
-                                </TableCell>
-                                <TableCell align="right">—</TableCell>
-                            </TableRow>
                         </TableBody>
                     </Table>
                 </TableContainer>
-
-                {hayData && (
-                    <Box mt={2} display="flex" gap={2} flexWrap="wrap">
-                        <Chip
-                            size="small"
-                            label={`CR agendar/visita A: ${crA != null ? crA.toFixed(2) + '%' : '—'}`}
-                            sx={{ bgcolor: '#0ea5e9', color: '#fff' }}
-                        />
-                        <Chip
-                            size="small"
-                            label={`CR agendar/visita B: ${crB != null ? crB.toFixed(2) + '%' : '—'}`}
-                            sx={{ bgcolor: '#10b981', color: '#fff' }}
-                        />
-                        {lift != null && (
-                            <Chip
-                                size="small"
-                                label={`Lift B vs A: ${Number(lift) > 0 ? '+' : ''}${lift}%`}
-                                sx={{
-                                    bgcolor: Number(lift) > 0 ? '#10b981' : '#ef4444',
-                                    color: '#fff',
-                                    fontWeight: 700,
-                                }}
-                            />
-                        )}
-                    </Box>
-                )}
-
-                <Typography variant="caption" color="text.secondary" sx={{ mt: 2, display: 'block' }}>
-                    💡 La hipótesis de A es <em>capturar más leads (incluyendo parciales)</em>, aunque el % de
-                    agendamiento puro caiga. Sumá leads parciales + agendaron al evaluar A.
-                </Typography>
             </CardContent>
         </Card>
     );
@@ -740,14 +410,15 @@ function TablaDaily({ rows }) {
     }
 
     const filas = [...rows].reverse();
-    const mostrarVisitas = rows.some(r => r.visitasLanding > 0);
-    const metricasVisibles = METRICAS.filter(m => m.key !== 'visitasLanding' || mostrarVisitas);
+    // Sólo columnas con algún dato, para no saturar con métricas vacías.
+    const metricasVisibles = METRICAS.filter(m => rows.some(r => metricaVal(r, m.key) > 0));
+    const cols = metricasVisibles.length > 0 ? metricasVisibles : METRICAS;
 
     return (
         <Card>
             <CardHeader
                 title="📅 Datos por día"
-                subheader={`${filas.length} días con actividad · incluye CR entre eventos consecutivos`}
+                subheader={`${filas.length} días con actividad · CR entre eventos consecutivos`}
             />
             <CardContent sx={{ pt: 0 }}>
                 <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 480 }}>
@@ -755,88 +426,54 @@ function TablaDaily({ rows }) {
                         <TableHead>
                             <TableRow>
                                 <TableCell><strong>Fecha</strong></TableCell>
-                                {metricasVisibles.map((m, i) => {
-                                    const prev = i > 0 ? metricasVisibles[i - 1] : null;
+                                {cols.map((m, i) => {
+                                    const prev = i > 0 ? cols[i - 1] : null;
                                     return (
                                         <Fragment key={`h-${m.key}`}>
                                             {prev && (
                                                 <TableCell align="center" sx={{ bgcolor: 'action.hover' }}>
-                                                    <Tooltip
-                                                        title={`Conversión ${prev.label} → ${m.label}`}
-                                                        placement="top"
-                                                        arrow
-                                                    >
+                                                    <Tooltip title={`Conversión ${prev.label} → ${m.label}`} placement="top" arrow>
                                                         <strong style={{ cursor: 'help', fontSize: 11 }}>
                                                             CR {prev.emoji}→{m.emoji}
                                                         </strong>
                                                     </Tooltip>
                                                 </TableCell>
                                             )}
-                                            <TableCell align="center">
-                                                <strong>{m.emoji} {m.label}</strong>
-                                            </TableCell>
+                                            <TableCell align="center"><strong>{m.emoji} {m.label}</strong></TableCell>
                                         </Fragment>
                                     );
                                 })}
-                                <TableCell align="center">
-                                    <Tooltip
-                                        title="Porcentaje de quienes abrieron el modal y terminaron agendando"
-                                        placement="top"
-                                        arrow
-                                    >
-                                        <strong style={{ cursor: 'help' }}>Modal → Agenda</strong>
-                                    </Tooltip>
-                                </TableCell>
                             </TableRow>
                         </TableHead>
                         <TableBody>
                             {filas.map(r => (
-                                <TableRow
-                                    key={r.fecha}
-                                    sx={{ '&:hover': { bgcolor: 'action.hover' } }}
-                                >
+                                <TableRow key={r.fecha} sx={{ '&:hover': { bgcolor: 'action.hover' } }}>
                                     <TableCell>
                                         <Typography variant="body2" sx={{ fontWeight: 500, fontFamily: 'monospace' }}>
                                             {r.fecha}
                                         </Typography>
                                     </TableCell>
-                                    {metricasVisibles.map((m, i) => {
-                                        const prev = i > 0 ? metricasVisibles[i - 1] : null;
-                                        const cr = prev ? pct(r[m.key] || 0, r[prev.key] || 0) : null;
+                                    {cols.map((m, i) => {
+                                        const prev = i > 0 ? cols[i - 1] : null;
+                                        const val = metricaVal(r, m.key);
+                                        const cr = prev ? pct(val, metricaVal(r, prev.key)) : null;
                                         return (
                                             <Fragment key={`${r.fecha}-${m.key}`}>
                                                 {prev && (
                                                     <TableCell align="center" sx={{ bgcolor: 'action.hover' }}>
-                                                        <Typography
-                                                            variant="caption"
-                                                            sx={{
-                                                                color: cr && cr !== '—' ? m.color : 'text.disabled',
-                                                                fontWeight: cr && cr !== '—' ? 600 : 400,
-                                                            }}
-                                                        >
+                                                        <Typography variant="caption" sx={{ color: cr && cr !== '—' ? m.color : 'text.disabled', fontWeight: cr && cr !== '—' ? 600 : 400 }}>
                                                             {cr}
                                                         </Typography>
                                                     </TableCell>
                                                 )}
                                                 <TableCell align="center">
-                                                    <Typography
-                                                        variant="body2"
-                                                        sx={{
-                                                            color: r[m.key] > 0 ? m.color : 'text.disabled',
-                                                            fontWeight: r[m.key] > 0 ? 700 : 400,
-                                                        }}
-                                                    >
-                                                        {r[m.key] > 0 ? r[m.key] : '—'}
+                                                    <Typography variant="body2" sx={{ color: val > 0 ? m.color : 'text.disabled', fontWeight: val > 0 ? 700 : 400 }}>
+                                                        {val > 0 ? val.toLocaleString('es-AR') : '—'}
                                                     </Typography>
                                                 </TableCell>
                                             </Fragment>
                                         );
                                     })}
-                                    <TableCell align="center">
-                                        <Typography variant="caption" color="text.secondary">
-                                            {pct(r.agendaron || 0, r.abrioModal || 0)}
-                                        </Typography>
-                                    </TableCell>
                                 </TableRow>
                             ))}
                         </TableBody>
@@ -847,122 +484,170 @@ function TablaDaily({ rows }) {
     );
 }
 
-// ─── Atribución por fuente / campaña ─────────────────────────
-// Parsea las claves `src:<source>:<event>` y `camp:<campaign>:<event>` de
-// extraSteps en una tabla que muestra el funnel completo por dimensión:
-//   visita → abrioModal → eligioSlot → agendaron + (lead_parcial, lead_whatsapp)
-function parseAttributionBreakdown(extraSteps, prefix /* 'src' | 'camp' */) {
-    const buckets = {}; // { source/campaign: { visita, abrioModal, eligioSlot, agendaron, lead_parcial, lead_whatsapp } }
-    Object.entries(extraSteps || {}).forEach(([k, v]) => {
-        if (!k.startsWith(prefix + ':')) return;
-        const parts = k.split(':');
-        if (parts.length < 3) return;
-        const dim = parts.slice(1, -1).join(':'); // permite ':' dentro del nombre
-        const ev = parts[parts.length - 1];
-        if (!buckets[dim]) buckets[dim] = {};
-        buckets[dim][ev] = (buckets[dim][ev] || 0) + (v || 0);
-    });
-    return buckets;
+// ─── Tabla histórica semanal (flujo viejo, pre 1-jun) ─────
+// Oculta por defecto. Agrupa por semana (lun-dom) las filas diarias previas al
+// corte y muestra las métricas del modal viejo. Trae su propio rango.
+
+function startOfWeek(ymd) {
+    const d = new Date(`${ymd}T00:00:00`);
+    const day = (d.getDay() + 6) % 7; // 0 = lunes
+    d.setDate(d.getDate() - day);
+    d.setHours(0, 0, 0, 0);
+    return d;
 }
 
-const ATTR_EVENTS = [
-    { key: 'visita',         label: 'Visitas',        color: '#6366f1' },
-    { key: 'abrioModal',     label: 'Abrió modal',    color: '#0ea5e9' },
-    { key: 'eligioSlot',     label: 'Eligió slot',    color: '#f59e0b' },
-    { key: 'agendaron',      label: 'Agendaron',      color: '#10b981' },
-    { key: 'lead_parcial',   label: 'Lead parcial',   color: '#94a3b8' },
-    { key: 'lead_whatsapp',  label: 'Lead WA',        color: '#25d366' },
-];
-
-function AtribucionTabla({ extraSteps, prefix, title, dimLabel }) {
-    const buckets = parseAttributionBreakdown(extraSteps, prefix);
-    const rows = Object.entries(buckets)
-        .map(([dim, evs]) => ({ dim, ...evs }))
-        .sort((a, b) => (b.visita || b.abrioModal || 0) - (a.visita || a.abrioModal || 0));
-
-    if (rows.length === 0) {
-        return (
-            <Card sx={{ borderLeft: '4px solid #8b5cf6' }}>
-                <CardHeader title={title} subheader="Sin datos todavía — empezarán a aparecer cuando lleguen visitas con UTM" />
-            </Card>
-        );
+function agruparPorSemana(rows) {
+    const map = new Map();
+    for (const r of rows || []) {
+        if (!r.fecha || r.fecha >= CORTE_FLUJO_NUEVO) continue; // sólo pre-corte
+        const inicio = startOfWeek(r.fecha);
+        const key = toYMD(inicio);
+        if (!map.has(key)) {
+            const fin = new Date(inicio);
+            fin.setDate(fin.getDate() + 6);
+            map.set(key, {
+                key,
+                label: `${formatFechaDia(toYMD(inicio))}–${formatFechaDia(toYMD(fin))}`,
+                ...Object.fromEntries(METRICAS_HIST.map(m => [m.key, 0])),
+            });
+        }
+        const acc = map.get(key);
+        for (const m of METRICAS_HIST) acc[m.key] += Number(r[m.key] || 0);
     }
+    return Array.from(map.values()).sort((a, b) => (a.key < b.key ? 1 : -1));
+}
+
+function HistoricoSemanal() {
+    const [open, setOpen] = useState(false);
+    const [rows, setRows] = useState(null);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState(null);
+
+    const cargar = useCallback(async () => {
+        if (rows) return; // cache: una sola vez
+        setLoading(true);
+        setError(null);
+        try {
+            // Todo lo previo al corte del flujo nuevo.
+            const res = await landingStatsService.getStats({ desde: '2024-01-01', hasta: '2026-05-31' });
+            setRows(res?.rows || []);
+        } catch (err) {
+            setError(err.response?.data?.error || err.message || 'Error al cargar histórico');
+        } finally {
+            setLoading(false);
+        }
+    }, [rows]);
+
+    const semanas = agruparPorSemana(rows || []);
 
     return (
-        <Card sx={{ borderLeft: '4px solid #8b5cf6' }}>
-            <CardHeader
-                title={title}
-                subheader={`${rows.length} ${dimLabel}${rows.length > 1 ? 's' : ''} detectado${rows.length > 1 ? 's' : ''} — funnel completo por dimensión`}
-            />
-            <CardContent sx={{ pt: 0 }}>
-                <TableContainer component={Paper} variant="outlined">
-                    <Table size="small">
-                        <TableHead>
-                            <TableRow>
-                                <TableCell><strong>{dimLabel.charAt(0).toUpperCase() + dimLabel.slice(1)}</strong></TableCell>
-                                {ATTR_EVENTS.map(e => (
-                                    <TableCell key={e.key} align="right"><strong>{e.label}</strong></TableCell>
-                                ))}
-                                <TableCell align="right">
-                                    <Tooltip title="Tasa agenda / visita" placement="top" arrow>
-                                        <strong style={{ cursor: 'help' }}>CR</strong>
-                                    </Tooltip>
-                                </TableCell>
-                            </TableRow>
-                        </TableHead>
-                        <TableBody>
-                            {rows.map(r => {
-                                const cr = r.visita > 0 ? pct(r.agendaron || 0, r.visita) : '—';
-                                return (
-                                    <TableRow key={r.dim} sx={{ '&:hover': { bgcolor: 'action.hover' } }}>
-                                        <TableCell>
-                                            <Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 600 }}>{r.dim}</Typography>
-                                        </TableCell>
-                                        {ATTR_EVENTS.map(e => (
-                                            <TableCell key={e.key} align="right">
-                                                <Typography variant="body2" sx={{ color: (r[e.key] || 0) > 0 ? e.color : 'text.disabled', fontWeight: (r[e.key] || 0) > 0 ? 700 : 400 }}>
-                                                    {r[e.key] > 0 ? r[e.key].toLocaleString('es-AR') : '—'}
-                                                </Typography>
-                                            </TableCell>
+        <Card variant="outlined" sx={{ borderStyle: 'dashed' }}>
+            <CardContent>
+                <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
+                    <Box>
+                        <Typography variant="subtitle2">🗄️ Funnel histórico por semana (flujo viejo, pre {formatFechaDia(CORTE_FLUJO_NUEVO)}/06)</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                            Datos del modal web previo al flujo de WhatsApp. Oculto por defecto.
+                        </Typography>
+                    </Box>
+                    <Button
+                        size="small"
+                        variant="outlined"
+                        startIcon={<HistoryIcon />}
+                        onClick={() => { const next = !open; setOpen(next); if (next) cargar(); }}
+                    >
+                        {open ? 'Ocultar' : 'Ver histórico'}
+                    </Button>
+                </Stack>
+
+                <Collapse in={open} sx={{ mt: open ? 2 : 0 }}>
+                    {loading && (
+                        <Box display="flex" justifyContent="center" py={3}><CircularProgress size={28} /></Box>
+                    )}
+                    {error && <Alert severity="error" sx={{ my: 1 }}>{error}</Alert>}
+                    {!loading && !error && rows && semanas.length === 0 && (
+                        <Alert severity="info" sx={{ my: 1 }}>No hay datos previos al corte.</Alert>
+                    )}
+                    {!loading && semanas.length > 0 && (
+                        <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 420 }}>
+                            <Table size="small" stickyHeader>
+                                <TableHead>
+                                    <TableRow>
+                                        <TableCell><strong>Semana</strong></TableCell>
+                                        {METRICAS_HIST.map(m => (
+                                            <TableCell key={m.key} align="center"><strong>{m.emoji} {m.label}</strong></TableCell>
                                         ))}
-                                        <TableCell align="right">
-                                            <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary' }}>{cr}</Typography>
+                                        <TableCell align="center">
+                                            <Tooltip title="Agendaron / Abrió modal" placement="top" arrow>
+                                                <strong style={{ cursor: 'help' }}>Modal→Agenda</strong>
+                                            </Tooltip>
                                         </TableCell>
                                     </TableRow>
-                                );
-                            })}
-                        </TableBody>
-                    </Table>
-                </TableContainer>
+                                </TableHead>
+                                <TableBody>
+                                    {semanas.map(s => (
+                                        <TableRow key={s.key} sx={{ '&:hover': { bgcolor: 'action.hover' } }}>
+                                            <TableCell>
+                                                <Typography variant="body2" sx={{ fontWeight: 500, fontFamily: 'monospace' }}>{s.label}</Typography>
+                                            </TableCell>
+                                            {METRICAS_HIST.map(m => (
+                                                <TableCell key={m.key} align="center">
+                                                    <Typography variant="body2" sx={{ color: s[m.key] > 0 ? m.color : 'text.disabled', fontWeight: s[m.key] > 0 ? 700 : 400 }}>
+                                                        {s[m.key] > 0 ? s[m.key].toLocaleString('es-AR') : '—'}
+                                                    </Typography>
+                                                </TableCell>
+                                            ))}
+                                            <TableCell align="center">
+                                                <Typography variant="caption" color="text.secondary">
+                                                    {pct(s.agendaron || 0, s.abrioModal || 0)}
+                                                </Typography>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </TableContainer>
+                    )}
+                </Collapse>
             </CardContent>
         </Card>
     );
 }
 
-// ─── Rangos preset basados en hitos del producto ──────────
-// Cortes históricos relevantes para entender el impacto de cada cambio:
-//   • antes_7may  → baseline previo al primer rediseño (visitasLanding viejo)
-//   • 7may_24may  → ventana del A/B test categoría pre vs post + Constructoras con
-//                   objetivo "ver contenido" en abrir modal (audiencia ruidosa)
-//   • post_25may  → era limpia: propuesta-3 deployada, reglas no-code de Rodo
-//                   eliminadas, ViewContent movido a "eligió horario" (filtra calidad)
+// ─── Export CSV ───────────────────────────────────────────
+
+function exportarCSV(rows) {
+    const headers = ['fecha', ...METRICAS.map(m => m.label)];
+    const escapar = (v) => {
+        const s = String(v ?? '');
+        return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const lineas = [...rows]
+        .sort((a, b) => (a.fecha < b.fecha ? -1 : 1))
+        .map(r => [r.fecha, ...METRICAS.map(m => metricaVal(r, m.key))].map(escapar).join(','));
+    const csv = [headers.map(escapar).join(','), ...lineas].join('\n');
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `funnel-landing-${toYMD(new Date())}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+// ─── Rangos preset ────────────────────────────────────────
 const RANGOS_PRESET = [
-    { key: 'antes_7may',    label: 'Pre 7-may',          desde: '2024-01-01', hasta: '2026-05-06', desc: 'Baseline previo al rediseño' },
-    { key: '7may_24may',    label: '7-may → 24-may',     desde: '2026-05-07', hasta: '2026-05-24', desc: 'A/B cat-pre vs cat-post + Constructoras con ViewContent en modal' },
-    { key: 'post_25may',    label: '25-may en adelante', desde: '2026-05-25', hasta: null,         desc: 'Era limpia: propuesta-3 + reglas Rodo eliminadas + ViewContent en eligió horario' },
+    { key: 'flujo_wa', label: 'Flujo WhatsApp (2-jun →)', desde: INICIO_FUNNEL_WA, hasta: null, desc: 'Embudo nuevo instrumentado: landing → WhatsApp → agenda (desde el primer día completo)' },
+    { key: 'todo',     label: 'Todo el histórico',         desde: '2024-01-01',      hasta: null, desc: 'Incluye datos previos al flujo nuevo' },
 ];
 
-// Mapea los eventos `src:<fuente>:<evento>` al shape del funnel principal
-// para poder reusar SummaryCards y FunnelVisual con datos filtrados por fuente.
-const EVENT_TO_METRICA = {
-    visita: 'visitasLanding',
-    abrioModal: 'abrioModal',
-    eligioSlot: 'eligioSlot',
-    agendaron: 'agendaron',
-};
-
+// Filtra el funnel por fuente/campaña usando los eventos `src:`/`camp:` de
+// extraSteps, mapeando los eventos crudos a la forma de `totales`.
 function buildTotalesFiltrados(extraSteps, { fuentes, campañas }) {
-    const out = { visitasLanding: 0, abrioModal: 0, eligioSlot: 0, agendaron: 0, eligioCategoriaPost: 0, extraSteps: {} };
+    const out = { visitasLanding: 0, agendaron: 0, extraSteps: {} };
+    const setExtra = (k, v) => { out.extraSteps[k] = (out.extraSteps[k] || 0) + v; };
     const sumarPorPrefijo = (prefix, valores) => {
         const set = new Set(valores);
         Object.entries(extraSteps || {}).forEach(([k, v]) => {
@@ -971,22 +656,31 @@ function buildTotalesFiltrados(extraSteps, { fuentes, campañas }) {
             if (parts.length < 3) return;
             const dim = parts.slice(1, -1).join(':');
             if (!set.has(dim)) return;
-            const ev = parts[parts.length - 1];
-            const metricaKey = EVENT_TO_METRICA[ev];
-            if (metricaKey) out[metricaKey] += v || 0;
+            const paso = RAW_EVENT_A_PASO[parts[parts.length - 1]];
+            const n = v || 0;
+            // Volcamos a la forma que entiende metricaVal().
+            if (paso === 'visita') out.visitasLanding += n;
+            else if (paso === 'agendo') out.agendaron += n;
+            else if (paso === 'fueWhatsapp') setExtra('fue_whatsapp', n);
+            else if (paso === 'nuevoContacto') setExtra('nuevo_contacto', n);
+            else if (paso === 'eligioTipoEmpresa') setExtra('eligio_tipo_empresa', n);
+            else if (paso === 'califico') setExtra('califico', n);
+            else if (paso === 'dejoEmail') setExtra('dejo_email', n);
         });
     };
-    // Solo se aplica un eje a la vez (no hay datos cruzados src×camp en extraSteps).
+    // Sólo un eje a la vez (no hay datos cruzados src×camp en extraSteps).
     if (fuentes && fuentes.length > 0) sumarPorPrefijo('src', fuentes);
     else if (campañas && campañas.length > 0) sumarPorPrefijo('camp', campañas);
+    // Mantenemos el extraSteps original para que la atribución siga mostrándose.
+    out.extraSteps = { ...(extraSteps || {}), ...out.extraSteps };
     return out;
 }
 
 const LandingFunnelPage = () => {
     const [data, setData] = useState(null);
     const [modo, setModo] = useState('preset'); // 'preset' | 'rango'
-    const [rangoKey, setRangoKey] = useState('post_25may');
-    const [fechaDesde, setFechaDesde] = useState(() => new Date('2026-05-25T00:00:00'));
+    const [rangoKey, setRangoKey] = useState('flujo_wa');
+    const [fechaDesde, setFechaDesde] = useState(() => new Date(`${INICIO_FUNNEL_WA}T00:00:00`));
     const [fechaHasta, setFechaHasta] = useState(() => new Date());
     const [fuentesFiltro, setFuentesFiltro] = useState([]); // [] = todas
     const [campañasFiltro, setCampañasFiltro] = useState([]); // [] = todas
@@ -1001,11 +695,9 @@ const LandingFunnelPage = () => {
             if (modo === 'rango') {
                 args = { desde: toYMD(fechaDesde), hasta: toYMD(fechaHasta) };
             } else {
-                const r = RANGOS_PRESET.find(x => x.key === rangoKey) || RANGOS_PRESET[2];
+                const r = RANGOS_PRESET.find(x => x.key === rangoKey) || RANGOS_PRESET[0];
                 args = { desde: r.desde, hasta: r.hasta || toYMD(new Date()) };
             }
-            // Si el período aún no comenzó (desde > hasta porque hoy es anterior),
-            // no llamamos al backend — devolvía datos engañosos al invertir el rango.
             if (args.desde && args.hasta && args.desde > args.hasta) {
                 setData({ totales: {}, rows: [], _futuro: true, _desde: args.desde });
                 return;
@@ -1027,20 +719,15 @@ const LandingFunnelPage = () => {
     const rows = data?.rows || [];
     const rangoActivo = RANGOS_PRESET.find(r => r.key === rangoKey);
 
-    // Dimensiones detectadas en extraSteps (`src:` y `camp:`)
     const detectarDimensiones = (prefix) => Array.from(new Set(
         Object.keys(totalesRaw.extraSteps || {})
             .filter(k => k.startsWith(prefix + ':'))
-            .map(k => {
-                const parts = k.split(':');
-                return parts.slice(1, -1).join(':');
-            })
+            .map(k => { const parts = k.split(':'); return parts.slice(1, -1).join(':'); })
             .filter(Boolean)
     )).sort();
     const fuentesDetectadas = detectarDimensiones('src');
     const campañasDetectadas = detectarDimensiones('camp');
 
-    // Limpiar selecciones que ya no existen en el período actual
     useEffect(() => {
         const f = fuentesFiltro.filter(x => fuentesDetectadas.includes(x));
         if (f.length !== fuentesFiltro.length) setFuentesFiltro(f);
@@ -1064,28 +751,18 @@ const LandingFunnelPage = () => {
                     {/* ─── Header ─── */}
                     <Stack direction={{ xs: 'column', md: 'row' }} alignItems={{ md: 'center' }} justifyContent="space-between" spacing={2} mb={3}>
                         <Box>
-                            <Typography variant="h4">📊 Funnel — Landing → Agenda</Typography>
+                            <Typography variant="h4">📊 Funnel — Landing → WhatsApp → Agenda</Typography>
                             <Typography variant="body2" color="text.secondary">
-                                Conversión diaria del embudo de agendamiento · Nuevo tracking desde may 2026
+                                Embudo del flujo nuevo (agente de WhatsApp) · desde jun 2026
                             </Typography>
                         </Box>
                         <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-                            <ToggleButtonGroup
-                                size="small"
-                                exclusive
-                                value={modo}
-                                onChange={(_, v) => { if (v) setModo(v); }}
-                            >
+                            <ToggleButtonGroup size="small" exclusive value={modo} onChange={(_, v) => { if (v) setModo(v); }}>
                                 <ToggleButton value="preset">Por etapa</ToggleButton>
                                 <ToggleButton value="rango">Rango exacto</ToggleButton>
                             </ToggleButtonGroup>
                             {modo === 'preset' ? (
-                                <ToggleButtonGroup
-                                    size="small"
-                                    exclusive
-                                    value={rangoKey}
-                                    onChange={(_, v) => { if (v) setRangoKey(v); }}
-                                >
+                                <ToggleButtonGroup size="small" exclusive value={rangoKey} onChange={(_, v) => { if (v) setRangoKey(v); }}>
                                     {RANGOS_PRESET.map(r => (
                                         <Tooltip key={r.key} title={r.desc} placement="top" arrow>
                                             <ToggleButton value={r.key}>{r.label}</ToggleButton>
@@ -1145,6 +822,19 @@ const LandingFunnelPage = () => {
                                     </ToggleButtonGroup>
                                 </Stack>
                             )}
+                            <Tooltip title="Exportar la data del período a CSV">
+                                <span>
+                                    <Button
+                                        size="small"
+                                        variant="outlined"
+                                        startIcon={<DownloadIcon />}
+                                        onClick={() => exportarCSV(rows)}
+                                        disabled={loading || rows.length === 0}
+                                    >
+                                        Exportar
+                                    </Button>
+                                </span>
+                            </Tooltip>
                             <Tooltip title="Refrescar datos">
                                 <span>
                                     <IconButton onClick={fetchData} disabled={loading}>
@@ -1182,6 +872,14 @@ const LandingFunnelPage = () => {
                                 </Alert>
                             )}
 
+                            {METRICAS.some(m => !m.instrumentado) && (
+                                <Alert severity="warning" sx={{ mb: -1 }}>
+                                    Los pasos del flujo de WhatsApp marcados con ⚠️ (Fue a WhatsApp, Eligió rubro, Calificó, Dejó email)
+                                    todavía <strong>no están instrumentados en el backend</strong>, por eso aparecen en "—". El dashboard
+                                    ya los lee de <code>extraSteps</code>: se llenan apenas se empiecen a contar esos eventos.
+                                </Alert>
+                            )}
+
                             {hayFiltro && (() => {
                                 const esCamp = campañasFiltro.length > 0;
                                 const seleccionadas = esCamp ? campañasFiltro : fuentesFiltro;
@@ -1194,7 +892,7 @@ const LandingFunnelPage = () => {
                                         sx={{ mb: -1 }}
                                         onClose={() => { setFuentesFiltro([]); setCampañasFiltro([]); }}
                                     >
-                                        Filtrando funnel principal por {label} <strong>{seleccionadas.join(', ')}</strong>. La tendencia diaria, embudo granular y tabla por día siguen mostrando el total — la dimensión no está desagregada en esas vistas.
+                                        Filtrando funnel principal por {label} <strong>{seleccionadas.join(', ')}</strong>. La tendencia diaria y la tabla por día siguen mostrando el total — la dimensión no está desagregada en esas vistas.
                                     </Alert>
                                 );
                             })()}
@@ -1211,10 +909,6 @@ const LandingFunnelPage = () => {
                                 </Grid>
                             </Grid>
 
-                            <EmbudoGranular totales={totales} />
-
-                            <VariantePanel totales={totales} />
-
                             <AtribucionTabla
                                 extraSteps={totales.extraSteps}
                                 prefix="src"
@@ -1224,22 +918,23 @@ const LandingFunnelPage = () => {
                             <AtribucionTabla
                                 extraSteps={totales.extraSteps}
                                 prefix="camp"
-                                title="📣 Atribución por campaña"
+                                title="📣 Atribución por campaña de Meta"
                                 dimLabel="campaña"
                             />
 
                             <TablaDaily rows={rows} />
 
+                            <HistoricoSemanal />
+
                         </Stack>
                     )}
 
-                    {/* Estado vacío después de cargar */}
-                    {!loading && data && rows.length === 0 && (
+                    {!loading && data && rows.length === 0 && !data._futuro && (
                         <Alert severity="info" sx={{ mt: 2 }}>
                             {modo === 'rango'
                                 ? `No hay datos registrados entre ${toYMD(fechaDesde)} y ${toYMD(fechaHasta)}.`
                                 : `No hay datos registrados en el rango "${rangoActivo?.label || rangoKey}".`}
-                            {' '}Los contadores se empezarán a llenar cuando haya actividad en la landing.
+                            {' '}Los contadores se empiezan a llenar cuando haya actividad en la landing.
                         </Alert>
                     )}
 

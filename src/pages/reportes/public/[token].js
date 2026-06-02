@@ -50,6 +50,36 @@ function parseFiltersFromURL() {
   return filters;
 }
 
+function pickLockedPublicFilters(filters = {}) {
+  const locked = {};
+  if (Array.isArray(filters.proyectos) && filters.proyectos.length > 0) {
+    locked.proyectos = filters.proyectos;
+  }
+  return locked;
+}
+
+function omitLockedPublicFilters(filters = {}) {
+  const { proyectos, ...editable } = filters;
+  return editable;
+}
+
+function buildPublicFiltrosSchema(filtrosSchema = {}) {
+  return {
+    ...filtrosSchema,
+    proyectos: {
+      ...(filtrosSchema.proyectos || {}),
+      enabled: false,
+    },
+  };
+}
+
+function getSharedProjectFilters(report) {
+  const ids = Array.isArray(report?.proyectos_compartidos)
+    ? report.proyectos_compartidos.map((id) => String(id)).filter(Boolean)
+    : [];
+  return ids.length > 0 ? { proyectos: ids } : {};
+}
+
 function toMovimientoDate(mov) {
   const raw = mov?.fecha_factura || mov?.fecha;
   if (!raw) return null;
@@ -92,8 +122,8 @@ const PublicReportPage = () => {
   const [filters, setFilters] = useState({});
   const [filtersExpanded, setFiltersExpanded] = useState(true);
 
-  // Filtros fijos que vienen en la URL (no editables por el cliente)
-  const [lockedFilters, setLockedFilters] = useState(null);
+  // Filtros fijos que vienen en la URL/config (no editables por el cliente)
+  const [lockedFilters, setLockedFilters] = useState({});
 
   // Obtener token y filtros de la URL
   const [token, setToken] = useState(null);
@@ -105,9 +135,7 @@ const PublicReportPage = () => {
       if (idx >= 0 && parts[idx + 1]) {
         setToken(parts[idx + 1]);
         const urlFilters = parseFiltersFromURL();
-        if (Object.keys(urlFilters).length > 0) {
-          setLockedFilters(urlFilters);
-        }
+        setLockedFilters(pickLockedPublicFilters(urlFilters));
       } else {
         setError('Token no válido');
         setLoading(false);
@@ -146,10 +174,19 @@ const PublicReportPage = () => {
             const boundedDefaults = applyDateBoundsToFilters(defaults, rpt.filtros_schema, movs);
             // Mergear filtros de URL sobre los defaults (URL tiene prioridad)
             const urlFilters = parseFiltersFromURL();
+            const sharedProjectFilters = getSharedProjectFilters(rpt);
+            const urlLockedFilters = pickLockedPublicFilters(urlFilters);
+            const schemaLockedFilters = pickLockedPublicFilters(boundedDefaults);
+            const nextLockedFilters = {
+              ...schemaLockedFilters,
+              ...sharedProjectFilters,
+              ...urlLockedFilters,
+            };
+            setLockedFilters(nextLockedFilters);
             if (Object.keys(urlFilters).length > 0) {
-              setFilters({ ...boundedDefaults, ...urlFilters });
+              setFilters({ ...boundedDefaults, ...urlFilters, ...nextLockedFilters });
             } else {
-              setFilters(boundedDefaults);
+              setFilters({ ...boundedDefaults, ...nextLockedFilters });
             }
           }
         }
@@ -206,6 +243,23 @@ const PublicReportPage = () => {
     if (allMovimientos.length === 0) return [];
     return filterMovimientos(allMovimientos, filters);
   }, [allMovimientos, filters]);
+
+  const publicFiltrosSchema = useMemo(
+    () => buildPublicFiltrosSchema(report?.filtros_schema || {}),
+    [report?.filtros_schema],
+  );
+
+  const editableFilters = useMemo(
+    () => omitLockedPublicFilters(filters),
+    [filters],
+  );
+
+  const handlePublicFiltersChange = useCallback((nextFilters) => {
+    setFilters({
+      ...omitLockedPublicFilters(nextFilters || {}),
+      ...lockedFilters,
+    });
+  }, [lockedFilters]);
 
   const theme = createTheme();
 
@@ -273,7 +327,7 @@ const PublicReportPage = () => {
             disabled={filteredMovimientos.length === 0}
             onClick={async () => {
               try {
-                const results = executeReport(report, filteredMovimientos, presupuestos, displayCurrencies, null, { filters });
+                const results = executeReport(report, filteredMovimientos, presupuestos, displayCurrencies, null, { filters, proyectos: availableOptions.proyectos || [] });
                 const res = await axios.post(
                   `${config.apiUrl}/reports/export-pdf`,
                   {
@@ -302,13 +356,13 @@ const PublicReportPage = () => {
           </Button>
         </Stack>
 
-        {/* Filtros — solo si NO hay filtros fijados desde la URL */}
-        {!lockedFilters && report.filtros_schema && Object.keys(report.filtros_schema).length > 0 && (
+        {/* Filtros públicos: Proyecto queda bloqueado/oculto, el resto sigue editable */}
+        {report.filtros_schema && Object.keys(report.filtros_schema).length > 0 && (
           <Paper sx={{ p: 2, mb: 3 }}>
             <ReportFiltersBar
-              filtrosSchema={report.filtros_schema}
-              filters={filters}
-              onFiltersChange={setFilters}
+              filtrosSchema={publicFiltrosSchema}
+              filters={editableFilters}
+              onFiltersChange={handlePublicFiltersChange}
               availableOptions={availableOptions}
               expanded={filtersExpanded}
               onToggle={() => setFiltersExpanded(!filtersExpanded)}
@@ -323,7 +377,7 @@ const PublicReportPage = () => {
           presupuestos={presupuestos}
           displayCurrencies={displayCurrencies}
           cotizaciones={null}
-          reportContext={{ filters }}
+          reportContext={{ filters, proyectos: availableOptions.proyectos || [] }}
         />
 
         {/* Footer */}

@@ -6,6 +6,8 @@ import {
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
+import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 
 // ─── Constantes ───
 
@@ -23,6 +25,7 @@ const BLOCK_TYPES = [
 
 const OPERACIONES = [
   { value: 'sum', label: 'Suma' },
+  { value: 'saldo_neto', label: 'Saldo neto' },
   { value: 'count', label: 'Contar' },
   { value: 'avg', label: 'Promedio' },
   { value: 'min', label: 'Mínimo' },
@@ -54,6 +57,20 @@ const FILTRO_TIPOS = [
   { value: 'ingreso', label: 'Solo Ingresos' },
 ];
 
+const MONEDAS_MOVIMIENTO = [
+  { value: '', label: 'Todas' },
+  { value: 'ARS', label: 'Solo ARS' },
+  { value: 'USD', label: 'Solo USD' },
+  { value: 'CAC', label: 'Solo CAC' },
+];
+
+const MONEDAS_CALCULO = [
+  { value: '', label: 'Moneda del reporte' },
+  { value: 'ARS', label: 'ARS' },
+  { value: 'USD', label: 'USD Blue' },
+  { value: 'CAC', label: 'CAC' },
+];
+
 const AGRUPAR_POR = [
   { value: 'categoria', label: 'Categoría' },
   { value: 'proveedor', label: 'Proveedor' },
@@ -69,6 +86,7 @@ const COLUMNAS_VISIBLES_OPTIONS = [
   { value: 'fecha_factura', label: 'Fecha' },
   { value: 'tipo', label: 'Tipo' },
   { value: 'categoria', label: 'Categoría' },
+  { value: 'subcategoria', label: 'Subcategoría' },
   { value: 'proveedor_nombre', label: 'Proveedor' },
   { value: 'proyecto_nombre', label: 'Proyecto' },
   { value: 'monto_display', label: 'Monto' },
@@ -82,6 +100,74 @@ const COLUMNAS_VISIBLES_OPTIONS = [
   { value: 'estado', label: 'Estado' },
   { value: 'usuario_nombre', label: 'Usuario' },
 ];
+
+const getColumnasVisiblesValue = (selected = []) => (
+  selected
+    .map((value) => COLUMNAS_VISIBLES_OPTIONS.find((o) => o.value === value))
+    .filter(Boolean)
+);
+
+function ColumnOrderControls({ selected = [], onChange }) {
+  const selectedOptions = getColumnasVisiblesValue(selected);
+
+  if (selectedOptions.length <= 1) return null;
+
+  const moveColumn = (fromIndex, direction) => {
+    const toIndex = fromIndex + direction;
+    if (toIndex < 0 || toIndex >= selected.length) return;
+
+    const next = [...selected];
+    const [item] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, item);
+    onChange(next);
+  };
+
+  return (
+    <Stack spacing={1}>
+      <Typography variant="caption" color="text.secondary">
+        Orden de columnas
+      </Typography>
+      <Stack spacing={0.75}>
+        {selectedOptions.map((option, index) => (
+          <Box
+            key={option.value}
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 1,
+              px: 1,
+              py: 0.5,
+              border: 1,
+              borderColor: 'divider',
+              borderRadius: 1,
+            }}
+          >
+            <Typography variant="body2">{index + 1}. {option.label}</Typography>
+            <Stack direction="row" spacing={0.5}>
+              <IconButton
+                size="small"
+                onClick={() => moveColumn(index, -1)}
+                disabled={index === 0}
+                title="Subir columna"
+              >
+                <KeyboardArrowUpIcon fontSize="small" />
+              </IconButton>
+              <IconButton
+                size="small"
+                onClick={() => moveColumn(index, 1)}
+                disabled={index === selectedOptions.length - 1}
+                title="Bajar columna"
+              >
+                <KeyboardArrowDownIcon fontSize="small" />
+              </IconButton>
+            </Stack>
+          </Box>
+        ))}
+      </Stack>
+    </Stack>
+  );
+}
 
 // ─── Helpers ───
 
@@ -137,6 +223,7 @@ function defaultBlock(type) {
         agrupar_por: 'categoria',
         mostrar_tipo: 'egreso',
         alerta_sobreejecucion: true,
+        incluir_sin_presupuesto: false,
         presupuestos_con_campo: null,
         excluir: {},
       };
@@ -581,7 +668,7 @@ function SummaryTableConfig({ block, onChange, excludeOptions = {} }) {
                 label="Operación"
                 onChange={(e) => updateColumna(idx, 'operacion', e.target.value)}
               >
-                {OPERACIONES.filter((o) => ['sum', 'count', 'avg'].includes(o.value)).map((o) => (
+                {OPERACIONES.filter((o) => ['sum', 'saldo_neto', 'count', 'avg'].includes(o.value)).map((o) => (
                   <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>
                 ))}
               </Select>
@@ -607,6 +694,30 @@ function SummaryTableConfig({ block, onChange, excludeOptions = {} }) {
               >
                 {FILTRO_TIPOS.map((ft) => (
                   <MenuItem key={ft.value} value={ft.value}>{ft.label}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <FormControl size="small" sx={{ flex: 1, minWidth: 130 }}>
+              <InputLabel>Moneda mov.</InputLabel>
+              <Select
+                value={Array.isArray(c.moneda_movimiento) ? (c.moneda_movimiento[0] || '') : (c.moneda_movimiento || '')}
+                label="Moneda mov."
+                onChange={(e) => updateColumna(idx, 'moneda_movimiento', e.target.value || null)}
+              >
+                {MONEDAS_MOVIMIENTO.map((m) => (
+                  <MenuItem key={m.value} value={m.value}>{m.label}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <FormControl size="small" sx={{ flex: 1, minWidth: 150 }}>
+              <InputLabel>Calcular en</InputLabel>
+              <Select
+                value={c.display_currency || ''}
+                label="Calcular en"
+                onChange={(e) => updateColumna(idx, 'display_currency', e.target.value || null)}
+              >
+                {MONEDAS_CALCULO.map((m) => (
+                  <MenuItem key={m.value} value={m.value}>{m.label}</MenuItem>
                 ))}
               </Select>
             </FormControl>
@@ -733,7 +844,7 @@ function MovementsTableConfig({ block, onChange }) {
         size="small"
         options={COLUMNAS_VISIBLES_OPTIONS}
         getOptionLabel={(o) => o.label}
-        value={COLUMNAS_VISIBLES_OPTIONS.filter((o) => selected.includes(o.value))}
+        value={getColumnasVisiblesValue(selected)}
         onChange={(_, val) => onChange('columnas_visibles', val.map((v) => v.value))}
         renderTags={(value, getTagProps) =>
           value.map((option, index) => (
@@ -742,6 +853,11 @@ function MovementsTableConfig({ block, onChange }) {
         }
         renderInput={(params) => <TextField {...params} label="Seleccioná columnas" />}
         disableCloseOnSelect
+      />
+
+      <ColumnOrderControls
+        selected={selected}
+        onChange={(next) => onChange('columnas_visibles', next)}
       />
 
       <TextField
@@ -808,6 +924,16 @@ function BudgetVsActualConfig({ block, onChange, excludeOptions = {} }) {
           />
         }
         label="Alertar cuando haya sobreejecución (>100%)"
+      />
+
+      <FormControlLabel
+        control={
+          <Switch
+            checked={block.incluir_sin_presupuesto === true}
+            onChange={(e) => onChange('incluir_sin_presupuesto', e.target.checked)}
+          />
+        }
+        label="Incluir categorías con movimientos pero sin presupuesto"
       />
 
       <Divider />
@@ -1334,7 +1460,7 @@ function GroupedDetailConfig({ block, onChange, excludeOptions = {} }) {
         size="small"
         options={COLUMNAS_VISIBLES_OPTIONS}
         getOptionLabel={(o) => o.label}
-        value={COLUMNAS_VISIBLES_OPTIONS.filter((o) => selected.includes(o.value))}
+        value={getColumnasVisiblesValue(selected)}
         onChange={(_, val) => onChange('columnas_visibles', val.map((v) => v.value))}
         renderTags={(value, getTagProps) =>
           value.map((option, index) => (
@@ -1343,6 +1469,11 @@ function GroupedDetailConfig({ block, onChange, excludeOptions = {} }) {
         }
         renderInput={(params) => <TextField {...params} label="Seleccioná columnas" />}
         disableCloseOnSelect
+      />
+
+      <ColumnOrderControls
+        selected={selected}
+        onChange={(next) => onChange('columnas_visibles', next)}
       />
 
       <TextField
