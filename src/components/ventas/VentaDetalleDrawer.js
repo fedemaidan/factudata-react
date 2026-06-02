@@ -20,6 +20,7 @@ import {
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import ventaService from 'src/services/ventaService';
 import { formatCurrencyWithCode } from 'src/utils/formatters';
+import CobroFormDrawer from 'src/components/clientes/CobroFormDrawer';
 
 const TIPO_LABEL = {
   acopio: 'Acopio',
@@ -59,7 +60,7 @@ function Dimension({ titulo, tone, label, monto, total, moneda }) {
   );
 }
 
-export default function VentaDetalleDrawer({ open, onClose, empresaId, ventaId, onChanged, onEdit }) {
+export default function VentaDetalleDrawer({ open, onClose, empresaId, ventaId, cajas = [], onChanged, onEdit }) {
   const [venta, setVenta] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -71,8 +72,6 @@ export default function VentaDetalleDrawer({ open, onClose, empresaId, ventaId, 
   const [cancelMotivo, setCancelMotivo] = useState('');
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [cobroOpen, setCobroOpen] = useState(false);
-  const [cobroMonto, setCobroMonto] = useState('');
-  const [cobroMetodo, setCobroMetodo] = useState('efectivo');
 
   const cargar = useCallback(async () => {
     if (!open || !ventaId) return;
@@ -161,26 +160,6 @@ export default function VentaDetalleDrawer({ open, onClose, empresaId, ventaId, 
   }
 
   const saldoCobro = venta ? Math.max(0, (Number(venta.total) || 0) - (Number(venta.cobro?.monto_cobrado) || 0)) : 0;
-
-  function abrirCobro() {
-    setCobroMonto(String(saldoCobro || ''));
-    setCobroMetodo('efectivo');
-    setCobroOpen(true);
-  }
-
-  async function registrarCobro() {
-    const m = Number(cobroMonto);
-    if (!Number.isFinite(m) || m <= 0) { setError('Ingresá un monto válido'); return; }
-    setBusy(true); setError('');
-    try {
-      await ventaService.cobrar(empresaId, ventaId, { monto: m, metodo: cobroMetodo });
-      setCobroOpen(false);
-      await cargar();
-      onChanged?.();
-    } catch (e) {
-      setError(e?.response?.data?.error || e.message);
-    } finally { setBusy(false); }
-  }
 
   // "Cobros reales" = CobroCliente imputados. Un contado marca pagado de forma
   // informativa (sin cobro_ids) y sigue siendo editable/eliminable.
@@ -381,7 +360,7 @@ export default function VentaDetalleDrawer({ open, onClose, empresaId, ventaId, 
               <button
                 type="button"
                 title={puedeCobrar ? 'Registrar cobro' : 'No hay saldo pendiente de cobro'}
-                onClick={abrirCobro}
+                onClick={() => setCobroOpen(true)}
                 disabled={busy || !puedeCobrar}
                 className="rounded-lg bg-primary-main px-4 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-40"
               >
@@ -460,34 +439,15 @@ export default function VentaDetalleDrawer({ open, onClose, empresaId, ventaId, 
         </DialogActions>
       </Dialog>
 
-      {/* Dialog cobro */}
-      <Dialog open={cobroOpen} onClose={() => setCobroOpen(false)} fullWidth maxWidth="xs">
-        <DialogTitle>Registrar cobro</DialogTitle>
-        <DialogContent>
-          <p className="mb-2 text-xs text-neutral-500">
-            Saldo a cobrar: <span className="font-semibold text-neutral-800">{formatCurrencyWithCode(saldoCobro, venta?.moneda)}</span>
-          </p>
-          <TextField
-            fullWidth size="small" type="number" label="Monto a cobrar" sx={{ mb: 2 }}
-            value={cobroMonto} onChange={(e) => setCobroMonto(e.target.value)}
-            inputProps={{ min: 0, max: saldoCobro }}
-          />
-          <TextField
-            fullWidth size="small" select label="Método"
-            value={cobroMetodo} onChange={(e) => setCobroMetodo(e.target.value)}
-            SelectProps={{ native: true }}
-          >
-            <option value="efectivo">Efectivo</option>
-            <option value="transferencia">Transferencia</option>
-            <option value="cheque">Cheque</option>
-            <option value="otro">Otro</option>
-          </TextField>
-        </DialogContent>
-        <DialogActions>
-          <button type="button" onClick={() => setCobroOpen(false)} disabled={busy} className="px-3 py-1.5 text-sm text-neutral-600">Cancelar</button>
-          <button type="button" onClick={registrarCobro} disabled={busy} className="rounded-lg bg-primary-main px-4 py-1.5 text-sm font-semibold text-white disabled:opacity-50">Confirmar cobro</button>
-        </DialogActions>
-      </Dialog>
+      {/* Drawer de cobro (mismo que clientes): imputa a las deudas del cliente */}
+      <CobroFormDrawer
+        open={cobroOpen}
+        empresaId={empresaId}
+        cliente={venta ? { _id: venta.cliente_id, nombre: venta.cliente_nombre } : null}
+        cajas={cajas}
+        onClose={() => setCobroOpen(false)}
+        onSaved={() => { cargar(); onChanged?.(); }}
+      />
 
       {/* Dialog cancelar */}
       <Dialog open={cancelOpen} onClose={() => setCancelOpen(false)} fullWidth maxWidth="xs">

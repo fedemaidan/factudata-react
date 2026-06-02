@@ -297,6 +297,7 @@ function PageContent({ empresa }) {
         open={Boolean(detalleId)}
         ventaId={detalleId}
         empresaId={empresaId}
+        cajas={empresa?.cajas_virtuales || []}
         onClose={() => setDetalleId(null)}
         onChanged={() => cargar()}
         onEdit={(v) => { setDetalleId(null); setVentaEdit(v); setDrawerOpen(true); }}
