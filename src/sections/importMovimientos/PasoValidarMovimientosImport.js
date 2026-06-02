@@ -270,12 +270,16 @@ const PasoValidarMovimientosImport = forwardRef(
         setError('Incluí al menos un movimiento (no podés continuar con todos excluidos).');
         throw new Error('Sin movimientos');
       }
+      // Las filas incompletas NO se bloquean: se envían igual y el backend las
+      // rechaza, apareciendo en el resumen final con su motivo (ticket TAR-284).
+      // Solo avisamos para que el usuario sepa que no se importarán.
       const invalidos = incluidos.filter((r) => !rowIsValid(r, requiereProyecto));
       if (invalidos.length > 0) {
         setError(
-          `Hay ${invalidos.length} movimiento(s) con datos incompletos. Corregilos o excluílos antes de continuar.`,
+          `${invalidos.length} movimiento(s) con datos incompletos no se importarán y aparecerán como rechazados en el resumen.`,
         );
-        throw new Error('Validación');
+      } else {
+        setError('');
       }
 
       const payload = incluidos.map((r) => ({

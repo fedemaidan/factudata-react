@@ -43,6 +43,30 @@ import importMovimientosService from 'src/services/importMovimientosService';
 import { useAuthContext } from 'src/contexts/auth-context';
 import { getProyectosByEmpresa } from 'src/services/proyectosService';
 
+// Las filas rechazadas traen los datos crudos de la planilla, cuyas columnas
+// varían según el archivo (Excel/CSV/PDF/imagen). Buscamos los campos clave
+// por patrón de nombre para armar un resumen legible; si no aparece, queda "—".
+const buscarCampoFila = (datos, patrones) => {
+  if (!datos || typeof datos !== 'object') return '';
+  const claves = Object.keys(datos);
+  for (const patron of patrones) {
+    const clave = claves.find((k) => patron.test(k));
+    const valor = clave != null ? datos[clave] : undefined;
+    if (valor !== null && valor !== undefined && String(valor).trim() !== '') {
+      return String(valor).trim();
+    }
+  }
+  return '';
+};
+
+const resumirFilaRechazada = (datos) => ({
+  fecha: buscarCampoFila(datos, [/fecha/i]),
+  importe: buscarCampoFila(datos, [/importe/i, /monto/i, /total/i, /valor/i]),
+  detalle:
+    buscarCampoFila(datos, [/proveedor/i]) ||
+    buscarCampoFila(datos, [/descrip/i, /detalle/i, /concepto/i, /observ/i, /glosa/i]),
+});
+
 const PasoResumen = ({
   empresa,
   wizardData,
@@ -354,7 +378,8 @@ const PasoResumen = ({
   }
 
   if (resultadoImport) {
-    const { total, exitosos, fallidos, codigo } = resultadoImport;
+    const { total, exitosos, fallidos, codigo, detalles } = resultadoImport;
+    const filasRechazadas = Array.isArray(detalles?.fallidos) ? detalles.fallidos : [];
     
     return (
       <Box>
@@ -379,10 +404,77 @@ const PasoResumen = ({
           </Alert>
         )}
 
-        {fallidos > 0 && (
+        {fallidos > 0 && filasRechazadas.length === 0 && (
           <Alert severity="warning" sx={{ mb: 3 }}>
             {formatNumber(fallidos)} movimientos no se pudieron importar
           </Alert>
+        )}
+
+        {filasRechazadas.length > 0 && (
+          <Card
+            variant="outlined"
+            sx={{ mb: 3, borderColor: 'warning.light', overflow: 'hidden' }}
+          >
+            <Box
+              sx={{
+                px: 2.5,
+                py: 1.75,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1.5,
+                bgcolor: 'rgba(237,108,2,0.06)',
+                borderBottom: '1px solid',
+                borderColor: 'warning.light',
+              }}
+            >
+              <WarningIcon color="warning" />
+              <Box sx={{ minWidth: 0 }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 700, lineHeight: 1.2 }}>
+                  {formatNumber(filasRechazadas.length)} movimientos no se importaron
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Revisá el motivo, corregilos en tu planilla y volvé a importarlos.
+                </Typography>
+              </Box>
+            </Box>
+            <TableContainer sx={{ maxHeight: 360 }}>
+              <Table size="small" stickyHeader>
+                <TableHead>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 700, width: 64 }}>Fila</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Fecha</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }} align="right">Importe</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Proveedor / Detalle</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Motivo</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {filasRechazadas.map((item, idx) => {
+                    const r = resumirFilaRechazada(item.datos);
+                    const motivo = item.motivo || item.error || 'No se pudo importar';
+                    return (
+                      <TableRow key={`${item.fila ?? 'fila'}-${idx}`} hover>
+                        <TableCell sx={{ color: 'text.secondary', fontVariantNumeric: 'tabular-nums' }}>
+                          {item.fila ?? '—'}
+                        </TableCell>
+                        <TableCell sx={{ whiteSpace: 'nowrap' }}>{r.fecha || '—'}</TableCell>
+                        <TableCell align="right" sx={{ whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
+                          {r.importe || '—'}
+                        </TableCell>
+                        <TableCell
+                          title={r.detalle || undefined}
+                          sx={{ maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                        >
+                          {r.detalle || '—'}
+                        </TableCell>
+                        <TableCell sx={{ color: 'warning.dark' }}>{motivo}</TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </Card>
         )}
 
         {/* Lista de proyectos simplificada */}
