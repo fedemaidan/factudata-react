@@ -66,7 +66,21 @@ const Page = () => {
   const movimientos = cc.movimientos || data?.movimientos || [];
   const acopios = data?.acopios || [];
   const cobros = data?.cobros_recientes || [];
-  const saldo = cc.saldo ?? data?.saldo ?? 0;
+  const saldo = cc.saldo_total ?? cc.saldo ?? data?.saldo ?? 0;
+
+  // Extracto unificado (deudas + pagos por fecha), igual que la CC del cliente.
+  const extracto = [
+    ...movimientos.map((m, i) => ({
+      key: `m-${m._id || i}`, tipo: 'deuda',
+      fecha: m.fecha, titulo: m.descripcion || m.concepto || 'Deuda',
+      monto: Number(m.total ?? m.monto) || 0, pendiente: Number(m.pendiente) || 0,
+    })),
+    ...cobros.map((c, i) => ({
+      key: `c-${c._id || i}`, tipo: 'cobro',
+      fecha: c.fecha || c.fecha_cobro, titulo: `Pago${c.metodo ? ` — ${c.metodo}` : ''}`,
+      monto: Number(c.monto ?? c.monto_bruto) || 0,
+    })),
+  ].sort((a, b) => new Date(b.fecha || 0) - new Date(a.fecha || 0));
 
   return (
     <>
@@ -104,10 +118,10 @@ const Page = () => {
               </Typography>
               <Typography variant="caption" color="text.secondary">
                 {saldo > 0.005
-                  ? 'Saldo a tu favor del corralón (debés).'
+                  ? 'Tenés saldo pendiente de pago.'
                   : saldo < -0.005
-                  ? 'A tu favor.'
-                  : 'Al día.'}
+                  ? 'Tenés saldo a favor.'
+                  : 'Estás al día.'}
               </Typography>
             </Paper>
 
@@ -139,7 +153,7 @@ const Page = () => {
                             )}
                           </TableCell>
                           <TableCell align="right">
-                            {formatCurrencyWithCode(a.saldo || 0)}
+                            {formatCurrencyWithCode(a.saldo_disponible ?? a.saldo ?? 0)}
                           </TableCell>
                         </TableRow>
                       ))}
@@ -149,62 +163,44 @@ const Page = () => {
               </Box>
             )}
 
-            {movimientos.length > 0 && (
+            {extracto.length > 0 && (
               <Box>
                 <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1 }}>
-                  Últimos movimientos
+                  Cuenta corriente
                 </Typography>
                 <Paper variant="outlined">
                   <Table size="small">
                     <TableHead>
                       <TableRow sx={{ bgcolor: 'background.neutral' }}>
                         <TableCell>Fecha</TableCell>
-                        <TableCell>Concepto</TableCell>
+                        <TableCell>Detalle</TableCell>
                         <TableCell align="right">Monto</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {movimientos.slice(0, 20).map((m) => (
-                        <TableRow key={m._id || m.id}>
-                          <TableCell>{m.fecha ? formatTimestamp(m.fecha) : '—'}</TableCell>
-                          <TableCell>{m.descripcion || m.concepto || '—'}</TableCell>
-                          <TableCell align="right">
-                            {formatCurrencyWithCode(m.monto || 0)}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </Paper>
-              </Box>
-            )}
-
-            {cobros.length > 0 && (
-              <Box>
-                <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1 }}>
-                  Tus pagos recientes
-                </Typography>
-                <Paper variant="outlined">
-                  <Table size="small">
-                    <TableHead>
-                      <TableRow sx={{ bgcolor: 'background.neutral' }}>
-                        <TableCell>Fecha</TableCell>
-                        <TableCell>Método</TableCell>
-                        <TableCell align="right">Monto</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {cobros.slice(0, 10).map((c) => (
-                        <TableRow key={c._id || c.id}>
-                          <TableCell>
-                            {c.fecha_cobro ? formatTimestamp(c.fecha_cobro) : '—'}
-                          </TableCell>
-                          <TableCell>{c.metodo || '—'}</TableCell>
-                          <TableCell align="right">
-                            {formatCurrencyWithCode(c.monto_bruto || 0)}
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                      {extracto.slice(0, 40).map((r) => {
+                        const esCobro = r.tipo === 'cobro';
+                        return (
+                          <TableRow key={r.key}>
+                            <TableCell>{r.fecha ? formatTimestamp(r.fecha) : '—'}</TableCell>
+                            <TableCell>
+                              <Typography variant="body2" color={esCobro ? 'info.main' : 'text.primary'}>
+                                {r.titulo}
+                              </Typography>
+                              {!esCobro && r.pendiente > 0.005 && (
+                                <Typography variant="caption" color="warning.main" display="block">
+                                  Pendiente {formatCurrencyWithCode(r.pendiente)}
+                                </Typography>
+                              )}
+                            </TableCell>
+                            <TableCell align="right">
+                              <Typography variant="body2" color={esCobro ? 'info.main' : 'text.primary'}>
+                                {esCobro ? '− ' : ''}{formatCurrencyWithCode(r.monto)}
+                              </Typography>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </Paper>
