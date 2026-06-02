@@ -317,29 +317,48 @@ export default function GrupoDetalleDrawer({ open, onClose, empresaId, grupoId, 
         </footer>
       </div>
 
-      {/* Cobro consolidado al titular */}
-      <Dialog open={cobroOpen} onClose={() => !busy && setCobroOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>Cobrar al titular</DialogTitle>
-        <DialogContent>
-          <p className="mb-2 text-xs text-neutral-500">
-            Pendiente del titular: <b>{formatCurrencyWithCode(pendienteGrupo)}</b>. El monto se reparte
-            entre las deudas de los clientes (más viejas primero).
-          </p>
-          <TextField fullWidth size="small" type="number" label="Monto a cobrar" sx={{ mb: 2 }}
-            value={cobroMonto} onChange={(e) => setCobroMonto(e.target.value)} inputProps={{ min: 0, max: pendienteGrupo }} />
-          <TextField fullWidth size="small" select label="Método" SelectProps={{ native: true }}
-            value={cobroMetodo} onChange={(e) => setCobroMetodo(e.target.value)}>
-            <option value="efectivo">Efectivo</option>
-            <option value="transferencia">Transferencia</option>
-            <option value="cheque">Cheque</option>
-            <option value="otro">Otro</option>
-          </TextField>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setCobroOpen(false)} disabled={busy}>Cancelar</Button>
-          <Button variant="contained" onClick={cobrarTitular} disabled={busy}>{busy ? 'Cobrando…' : 'Confirmar cobro'}</Button>
-        </DialogActions>
-      </Dialog>
+      {/* Cobro consolidado al titular (drawer, consistente con el resto) */}
+      <Drawer anchor="right" open={cobroOpen} onClose={() => !busy && setCobroOpen(false)}
+        PaperProps={{ sx: { width: { xs: '100%', sm: 460 }, maxWidth: '100%' } }}>
+        <div className="flex h-full min-h-0 flex-col bg-neutral-50">
+          <header className="shrink-0 border-b border-divider bg-white px-4 py-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-bold tracking-tight text-neutral-900">Cobrar al titular</h2>
+              <IconButton onClick={() => setCobroOpen(false)} size="small"><XMarkIcon className="h-5 w-5" /></IconButton>
+            </div>
+          </header>
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+            <div className="flex flex-col gap-3">
+              {error && <Alert severity="error">{error}</Alert>}
+              <div className="rounded-xl border border-divider bg-white p-3 shadow-sm">
+                <p className="text-xs text-neutral-500">
+                  Pendiente del titular: <b>{formatCurrencyWithCode(pendienteGrupo)}</b>. El monto se reparte
+                  entre las deudas de los clientes (más viejas primero).
+                </p>
+                <TextField fullWidth size="small" type="number" label="Monto a cobrar" sx={{ mt: 2, mb: 2 }}
+                  value={cobroMonto} onChange={(e) => setCobroMonto(e.target.value)} inputProps={{ min: 0, max: pendienteGrupo }} />
+                <TextField fullWidth size="small" select label="Método" SelectProps={{ native: true }}
+                  value={cobroMetodo} onChange={(e) => setCobroMetodo(e.target.value)}>
+                  <option value="efectivo">Efectivo</option>
+                  <option value="transferencia">Transferencia</option>
+                  <option value="cheque">Cheque</option>
+                  <option value="otro">Otro</option>
+                </TextField>
+              </div>
+            </div>
+          </div>
+          <footer className="shrink-0 border-t border-divider bg-white px-4 py-3">
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setCobroOpen(false)} disabled={busy}
+                className="rounded-lg border border-neutral-300 bg-white px-4 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50 disabled:opacity-50">Cancelar</button>
+              <button type="button" onClick={cobrarTitular} disabled={busy}
+                className="rounded-lg bg-primary-main px-4 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-primary-dark disabled:opacity-50">
+                {busy ? 'Cobrando…' : 'Confirmar cobro'}
+              </button>
+            </div>
+          </footer>
+        </div>
+      </Drawer>
 
       {/* Agregar cliente al titular */}
       <Dialog open={addOpen} onClose={() => !busy && setAddOpen(false)} maxWidth="xs" fullWidth>
