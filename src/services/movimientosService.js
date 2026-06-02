@@ -486,10 +486,107 @@ const movimientosService = {
   },
 
   /**
+   * Carga masiva v2 (CargaMasivaStatus): sube los archivos crudos y arranca el
+   * flujo en el worker (parseo del PDF + preguntas). Devuelve { statusId, total }.
+   * @param {File[]} archivos
+   * @param {object} contexto_lote
+   */
+  iniciarCargaMasivaV2: async (archivos, contexto_lote = {}, opts = {}) => {
+    const { signal } = opts;
+    try {
+      const MAX_BATCH_BYTES = 95 * 1024 * 1024;
+      const totalBytes = (archivos || []).reduce((acc, f) => acc + (f?.size || 0), 0);
+      if (totalBytes > MAX_BATCH_BYTES) {
+        const totalMb = (totalBytes / (1024 * 1024)).toFixed(1);
+        return {
+          error: true,
+          message: `El lote pesa ${totalMb}MB y supera el límite de 100MB por subida. Dividilo en lotes más chicos (el proxy rechaza requests más grandes con 413).`,
+        };
+      }
+      const formData = new FormData();
+      (archivos || []).forEach((f) => formData.append('archivos', f));
+      formData.append('contexto_lote', JSON.stringify(contexto_lote || {}));
+      const res = await api.post('/movimiento/carga-masiva/iniciar', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        signal,
+      });
+      if (res.status !== 202 && res.status !== 200) {
+        return { error: true, message: 'Error al iniciar la carga masiva' };
+      }
+      const { statusId, total } = res.data || {};
+      if (!statusId) return { error: true, message: 'El backend no devolvió statusId' };
+      return { error: false, data: { statusId, total } };
+    } catch (err) {
+      console.error('iniciarCargaMasivaV2:', err);
+      return { error: true, message: err.response?.data?.error || err.response?.data?.details || err.message };
+    }
+  },
+
+  /**
+   * Poolea GET /carga-masiva/status/:id hasta que `estado` esté en estadosObjetivo
+   * o sea 'error'. Llama onEstado/onProgress en cada tick.
+   * @param {string} statusId
+   * @param {string[]} estadosObjetivo - estados en los que la espera termina con éxito
+   * @param {object} [opts] { onEstado, onProgress, signal }
+   */
+  esperarEstadoCargaMasiva: async (statusId, estadosObjetivo = [], opts = {}) => {
+    const { onEstado, onProgress, signal } = opts;
+    const objetivo = new Set(estadosObjetivo);
+    const POLL_MS = 5000;
+    const MAX_WAIT_MS = 60 * 60 * 1000;
+    const start = Date.now();
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      if (signal?.aborted) return { error: true, message: 'Cancelado' };
+      if (Date.now() - start > MAX_WAIT_MS) {
+        return { error: true, message: 'La carga masiva tardó demasiado y se canceló el polling.' };
+      }
+      let res;
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        res = await api.get(`/movimiento/carga-masiva/status/${statusId}`, { signal });
+      } catch (e) {
+        if (e?.response?.status === 404) return { error: true, message: 'El estado expiró o no existe.' };
+        throw e;
+      }
+      const status = res.data || {};
+      if (typeof onEstado === 'function') onEstado(status.estado);
+      if (typeof onProgress === 'function') onProgress(status.progreso || { completed: 0, total: 0 });
+      if (status.estado === 'error') {
+        return { error: true, message: status.errores?.[0]?.error || 'Error en la carga masiva.', data: status };
+      }
+      if (objetivo.has(status.estado)) {
+        return { error: false, data: status };
+      }
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise((resolve) => setTimeout(resolve, POLL_MS));
+    }
+  },
+
+  /**
+   * Envía las respuestas del cuestionario y dispara la extracción (OCR/IA).
+   * @param {string} statusId
+   * @param {object} respuestas - { [preguntaId]: { seleccion, otro } }
+   */
+  responderPreguntasCargaMasiva: async (statusId, respuestas = {}, contexto_lote = {}) => {
+    try {
+      const res = await api.post('/movimiento/carga-masiva/responder-preguntas', { statusId, respuestas, contexto_lote });
+      if (res.status !== 202 && res.status !== 200) {
+        return { error: true, message: 'Error al enviar las respuestas' };
+      }
+      return { error: false, data: res.data };
+    } catch (err) {
+      console.error('responderPreguntasCargaMasiva:', err);
+      return { error: true, message: err.response?.data?.error || err.response?.data?.details || err.message };
+    }
+  },
+
+  /**
    * Crea movimientos reales a partir del payload validado en cliente.
    * @param {object[]} movimientos - incluir omitido: true para saltar ítems
+   * @param {string} [statusId] - flujo v2: para registrar feedback de escrituras
    */
-  confirmarCargaMasiva: async (movimientos) => {
+  confirmarCargaMasiva: async (movimientos, statusId = null) => {
     // El backend permite máx. 50 por request; chunkeamos del lado del cliente
     // para soportar lotes grandes (p.ej. PDFs con split-per-page que generan >50 items).
     const CHUNK_SIZE = 50;
@@ -508,6 +605,7 @@ const movimientosService = {
         // eslint-disable-next-line no-await-in-loop
         const response = await api.post('/movimiento/carga-masiva/confirmar', {
           movimientos: chunks[c],
+          statusId: statusId || null,
         });
         if (response.status !== 200) {
           return { error: true, message: 'Error al confirmar el lote' };
