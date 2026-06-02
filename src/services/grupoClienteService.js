@@ -42,6 +42,12 @@ const grupoClienteService = {
     );
     return data;
   },
+
+  // Cobro consolidado al titular: reparte FIFO entre las deudas de sus clientes.
+  async cobrarTitular(empresaId, grupoId, payload) {
+    const { data } = await api.post(`/empresa/${empresaId}/grupos-cliente/${grupoId}/cobrar`, payload);
+    return data;
+  },
 };
 
 export default grupoClienteService;

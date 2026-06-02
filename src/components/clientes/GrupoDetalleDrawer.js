@@ -38,6 +38,10 @@ export default function GrupoDetalleDrawer({ open, onClose, empresaId, grupoId, 
   // Drawers de cliente apilados sobre el del titular.
   const [clienteDetalleId, setClienteDetalleId] = useState(null);
   const [clienteForm, setClienteForm] = useState({ open: false, cliente: null });
+  // Cobro consolidado al titular.
+  const [cobroOpen, setCobroOpen] = useState(false);
+  const [cobroMonto, setCobroMonto] = useState('');
+  const [cobroMetodo, setCobroMetodo] = useState('efectivo');
 
   const cargar = useCallback(async () => {
     if (!open || !empresaId || !grupoId) return;
@@ -94,10 +98,31 @@ export default function GrupoDetalleDrawer({ open, onClose, empresaId, grupoId, 
   const grupo = data?.grupo || {};
   const items = data?.items || [];
   const total = data?.total || 0;
+  const pendienteGrupo = items.reduce((a, it) => a + Math.max(0, Number(it.saldo) || 0), 0);
   const clientesSinGrupo = useMemo(
     () => (todosClientes || []).filter((c) => !c.grupo_id && !c.archivado),
     [todosClientes]
   );
+
+  function abrirCobro() {
+    setCobroMonto(String(Math.round(pendienteGrupo * 100) / 100 || ''));
+    setCobroMetodo('efectivo');
+    setCobroOpen(true);
+  }
+
+  async function cobrarTitular() {
+    const m = Number(cobroMonto);
+    if (!Number.isFinite(m) || m <= 0) { setError('Ingresá un monto válido'); return; }
+    setBusy(true); setError('');
+    try {
+      await grupoClienteService.cobrarTitular(empresaId, grupoId, { monto: m, metodo: cobroMetodo, caja_id: null });
+      setCobroOpen(false);
+      await cargar();
+      onChanged?.();
+    } catch (e) {
+      setError(e?.response?.data?.error || e.message);
+    } finally { setBusy(false); }
+  }
 
   async function handleAdd() {
     if (!addSel) return;
@@ -264,9 +289,38 @@ export default function GrupoDetalleDrawer({ open, onClose, empresaId, grupoId, 
               className="rounded-lg border border-neutral-300 bg-white px-4 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50">
               Editar
             </button>
+            <button type="button" onClick={abrirCobro} disabled={busy || pendienteGrupo <= 0.005}
+              title={pendienteGrupo > 0.005 ? 'Cobrar al titular' : 'El titular no tiene saldo pendiente'}
+              className="rounded-lg bg-primary-main px-4 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-40">
+              Registrar cobro
+            </button>
           </div>
         </footer>
       </div>
+
+      {/* Cobro consolidado al titular */}
+      <Dialog open={cobroOpen} onClose={() => !busy && setCobroOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Cobrar al titular</DialogTitle>
+        <DialogContent>
+          <p className="mb-2 text-xs text-neutral-500">
+            Pendiente del titular: <b>{formatCurrencyWithCode(pendienteGrupo)}</b>. El monto se reparte
+            entre las deudas de los clientes (más viejas primero).
+          </p>
+          <TextField fullWidth size="small" type="number" label="Monto a cobrar" sx={{ mb: 2 }}
+            value={cobroMonto} onChange={(e) => setCobroMonto(e.target.value)} inputProps={{ min: 0, max: pendienteGrupo }} />
+          <TextField fullWidth size="small" select label="Método" SelectProps={{ native: true }}
+            value={cobroMetodo} onChange={(e) => setCobroMetodo(e.target.value)}>
+            <option value="efectivo">Efectivo</option>
+            <option value="transferencia">Transferencia</option>
+            <option value="cheque">Cheque</option>
+            <option value="otro">Otro</option>
+          </TextField>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCobroOpen(false)} disabled={busy}>Cancelar</Button>
+          <Button variant="contained" onClick={cobrarTitular} disabled={busy}>{busy ? 'Cobrando…' : 'Confirmar cobro'}</Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Agregar cliente al titular */}
       <Dialog open={addOpen} onClose={() => !busy && setAddOpen(false)} maxWidth="xs" fullWidth>
