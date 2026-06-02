@@ -4,7 +4,6 @@
  * (editar, archivar). No saca al usuario de /grupos-cliente.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/router';
 import {
   Alert,
   Autocomplete,
@@ -22,9 +21,10 @@ import { XMarkIcon } from '@heroicons/react/24/outline';
 import grupoClienteService from 'src/services/grupoClienteService';
 import clienteService from 'src/services/clienteService';
 import { formatCurrencyWithCode, formatTimestamp } from 'src/utils/formatters';
+import ClienteDetalleDrawer from 'src/components/clientes/ClienteDetalleDrawer';
+import ClienteFormDrawer from 'src/components/clientes/ClienteFormDrawer';
 
 export default function GrupoDetalleDrawer({ open, onClose, empresaId, grupoId, onEdit, onChanged }) {
-  const router = useRouter();
   const [data, setData] = useState(null);
   const [todosClientes, setTodosClientes] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -35,6 +35,9 @@ export default function GrupoDetalleDrawer({ open, onClose, empresaId, grupoId, 
   const [vista, setVista] = useState('obras'); // 'obras' | 'movimientos'
   const [movsConsol, setMovsConsol] = useState(null); // movimientos de todas las obras, con cliente
   const [loadingMovs, setLoadingMovs] = useState(false);
+  // Drawers de cliente apilados sobre el del titular.
+  const [clienteDetalleId, setClienteDetalleId] = useState(null);
+  const [clienteForm, setClienteForm] = useState({ open: false, cliente: null });
 
   const cargar = useCallback(async () => {
     if (!open || !empresaId || !grupoId) return;
@@ -197,7 +200,7 @@ export default function GrupoDetalleDrawer({ open, onClose, empresaId, grupoId, 
                         const saldoColor = it.saldo > 0.005 ? 'text-warning-dark' : it.saldo < -0.005 ? 'text-info-dark' : 'text-neutral-900';
                         return (
                           <div key={c._id} className="flex items-center justify-between gap-2 px-3 py-2">
-                            <button type="button" onClick={() => router.push(`/clientes?cliente=${c._id}`)} className="min-w-0 text-left">
+                            <button type="button" onClick={() => setClienteDetalleId(c._id)} className="min-w-0 text-left">
                               <span className="block truncate text-sm font-medium text-primary-dark hover:underline">{c.nombre}</span>
                               <span className="block text-[11px] text-neutral-500">
                                 {it.ultima_actividad ? formatTimestamp(it.ultima_actividad) : 'sin actividad'}
@@ -283,6 +286,26 @@ export default function GrupoDetalleDrawer({ open, onClose, empresaId, grupoId, 
           <Button variant="contained" onClick={handleAdd} disabled={!addSel || busy}>Agregar</Button>
         </DialogActions>
       </Dialog>
+
+      {/* Drawer de cliente apilado: se abre desde la lista, sin salir del titular */}
+      <ClienteDetalleDrawer
+        open={Boolean(clienteDetalleId)}
+        clienteId={clienteDetalleId}
+        empresaId={empresaId}
+        esCorralon
+        onClose={() => setClienteDetalleId(null)}
+        onChanged={() => cargar()}
+        onEdit={(c) => { setClienteDetalleId(null); setClienteForm({ open: true, cliente: c }); }}
+      />
+
+      <ClienteFormDrawer
+        open={clienteForm.open}
+        cliente={clienteForm.cliente}
+        empresaId={empresaId}
+        grupos={grupo?._id ? [grupo] : []}
+        onClose={() => setClienteForm({ open: false, cliente: null })}
+        onSaved={() => cargar()}
+      />
     </Drawer>
   );
 }
