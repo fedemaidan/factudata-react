@@ -406,7 +406,10 @@ export function useReportData(user, empresaId) {
         const cacData = Array.isArray(cacArr) ? cacArr[0] : cacArr;
         setCotizaciones({
           dolar_blue: dolarData?.blue?.venta || dolarData?.blue?.promedio || 0,
-          cac: cacData?.general || cacData?.valor || 0,
+          cac: cacData?.cac_indice || cacData?.general || cacData?.valor || 0,
+          cac_general: cacData?.cac_indice || cacData?.general || cacData?.valor || 0,
+          cac_mano_obra: cacData?.cac_mano_obra || cacData?.mano_obra || 0,
+          cac_materiales: cacData?.cac_materiales || cacData?.materiales || 0,
         });
       } catch (err) {
         console.warn('No se pudieron obtener cotizaciones live:', err);
@@ -482,11 +485,15 @@ export function useReportData(user, empresaId) {
   // ═══════════════════════════════════════════
   //  Moneda equivalente: derivar displayCurrencies del estado de filtros
   // ═══════════════════════════════════════════
-  const displayCurrencies = filters.moneda_equivalente?.length > 0
-    ? filters.moneda_equivalente
-    : selectedReport?.filtros_schema?.moneda_equivalente?.default_values?.length > 0
-      ? selectedReport.filtros_schema.moneda_equivalente.default_values
-      : [selectedReport?.display_currency || 'ARS'];
+  const hasIncomeBudgetControl = Array.isArray(selectedReport?.layout)
+    && selectedReport.layout.some((block) => block?.type === 'income_budget_control');
+  const displayCurrencies = hasIncomeBudgetControl
+    ? ['ARS']
+    : filters.moneda_equivalente?.length > 0
+      ? filters.moneda_equivalente
+      : selectedReport?.filtros_schema?.moneda_equivalente?.default_values?.length > 0
+        ? selectedReport.filtros_schema.moneda_equivalente.default_values
+        : [selectedReport?.display_currency || 'ARS'];
 
   return {
     // State

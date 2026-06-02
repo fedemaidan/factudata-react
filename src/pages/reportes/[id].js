@@ -112,6 +112,22 @@ const ReportDetailPage = () => {
     }
   }, [edit, selectedReport]);
 
+  const hasIncomeBudgetControl = useMemo(() => (
+    Array.isArray(selectedReport?.layout)
+    && selectedReport.layout.some((block) => block?.type === 'income_budget_control')
+  ), [selectedReport]);
+
+  const filtrosSchemaView = useMemo(() => {
+    if (!hasIncomeBudgetControl) return selectedReport?.filtros_schema || {};
+    return {
+      ...(selectedReport?.filtros_schema || {}),
+      moneda_equivalente: {
+        ...(selectedReport?.filtros_schema?.moneda_equivalente || {}),
+        enabled: false,
+      },
+    };
+  }, [hasIncomeBudgetControl, selectedReport]);
+
   // ─── Handlers ───
   const handleBack = () => {
     router.push('/reportes');
@@ -490,7 +506,7 @@ const ReportDetailPage = () => {
                 <Container maxWidth="xl">
                   <Paper sx={{ p: 2, mb: 2 }}>
                     <ReportFiltersBar
-                      filtrosSchema={selectedReport.filtros_schema}
+                      filtrosSchema={filtrosSchemaView}
                       filters={filters}
                       onFiltersChange={setFilters}
                       availableOptions={availableOptions}
@@ -509,7 +525,7 @@ const ReportDetailPage = () => {
                   {/* Info de datos */}
                   {!loadingData && (
                     <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
-                      {filteredMovimientos.length} movimientos · Moneda: {displayCurrencies?.join(', ') || 'ARS'}
+                      {filteredMovimientos.length} movimientos{hasIncomeBudgetControl ? '' : ` · Moneda: ${displayCurrencies?.join(', ') || 'ARS'}`}
                     </Typography>
                   )}
 

@@ -18,6 +18,7 @@ const BLOCK_TYPES = [
   { value: 'budget_vs_actual', label: 'Presupuesto vs Real', desc: 'Compara presupuesto de control vs gastos reales por categoría.' },
   { value: 'monthly_budget_control', label: 'Control Presupuestario Mensual', desc: 'Agrupa gastos por mes y por categorías de presupuesto, con total acumulado y % de avance.' },
   { value: 'category_budget_matrix', label: 'Matriz de Presupuestos por Proyecto', desc: 'Para una categoría específica, muestra presupuesto inicial, adicionales, total, recibido y saldo por proyecto.' },
+  { value: 'income_budget_control', label: 'Control de Ingresos CAC', desc: 'Muestra presupuesto de ingreso, adicionales, pagos recibidos y saldo CAC valorizado a hoy.' },
   { value: 'chart', label: 'Gráfico', desc: 'Muestra datos agrupados en gráficos de barras, torta, línea o área.' },
   { value: 'grouped_detail', label: 'Detalle por Grupo', desc: 'Muestra chips o mini-cards de grupos con tabla de movimientos filtrada al seleccionar.' },
   { value: 'balance_between_partners', label: 'Balance entre Socios', desc: 'Calcula saldo neto por socio (telefono), diferencia contra saldo ideal y deudas entre socios.' },
@@ -255,6 +256,12 @@ function defaultBlock(type) {
         label_saldo: 'Saldo',
         proyectos_seleccionados: [], // [] significa todos por default
       };
+    case 'income_budget_control':
+      return {
+        ...base,
+        titulo: 'Control presupuesto ingresos',
+        campo_monto: 'subtotal',
+      };
     case 'chart':
       return {
         ...base,
@@ -425,7 +432,7 @@ const BlockEditorDialog = ({
           </FormControl>
 
           {/* Filtro de tipo (compartido) */}
-          {!['budget_vs_actual', 'monthly_budget_control', 'category_budget_matrix'].includes(block.type) && (
+          {!['budget_vs_actual', 'monthly_budget_control', 'category_budget_matrix', 'income_budget_control'].includes(block.type) && (
             <FormControl size="small" fullWidth>
               <InputLabel>Filtrar por tipo de movimiento</InputLabel>
               <Select
@@ -460,6 +467,9 @@ const BlockEditorDialog = ({
           )}
           {block.type === 'category_budget_matrix' && (
             <CategoryBudgetMatrixConfig block={block} onChange={updateBlock} proyectos={proyectos} />
+          )}
+          {block.type === 'income_budget_control' && (
+            <IncomeBudgetControlConfig block={block} onChange={updateBlock} />
           )}
           {block.type === 'chart' && (
             <ChartConfig block={block} onChange={updateBlock} excludeOptions={excludeOptions} />
@@ -1420,6 +1430,28 @@ function CategoryBudgetMatrixConfig({ block, onChange, proyectos = [] }) {
           fullWidth
         />
       </Stack>
+    </Stack>
+  );
+}
+
+function IncomeBudgetControlConfig({ block, onChange }) {
+  return (
+    <Stack spacing={2}>
+      <Alert severity="info" variant="outlined" sx={{ py: 0.5 }}>
+        Este bloque toma presupuestos de control de tipo ingreso y movimientos de ingreso. Respeta el filtro global de proyecto del reporte.
+      </Alert>
+
+      <FormControl size="small" fullWidth>
+        <InputLabel>Monto de movimientos</InputLabel>
+        <Select
+          value={block.campo_monto || 'subtotal'}
+          label="Monto de movimientos"
+          onChange={(e) => onChange('campo_monto', e.target.value)}
+        >
+          <MenuItem value="subtotal">Subtotal neto</MenuItem>
+          <MenuItem value="total">Total</MenuItem>
+        </Select>
+      </FormControl>
     </Stack>
   );
 }
