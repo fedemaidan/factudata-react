@@ -47,6 +47,19 @@ const COND_IVA_MAP = {
 
 const normKey = (k) => String(k || '').trim().toLowerCase().replace(/\s+/g, '_');
 
+// Repara "mojibake": texto UTF-8 que fue leído como Latin-1/Win-1252
+// (ej. "PÃ©rez" → "Pérez"). Solo actúa si detecta los marcadores típicos.
+function fixEncoding(s) {
+  if (typeof s !== 'string' || !s) return s;
+  if (!/Ã.|Â.|â€/.test(s)) return s;
+  try {
+    // escape() arma %XX de los bytes; decodeURIComponent los re-decodifica como UTF-8.
+    return decodeURIComponent(escape(s));
+  } catch (_) {
+    return s; // si no era mojibake válido, dejar el original
+  }
+}
+
 function mapRowToCliente(row) {
   const lookup = {};
   Object.keys(row || {}).forEach((k) => {
@@ -62,6 +75,10 @@ function mapRowToCliente(row) {
       }
     }
   }
+  // Reparar mojibake en los campos de texto libre (tildes/eñes rotas).
+  ['nombre', 'razon_social', 'direccion', 'email', 'notas', 'alias', 'categorias'].forEach((f) => {
+    if (typeof out[f] === 'string') out[f] = fixEncoding(out[f]);
+  });
   // Normalizaciones específicas
   if (out.condicion_iva) {
     const k = String(out.condicion_iva).trim().toLowerCase();
@@ -117,7 +134,13 @@ const ImportarClientes = ({ open, onClose, empresaId, onDone }) => {
       const isCsv = /\.csv$/i.test(file.name || '');
       let wb;
       if (isCsv) {
-        const text = await file.text();
+        // Leemos como bytes y decodificamos UTF-8; si aparecen caracteres de
+        // reemplazo (), el archivo venía en Windows-1252 y reintentamos.
+        const buf = await file.arrayBuffer();
+        let text = new TextDecoder('utf-8').decode(buf);
+        if (text.includes('�')) {
+          try { text = new TextDecoder('windows-1252').decode(buf); } catch (_) { /* noop */ }
+        }
         wb = XLSX.read(text, { type: 'string' });
       } else {
         const buf = await file.arrayBuffer();
