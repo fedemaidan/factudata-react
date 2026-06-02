@@ -42,6 +42,7 @@ export default function GrupoDetalleDrawer({ open, onClose, empresaId, grupoId, 
   const [cobroOpen, setCobroOpen] = useState(false);
   const [cobroMonto, setCobroMonto] = useState('');
   const [cobroMetodo, setCobroMetodo] = useState('efectivo');
+  const [linkMsg, setLinkMsg] = useState('');
 
   const cargar = useCallback(async () => {
     if (!open || !empresaId || !grupoId) return;
@@ -108,6 +109,19 @@ export default function GrupoDetalleDrawer({ open, onClose, empresaId, grupoId, 
     setCobroMonto(String(Math.round(pendienteGrupo * 100) / 100 || ''));
     setCobroMetodo('efectivo');
     setCobroOpen(true);
+  }
+
+  async function generarLink() {
+    setBusy(true); setError('');
+    try {
+      const res = await grupoClienteService.generarTokenPublico(empresaId, grupoId);
+      const url = res.url || `${window.location.origin}/consulta-saldo-grupo/${res.token}`;
+      try { await navigator.clipboard?.writeText(url); } catch (_) { /* noop */ }
+      setLinkMsg('Link de saldo copiado al portapapeles');
+      setTimeout(() => setLinkMsg(''), 4000);
+    } catch (e) {
+      setError(e?.response?.data?.error || e.message);
+    } finally { setBusy(false); }
   }
 
   async function cobrarTitular() {
@@ -280,10 +294,15 @@ export default function GrupoDetalleDrawer({ open, onClose, empresaId, grupoId, 
         </div>
 
         <footer className="shrink-0 border-t border-divider bg-white px-4 py-3">
-          <div className="flex items-center justify-end gap-2">
+          {linkMsg && <p className="mb-2 text-[11px] text-success-dark">{linkMsg}</p>}
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <button type="button" onClick={handleArchivar} disabled={busy}
               className="mr-auto rounded-lg border border-error-main/50 bg-white px-3 py-1.5 text-sm font-medium text-error-dark hover:bg-error-main/5 disabled:opacity-50">
               Archivar
+            </button>
+            <button type="button" onClick={generarLink} disabled={busy}
+              className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50 disabled:opacity-50">
+              Link saldo
             </button>
             <button type="button" onClick={() => onEdit?.(grupo)}
               className="rounded-lg border border-neutral-300 bg-white px-4 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50">

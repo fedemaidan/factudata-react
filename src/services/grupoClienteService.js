@@ -48,6 +48,11 @@ const grupoClienteService = {
     const { data } = await api.post(`/empresa/${empresaId}/grupos-cliente/${grupoId}/cobrar`, payload);
     return data;
   },
+
+  async generarTokenPublico(empresaId, grupoId) {
+    const { data } = await api.post(`/empresa/${empresaId}/grupos-cliente/${grupoId}/generar-token-publico`);
+    return data;
+  },
 };
 
 export default grupoClienteService;

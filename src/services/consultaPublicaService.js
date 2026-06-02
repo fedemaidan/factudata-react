@@ -22,6 +22,12 @@ const consultaPublicaService = {
     const { data } = await publicApi.get(`/public/consulta-saldo/${token}`);
     return data;
   },
+
+  /** Saldo consolidado de un titular (grupo) por token público. */
+  async obtenerSaldoGrupo(token) {
+    const { data } = await publicApi.get(`/public/consulta-saldo-grupo/${token}`);
+    return data;
+  },
 };
 
 export default consultaPublicaService;
