@@ -49,6 +49,15 @@ const clienteService = {
     return data;
   },
 
+  // Transfiere saldo a favor de una obra (origen) a otra del mismo titular (grupo).
+  async transferirSaldo(empresaId, origenClienteId, { destino_cliente_id, monto, motivo }) {
+    const { data } = await api.post(
+      `/empresa/${empresaId}/clientes/${origenClienteId}/transferir-saldo`,
+      { destino_cliente_id, monto, motivo }
+    );
+    return data;
+  },
+
   async getNombres(empresaId) {
     const clientes = await this.getByEmpresa(empresaId);
     return (clientes || []).map((c) => c.nombre).sort();

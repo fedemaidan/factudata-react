@@ -11,6 +11,10 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Autocomplete,
   Checkbox,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Drawer,
   FormControl,
   FormControlLabel,
@@ -109,6 +113,12 @@ export default function NuevaVentaDrawer({ open, onClose, empresa, onCreated, ve
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
+  // Alta rápida de cliente ocasional desde la venta.
+  const [nuevoClienteOpen, setNuevoClienteOpen] = useState(false);
+  const [nuevoClienteNombre, setNuevoClienteNombre] = useState('');
+  const [nuevoClienteRazon, setNuevoClienteRazon] = useState('');
+  const [creandoCliente, setCreandoCliente] = useState(false);
+
   // Reset / prefill al abrir.
   useEffect(() => {
     if (!open) return;
@@ -204,6 +214,35 @@ export default function NuevaVentaDrawer({ open, onClose, empresa, onCreated, ve
       }
     } finally {
       setMatLoading((m) => ({ ...m, [idx]: false }));
+    }
+  }
+
+  async function crearClienteRapido() {
+    const nombre = nuevoClienteNombre.trim();
+    if (!nombre) { setError('Ingresá el nombre del cliente'); return; }
+    setCreandoCliente(true);
+    setError('');
+    try {
+      const res = await clienteService.crear(empresaId, {
+        nombre,
+        razon_social: nuevoClienteRazon.trim() || undefined,
+        ocasional: true,
+      });
+      const nuevo = { _id: res.cliente_id, nombre: res.nombre || nombre, ocasional: true };
+      // Refrescar lista y seleccionar el nuevo.
+      const lista = await clienteService.getByEmpresa(empresaId).catch(() => null);
+      if (Array.isArray(lista)) {
+        setClientes(lista);
+        const enLista = lista.find((c) => String(c._id || c.id) === String(res.cliente_id));
+        setClienteSel(enLista || nuevo);
+      } else {
+        setClienteSel(nuevo);
+      }
+      setNuevoClienteOpen(false);
+    } catch (e) {
+      setError(e?.response?.data?.error || e.message);
+    } finally {
+      setCreandoCliente(false);
     }
   }
 
@@ -316,14 +355,31 @@ export default function NuevaVentaDrawer({ open, onClose, empresa, onCreated, ve
               <>
                 <StepBlock step={1} title="Datos generales">
                   <div className="flex flex-col gap-2">
-                    <Autocomplete
-                      options={clientes}
-                      getOptionLabel={(o) => o?.nombre || ''}
-                      isOptionEqualToValue={(o, v) => String(o._id || o.id) === String(v._id || v.id)}
-                      value={clienteSel}
-                      onChange={(_, v) => setClienteSel(v)}
-                      renderInput={(params) => <TextField {...params} label="Cliente *" size="small" />}
-                    />
+                    <div className="flex items-end gap-1.5">
+                      <Autocomplete
+                        sx={{ flex: 1 }}
+                        options={clientes}
+                        getOptionLabel={(o) => o?.nombre || ''}
+                        isOptionEqualToValue={(o, v) => String(o._id || o.id) === String(v._id || v.id)}
+                        value={clienteSel}
+                        onChange={(_, v) => setClienteSel(v)}
+                        renderInput={(params) => <TextField {...params} label="Cliente *" size="small" />}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => { setNuevoClienteNombre(''); setNuevoClienteRazon(''); setNuevoClienteOpen(true); }}
+                        className="mb-0.5 shrink-0 rounded-lg border border-neutral-300 px-2 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-50"
+                      >
+                        + Nuevo
+                      </button>
+                    </div>
+                    {clienteSel && (clienteSel.descuento_default != null || clienteSel.notas_pricing) && (
+                      <p className="text-[11px] text-primary-dark">
+                        {clienteSel.descuento_default != null ? `Descuento ref.: ${clienteSel.descuento_default}%` : ''}
+                        {clienteSel.descuento_default != null && clienteSel.notas_pricing ? ' · ' : ''}
+                        {clienteSel.notas_pricing || ''}
+                      </p>
+                    )}
                     <div className="grid grid-cols-2 gap-2">
                       <FormControl fullWidth size="small">
                         <InputLabel>Sucursal</InputLabel>
@@ -508,6 +564,28 @@ export default function NuevaVentaDrawer({ open, onClose, empresa, onCreated, ve
           </div>
         </footer>
       </div>
+
+      {/* Alta rápida de cliente ocasional */}
+      <Dialog open={nuevoClienteOpen} onClose={() => setNuevoClienteOpen(false)} fullWidth maxWidth="xs">
+        <DialogTitle>Nuevo cliente</DialogTitle>
+        <DialogContent>
+          <p className="mb-2 text-xs text-neutral-500">Se crea como ocasional; podés completar los datos después.</p>
+          <TextField
+            fullWidth size="small" label="Nombre *" sx={{ mb: 2 }} autoFocus
+            value={nuevoClienteNombre} onChange={(e) => setNuevoClienteNombre(e.target.value)}
+          />
+          <TextField
+            fullWidth size="small" label="Razón social (opcional)"
+            value={nuevoClienteRazon} onChange={(e) => setNuevoClienteRazon(e.target.value)}
+          />
+        </DialogContent>
+        <DialogActions>
+          <button type="button" onClick={() => setNuevoClienteOpen(false)} disabled={creandoCliente} className="px-3 py-1.5 text-sm text-neutral-600">Cancelar</button>
+          <button type="button" onClick={crearClienteRapido} disabled={creandoCliente} className="rounded-lg bg-primary-main px-4 py-1.5 text-sm font-semibold text-white disabled:opacity-50">
+            {creandoCliente ? 'Creando…' : 'Crear y seleccionar'}
+          </button>
+        </DialogActions>
+      </Dialog>
     </Drawer>
   );
 }

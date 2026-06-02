@@ -79,6 +79,7 @@ function ClientesContent({ empresa }) {
   const [editForm, setEditForm] = useState({
     nombre: '', razon_social: '', cuit: '', direccion: '', telefono: '', email: '',
     condicion_iva: '', descuento_default: '', limite_credito: '', notas: '', grupo_id: '',
+    tipo_fiscal: '', notas_pricing: '', ocasional: false,
   });
   const [savingEdit, setSavingEdit] = useState(false);
   const [editError, setEditError] = useState('');
@@ -135,6 +136,8 @@ function ClientesContent({ empresa }) {
       if (filtroGrupo) {
         if (filtroGrupo === '__sin_grupo__') {
           if (c.grupo_id) return false;
+        } else if (filtroGrupo === '__ocasionales__') {
+          if (!c.ocasional) return false;
         } else if (c.grupo_id !== filtroGrupo) {
           return false;
         }
@@ -247,6 +250,9 @@ function ClientesContent({ empresa }) {
       limite_credito: c.limite_credito ?? '',
       notas: c.notas || '',
       grupo_id: c.grupo_id || '',
+      tipo_fiscal: c.tipo_fiscal || '',
+      notas_pricing: c.notas_pricing || '',
+      ocasional: !!c.ocasional,
     });
     setEditError('');
     setEditOpen(true);
@@ -265,6 +271,7 @@ function ClientesContent({ empresa }) {
       payload.limite_credito = payload.limite_credito === '' ? null : Number(payload.limite_credito);
       payload.condicion_iva = payload.condicion_iva || null;
       payload.grupo_id = payload.grupo_id || null;
+      payload.tipo_fiscal = payload.tipo_fiscal || null;
       await clienteService.actualizar(empresaId, id, payload);
       setEditOpen(false);
       setEditing(null);
@@ -406,7 +413,8 @@ function ClientesContent({ empresa }) {
               sx={{ minWidth: 200 }}
             >
               <MenuItem value="">Todos</MenuItem>
-              <MenuItem value="__sin_grupo__">Sin grupo</MenuItem>
+              <MenuItem value="__sin_grupo__">Sin titular</MenuItem>
+              <MenuItem value="__ocasionales__">Ocasionales</MenuItem>
               {grupos.map((g) => (
                 <MenuItem key={g._id} value={g._id}>{g.nombre}</MenuItem>
               ))}
@@ -479,6 +487,9 @@ function ClientesContent({ empresa }) {
                           </Typography>
                         </a>
                       </NextLink>
+                      {c.ocasional && (
+                        <Chip size="small" label="Ocasional" variant="outlined" color="warning" sx={{ ml: 1, height: 18, fontSize: 10 }} />
+                      )}
                     </TableCell>
                     <TableCell>{c.cuit || '—'}</TableCell>
                     {esCorralon && (
@@ -639,11 +650,22 @@ function ClientesContent({ empresa }) {
                 onChange={(e) => setEditForm({ ...editForm, descuento_default: e.target.value })}
               />
               <TextField
-                fullWidth label="Límite de crédito" type="number"
-                value={editForm.limite_credito}
-                onChange={(e) => setEditForm({ ...editForm, limite_credito: e.target.value })}
-              />
+                fullWidth select label="Tipo fiscal"
+                value={editForm.tipo_fiscal}
+                onChange={(e) => setEditForm({ ...editForm, tipo_fiscal: e.target.value })}
+              >
+                <MenuItem value=""><em>—</em></MenuItem>
+                <MenuItem value="persona">Persona</MenuItem>
+                <MenuItem value="srl">SRL</MenuItem>
+                <MenuItem value="fideicomiso">Fideicomiso</MenuItem>
+              </TextField>
             </Stack>
+            <TextField
+              fullWidth label="Notas de precio (referencia)"
+              placeholder='Ej: "medio IVA", "ojo no paga rápido"'
+              value={editForm.notas_pricing}
+              onChange={(e) => setEditForm({ ...editForm, notas_pricing: e.target.value })}
+            />
             <TextField
               fullWidth select label="Grupo"
               value={editForm.grupo_id}
@@ -663,6 +685,16 @@ function ClientesContent({ empresa }) {
           </Stack>
         </DialogContent>
         <DialogActions>
+          {editForm.ocasional && (
+            <Button
+              color="warning"
+              sx={{ mr: 'auto' }}
+              disabled={savingEdit}
+              onClick={() => setEditForm({ ...editForm, ocasional: false })}
+            >
+              Promover a cliente
+            </Button>
+          )}
           <Button onClick={() => setEditOpen(false)} disabled={savingEdit}>Cancelar</Button>
           <Button
             variant="contained"

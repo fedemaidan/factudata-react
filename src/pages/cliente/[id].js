@@ -119,6 +119,12 @@ function ClienteDetalle({ empresa, clienteId }) {
   const [grupos, setGrupos] = useState([]);
   const [grupoInfo, setGrupoInfo] = useState(null); // { grupo, items, total } cuando aplica
   const [asignarOpen, setAsignarOpen] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [transferDestino, setTransferDestino] = useState('');
+  const [transferMonto, setTransferMonto] = useState('');
+  const [transferMotivo, setTransferMotivo] = useState('');
+  const [transferBusy, setTransferBusy] = useState(false);
+  const [transferError, setTransferError] = useState('');
 
   const refreshGrupos = useCallback(async () => {
     if (!esCorralon || !empresaId) return;
@@ -169,6 +175,41 @@ function ClienteDetalle({ empresa, clienteId }) {
     if (!window.confirm('¿Quitar este cliente del grupo?')) return;
     await clienteService.actualizar(empresaId, clienteId, { grupo_id: null });
     await fetchData();
+  };
+
+  // Saldo a favor de esta obra y destinos posibles (otras obras del grupo).
+  const itemsGrupo = grupoInfo?.items || [];
+  const miItem = itemsGrupo.find((it) => String(it.cliente._id) === String(clienteId));
+  const miAFavor = Math.max(0, -(Number(miItem?.saldo) || 0));
+  const destinosGrupo = itemsGrupo.filter((it) => String(it.cliente._id) !== String(clienteId));
+  const puedeTransferir = miAFavor > 0.005 && destinosGrupo.length > 0;
+
+  const abrirTransfer = () => {
+    setTransferDestino('');
+    setTransferMonto(String(Math.round(miAFavor * 100) / 100));
+    setTransferMotivo('');
+    setTransferError('');
+    setTransferOpen(true);
+  };
+
+  const handleTransferir = async () => {
+    const monto = Number(transferMonto);
+    if (!transferDestino) { setTransferError('Elegí la obra destino'); return; }
+    if (!Number.isFinite(monto) || monto <= 0) { setTransferError('Monto inválido'); return; }
+    setTransferBusy(true); setTransferError('');
+    try {
+      await clienteService.transferirSaldo(empresaId, clienteId, {
+        destino_cliente_id: transferDestino,
+        monto,
+        motivo: transferMotivo || null,
+      });
+      setTransferOpen(false);
+      await fetchData();
+    } catch (e) {
+      setTransferError(e?.response?.data?.error || e.message);
+    } finally {
+      setTransferBusy(false);
+    }
   };
 
   if (loading && !data) {
@@ -249,7 +290,14 @@ function ClienteDetalle({ empresa, clienteId }) {
                 {formatCurrencyWithCode(grupoInfo.total || 0)}
               </Typography>
             </Box>
-            <Button size="small" color="error" onClick={handleQuitarGrupo}>Quitar del grupo</Button>
+            <Stack direction="row" spacing={1}>
+              {puedeTransferir && (
+                <Button size="small" variant="outlined" onClick={abrirTransfer}>
+                  Transferir saldo
+                </Button>
+              )}
+              <Button size="small" color="error" onClick={handleQuitarGrupo}>Quitar del grupo</Button>
+            </Stack>
           </Stack>
           {grupoInfo.items && grupoInfo.items.length > 1 && (
             <Box sx={{ mt: 1.5 }}>
@@ -413,6 +461,40 @@ function ClienteDetalle({ empresa, clienteId }) {
           refreshGrupos={refreshGrupos}
         />
       )}
+
+      <Dialog open={transferOpen} onClose={() => !transferBusy && setTransferOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Transferir saldo a favor</DialogTitle>
+        <DialogContent>
+          <Typography variant="caption" color="text.secondary">
+            Saldo a favor de {cliente.nombre}: <b>{formatCurrencyWithCode(miAFavor)}</b>
+          </Typography>
+          {transferError && <Alert severity="error" sx={{ my: 1 }}>{transferError}</Alert>}
+          <Autocomplete
+            sx={{ mt: 2 }}
+            options={destinosGrupo}
+            getOptionLabel={(it) => `${it.cliente.nombre} · ${formatCurrencyWithCode(it.saldo || 0)}`}
+            isOptionEqualToValue={(o, v) => String(o.cliente._id) === String(v.cliente._id)}
+            value={destinosGrupo.find((it) => String(it.cliente._id) === String(transferDestino)) || null}
+            onChange={(_, v) => setTransferDestino(v ? String(v.cliente._id) : '')}
+            renderInput={(params) => <TextField {...params} label="Obra destino *" size="small" />}
+          />
+          <TextField
+            fullWidth size="small" type="number" label="Monto a transferir" sx={{ mt: 2 }}
+            value={transferMonto} onChange={(e) => setTransferMonto(e.target.value)}
+            inputProps={{ min: 0, max: miAFavor }}
+          />
+          <TextField
+            fullWidth size="small" label="Motivo (opcional)" sx={{ mt: 2 }}
+            value={transferMotivo} onChange={(e) => setTransferMotivo(e.target.value)}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setTransferOpen(false)} disabled={transferBusy}>Cancelar</Button>
+          <Button variant="contained" onClick={handleTransferir} disabled={transferBusy}>
+            {transferBusy ? 'Transfiriendo…' : 'Transferir'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   );
 }
