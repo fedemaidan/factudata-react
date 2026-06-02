@@ -117,12 +117,39 @@ const ReportDetailPage = () => {
     router.push('/reportes');
   };
 
+  const getProjectIdsForPublicLink = useCallback(() => {
+    const ids = new Set();
+    const addMany = (values) => {
+      (values || []).forEach((value) => {
+        if (value != null && value !== '') ids.add(String(value));
+      });
+    };
+
+    const schemaProjects = selectedReport?.filtros_schema?.proyectos;
+    addMany(filters?.proyectos);
+    addMany(schemaProjects?.proyecto_ids);
+    addMany(schemaProjects?.default_ids);
+
+    if (ids.size === 0) {
+      addMany((filteredMovimientos || []).map((m) => m?.proyecto_id));
+    }
+
+    if (ids.size === 0) {
+      addMany((proyectos || []).map((p) => p?.id || p?._id));
+    }
+
+    return Array.from(ids);
+  }, [filteredMovimientos, filters?.proyectos, proyectos, selectedReport?.filtros_schema?.proyectos]);
+
   const handleOpenShare = async () => {
     // Auto-generar token y activar acceso público si no existe
+    const filtersBeforeShare = filters;
+    const sharedProjectIds = getProjectIdsForPublicLink();
     if (!selectedReport?.permisos?.link_token) {
       const token = Math.random().toString(36).substring(2, 14) + Math.random().toString(36).substring(2, 6);
       const updatedReport = {
         ...selectedReport,
+        proyectos_compartidos: sharedProjectIds,
         permisos: {
           ...selectedReport.permisos,
           publico: true,
@@ -133,9 +160,31 @@ const ReportDetailPage = () => {
         const saved = await updateReport(updatedReport._id, updatedReport);
         if (saved) {
           await loadReportData(saved);
+          setFilters(filtersBeforeShare);
         }
       } catch (err) {
         console.error('Error generando link público:', err);
+      }
+    } else {
+      const currentSharedIds = (selectedReport?.proyectos_compartidos || []).map((pid) => String(pid));
+      const changedScope = sharedProjectIds.length > 0
+        && (
+          sharedProjectIds.length !== currentSharedIds.length
+          || sharedProjectIds.some((pid) => !currentSharedIds.includes(pid))
+        );
+      if (changedScope) {
+        try {
+          const saved = await updateReport(selectedReport._id, {
+            ...selectedReport,
+            proyectos_compartidos: sharedProjectIds,
+          });
+          if (saved) {
+            await loadReportData(saved);
+            setFilters(filtersBeforeShare);
+          }
+        } catch (err) {
+          console.error('Error actualizando proyectos compartidos:', err);
+        }
       }
     }
     setShareDialogOpen(true);
@@ -156,6 +205,8 @@ const ReportDetailPage = () => {
     Object.entries(filters).forEach(([key, value]) => {
       // Link dinamico: mantener fecha_from, pero no fijar fecha_to
       if (key === 'fecha_to') return;
+      // El alcance de proyectos se guarda en el reporte, no en la URL publica.
+      if (key === 'proyectos') return;
       if (value == null) return;
       if (Array.isArray(value)) {
         if (value.length > 0) params.set(key, value.join(','));
@@ -371,8 +422,20 @@ const ReportDetailPage = () => {
         </Tooltip>
       </Stack>
     );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedReport, isEditing, displayCurrencies, loadingData, filteredMovimientos.length]);
+  }, [
+    displayCurrencies,
+    filteredMovimientos.length,
+    handleBack,
+    handleCancelEdit,
+    handleEditReport,
+    handleExport,
+    handleExportPDF,
+    handleOpenShare,
+    isEditing,
+    loadingData,
+    refreshData,
+    selectedReport,
+  ]);
 
   // ─── Loading state ───
   if (!id) {
