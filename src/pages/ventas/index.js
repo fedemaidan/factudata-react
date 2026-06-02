@@ -97,6 +97,16 @@ function PageContent({ empresa }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router.query?.nueva]);
 
+  // Pre-cargar filtros desde la URL (deep-links del dashboard: ?estado_entrega, ?estado_cobro, ?tipo, ?cliente_id).
+  useEffect(() => {
+    const q = router.query || {};
+    if (q.estado_entrega) setFiltroEntrega(String(q.estado_entrega));
+    if (q.estado_cobro) setFiltroCobro(String(q.estado_cobro));
+    if (q.tipo) setFiltroTipo(String(q.tipo));
+    if (q.cliente_id) setFiltroCliente(String(q.cliente_id));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router.query?.estado_entrega, router.query?.estado_cobro, router.query?.tipo, router.query?.cliente_id]);
+
   // Auto-abrir el detalle si llegan con ?venta=<id> (deep-link / redirect de /ventas/[id]).
   useEffect(() => {
     if (router.query?.venta) {

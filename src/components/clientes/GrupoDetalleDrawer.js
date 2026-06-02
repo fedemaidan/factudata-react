@@ -42,6 +42,8 @@ export default function GrupoDetalleDrawer({ open, onClose, empresaId, grupoId, 
   const [cobroOpen, setCobroOpen] = useState(false);
   const [cobroMonto, setCobroMonto] = useState('');
   const [cobroMetodo, setCobroMetodo] = useState('efectivo');
+  const [cobroPend, setCobroPend] = useState([]); // deudas pendientes del grupo (FIFO) para el preview de reparto
+  const [cobroLoadingPend, setCobroLoadingPend] = useState(false);
   const [linkMsg, setLinkMsg] = useState('');
 
   const cargar = useCallback(async () => {
@@ -105,11 +107,55 @@ export default function GrupoDetalleDrawer({ open, onClose, empresaId, grupoId, 
     [todosClientes]
   );
 
-  function abrirCobro() {
+  async function abrirCobro() {
     setCobroMonto(String(Math.round(pendienteGrupo * 100) / 100 || ''));
     setCobroMetodo('efectivo');
     setCobroOpen(true);
+    // Traemos las deudas pendientes de cada cliente para mostrar, en vivo, cómo
+    // se reparte el cobro (mismo orden FIFO que aplica el backend).
+    setCobroLoadingPend(true);
+    setCobroPend([]);
+    try {
+      const results = await Promise.all((items || []).map((it) =>
+        clienteService.getCuentaCorriente(empresaId, it.cliente._id)
+          .then((cc) => ({ cc, cliente: it.cliente }))
+          .catch(() => null)
+      ));
+      const pend = [];
+      for (const r of results) {
+        if (!r) continue;
+        for (const m of (r.cc?.movimientos || [])) {
+          const total = Number(m.total) || 0;
+          const p = Math.round(Math.max(0, total - (Number(m.monto_pagado) || 0)) * 100) / 100;
+          if (p > 0.005) {
+            pend.push({
+              mov_id: m._id,
+              cliente: r.cliente.nombre,
+              descripcion: m.descripcion || m.categoria || 'Deuda',
+              fecha: m.fecha_factura || m.createdAt,
+              pendiente: p,
+            });
+          }
+        }
+      }
+      pend.sort((a, b) => new Date(a.fecha || 0) - new Date(b.fecha || 0));
+      setCobroPend(pend);
+    } finally {
+      setCobroLoadingPend(false);
+    }
   }
+
+  // Reparto FIFO en vivo del monto a cobrar sobre las deudas pendientes.
+  const cobroDist = useMemo(() => {
+    let resto = Math.max(0, Number(cobroMonto) || 0);
+    return cobroPend.map((p) => {
+      const aplicar = Math.min(resto, p.pendiente);
+      resto = Math.round((resto - aplicar) * 100) / 100;
+      return { ...p, imputar: Math.round(aplicar * 100) / 100 };
+    });
+  }, [cobroPend, cobroMonto]);
+  const cobroImputado = Math.round(cobroDist.reduce((a, d) => a + d.imputar, 0) * 100) / 100;
+  const cobroSinImputar = Math.max(0, Math.round(((Number(cobroMonto) || 0) - cobroImputado) * 100) / 100);
 
   async function generarLink() {
     setBusy(true); setError('');
@@ -344,6 +390,40 @@ export default function GrupoDetalleDrawer({ open, onClose, empresaId, grupoId, 
                   <option value="cheque">Cheque</option>
                   <option value="otro">Otro</option>
                 </TextField>
+              </div>
+
+              {/* Reparto en vivo: a qué deuda de qué cliente se imputa el cobro */}
+              <div className="rounded-xl border border-divider bg-white p-3 shadow-sm">
+                <p className="mb-2 text-xs font-semibold text-neutral-700">Cómo se reparte este cobro</p>
+                {cobroLoadingPend ? (
+                  <div className="flex justify-center py-3"><CircularProgress size={18} /></div>
+                ) : cobroDist.length === 0 ? (
+                  <p className="text-xs text-neutral-400">El titular no tiene deudas pendientes para imputar.</p>
+                ) : (
+                  <>
+                    <div className="divide-y divide-divider">
+                      {cobroDist.map((d) => (
+                        <div key={d.mov_id} className={`flex items-center justify-between gap-2 py-1.5 ${d.imputar > 0.005 ? '' : 'opacity-50'}`}>
+                          <div className="min-w-0">
+                            <p className="truncate text-xs font-medium text-neutral-800">{d.cliente}</p>
+                            <p className="truncate text-[11px] text-neutral-500">
+                              {d.descripcion}{d.fecha ? ` · ${formatTimestamp(d.fecha)}` : ''} · pend. {formatCurrencyWithCode(d.pendiente)}
+                            </p>
+                          </div>
+                          <span className={`shrink-0 text-xs font-semibold ${d.imputar > 0.005 ? 'text-success-dark' : 'text-neutral-300'}`}>
+                            {d.imputar > 0.005 ? formatCurrencyWithCode(d.imputar) : '—'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-2 flex items-center justify-between border-t border-divider pt-2 text-[11px]">
+                      <span className="text-neutral-500">Imputado: <b className="text-neutral-800">{formatCurrencyWithCode(cobroImputado)}</b></span>
+                      {cobroSinImputar > 0.005 && (
+                        <span className="text-warning-dark">Sin imputar: {formatCurrencyWithCode(cobroSinImputar)}</span>
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>
