@@ -105,6 +105,17 @@ export default function CobroFormDrawer({ open, onClose, empresaId, cliente, cli
     setImput(next);
   }
 
+  // Atajo: completar el monto con el total pendiente e imputar todo.
+  function cobrarTodo() {
+    const next = {};
+    for (const m of movimientos) {
+      const p = (Number(m.total) || 0) - (Number(m.monto_pagado) || 0);
+      next[m._id] = { checked: p > 0.005, monto: Math.round(p * 100) / 100, pendiente: p };
+    }
+    setImput(next);
+    setMontoBruto(String(Math.round(totalPendiente * 100) / 100));
+  }
+
   const sinImputar = Math.max(0, (Number(montoBruto) || 0) - totalImputado);
 
   async function submit() {
@@ -167,6 +178,15 @@ export default function CobroFormDrawer({ open, onClose, empresaId, cliente, cli
                   onChange={(_, v) => setClienteSel(v)}
                   renderInput={(params) => <TextField {...params} label="Cliente *" size="small" />}
                 />
+              )}
+              {totalPendiente > 0.005 && (
+                <div className="mt-2 flex items-center justify-between rounded-lg bg-neutral-100 px-2 py-1">
+                  <span className="text-[11px] text-neutral-600">Pendiente: <b>{formatCurrencyWithCode(totalPendiente)}</b></span>
+                  <button type="button" onClick={cobrarTodo}
+                    className="rounded-md bg-primary-main px-2 py-0.5 text-[11px] font-semibold text-white hover:bg-primary-dark">
+                    Cobrar todo
+                  </button>
+                </div>
               )}
               <div className="mt-2 grid grid-cols-3 gap-2">
                 <TextField size="small" type="number" label="Monto cobrado *" value={montoBruto}
