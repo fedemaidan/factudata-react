@@ -72,6 +72,37 @@ export default function ClienteDetalleDrawer({ open, onClose, empresaId, cliente
     return Math.round(s * 100) / 100;
   }, [movimientos, cobros]);
 
+  // Extracto unificado: deudas (movimientos) + cobros, ordenado por fecha desc,
+  // para ver EN QUÉ MOMENTO fue cada cobro (espejo de la CC de proveedores).
+  const extracto = useMemo(() => {
+    const rows = [];
+    for (const m of movimientos) {
+      // El ingreso de caja autogenerado por un cobro (categoria 'cobro') no es una
+      // deuda; el cobro se muestra aparte desde CobroCliente. Evita duplicar.
+      if (m.categoria === 'cobro') continue;
+      const total = Number(m.total) || 0;
+      const pend = Math.max(0, total - (Number(m.monto_pagado) || 0));
+      rows.push({
+        key: `m-${m._id}`, tipo: 'deuda',
+        fecha: m.fecha_factura || m.createdAt,
+        titulo: m.descripcion || m.categoria || 'Venta / deuda',
+        monto: total, pendiente: pend,
+      });
+    }
+    for (const c of cobros) {
+      const anulado = c.estado === 'anulado';
+      rows.push({
+        key: `c-${c._id}`, tipo: 'cobro', anulado,
+        fecha: c.fecha_cobro || c.createdAt,
+        titulo: `Cobro${c.metodo ? ` — ${c.metodo}` : ''}${anulado ? ' (anulado)' : ''}`,
+        monto: Number(c.monto_bruto) || 0,
+        sin_imputar: Number(c.monto_sin_imputar) || 0,
+      });
+    }
+    rows.sort((a, b) => new Date(b.fecha || 0) - new Date(a.fecha || 0));
+    return rows;
+  }, [movimientos, cobros]);
+
   const itemsGrupo = grupoInfo?.items || [];
   const miAFavor = Math.max(0, -saldo);
   const destinosGrupo = itemsGrupo.filter((it) => String(it.cliente._id) !== String(clienteId));
@@ -174,28 +205,35 @@ export default function ClienteDetalleDrawer({ open, onClose, empresaId, cliente
                 </div>
               )}
 
-              {/* Movimientos */}
+              {/* Cuenta corriente: extracto unificado (deudas + cobros con su fecha) */}
               <div className="mt-2 rounded-xl border border-divider bg-white shadow-sm">
                 <div className="border-b border-divider px-3 py-2">
                   <h3 className="text-sm font-semibold text-neutral-900">Cuenta corriente</h3>
                 </div>
-                {movimientos.length === 0 ? (
+                {extracto.length === 0 ? (
                   <p className="px-3 py-3 text-xs text-neutral-400">Sin movimientos.</p>
                 ) : (
                   <div className="divide-y divide-divider">
-                    {[...movimientos].reverse().slice(0, 30).map((m) => {
-                      const total = Number(m.total) || 0;
-                      const pagado = Number(m.monto_pagado) || 0;
-                      const pend = Math.max(0, total - pagado);
+                    {extracto.slice(0, 50).map((r) => {
+                      const esCobro = r.tipo === 'cobro';
                       return (
-                        <div key={m._id} className="flex items-center justify-between gap-2 px-3 py-2">
+                        <div key={r.key} className="flex items-center justify-between gap-2 px-3 py-2">
                           <div className="min-w-0">
-                            <p className="truncate text-sm text-neutral-900">{m.descripcion || m.categoria || 'Movimiento'}</p>
-                            <p className="text-[11px] text-neutral-500">{formatTimestamp(m.fecha_factura || m.createdAt)}</p>
+                            <p className={`truncate text-sm ${r.anulado ? 'text-neutral-400 line-through' : esCobro ? 'text-info-dark' : 'text-neutral-900'}`}>
+                              {r.titulo}
+                            </p>
+                            <p className="text-[11px] text-neutral-500">
+                              {formatTimestamp(r.fecha)}
+                              {esCobro && !r.anulado && r.sin_imputar > 0.005 ? ` · a favor ${formatCurrencyWithCode(r.sin_imputar)}` : ''}
+                            </p>
                           </div>
                           <div className="shrink-0 text-right">
-                            <p className="text-sm font-medium text-neutral-900">{formatCurrencyWithCode(total)}</p>
-                            {pend > 0.005 && <p className="text-[11px] text-warning-dark">Pend. {formatCurrencyWithCode(pend)}</p>}
+                            <p className={`text-sm font-medium ${esCobro ? 'text-info-dark' : 'text-neutral-900'}`}>
+                              {esCobro ? '− ' : ''}{formatCurrencyWithCode(r.monto)}
+                            </p>
+                            {!esCobro && r.pendiente > 0.005 && (
+                              <p className="text-[11px] text-warning-dark">Pend. {formatCurrencyWithCode(r.pendiente)}</p>
+                            )}
                           </div>
                         </div>
                       );
