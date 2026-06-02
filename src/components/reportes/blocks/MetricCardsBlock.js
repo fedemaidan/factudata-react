@@ -27,6 +27,10 @@ const MetricCardsBlock = ({ data, displayCurrency, displayCurrencies, onDrillDow
     <Grid container spacing={2}>
       {data.map((metric) => (
         <Grid item xs={12} sm={6} md={3} key={metric.id}>
+          {(() => {
+            const metricCurrency = metric.display_currency || displayCurrency;
+            const renderSingleValue = !isMulti || metric.display_currency;
+            return (
           <Card
             sx={{
               height: '100%',
@@ -47,7 +51,7 @@ const MetricCardsBlock = ({ data, displayCurrency, displayCurrencies, onDrillDow
               >
                 {metric.titulo}
               </Typography>
-              {isMulti && metric.valores ? (
+              {!renderSingleValue && metric.valores ? (
                 <Box sx={{ mt: 1 }}>
                   {displayCurrencies.map((cur) => (
                     <Box key={cur} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
@@ -72,7 +76,7 @@ const MetricCardsBlock = ({ data, displayCurrency, displayCurrencies, onDrillDow
                       color: COLOR_MAP[metric.color] || COLOR_MAP.default,
                     }}
                   >
-                    {formatValue(metric.valor, metric.formato, displayCurrency)}
+                    {formatValue(metric.valor, metric.formato, metricCurrency)}
                   </Typography>
                   {metric.formato === 'currency' && metric.valor !== 0 && (
                     metric.valor > 0
@@ -83,6 +87,8 @@ const MetricCardsBlock = ({ data, displayCurrency, displayCurrencies, onDrillDow
               )}
             </CardContent>
           </Card>
+            );
+          })()}
         </Grid>
       ))}
     </Grid>

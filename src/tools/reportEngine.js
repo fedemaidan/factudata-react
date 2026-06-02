@@ -730,21 +730,35 @@ export function processMetricCards(block, movimientos, _presupuestos, currencies
         const set = toNormalizedSet(fe.etapas);
         data = data.filter((m) => set.has(normalizeFilterText(m.etapa)));
       }
+      if (fe.moneda_movimiento && (!Array.isArray(fe.moneda_movimiento) || fe.moneda_movimiento.length > 0)) {
+        const monedas = Array.isArray(fe.moneda_movimiento)
+          ? fe.moneda_movimiento
+          : [fe.moneda_movimiento];
+        const set = toNormalizedSet(monedas);
+        data = data.filter((m) => set.has(normalizeFilterText(m.moneda)));
+      }
     }
 
     // Extraer valores — calcular para cada moneda seleccionada
     const campo = metrica.campo || 'total';
+    const metricCurrency = metrica.display_currency || null;
+    const metricCurrencies = metricCurrency ? [metricCurrency] : currencies;
     const valores = {};
-    for (const cur of currencies) {
-      const vals = data.map((m) => getAmount(m, cur, campo));
-      valores[cur] = aggregate(vals, metrica.operacion);
+    for (const cur of metricCurrencies) {
+      if (metrica.operacion === 'saldo_neto') {
+        valores[cur] = sum(data.map((m) => signedAmount(m, cur, campo)));
+      } else {
+        const vals = data.map((m) => getAmount(m, cur, campo));
+        valores[cur] = aggregate(vals, metrica.operacion);
+      }
     }
 
     return {
       id: metrica.id,
       titulo: metrica.titulo,
-      valor: valores[currencies[0]],
+      valor: valores[metricCurrency || currencies[0]],
       valores,
+      display_currency: metricCurrency,
       formato: metrica.formato || 'currency',
       color: metrica.color || 'default',
       _movimientos: data,
@@ -864,7 +878,7 @@ export function processSummaryTable(block, movimientos, _presupuestos, currencie
  */
 export function processMovementsTable(block, movimientos, _presupuestos, currencies) {
   const data = applyBlockFilters(movimientos, block);
-  const primaryCurrency = currencies[0];
+  const primaryCurrency = block.display_currency || currencies[0];
   const isMulti = currencies.length > 1;
 
   const defaultCols = [
@@ -919,6 +933,7 @@ export function processMovementsTable(block, movimientos, _presupuestos, currenc
     pageSize,
     totalRows: rows.length,
     currencies,
+    displayCurrency: primaryCurrency,
   };
 }
 
@@ -1017,10 +1032,13 @@ export function processBudgetVsActual(block, movimientos, presupuestos, currenci
   // Agrupar movimientos por el campo seleccionado
   const movGrouped = groupBy(data, agruparPor);
 
-  // Combinar
+  // Combinar. Por defecto el bloque muestra solo lo que tiene presupuesto;
+  // las categorías con movimientos pero sin presupuesto pueden activarse aparte.
   const allKeys = new Set([...presMap.keys()]);
-  for (const [key] of movGrouped) {
-    allKeys.add(key.toLowerCase());
+  if (block.incluir_sin_presupuesto === true) {
+    for (const [key] of movGrouped) {
+      allKeys.add(key.toLowerCase());
+    }
   }
 
   const rows = [];
