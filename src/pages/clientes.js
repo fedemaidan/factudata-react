@@ -35,7 +35,6 @@ import SearchIcon from '@mui/icons-material/Search';
 import LinkIcon from '@mui/icons-material/Link';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
-import EditIcon from '@mui/icons-material/Edit';
 import ImportarClientes from 'src/components/clientes/ImportarClientes';
 import ClienteDetalleDrawer from 'src/components/clientes/ClienteDetalleDrawer';
 import ClienteFormDrawer from 'src/components/clientes/ClienteFormDrawer';
@@ -406,9 +405,15 @@ function ClientesContent({ empresa }) {
                 const id = c._id || c.id;
                 const r = resumenMap[id];
                 return (
-                  <TableRow key={id} hover selected={isSelected(id)}>
+                  <TableRow
+                    key={id}
+                    hover
+                    selected={isSelected(id)}
+                    onClick={() => setDetalleId(id)}
+                    sx={{ cursor: 'pointer' }}
+                  >
                     {esCorralon && (
-                      <TableCell padding="checkbox">
+                      <TableCell padding="checkbox" onClick={(e) => e.stopPropagation()}>
                         <Checkbox
                           checked={isSelected(id)}
                           onChange={() => toggleSelect(id)}
@@ -416,13 +421,7 @@ function ClientesContent({ empresa }) {
                       </TableCell>
                     )}
                     <TableCell>
-                      <Typography
-                        component="span"
-                        variant="body2"
-                        fontWeight={500}
-                        onClick={() => setDetalleId(id)}
-                        sx={{ color: 'primary.main', '&:hover': { textDecoration: 'underline' }, cursor: 'pointer' }}
-                      >
+                      <Typography component="span" variant="body2" fontWeight={500}>
                         {c.nombre}
                       </Typography>
                       {c.ocasional && (
@@ -431,7 +430,7 @@ function ClientesContent({ empresa }) {
                     </TableCell>
                     <TableCell>{c.cuit || '—'}</TableCell>
                     {esCorralon && (
-                      <TableCell>
+                      <TableCell onClick={(e) => e.stopPropagation()}>
                         {c.grupo_id && grupoById[c.grupo_id] ? (
                           <NextLink href={`/grupo-cliente/${c.grupo_id}`} passHref legacyBehavior>
                             <a style={{ textDecoration: 'none' }}>
@@ -455,12 +454,7 @@ function ClientesContent({ empresa }) {
                       {r ? formatCurrencyWithCode(r.saldo || 0) : '—'}
                     </TableCell>
                     <TableCell>{renderEstadoCC(r)}</TableCell>
-                    <TableCell align="right">
-                      <Tooltip title="Editar">
-                        <IconButton size="small" onClick={() => openEditDialog(c)}>
-                          <EditIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
+                    <TableCell align="right" onClick={(e) => e.stopPropagation()}>
                       <Tooltip title="Generar link público de consulta">
                         <IconButton size="small" onClick={() => handleGenerarLink(c)}>
                           <LinkIcon fontSize="small" />
