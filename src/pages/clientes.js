@@ -37,6 +37,7 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import EditIcon from '@mui/icons-material/Edit';
 import ImportarClientes from 'src/components/clientes/ImportarClientes';
+import ClienteDetalleDrawer from 'src/components/clientes/ClienteDetalleDrawer';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useAuthContext } from 'src/contexts/auth-context';
 import { useSucursalContext } from 'src/contexts/sucursal-context';
@@ -93,6 +94,7 @@ function ClientesContent({ empresa }) {
   const [bulkError, setBulkError] = useState('');
 
   const [linkSnack, setLinkSnack] = useState('');
+  const [detalleId, setDetalleId] = useState(null);
 
   const fetchData = useCallback(async () => {
     if (!empresaId) return;
@@ -476,17 +478,15 @@ function ClientesContent({ empresa }) {
                       </TableCell>
                     )}
                     <TableCell>
-                      <NextLink href={`/cliente/${id}`} passHref legacyBehavior>
-                        <a style={{ color: '#1976d2', textDecoration: 'none' }}>
-                          <Typography
-                            variant="body2"
-                            fontWeight={500}
-                            sx={{ '&:hover': { textDecoration: 'underline' }, cursor: 'pointer' }}
-                          >
-                            {c.nombre}
-                          </Typography>
-                        </a>
-                      </NextLink>
+                      <Typography
+                        component="span"
+                        variant="body2"
+                        fontWeight={500}
+                        onClick={() => setDetalleId(id)}
+                        sx={{ color: 'primary.main', '&:hover': { textDecoration: 'underline' }, cursor: 'pointer' }}
+                      >
+                        {c.nombre}
+                      </Typography>
                       {c.ocasional && (
                         <Chip size="small" label="Ocasional" variant="outlined" color="warning" sx={{ ml: 1, height: 18, fontSize: 10 }} />
                       )}
@@ -794,6 +794,16 @@ function ClientesContent({ empresa }) {
             <ContentCopyIcon fontSize="small" />
           </IconButton>
         }
+      />
+
+      <ClienteDetalleDrawer
+        open={Boolean(detalleId)}
+        clienteId={detalleId}
+        empresaId={empresaId}
+        esCorralon={esCorralon}
+        onClose={() => setDetalleId(null)}
+        onChanged={() => fetchData()}
+        onEdit={(c) => { setDetalleId(null); openEditDialog(c); }}
       />
     </Container>
   );
