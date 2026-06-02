@@ -51,18 +51,26 @@ const Chart = dynamic(() => import('react-apexcharts'), { ssr: false });
 // sólo en la tabla histórica oculta.
 const CORTE_FLUJO_NUEVO = '2026-06-01';
 
+// Go-live de la instrumentación de los pasos del flujo de WhatsApp (fue_whatsapp,
+// eligio_tipo_empresa, califico, dejo_email). LandingStats guarda por día, así que
+// el 2026-06-01 quedó parcial/sucio (Visitas todo el día, pasos nuevos solo
+// post-deploy). El preset arranca el primer día COMPLETO ya instrumentado para
+// no distorsionar las conversiones.
+const INICIO_FUNNEL_WA = '2026-06-02';
+
 // ─── Config: embudo nuevo (landing → WhatsApp) ───────────
 // Cada paso lee su valor de `metricaVal()` (ver abajo), que mapea la métrica al
 // campo correcto del payload de /api/agendar/stats. Algunos pasos intermedios del
 // flujo de WhatsApp todavía NO están instrumentados en el backend: leen claves de
 // `extraSteps` que hoy no se emiten y aparecen en "—" hasta que se cuenten.
 const METRICAS = [
-    { key: 'visita',            label: 'Visitas',        emoji: '👁️', color: '#6366f1', desc: 'Llegaron a la landing',                instrumentado: true },
-    { key: 'fueWhatsapp',       label: 'Fue a WhatsApp', emoji: '💬', color: '#25d366', desc: 'Click en "Agendar" → abrió WhatsApp',  instrumentado: false },
-    { key: 'eligioTipoEmpresa', label: 'Eligió rubro',   emoji: '🏷️', color: '#0ea5e9', desc: 'Respondió el tipo de empresa en WA',   instrumentado: false },
-    { key: 'califico',          label: 'Calificó',       emoji: '🏗️', color: '#f59e0b', desc: 'Respondió obras/sucursales (Lead)',    instrumentado: false },
-    { key: 'agendo',            label: 'Agendó',         emoji: '✅', color: '#10b981', desc: 'Confirmó la reunión (Schedule)',       instrumentado: true },
-    { key: 'dejoEmail',         label: 'Dejó email',     emoji: '📧', color: '#8b5cf6', desc: 'Dejó el email post-agenda',            instrumentado: false },
+    { key: 'visita',            label: 'Visitas',          emoji: '👁️', color: '#6366f1', desc: 'Llegaron a la landing',                 instrumentado: true },
+    { key: 'fueWhatsapp',       label: 'Click agendar',    emoji: '💬', color: '#25d366', desc: 'Click en "Agendar" → abrió WhatsApp',    instrumentado: true },
+    { key: 'nuevoContacto',     label: 'Nuevo Contacto',   emoji: '📲', color: '#22c55e', desc: 'Llegó el mensaje de WhatsApp',           instrumentado: true },
+    { key: 'eligioTipoEmpresa', label: 'Respondió rubro',  emoji: '🏷️', color: '#0ea5e9', desc: 'Respondió el tipo de empresa en WA',     instrumentado: true },
+    { key: 'califico',          label: 'Respondió obras',  emoji: '🏗️', color: '#f59e0b', desc: 'Respondió obras/sucursales (Lead)',      instrumentado: true },
+    { key: 'agendo',            label: 'Agendó',           emoji: '✅', color: '#10b981', desc: 'Confirmó la reunión (Schedule)',         instrumentado: true },
+    { key: 'dejoEmail',         label: 'Dejó email',       emoji: '📧', color: '#8b5cf6', desc: 'Dejó el email post-agenda',              instrumentado: true },
 ];
 
 // Métricas del flujo VIEJO (modal web) — sólo para la tabla histórica pre 1-jun.
@@ -97,6 +105,7 @@ function metricaVal(src, key) {
     switch (key) {
         case 'visita':            return Number(src.visitasLanding ?? src.visita ?? 0);
         case 'fueWhatsapp':       return Number(ex.fue_whatsapp ?? ex.lead_whatsapp ?? 0);
+        case 'nuevoContacto':     return Number(ex.nuevo_contacto ?? 0);
         case 'eligioTipoEmpresa': return Number(ex.eligio_tipo_empresa ?? 0);
         case 'califico':          return Number(ex.califico ?? 0);
         case 'agendo':            return Number(src.agendaron ?? ex.agendo ?? 0);
@@ -295,6 +304,7 @@ const RAW_EVENT_A_PASO = {
     visita: 'visita',
     fue_whatsapp: 'fueWhatsapp',
     lead_whatsapp: 'fueWhatsapp',
+    nuevo_contacto: 'nuevoContacto',
     eligio_tipo_empresa: 'eligioTipoEmpresa',
     califico: 'califico',
     agendaron: 'agendo',
@@ -629,7 +639,7 @@ function exportarCSV(rows) {
 
 // ─── Rangos preset ────────────────────────────────────────
 const RANGOS_PRESET = [
-    { key: 'flujo_wa', label: 'Flujo WhatsApp (1-jun →)', desde: CORTE_FLUJO_NUEVO, hasta: null, desc: 'Embudo nuevo: landing → WhatsApp → agenda' },
+    { key: 'flujo_wa', label: 'Flujo WhatsApp (2-jun →)', desde: INICIO_FUNNEL_WA, hasta: null, desc: 'Embudo nuevo instrumentado: landing → WhatsApp → agenda (desde el primer día completo)' },
     { key: 'todo',     label: 'Todo el histórico',         desde: '2024-01-01',      hasta: null, desc: 'Incluye datos previos al flujo nuevo' },
 ];
 
@@ -652,6 +662,7 @@ function buildTotalesFiltrados(extraSteps, { fuentes, campañas }) {
             if (paso === 'visita') out.visitasLanding += n;
             else if (paso === 'agendo') out.agendaron += n;
             else if (paso === 'fueWhatsapp') setExtra('fue_whatsapp', n);
+            else if (paso === 'nuevoContacto') setExtra('nuevo_contacto', n);
             else if (paso === 'eligioTipoEmpresa') setExtra('eligio_tipo_empresa', n);
             else if (paso === 'califico') setExtra('califico', n);
             else if (paso === 'dejoEmail') setExtra('dejo_email', n);
@@ -669,7 +680,7 @@ const LandingFunnelPage = () => {
     const [data, setData] = useState(null);
     const [modo, setModo] = useState('preset'); // 'preset' | 'rango'
     const [rangoKey, setRangoKey] = useState('flujo_wa');
-    const [fechaDesde, setFechaDesde] = useState(() => new Date(`${CORTE_FLUJO_NUEVO}T00:00:00`));
+    const [fechaDesde, setFechaDesde] = useState(() => new Date(`${INICIO_FUNNEL_WA}T00:00:00`));
     const [fechaHasta, setFechaHasta] = useState(() => new Date());
     const [fuentesFiltro, setFuentesFiltro] = useState([]); // [] = todas
     const [campañasFiltro, setCampañasFiltro] = useState([]); // [] = todas
