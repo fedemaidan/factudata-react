@@ -92,7 +92,7 @@ function GruposClienteContent({ empresa }) {
         <Box>
           <Typography variant="h5" fontWeight={600}>Titulares (grupos de cliente)</Typography>
           <Typography variant="body2" color="text.secondary">
-            Agrupá las obras/razones sociales que pertenecen al mismo dueño (ej. un constructor con varias SRL).
+            Agrupá los clientes que pertenecen al mismo dueño (ej. un constructor con varias SRL/razones sociales).
           </Typography>
         </Box>
         <Stack direction="row" spacing={1}>
@@ -123,7 +123,7 @@ function GruposClienteContent({ empresa }) {
             <TableHead>
               <TableRow sx={{ bgcolor: 'background.neutral' }}>
                 <TableCell>Titular</TableCell>
-                <TableCell align="right"># Obras</TableCell>
+                <TableCell align="right"># Clientes</TableCell>
                 <TableCell align="right">Saldo consolidado</TableCell>
               </TableRow>
             </TableHead>

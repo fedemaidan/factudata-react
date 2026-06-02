@@ -116,7 +116,7 @@ export default function GrupoDetalleDrawer({ open, onClose, empresaId, grupoId, 
   }
 
   async function handleArchivar() {
-    if (!window.confirm(`¿Archivar el titular "${grupo.nombre}"? Las obras se desvinculan pero no se eliminan.`)) return;
+    if (!window.confirm(`¿Archivar el titular "${grupo.nombre}"? Los clientes se desvinculan pero no se eliminan.`)) return;
     setBusy(true);
     try {
       await grupoClienteService.archivar(empresaId, grupoId);
@@ -157,7 +157,7 @@ export default function GrupoDetalleDrawer({ open, onClose, empresaId, grupoId, 
               <div className="rounded-xl border border-divider bg-white p-3 shadow-sm">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <span className="text-[11px] text-neutral-500">Obras</span>
+                    <span className="text-[11px] text-neutral-500">Clientes</span>
                     <p className="text-lg font-bold text-neutral-900">{items.length}</p>
                   </div>
                   <div>
@@ -171,7 +171,7 @@ export default function GrupoDetalleDrawer({ open, onClose, empresaId, grupoId, 
               <div className="mt-2 rounded-xl border border-divider bg-white shadow-sm">
                 <div className="flex items-center justify-between gap-2 border-b border-divider px-3 py-2">
                   <div className="inline-flex rounded-lg bg-neutral-100 p-1">
-                    {[['obras', 'Por obra'], ['movimientos', 'Movimientos']].map(([k, label]) => (
+                    {[['obras', 'Por cliente'], ['movimientos', 'Movimientos']].map(([k, label]) => (
                       <button key={k} type="button" onClick={() => setVista(k)}
                         className={`rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${vista === k ? 'bg-white text-primary-dark shadow-sm' : 'text-neutral-600 hover:text-neutral-900'}`}>
                         {label}
@@ -189,7 +189,7 @@ export default function GrupoDetalleDrawer({ open, onClose, empresaId, grupoId, 
                 {/* Vista por obra (resumen de saldos) */}
                 {vista === 'obras' && (
                   items.length === 0 ? (
-                    <p className="px-3 py-3 text-xs text-neutral-400">Sin obras en este titular.</p>
+                    <p className="px-3 py-3 text-xs text-neutral-400">Sin clientes en este titular.</p>
                   ) : (
                     <div className="divide-y divide-divider">
                       {items.map((it) => {
@@ -265,9 +265,9 @@ export default function GrupoDetalleDrawer({ open, onClose, empresaId, grupoId, 
         </footer>
       </div>
 
-      {/* Agregar obra al titular */}
+      {/* Agregar cliente al titular */}
       <Dialog open={addOpen} onClose={() => !busy && setAddOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>Agregar obra al titular</DialogTitle>
+        <DialogTitle>Agregar cliente al titular</DialogTitle>
         <DialogContent>
           <Autocomplete
             sx={{ mt: 1 }}
@@ -275,7 +275,7 @@ export default function GrupoDetalleDrawer({ open, onClose, empresaId, grupoId, 
             getOptionLabel={(o) => o.nombre || ''}
             value={addSel}
             onChange={(_, v) => setAddSel(v)}
-            renderInput={(params) => <TextField {...params} label="Obra / cliente" autoFocus />}
+            renderInput={(params) => <TextField {...params} label="Cliente" autoFocus />}
           />
         </DialogContent>
         <DialogActions>

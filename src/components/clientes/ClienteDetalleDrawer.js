@@ -87,7 +87,7 @@ export default function ClienteDetalleDrawer({ open, onClose, empresaId, cliente
 
   async function handleTransferir() {
     const monto = Number(transferMonto);
-    if (!transferDestino) { setTransferError('Elegí la obra destino'); return; }
+    if (!transferDestino) { setTransferError('Elegí el cliente destino'); return; }
     if (!Number.isFinite(monto) || monto <= 0) { setTransferError('Monto inválido'); return; }
     setTransferBusy(true); setTransferError('');
     try {
@@ -241,7 +241,7 @@ export default function ClienteDetalleDrawer({ open, onClose, empresaId, cliente
             isOptionEqualToValue={(o, v) => String(o.cliente._id) === String(v.cliente._id)}
             value={destinosGrupo.find((it) => String(it.cliente._id) === String(transferDestino)) || null}
             onChange={(_, v) => setTransferDestino(v ? String(v.cliente._id) : '')}
-            renderInput={(params) => <TextField {...params} label="Obra destino *" size="small" />}
+            renderInput={(params) => <TextField {...params} label="Cliente destino *" size="small" />}
           />
           <TextField fullWidth size="small" type="number" label="Monto a transferir" sx={{ mt: 2 }}
             value={transferMonto} onChange={(e) => setTransferMonto(e.target.value)} inputProps={{ min: 0, max: miAFavor }} />
