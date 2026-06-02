@@ -32,6 +32,9 @@ export default function GrupoDetalleDrawer({ open, onClose, empresaId, grupoId, 
   const [addOpen, setAddOpen] = useState(false);
   const [addSel, setAddSel] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [vista, setVista] = useState('obras'); // 'obras' | 'movimientos'
+  const [movsConsol, setMovsConsol] = useState(null); // movimientos de todas las obras, con cliente
+  const [loadingMovs, setLoadingMovs] = useState(false);
 
   const cargar = useCallback(async () => {
     if (!open || !empresaId || !grupoId) return;
@@ -51,6 +54,39 @@ export default function GrupoDetalleDrawer({ open, onClose, empresaId, grupoId, 
   }, [open, empresaId, grupoId]);
 
   useEffect(() => { cargar(); }, [cargar]);
+
+  // Carga consolidada de movimientos de todas las obras (con su cliente).
+  useEffect(() => {
+    let cancel = false;
+    async function load() {
+      if (vista !== 'movimientos' || !open || !data) return;
+      const its = data.items || [];
+      if (!its.length) { setMovsConsol([]); return; }
+      setLoadingMovs(true);
+      try {
+        const results = await Promise.all(its.map((it) =>
+          clienteService.getCuentaCorriente(empresaId, it.cliente._id)
+            .then((cc) => ({ cc, cliente: it.cliente }))
+            .catch(() => null)
+        ));
+        if (cancel) return;
+        const merged = [];
+        for (const r of results) {
+          if (!r) continue;
+          for (const m of (r.cc?.movimientos || [])) {
+            merged.push({ ...m, _cliente: r.cliente.nombre });
+          }
+        }
+        merged.sort((a, b) => new Date(b.fecha_factura || b.createdAt || 0) - new Date(a.fecha_factura || a.createdAt || 0));
+        setMovsConsol(merged);
+      } finally {
+        if (!cancel) setLoadingMovs(false);
+      }
+    }
+    load();
+    return () => { cancel = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vista, open, data, empresaId]);
 
   const grupo = data?.grupo || {};
   const items = data?.items || [];
@@ -133,38 +169,82 @@ export default function GrupoDetalleDrawer({ open, onClose, empresaId, grupoId, 
               </div>
 
               <div className="mt-2 rounded-xl border border-divider bg-white shadow-sm">
-                <div className="flex items-center justify-between border-b border-divider px-3 py-2">
-                  <h3 className="text-sm font-semibold text-neutral-900">Obras / razones sociales</h3>
-                  <button type="button" onClick={() => { setAddSel(null); setAddOpen(true); }}
-                    className="rounded-md border border-neutral-300 px-2 py-1 text-[11px] font-medium text-neutral-700 hover:bg-neutral-50">
-                    + Agregar
-                  </button>
-                </div>
-                {items.length === 0 ? (
-                  <p className="px-3 py-3 text-xs text-neutral-400">Sin obras en este titular.</p>
-                ) : (
-                  <div className="divide-y divide-divider">
-                    {items.map((it) => {
-                      const c = it.cliente;
-                      const saldoColor = it.saldo > 0.005 ? 'text-warning-dark' : it.saldo < -0.005 ? 'text-info-dark' : 'text-neutral-900';
-                      return (
-                        <div key={c._id} className="flex items-center justify-between gap-2 px-3 py-2">
-                          <button type="button" onClick={() => router.push(`/clientes?cliente=${c._id}`)} className="min-w-0 text-left">
-                            <span className="block truncate text-sm font-medium text-primary-dark hover:underline">{c.nombre}</span>
-                            <span className="block text-[11px] text-neutral-500">
-                              {it.ultima_actividad ? formatTimestamp(it.ultima_actividad) : 'sin actividad'}
-                              {it.tiene_vencidas ? ' · vencida' : ''}
-                            </span>
-                          </button>
-                          <div className="flex shrink-0 items-center gap-2">
-                            <span className={`text-sm font-medium ${saldoColor}`}>{formatCurrencyWithCode(it.saldo || 0)}</span>
-                            <button type="button" onClick={() => handleQuitar(c)} disabled={busy}
-                              className="text-[11px] text-error-dark hover:underline disabled:opacity-50">Quitar</button>
-                          </div>
-                        </div>
-                      );
-                    })}
+                <div className="flex items-center justify-between gap-2 border-b border-divider px-3 py-2">
+                  <div className="inline-flex rounded-lg bg-neutral-100 p-1">
+                    {[['obras', 'Por obra'], ['movimientos', 'Movimientos']].map(([k, label]) => (
+                      <button key={k} type="button" onClick={() => setVista(k)}
+                        className={`rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${vista === k ? 'bg-white text-primary-dark shadow-sm' : 'text-neutral-600 hover:text-neutral-900'}`}>
+                        {label}
+                      </button>
+                    ))}
                   </div>
+                  {vista === 'obras' && (
+                    <button type="button" onClick={() => { setAddSel(null); setAddOpen(true); }}
+                      className="rounded-md border border-neutral-300 px-2 py-1 text-[11px] font-medium text-neutral-700 hover:bg-neutral-50">
+                      + Agregar
+                    </button>
+                  )}
+                </div>
+
+                {/* Vista por obra (resumen de saldos) */}
+                {vista === 'obras' && (
+                  items.length === 0 ? (
+                    <p className="px-3 py-3 text-xs text-neutral-400">Sin obras en este titular.</p>
+                  ) : (
+                    <div className="divide-y divide-divider">
+                      {items.map((it) => {
+                        const c = it.cliente;
+                        const saldoColor = it.saldo > 0.005 ? 'text-warning-dark' : it.saldo < -0.005 ? 'text-info-dark' : 'text-neutral-900';
+                        return (
+                          <div key={c._id} className="flex items-center justify-between gap-2 px-3 py-2">
+                            <button type="button" onClick={() => router.push(`/clientes?cliente=${c._id}`)} className="min-w-0 text-left">
+                              <span className="block truncate text-sm font-medium text-primary-dark hover:underline">{c.nombre}</span>
+                              <span className="block text-[11px] text-neutral-500">
+                                {it.ultima_actividad ? formatTimestamp(it.ultima_actividad) : 'sin actividad'}
+                                {it.tiene_vencidas ? ' · vencida' : ''}
+                              </span>
+                            </button>
+                            <div className="flex shrink-0 items-center gap-2">
+                              <span className={`text-sm font-medium ${saldoColor}`}>{formatCurrencyWithCode(it.saldo || 0)}</span>
+                              <button type="button" onClick={() => handleQuitar(c)} disabled={busy}
+                                className="text-[11px] text-error-dark hover:underline disabled:opacity-50">Quitar</button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )
+                )}
+
+                {/* Vista consolidada: todos los movimientos juntos con columna de obra */}
+                {vista === 'movimientos' && (
+                  loadingMovs && movsConsol === null ? (
+                    <div className="flex justify-center py-6"><CircularProgress size={20} /></div>
+                  ) : !movsConsol || movsConsol.length === 0 ? (
+                    <p className="px-3 py-3 text-xs text-neutral-400">Sin movimientos.</p>
+                  ) : (
+                    <div className="divide-y divide-divider">
+                      {movsConsol.map((m) => {
+                        const totalM = Number(m.total) || 0;
+                        const pend = Math.max(0, totalM - (Number(m.monto_pagado) || 0));
+                        return (
+                          <div key={m._id} className="flex items-center justify-between gap-2 px-3 py-2">
+                            <div className="min-w-0">
+                              <p className="truncate text-sm text-neutral-900">{m.descripcion || m.categoria || 'Movimiento'}</p>
+                              <p className="text-[11px] text-neutral-500">
+                                <span className="font-medium text-neutral-700">{m._cliente}</span>
+                                {' · '}{formatTimestamp(m.fecha_factura || m.createdAt)}
+                              </p>
+                            </div>
+                            <div className="shrink-0 text-right">
+                              <p className="text-sm font-medium text-neutral-900">{formatCurrencyWithCode(totalM)}</p>
+                              {pend > 0.005 && <p className="text-[11px] text-warning-dark">Pend. {formatCurrencyWithCode(pend)}</p>}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )
                 )}
               </div>
             </>
