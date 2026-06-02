@@ -1,10 +1,4 @@
-jest.mock(
-  'src/utils/formatters',
-  () => ({ formatTimestamp: (v) => (typeof v === 'string' ? v : '') }),
-  { virtual: true },
-);
-
-import { copyShareableFields, SHAREABLE_FIELDS } from '../cargaMasivaMap';
+import { copyShareableFields, SHAREABLE_FIELDS, toDateInputValue } from '../cargaMasivaMap';
 
 const baseForm = () => ({
   type: '',
@@ -132,5 +126,34 @@ describe('copyShareableFields', () => {
         'etapa',
       ]),
     );
+  });
+});
+
+describe('toDateInputValue', () => {
+  test('YYYY-MM-DD se devuelve tal cual', () => {
+    expect(toDateInputValue('2026-05-07')).toBe('2026-05-07');
+  });
+
+  test('DD/MM/YYYY se reordena a YYYY-MM-DD', () => {
+    expect(toDateInputValue('7/5/2026')).toBe('2026-05-07');
+    expect(toDateInputValue('07/05/2026')).toBe('2026-05-07');
+  });
+
+  test('ISO a medianoche UTC NO corre un día (bug -1)', () => {
+    // En UTC-3 los getters locales devolvían el día anterior (06). Debe ser 07.
+    expect(toDateInputValue('2026-05-07T00:00:00.000Z')).toBe('2026-05-07');
+  });
+
+  test('Firestore Timestamp ({seconds}) usa el día calendario UTC', () => {
+    // 2026-05-07 13:30:00 UTC -> ancla mediodía, día estable
+    const seconds = Math.floor(Date.UTC(2026, 4, 7, 13, 30, 0) / 1000);
+    expect(toDateInputValue({ seconds })).toBe('2026-05-07');
+    expect(toDateInputValue({ _seconds: seconds })).toBe('2026-05-07');
+  });
+
+  test('valores vacíos devuelven string vacío', () => {
+    expect(toDateInputValue('')).toBe('');
+    expect(toDateInputValue(null)).toBe('');
+    expect(toDateInputValue(undefined)).toBe('');
   });
 });
