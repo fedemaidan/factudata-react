@@ -40,6 +40,7 @@ import ventaService from 'src/services/ventaService';
 import clienteService from 'src/services/clienteService';
 import { formatCurrencyWithCode } from 'src/utils/formatters';
 import NuevaVentaDrawer from 'src/components/ventas/NuevaVentaDrawer';
+import VentaDetalleDrawer from 'src/components/ventas/VentaDetalleDrawer';
 
 const TIPO_LABEL = {
   acopio: 'Acopio',
@@ -83,8 +84,10 @@ function PageContent({ empresa }) {
   const [filtroCliente, setFiltroCliente] = useState('');
 
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [detalleId, setDetalleId] = useState(null);
+  const [ventaEdit, setVentaEdit] = useState(null);
 
-  // Auto-abrir el drawer si llegan con ?nueva=1 (ej: redirect de /ventas/nuevo).
+  // Auto-abrir el drawer de alta si llegan con ?nueva=1 (redirect de /ventas/nuevo).
   useEffect(() => {
     if (router.query?.nueva) {
       setDrawerOpen(true);
@@ -93,6 +96,16 @@ function PageContent({ empresa }) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router.query?.nueva]);
+
+  // Auto-abrir el detalle si llegan con ?venta=<id> (deep-link / redirect de /ventas/[id]).
+  useEffect(() => {
+    if (router.query?.venta) {
+      setDetalleId(String(router.query.venta));
+      const { venta, ...rest } = router.query;
+      router.replace({ pathname: '/ventas', query: rest }, undefined, { shallow: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router.query?.venta]);
 
   const cargar = useCallback(async () => {
     setLoading(true);
@@ -220,7 +233,6 @@ function PageContent({ empresa }) {
                 <TableCell>Entrega</TableCell>
                 <TableCell>Cobro</TableCell>
                 <TableCell>Avance cobro</TableCell>
-                <TableCell />
               </TableRow>
             </TableHead>
             <TableBody>
@@ -228,7 +240,12 @@ function PageContent({ empresa }) {
                 const c = clientesById[v.cliente_id];
                 const fecha = v.fecha ? new Date(v.fecha).toLocaleDateString('es-AR') : '—';
                 return (
-                  <TableRow key={v._id} hover>
+                  <TableRow
+                    key={v._id}
+                    hover
+                    onClick={() => setDetalleId(v._id)}
+                    sx={{ cursor: 'pointer' }}
+                  >
                     <TableCell>
                       <Chip size="small" label={TIPO_LABEL[v.tipo] || v.tipo} variant="filled" />
                     </TableCell>
@@ -254,9 +271,6 @@ function PageContent({ empresa }) {
                     <TableCell>
                       <ProgresoCobro venta={v} />
                     </TableCell>
-                    <TableCell align="right">
-                      <Button size="small" onClick={() => router.push(`/ventas/${v._id}`)}>Ver</Button>
-                    </TableCell>
                   </TableRow>
                 );
               })}
@@ -267,9 +281,25 @@ function PageContent({ empresa }) {
 
       <NuevaVentaDrawer
         open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
+        onClose={() => { setDrawerOpen(false); setVentaEdit(null); }}
         empresa={empresa}
-        onCreated={() => cargar()}
+        ventaEdit={ventaEdit}
+        onCreated={(result) => {
+          const fueEdicion = Boolean(ventaEdit);
+          setVentaEdit(null);
+          cargar();
+          // Tras editar, reabrir el detalle para ver el cambio aplicado.
+          if (fueEdicion && result?._id) setDetalleId(String(result._id));
+        }}
+      />
+
+      <VentaDetalleDrawer
+        open={Boolean(detalleId)}
+        ventaId={detalleId}
+        empresaId={empresaId}
+        onClose={() => setDetalleId(null)}
+        onChanged={() => cargar()}
+        onEdit={(v) => { setDetalleId(null); setVentaEdit(v); setDrawerOpen(true); }}
       />
     </Container>
   );

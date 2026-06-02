@@ -77,9 +77,15 @@ function Segmented({ value, onChange, options }) {
   );
 }
 
-export default function NuevaVentaDrawer({ open, onClose, empresa, onCreated }) {
+function toDateInput(d) {
+  if (!d) return '';
+  try { return new Date(d).toISOString().slice(0, 10); } catch { return ''; }
+}
+
+export default function NuevaVentaDrawer({ open, onClose, empresa, onCreated, ventaEdit = null }) {
   const empresaId = empresa?.id || empresa?._id;
   const { sucursalId: sucursalGlobal } = useSucursalContext();
+  const esEdicion = Boolean(ventaEdit?._id);
 
   const [operacion, setOperacion] = useState('productos'); // 'productos' | 'acopio'
 
@@ -94,43 +100,65 @@ export default function NuevaVentaDrawer({ open, onClose, empresa, onCreated }) 
   const [items, setItems] = useState([emptyRow()]);
   const [matOptions, setMatOptions] = useState({});
   const [matLoading, setMatLoading] = useState({});
+  const [stockByMaterial, setStockByMaterial] = useState({}); // material_id -> { total, sucursales }
 
   const [modalidad, setModalidad] = useState('contado');
   const [fechaEntrega, setFechaEntrega] = useState('');
   const [cobrado, setCobrado] = useState(true);
 
-  const [acopioTotal, setAcopioTotal] = useState('');
-  const [acopioCodigo, setAcopioCodigo] = useState('');
-  const [acopioDescripcion, setAcopioDescripcion] = useState('');
-
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
-  // Reset al abrir.
+  // Reset / prefill al abrir.
   useEffect(() => {
     if (!open) return;
-    setOperacion('productos');
-    setClienteSel(null);
-    setSucursalSel(sucursalGlobal || '');
-    setFecha('');
-    setMoneda('ARS');
-    setNotas('');
-    setItems([emptyRow()]);
     setMatOptions({});
-    setModalidad('contado');
-    setFechaEntrega('');
-    setCobrado(true);
-    setAcopioTotal('');
-    setAcopioCodigo('');
-    setAcopioDescripcion('');
+    setStockByMaterial({});
     setError('');
-  }, [open, sucursalGlobal]);
+    if (esEdicion) {
+      setOperacion('productos');
+      setClienteSel(ventaEdit.cliente_id ? { _id: ventaEdit.cliente_id, nombre: ventaEdit.cliente_nombre } : null);
+      setSucursalSel(ventaEdit.sucursal_id || '');
+      setFecha(toDateInput(ventaEdit.fecha));
+      setMoneda(ventaEdit.moneda || 'ARS');
+      setNotas(ventaEdit.notas || '');
+      setModalidad(ventaEdit.tipo || 'contado');
+      setFechaEntrega(toDateInput(ventaEdit.fecha_entrega_estimada));
+      setCobrado(ventaEdit.cobro?.estado === 'pagado');
+      const rows = (ventaEdit.materiales || []).map((m) => ({
+        material_id: m.id_material || '',
+        nombre: m.nombre || '',
+        descripcion: m.id_material ? '' : (m.nombre || ''),
+        cantidad: m.cantidad || 1,
+        precio_unitario: m.precio_unitario || 0,
+        libre: !m.id_material,
+      }));
+      setItems(rows.length ? [...rows, emptyRow()] : [emptyRow()]);
+    } else {
+      setOperacion('productos');
+      setClienteSel(null);
+      setSucursalSel(sucursalGlobal || '');
+      setFecha('');
+      setMoneda('ARS');
+      setNotas('');
+      setItems([emptyRow()]);
+      setModalidad('contado');
+      setFechaEntrega('');
+      setCobrado(true);
+    }
+  }, [open, sucursalGlobal, esEdicion, ventaEdit]);
 
   useEffect(() => {
     if (!open || !empresaId) return;
     clienteService.getByEmpresa(empresaId).then((c) => setClientes(c || [])).catch(() => {});
     sucursalService?.getByEmpresa?.(empresaId)?.then?.((s) => setSucursales(s || [])).catch?.(() => {});
   }, [open, empresaId]);
+
+  const sucursalNombre = useMemo(() => {
+    const m = {};
+    sucursales.forEach((s) => { m[String(s._id || s.id)] = s.nombre; });
+    return m;
+  }, [sucursales]);
 
   const total = useMemo(
     () => items.reduce((s, it) => s + (Number(it.cantidad) || 0) * (Number(it.precio_unitario) || 0), 0),
@@ -166,6 +194,14 @@ export default function NuevaVentaDrawer({ open, onClose, empresa, onCreated }) 
     try {
       const res = await materialService.searchMateriales(empresaId, q);
       setMatOptions((m) => ({ ...m, [idx]: res || [] }));
+      // Traer stock por sucursal de los materiales encontrados.
+      const ids = (res || []).map((o) => o._id || o.id).filter(Boolean);
+      if (ids.length) {
+        const data = await materialService.getStockPorSucursal(empresaId, ids);
+        if (data && Object.keys(data).length) {
+          setStockByMaterial((prev) => ({ ...prev, ...data }));
+        }
+      }
     } finally {
       setMatLoading((m) => ({ ...m, [idx]: false }));
     }
@@ -173,11 +209,6 @@ export default function NuevaVentaDrawer({ open, onClose, empresa, onCreated }) 
 
   function validar() {
     if (!clienteSel) return 'Seleccioná un cliente';
-    if (operacion === 'acopio') {
-      const t = Number(acopioTotal);
-      if (!Number.isFinite(t) || t <= 0) return 'Ingresá un total de acopio mayor a 0';
-      return null;
-    }
     if (itemsValidos.length === 0) return 'Agregá al menos un producto con cantidad';
     const sinPrecio = itemsValidos.find((it) => !(Number(it.precio_unitario) > 0));
     if (sinPrecio) return `Falta el precio de "${sinPrecio.nombre || sinPrecio.descripcion}"`;
@@ -186,38 +217,32 @@ export default function NuevaVentaDrawer({ open, onClose, empresa, onCreated }) 
   }
 
   async function submit() {
+    if (operacion === 'acopio') return; // placeholder: no crea nada
     setError('');
     const msg = validar();
     if (msg) { setError(msg); return; }
     const cliente_id = clienteSel._id || clienteSel.id;
     const sucursal_id = sucursalSel || null;
+    const payload = {
+      cliente_id, sucursal_id, fecha: fecha || null,
+      fecha_entrega_estimada: modalidad === 'contra_entrega' ? (fechaEntrega || null) : null,
+      moneda, modalidad,
+      cobrado: modalidad === 'contado' ? cobrado : false,
+      notas: notas || null,
+      materiales: itemsValidos.map((it) => ({
+        material_id: it.material_id || null,
+        nombre: it.nombre || it.descripcion,
+        descripcion: it.descripcion || null,
+        cantidad: Number(it.cantidad),
+        precio_unitario: Number(it.precio_unitario) || 0,
+      })),
+    };
     setSubmitting(true);
     try {
-      let res;
-      if (operacion === 'acopio') {
-        res = await ventaService.crearAcopio(empresaId, {
-          cliente_id, sucursal_id, fecha: fecha || null,
-          total: Number(acopioTotal), moneda,
-          codigo: acopioCodigo || null, descripcion: acopioDescripcion || null,
-          notas: notas || null,
-        });
-      } else {
-        res = await ventaService.crear(empresaId, {
-          cliente_id, sucursal_id, fecha: fecha || null,
-          fecha_entrega_estimada: modalidad === 'contra_entrega' ? (fechaEntrega || null) : null,
-          moneda, modalidad,
-          cobrado: modalidad === 'contado' ? cobrado : false,
-          notas: notas || null,
-          materiales: itemsValidos.map((it) => ({
-            material_id: it.material_id || null,
-            nombre: it.nombre || it.descripcion,
-            descripcion: it.descripcion || null,
-            cantidad: Number(it.cantidad),
-            precio_unitario: Number(it.precio_unitario) || 0,
-          })),
-        });
-      }
-      onCreated?.(res?.venta || null);
+      const res = esEdicion
+        ? await ventaService.editar(empresaId, ventaEdit._id, payload)
+        : await ventaService.crear(empresaId, payload);
+      onCreated?.(res?.venta || res || null);
       onClose?.();
     } catch (e) {
       setError(e?.response?.data?.error || e.message);
@@ -240,7 +265,7 @@ export default function NuevaVentaDrawer({ open, onClose, empresa, onCreated }) 
         <header className="shrink-0 border-b border-divider bg-white px-4 py-3">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-base font-bold tracking-tight text-neutral-900">Nueva venta</h2>
+              <h2 className="text-base font-bold tracking-tight text-neutral-900">{esEdicion ? 'Editar venta' : 'Nueva venta'}</h2>
               <div className="mt-1 flex flex-wrap items-center gap-1">
                 {clienteSel && (
                   <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] text-neutral-800">
@@ -259,7 +284,7 @@ export default function NuevaVentaDrawer({ open, onClose, empresa, onCreated }) 
               <XMarkIcon className="h-5 w-5" />
             </IconButton>
           </div>
-          <div className="mt-3">
+          <div className="mt-3" hidden={esEdicion}>
             <Segmented
               value={operacion}
               onChange={setOperacion}
@@ -277,55 +302,53 @@ export default function NuevaVentaDrawer({ open, onClose, empresa, onCreated }) 
               </div>
             )}
 
-            <StepBlock step={1} title="Datos generales">
-              <div className="flex flex-col gap-2">
-                <Autocomplete
-                  options={clientes}
-                  getOptionLabel={(o) => o?.nombre || ''}
-                  value={clienteSel}
-                  onChange={(_, v) => setClienteSel(v)}
-                  renderInput={(params) => <TextField {...params} label="Cliente *" size="small" />}
-                />
-                <div className="grid grid-cols-2 gap-2">
-                  <FormControl fullWidth size="small">
-                    <InputLabel>Sucursal</InputLabel>
-                    <Select label="Sucursal" value={sucursalSel} onChange={(e) => setSucursalSel(e.target.value)}>
-                      <MenuItem value="">(ninguna)</MenuItem>
-                      {sucursales.map((s) => (
-                        <MenuItem key={s._id || s.id} value={s._id || s.id}>{s.nombre}</MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                  <FormControl fullWidth size="small">
-                    <InputLabel>Moneda</InputLabel>
-                    <Select label="Moneda" value={moneda} onChange={(e) => setMoneda(e.target.value)}>
-                      <MenuItem value="ARS">ARS</MenuItem>
-                      <MenuItem value="USD">USD</MenuItem>
-                    </Select>
-                  </FormControl>
-                </div>
-                <TextField
-                  size="small" label="Fecha" type="date" value={fecha}
-                  onChange={(e) => setFecha(e.target.value)} InputLabelProps={{ shrink: true }}
-                />
-              </div>
-            </StepBlock>
-
             {operacion === 'acopio' ? (
-              <StepBlock step={2} title="Acopio">
-                <div className="flex flex-col gap-2">
-                  <TextField
-                    size="small" label="Total acopiado *" type="number"
-                    value={acopioTotal} onChange={(e) => setAcopioTotal(e.target.value)}
-                  />
-                  <div className="grid grid-cols-2 gap-2">
-                    <TextField size="small" label="Código" value={acopioCodigo} onChange={(e) => setAcopioCodigo(e.target.value)} />
-                    <TextField size="small" label="Descripción" value={acopioDescripcion} onChange={(e) => setAcopioDescripcion(e.target.value)} />
-                  </div>
-                </div>
-              </StepBlock>
+              /* Placeholder: el alta de acopio (por monto) se definirá con el
+                 cliente. Por ahora no hace nada. */
+              <section className="rounded-xl border border-dashed border-divider bg-white px-4 py-8 text-center shadow-sm">
+                <h3 className="text-sm font-semibold text-neutral-900">Acopio — próximamente</h3>
+                <p className="mx-auto mt-1 max-w-xs text-xs text-neutral-500">
+                  El alta de acopio (por monto) se va a diseñar junto con el corralón.
+                  Por ahora esta sección es un placeholder y no crea nada.
+                </p>
+              </section>
             ) : (
               <>
+                <StepBlock step={1} title="Datos generales">
+                  <div className="flex flex-col gap-2">
+                    <Autocomplete
+                      options={clientes}
+                      getOptionLabel={(o) => o?.nombre || ''}
+                      isOptionEqualToValue={(o, v) => String(o._id || o.id) === String(v._id || v.id)}
+                      value={clienteSel}
+                      onChange={(_, v) => setClienteSel(v)}
+                      renderInput={(params) => <TextField {...params} label="Cliente *" size="small" />}
+                    />
+                    <div className="grid grid-cols-2 gap-2">
+                      <FormControl fullWidth size="small">
+                        <InputLabel>Sucursal</InputLabel>
+                        <Select label="Sucursal" value={sucursalSel} onChange={(e) => setSucursalSel(e.target.value)}>
+                          <MenuItem value="">(ninguna)</MenuItem>
+                          {sucursales.map((s) => (
+                            <MenuItem key={s._id || s.id} value={s._id || s.id}>{s.nombre}</MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                      <FormControl fullWidth size="small">
+                        <InputLabel>Moneda</InputLabel>
+                        <Select label="Moneda" value={moneda} onChange={(e) => setMoneda(e.target.value)}>
+                          <MenuItem value="ARS">ARS</MenuItem>
+                          <MenuItem value="USD">USD</MenuItem>
+                        </Select>
+                      </FormControl>
+                    </div>
+                    <TextField
+                      size="small" label="Fecha" type="date" value={fecha}
+                      onChange={(e) => setFecha(e.target.value)} InputLabelProps={{ shrink: true }}
+                    />
+                  </div>
+                </StepBlock>
+
                 <StepBlock
                   step={2}
                   title="Productos"
@@ -355,7 +378,13 @@ export default function NuevaVentaDrawer({ open, onClose, empresa, onCreated }) 
                               options={matOptions[idx] || []}
                               getOptionLabel={(o) => (typeof o === 'string' ? o : o?.nombre || '')}
                               loading={!!matLoading[idx]}
-                              onInputChange={(_, v) => { updateItem(idx, { nombre: v }); buscarMateriales(idx, v); }}
+                              filterOptions={(x) => x}
+                              inputValue={it.nombre || ''}
+                              onInputChange={(_, v, reason) => {
+                                if (reason === 'reset') return; // evita borrar el texto al perder foco
+                                updateItem(idx, { nombre: v });
+                                buscarMateriales(idx, v);
+                              }}
                               onChange={(_, v) => {
                                 if (v && typeof v === 'object') {
                                   updateItem(idx, {
@@ -364,6 +393,33 @@ export default function NuevaVentaDrawer({ open, onClose, empresa, onCreated }) 
                                     precio_unitario: Number(v.precio_unitario) || it.precio_unitario || 0,
                                   });
                                 }
+                              }}
+                              renderOption={(props, option) => {
+                                const { key, ...rest } = props;
+                                const st = stockByMaterial[String(option._id || option.id)];
+                                return (
+                                  <li key={option._id || option.id} {...rest}>
+                                    <div className="flex w-full flex-col py-0.5">
+                                      <span className="text-sm text-neutral-900">{option.nombre}</span>
+                                      {st && Array.isArray(st.sucursales) && st.sucursales.length > 0 ? (
+                                        <span className="mt-1 flex flex-wrap gap-1">
+                                          {st.sucursales.map((s, i) => (
+                                            <span
+                                              key={i}
+                                              className={`rounded-full px-1.5 py-0.5 text-[10px] ${
+                                                s.sucursal_id ? 'bg-neutral-100 text-neutral-700' : 'bg-warning-main/15 text-warning-dark'
+                                              }`}
+                                            >
+                                              {s.sucursal_id ? (sucursalNombre[s.sucursal_id] || 'Sucursal') : 'Sin asignar'}: {s.stock}
+                                            </span>
+                                          ))}
+                                        </span>
+                                      ) : (
+                                        <span className="mt-0.5 text-[10px] text-neutral-400">Sin stock registrado</span>
+                                      )}
+                                    </div>
+                                  </li>
+                                );
                               }}
                               renderInput={(params) => <TextField {...params} placeholder="Buscar material..." />}
                             />
@@ -405,26 +461,33 @@ export default function NuevaVentaDrawer({ open, onClose, empresa, onCreated }) 
                     />
                   )}
                 </StepBlock>
+
+                <StepBlock step={4} title="Notas">
+                  <TextField
+                    fullWidth size="small" multiline minRows={2} placeholder="Opcional"
+                    value={notas} onChange={(e) => setNotas(e.target.value)}
+                  />
+                </StepBlock>
               </>
             )}
-
-            <StepBlock step={operacion === 'acopio' ? 3 : 4} title="Notas">
-              <TextField
-                fullWidth size="small" multiline minRows={2} placeholder="Opcional"
-                value={notas} onChange={(e) => setNotas(e.target.value)}
-              />
-            </StepBlock>
           </div>
         </div>
 
         {/* Footer sticky */}
         <footer className="shrink-0 border-t border-divider bg-white px-4 py-3">
-          <div className="mb-2 flex items-center justify-between">
-            <span className="text-xs text-neutral-500">Total</span>
-            <span className="text-lg font-bold text-neutral-900">
-              {formatCurrencyWithCode(operacion === 'acopio' ? Number(acopioTotal) || 0 : total, moneda)}
-            </span>
-          </div>
+          {error && (
+            <div className="mb-2 rounded-lg border border-error-main/40 bg-error-main/10 px-3 py-1.5 text-xs text-error-dark">
+              {error}
+            </div>
+          )}
+          {operacion !== 'acopio' && (
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-xs text-neutral-500">Total</span>
+              <span className="text-lg font-bold text-neutral-900">
+                {formatCurrencyWithCode(total, moneda)}
+              </span>
+            </div>
+          )}
           <div className="flex justify-end gap-2">
             <button
               type="button"
@@ -437,10 +500,10 @@ export default function NuevaVentaDrawer({ open, onClose, empresa, onCreated }) 
             <button
               type="button"
               onClick={submit}
-              disabled={submitting}
+              disabled={submitting || operacion === 'acopio'}
               className="rounded-lg bg-primary-main px-4 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-primary-dark disabled:opacity-50"
             >
-              {submitting ? 'Guardando…' : 'Crear venta'}
+              {submitting ? 'Guardando…' : (esEdicion ? 'Guardar cambios' : 'Crear venta')}
             </button>
           </div>
         </footer>

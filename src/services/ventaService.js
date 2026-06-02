@@ -43,6 +43,21 @@ const ventaService = {
     const { data } = await api.post(`/empresa/${empresaId}/ventas/${id}/cancelar`, payload);
     return data;
   },
+
+  async cobrar(empresaId, id, payload = {}) {
+    const { data } = await api.post(`/empresa/${empresaId}/ventas/${id}/cobrar`, payload);
+    return data;
+  },
+
+  async editar(empresaId, id, payload = {}) {
+    const { data } = await api.put(`/empresa/${empresaId}/ventas/${id}`, payload);
+    return data;
+  },
+
+  async eliminar(empresaId, id) {
+    const { data } = await api.delete(`/empresa/${empresaId}/ventas/${id}`);
+    return data;
+  },
 };
 
 export default ventaService;
