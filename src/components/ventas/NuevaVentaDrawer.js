@@ -1,0 +1,450 @@
+/**
+ * NuevaVentaDrawer — alta de venta en un drawer lateral compacto (vertical
+ * corralón). Pensado para ser ágil: no saca al usuario de /ventas.
+ *
+ * Estilo inspirado en movementForm.js (bloques numerados, chips pill, header y
+ * footer sticky, densidad alta). Flujo único:
+ *   tipo de operación → datos → productos → modalidad de pago.
+ * El acopio tiene sus propios campos.
+ */
+import { useEffect, useMemo, useState } from 'react';
+import {
+  Autocomplete,
+  Checkbox,
+  Drawer,
+  FormControl,
+  FormControlLabel,
+  IconButton,
+  InputLabel,
+  MenuItem,
+  Select,
+  TextField,
+} from '@mui/material';
+import { XMarkIcon, PlusIcon, TrashIcon } from '@heroicons/react/24/outline';
+import clienteService from 'src/services/clienteService';
+import materialService from 'src/services/materialService';
+import sucursalService from 'src/services/sucursalService';
+import ventaService from 'src/services/ventaService';
+import { useSucursalContext } from 'src/contexts/sucursal-context';
+import { formatCurrencyWithCode } from 'src/utils/formatters';
+
+const MODALIDADES = [
+  { key: 'contado', titulo: 'Contado', desc: 'Se cobra al momento de la venta.' },
+  { key: 'cc', titulo: 'Cuenta corriente', desc: 'Se cobra después.' },
+  { key: 'contra_entrega', titulo: 'Contra entrega', desc: 'Se cobra al entregar.' },
+];
+
+const emptyRow = () => ({ material_id: '', nombre: '', descripcion: '', cantidad: 1, precio_unitario: 0, libre: false });
+
+// Bloque de sección con badge numerado (estilo StitchBlock de movementForm).
+function StepBlock({ step, title, action, children }) {
+  return (
+    <section className="rounded-xl border border-divider bg-white shadow-sm">
+      <header className="flex items-center justify-between gap-2 border-b border-divider px-3 py-2">
+        <div className="flex items-center gap-2">
+          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary-main text-[11px] font-bold text-white">
+            {step}
+          </span>
+          <h3 className="text-sm font-semibold text-neutral-900">{title}</h3>
+        </div>
+        {action}
+      </header>
+      <div className="p-3">{children}</div>
+    </section>
+  );
+}
+
+// Toggle segmentado tipo pill.
+function Segmented({ value, onChange, options }) {
+  return (
+    <div className="inline-flex flex-wrap gap-1 rounded-lg bg-neutral-100 p-1">
+      {options.map((o) => {
+        const active = value === o.key;
+        return (
+          <button
+            key={o.key}
+            type="button"
+            onClick={() => onChange(o.key)}
+            className={`rounded-md px-3 py-1 text-xs font-semibold transition-colors ${
+              active ? 'bg-white text-primary-dark shadow-sm' : 'text-neutral-600 hover:text-neutral-900'
+            }`}
+          >
+            {o.titulo}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+export default function NuevaVentaDrawer({ open, onClose, empresa, onCreated }) {
+  const empresaId = empresa?.id || empresa?._id;
+  const { sucursalId: sucursalGlobal } = useSucursalContext();
+
+  const [operacion, setOperacion] = useState('productos'); // 'productos' | 'acopio'
+
+  const [clientes, setClientes] = useState([]);
+  const [sucursales, setSucursales] = useState([]);
+  const [clienteSel, setClienteSel] = useState(null);
+  const [sucursalSel, setSucursalSel] = useState('');
+  const [fecha, setFecha] = useState('');
+  const [moneda, setMoneda] = useState('ARS');
+  const [notas, setNotas] = useState('');
+
+  const [items, setItems] = useState([emptyRow()]);
+  const [matOptions, setMatOptions] = useState({});
+  const [matLoading, setMatLoading] = useState({});
+
+  const [modalidad, setModalidad] = useState('contado');
+  const [fechaEntrega, setFechaEntrega] = useState('');
+  const [cobrado, setCobrado] = useState(true);
+
+  const [acopioTotal, setAcopioTotal] = useState('');
+  const [acopioCodigo, setAcopioCodigo] = useState('');
+  const [acopioDescripcion, setAcopioDescripcion] = useState('');
+
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  // Reset al abrir.
+  useEffect(() => {
+    if (!open) return;
+    setOperacion('productos');
+    setClienteSel(null);
+    setSucursalSel(sucursalGlobal || '');
+    setFecha('');
+    setMoneda('ARS');
+    setNotas('');
+    setItems([emptyRow()]);
+    setMatOptions({});
+    setModalidad('contado');
+    setFechaEntrega('');
+    setCobrado(true);
+    setAcopioTotal('');
+    setAcopioCodigo('');
+    setAcopioDescripcion('');
+    setError('');
+  }, [open, sucursalGlobal]);
+
+  useEffect(() => {
+    if (!open || !empresaId) return;
+    clienteService.getByEmpresa(empresaId).then((c) => setClientes(c || [])).catch(() => {});
+    sucursalService?.getByEmpresa?.(empresaId)?.then?.((s) => setSucursales(s || [])).catch?.(() => {});
+  }, [open, empresaId]);
+
+  const total = useMemo(
+    () => items.reduce((s, it) => s + (Number(it.cantidad) || 0) * (Number(it.precio_unitario) || 0), 0),
+    [items]
+  );
+  const itemsValidos = useMemo(
+    () => items.filter((it) => (it.nombre || it.descripcion) && Number(it.cantidad) > 0),
+    [items]
+  );
+
+  // Mantiene una única fila vacía al final para carga ágil.
+  function ensureTrailingEmpty(arr) {
+    const last = arr[arr.length - 1];
+    const lastFilled = last && (last.nombre || last.descripcion);
+    return lastFilled ? [...arr, emptyRow()] : arr;
+  }
+  function updateItem(idx, patch) {
+    setItems((prev) => ensureTrailingEmpty(prev.map((it, i) => (i === idx ? { ...it, ...patch } : it))));
+  }
+  function removeItem(idx) {
+    setItems((prev) => {
+      const next = prev.filter((_, i) => i !== idx);
+      return next.length ? next : [emptyRow()];
+    });
+  }
+  function addItemLibre() {
+    setItems((prev) => [...prev, { ...emptyRow(), libre: true }]);
+  }
+
+  async function buscarMateriales(idx, q) {
+    if (!q || q.length < 2) return;
+    setMatLoading((m) => ({ ...m, [idx]: true }));
+    try {
+      const res = await materialService.searchMateriales(empresaId, q);
+      setMatOptions((m) => ({ ...m, [idx]: res || [] }));
+    } finally {
+      setMatLoading((m) => ({ ...m, [idx]: false }));
+    }
+  }
+
+  function validar() {
+    if (!clienteSel) return 'Seleccioná un cliente';
+    if (operacion === 'acopio') {
+      const t = Number(acopioTotal);
+      if (!Number.isFinite(t) || t <= 0) return 'Ingresá un total de acopio mayor a 0';
+      return null;
+    }
+    if (itemsValidos.length === 0) return 'Agregá al menos un producto con cantidad';
+    const sinPrecio = itemsValidos.find((it) => !(Number(it.precio_unitario) > 0));
+    if (sinPrecio) return `Falta el precio de "${sinPrecio.nombre || sinPrecio.descripcion}"`;
+    if (total <= 0) return 'El total debe ser mayor a 0';
+    return null;
+  }
+
+  async function submit() {
+    setError('');
+    const msg = validar();
+    if (msg) { setError(msg); return; }
+    const cliente_id = clienteSel._id || clienteSel.id;
+    const sucursal_id = sucursalSel || null;
+    setSubmitting(true);
+    try {
+      let res;
+      if (operacion === 'acopio') {
+        res = await ventaService.crearAcopio(empresaId, {
+          cliente_id, sucursal_id, fecha: fecha || null,
+          total: Number(acopioTotal), moneda,
+          codigo: acopioCodigo || null, descripcion: acopioDescripcion || null,
+          notas: notas || null,
+        });
+      } else {
+        res = await ventaService.crear(empresaId, {
+          cliente_id, sucursal_id, fecha: fecha || null,
+          fecha_entrega_estimada: modalidad === 'contra_entrega' ? (fechaEntrega || null) : null,
+          moneda, modalidad,
+          cobrado: modalidad === 'contado' ? cobrado : false,
+          notas: notas || null,
+          materiales: itemsValidos.map((it) => ({
+            material_id: it.material_id || null,
+            nombre: it.nombre || it.descripcion,
+            descripcion: it.descripcion || null,
+            cantidad: Number(it.cantidad),
+            precio_unitario: Number(it.precio_unitario) || 0,
+          })),
+        });
+      }
+      onCreated?.(res?.venta || null);
+      onClose?.();
+    } catch (e) {
+      setError(e?.response?.data?.error || e.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const modalidadMeta = MODALIDADES.find((m) => m.key === modalidad);
+
+  return (
+    <Drawer
+      anchor="right"
+      open={open}
+      onClose={onClose}
+      PaperProps={{ sx: { width: { xs: '100%', sm: 520 }, maxWidth: '100%' } }}
+    >
+      <div className="flex h-full min-h-0 flex-col bg-neutral-50">
+        {/* Header sticky */}
+        <header className="shrink-0 border-b border-divider bg-white px-4 py-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-bold tracking-tight text-neutral-900">Nueva venta</h2>
+              <div className="mt-1 flex flex-wrap items-center gap-1">
+                {clienteSel && (
+                  <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] text-neutral-800">
+                    {clienteSel.nombre}
+                  </span>
+                )}
+                <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] text-neutral-800">{moneda}</span>
+                {operacion === 'productos' && (
+                  <span className="rounded-full bg-primary-main/15 px-2 py-0.5 text-[11px] font-semibold uppercase text-primary-dark">
+                    {modalidadMeta?.titulo}
+                  </span>
+                )}
+              </div>
+            </div>
+            <IconButton onClick={onClose} size="small">
+              <XMarkIcon className="h-5 w-5" />
+            </IconButton>
+          </div>
+          <div className="mt-3">
+            <Segmented
+              value={operacion}
+              onChange={setOperacion}
+              options={[{ key: 'productos', titulo: 'Venta de productos' }, { key: 'acopio', titulo: 'Acopio' }]}
+            />
+          </div>
+        </header>
+
+        {/* Body scrollable */}
+        <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
+          <div className="flex flex-col gap-2">
+            {error && (
+              <div className="rounded-lg border border-error-main/40 bg-error-main/10 px-3 py-2 text-sm text-error-dark">
+                {error}
+              </div>
+            )}
+
+            <StepBlock step={1} title="Datos generales">
+              <div className="flex flex-col gap-2">
+                <Autocomplete
+                  options={clientes}
+                  getOptionLabel={(o) => o?.nombre || ''}
+                  value={clienteSel}
+                  onChange={(_, v) => setClienteSel(v)}
+                  renderInput={(params) => <TextField {...params} label="Cliente *" size="small" />}
+                />
+                <div className="grid grid-cols-2 gap-2">
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Sucursal</InputLabel>
+                    <Select label="Sucursal" value={sucursalSel} onChange={(e) => setSucursalSel(e.target.value)}>
+                      <MenuItem value="">(ninguna)</MenuItem>
+                      {sucursales.map((s) => (
+                        <MenuItem key={s._id || s.id} value={s._id || s.id}>{s.nombre}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Moneda</InputLabel>
+                    <Select label="Moneda" value={moneda} onChange={(e) => setMoneda(e.target.value)}>
+                      <MenuItem value="ARS">ARS</MenuItem>
+                      <MenuItem value="USD">USD</MenuItem>
+                    </Select>
+                  </FormControl>
+                </div>
+                <TextField
+                  size="small" label="Fecha" type="date" value={fecha}
+                  onChange={(e) => setFecha(e.target.value)} InputLabelProps={{ shrink: true }}
+                />
+              </div>
+            </StepBlock>
+
+            {operacion === 'acopio' ? (
+              <StepBlock step={2} title="Acopio">
+                <div className="flex flex-col gap-2">
+                  <TextField
+                    size="small" label="Total acopiado *" type="number"
+                    value={acopioTotal} onChange={(e) => setAcopioTotal(e.target.value)}
+                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <TextField size="small" label="Código" value={acopioCodigo} onChange={(e) => setAcopioCodigo(e.target.value)} />
+                    <TextField size="small" label="Descripción" value={acopioDescripcion} onChange={(e) => setAcopioDescripcion(e.target.value)} />
+                  </div>
+                </div>
+              </StepBlock>
+            ) : (
+              <>
+                <StepBlock
+                  step={2}
+                  title="Productos"
+                  action={
+                    <button
+                      type="button"
+                      onClick={addItemLibre}
+                      className="inline-flex items-center gap-1 rounded-md border border-neutral-300 px-2 py-1 text-[11px] font-medium text-neutral-700 hover:bg-neutral-50"
+                    >
+                      <PlusIcon className="h-3.5 w-3.5" /> Línea libre
+                    </button>
+                  }
+                >
+                  <div className="flex flex-col gap-2">
+                    {items.map((it, idx) => (
+                      <div key={idx} className="flex items-start gap-1.5">
+                        <div className="min-w-0 flex-1">
+                          {it.libre ? (
+                            <TextField
+                              fullWidth size="small" placeholder="Descripción libre"
+                              value={it.descripcion}
+                              onChange={(e) => updateItem(idx, { descripcion: e.target.value, nombre: e.target.value })}
+                            />
+                          ) : (
+                            <Autocomplete
+                              freeSolo size="small"
+                              options={matOptions[idx] || []}
+                              getOptionLabel={(o) => (typeof o === 'string' ? o : o?.nombre || '')}
+                              loading={!!matLoading[idx]}
+                              onInputChange={(_, v) => { updateItem(idx, { nombre: v }); buscarMateriales(idx, v); }}
+                              onChange={(_, v) => {
+                                if (v && typeof v === 'object') {
+                                  updateItem(idx, {
+                                    material_id: v._id || v.id || '',
+                                    nombre: v.nombre,
+                                    precio_unitario: Number(v.precio_unitario) || it.precio_unitario || 0,
+                                  });
+                                }
+                              }}
+                              renderInput={(params) => <TextField {...params} placeholder="Buscar material..." />}
+                            />
+                          )}
+                        </div>
+                        <TextField
+                          size="small" type="number" value={it.cantidad}
+                          onChange={(e) => updateItem(idx, { cantidad: e.target.value })}
+                          sx={{ width: 64 }} inputProps={{ 'aria-label': 'cantidad' }}
+                        />
+                        <TextField
+                          size="small" type="number" value={it.precio_unitario}
+                          onChange={(e) => updateItem(idx, { precio_unitario: e.target.value })}
+                          sx={{ width: 92 }} inputProps={{ 'aria-label': 'precio' }}
+                        />
+                        <IconButton size="small" onClick={() => removeItem(idx)} sx={{ mt: 0.25 }}>
+                          <TrashIcon className="h-4 w-4 text-neutral-500" />
+                        </IconButton>
+                      </div>
+                    ))}
+                  </div>
+                </StepBlock>
+
+                <StepBlock step={3} title="¿Cuándo paga?">
+                  <Segmented value={modalidad} onChange={setModalidad} options={MODALIDADES} />
+                  <p className="mt-2 text-xs text-neutral-500">{modalidadMeta?.desc}</p>
+                  {modalidad === 'contra_entrega' && (
+                    <TextField
+                      sx={{ mt: 2 }} fullWidth size="small" label="Fecha entrega estimada" type="date"
+                      value={fechaEntrega} onChange={(e) => setFechaEntrega(e.target.value)}
+                      InputLabelProps={{ shrink: true }}
+                    />
+                  )}
+                  {modalidad === 'contado' && (
+                    <FormControlLabel
+                      sx={{ mt: 1 }}
+                      control={<Checkbox size="small" checked={cobrado} onChange={(e) => setCobrado(e.target.checked)} />}
+                      label="Marcar cobrado al crear"
+                    />
+                  )}
+                </StepBlock>
+              </>
+            )}
+
+            <StepBlock step={operacion === 'acopio' ? 3 : 4} title="Notas">
+              <TextField
+                fullWidth size="small" multiline minRows={2} placeholder="Opcional"
+                value={notas} onChange={(e) => setNotas(e.target.value)}
+              />
+            </StepBlock>
+          </div>
+        </div>
+
+        {/* Footer sticky */}
+        <footer className="shrink-0 border-t border-divider bg-white px-4 py-3">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-xs text-neutral-500">Total</span>
+            <span className="text-lg font-bold text-neutral-900">
+              {formatCurrencyWithCode(operacion === 'acopio' ? Number(acopioTotal) || 0 : total, moneda)}
+            </span>
+          </div>
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={submitting}
+              className="rounded-lg border border-neutral-300 bg-white px-4 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={submit}
+              disabled={submitting}
+              className="rounded-lg bg-primary-main px-4 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-primary-dark disabled:opacity-50"
+            >
+              {submitting ? 'Guardando…' : 'Crear venta'}
+            </button>
+          </div>
+        </footer>
+      </div>
+    </Drawer>
+  );
+}

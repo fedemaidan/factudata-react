@@ -28,6 +28,11 @@ import {
   Paper,
   Checkbox,
   Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
   TextField,
   Typography,
 } from '@mui/material';
@@ -228,6 +233,38 @@ function PageContent({ empresa }) {
           />
         </Grid>
       </Grid>
+
+      {Array.isArray(venta.materiales) && venta.materiales.length > 0 && (
+        <Paper variant="outlined" sx={{ mb: 2 }}>
+          <Box sx={{ p: 2 }}>
+            <Typography variant="subtitle1" fontWeight={600}>Productos</Typography>
+          </Box>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Material / descripción</TableCell>
+                <TableCell align="right">Cantidad</TableCell>
+                <TableCell align="right">Entregado</TableCell>
+                <TableCell align="right">Precio unit.</TableCell>
+                <TableCell align="right">Subtotal</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {venta.materiales.map((m, i) => (
+                <TableRow key={i}>
+                  <TableCell>{m.nombre}</TableCell>
+                  <TableCell align="right">{m.cantidad}</TableCell>
+                  <TableCell align="right">{m.cantidad_entregada || 0}</TableCell>
+                  <TableCell align="right">{formatCurrencyWithCode(m.precio_unitario || 0, venta.moneda)}</TableCell>
+                  <TableCell align="right">
+                    {formatCurrencyWithCode((Number(m.cantidad) || 0) * (Number(m.precio_unitario) || 0), venta.moneda)}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Paper>
+      )}
 
       <Stack direction="row" spacing={1} justifyContent="flex-end">
         {puedeEntregar && (

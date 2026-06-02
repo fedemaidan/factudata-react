@@ -22,23 +22,15 @@ const ventaService = {
     return data;
   },
 
+  // Venta de productos (flujo único). payload.modalidad = contado | cc | contra_entrega.
+  async crear(empresaId, payload) {
+    const { data } = await api.post(`/empresa/${empresaId}/ventas`, payload);
+    return data;
+  },
+
+  // Acopio (lógica propia).
   async crearAcopio(empresaId, payload) {
     const { data } = await api.post(`/empresa/${empresaId}/ventas/acopio`, payload);
-    return data;
-  },
-
-  async crearContraEntrega(empresaId, payload) {
-    const { data } = await api.post(`/empresa/${empresaId}/ventas/contra-entrega`, payload);
-    return data;
-  },
-
-  async crearCC(empresaId, payload) {
-    const { data } = await api.post(`/empresa/${empresaId}/ventas/cc`, payload);
-    return data;
-  },
-
-  async crearContado(empresaId, payload) {
-    const { data } = await api.post(`/empresa/${empresaId}/ventas/contado`, payload);
     return data;
   },
 

@@ -39,6 +39,7 @@ import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import ventaService from 'src/services/ventaService';
 import clienteService from 'src/services/clienteService';
 import { formatCurrencyWithCode } from 'src/utils/formatters';
+import NuevaVentaDrawer from 'src/components/ventas/NuevaVentaDrawer';
 
 const TIPO_LABEL = {
   acopio: 'Acopio',
@@ -80,6 +81,18 @@ function PageContent({ empresa }) {
   const [filtroEntrega, setFiltroEntrega] = useState('');
   const [filtroCobro, setFiltroCobro] = useState('');
   const [filtroCliente, setFiltroCliente] = useState('');
+
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  // Auto-abrir el drawer si llegan con ?nueva=1 (ej: redirect de /ventas/nuevo).
+  useEffect(() => {
+    if (router.query?.nueva) {
+      setDrawerOpen(true);
+      const { nueva, ...rest } = router.query;
+      router.replace({ pathname: '/ventas', query: rest }, undefined, { shallow: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router.query?.nueva]);
 
   const cargar = useCallback(async () => {
     setLoading(true);
@@ -123,7 +136,7 @@ function PageContent({ empresa }) {
         <Button
           variant="contained"
           startIcon={<AddIcon />}
-          onClick={() => router.push('/ventas/nuevo')}
+          onClick={() => setDrawerOpen(true)}
         >
           Nueva venta
         </Button>
@@ -251,6 +264,13 @@ function PageContent({ empresa }) {
           </Table>
         )}
       </Paper>
+
+      <NuevaVentaDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        empresa={empresa}
+        onCreated={() => cargar()}
+      />
     </Container>
   );
 }
