@@ -565,6 +565,7 @@ function ClientesContent({ empresa }) {
         clienteId={detalleId}
         empresaId={empresaId}
         esCorralon={esCorralon}
+        cajas={empresa?.cajas_virtuales || []}
         onClose={() => setDetalleId(null)}
         onChanged={() => fetchData()}
         onEdit={(c) => { setDetalleId(null); openEditDialog(c); }}

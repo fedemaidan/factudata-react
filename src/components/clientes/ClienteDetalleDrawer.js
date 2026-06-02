@@ -6,7 +6,6 @@
  * No saca al usuario de /clientes. Editar delega al modal existente vía onEdit.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/router';
 import {
   Alert,
   Autocomplete,
@@ -24,9 +23,10 @@ import { XMarkIcon } from '@heroicons/react/24/outline';
 import clienteService from 'src/services/clienteService';
 import grupoClienteService from 'src/services/grupoClienteService';
 import { formatCurrencyWithCode, formatTimestamp } from 'src/utils/formatters';
+import CobroFormDrawer from 'src/components/clientes/CobroFormDrawer';
 
-export default function ClienteDetalleDrawer({ open, onClose, empresaId, clienteId, esCorralon, onEdit, onChanged }) {
-  const router = useRouter();
+export default function ClienteDetalleDrawer({ open, onClose, empresaId, clienteId, esCorralon, cajas = [], onEdit, onChanged }) {
+  const [cobroOpen, setCobroOpen] = useState(false);
   const [data, setData] = useState(null);
   const [grupoInfo, setGrupoInfo] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -219,7 +219,7 @@ export default function ClienteDetalleDrawer({ open, onClose, empresaId, cliente
             </button>
             <button
               type="button"
-              onClick={() => router.push(`/cobros-cliente/nuevo?cliente=${clienteId}`)}
+              onClick={() => setCobroOpen(true)}
               className="rounded-lg bg-primary-main px-4 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-primary-dark"
             >
               Registrar cobro
@@ -227,6 +227,15 @@ export default function ClienteDetalleDrawer({ open, onClose, empresaId, cliente
           </div>
         </footer>
       </div>
+
+      <CobroFormDrawer
+        open={cobroOpen}
+        empresaId={empresaId}
+        cliente={{ _id: clienteId, nombre: cliente.nombre }}
+        cajas={cajas}
+        onClose={() => setCobroOpen(false)}
+        onSaved={() => { cargar(); onChanged?.(); }}
+      />
 
       {/* Dialog transferir saldo */}
       <Dialog open={transferOpen} onClose={() => !transferBusy && setTransferOpen(false)} maxWidth="xs" fullWidth>
