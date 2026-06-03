@@ -7,6 +7,12 @@
 //
 // Columnas esperadas (case-insensitive, con sinónimos):
 //   nombre*, sku, categoria, subcategoria, precio_unitario, stock_minimo, alias, desc_material
+//
+// También acepta el export de catálogo de **Tango** (FAMILIA, NOM_FAM,
+// COD_ARTIC, DESCRIP, UNIDADMED, DESC_ADIC): DESCRIP→nombre, COD_ARTIC→SKU,
+// FAMILIA→categoría (traducida a nombre legible), UNIDADMED+DESC_ADIC→detalle.
+// El export de Tango no trae precio: el material se crea sin precio (se completa
+// luego en stock o al venderlo).
 import { useRef, useState } from 'react';
 import {
   Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle,
@@ -18,14 +24,47 @@ import * as XLSX from 'xlsx';
 import StockMaterialesService from '../../services/stock/stockMaterialesService';
 
 const COLUMN_ALIASES = {
-  nombre: ['nombre', 'material', 'descripcion_corta', 'producto'],
-  SKU: ['sku', 'codigo', 'cod', 'codigo_interno'],
-  categoria: ['categoria', 'rubro'],
+  nombre: ['nombre', 'material', 'descripcion_corta', 'producto', 'descrip', 'descripcion_articulo'],
+  SKU: ['sku', 'codigo', 'cod', 'codigo_interno', 'cod_artic', 'codigo_articulo'],
+  categoria: ['categoria', 'rubro', 'familia', 'nom_fam'],
   subcategoria: ['subcategoria', 'sub_rubro'],
   precio_unitario: ['precio_unitario', 'precio', 'precio_unit', 'pu'],
   stock_minimo: ['stock_minimo', 'minimo', 'min'],
   alias: ['alias', 'aliases'],
-  desc_material: ['desc_material', 'descripcion', 'detalle'],
+  desc_material: ['desc_material', 'descripcion', 'detalle', 'desc_adic'],
+};
+
+// Familias de Tango (código → nombre legible). Si llega un código no mapeado,
+// se usa "Familia <código>" como fallback.
+const TANGO_FAMILIAS = {
+  '0101': 'Yeso',
+  '0102': 'Maderas',
+  '0103': 'Metal desplegado',
+  '0104': 'Guardacantos y chapas',
+  '0105': 'Alambres',
+  '0106': 'Clavos y fijaciones',
+  '0201': 'Cemento y cal',
+  '0203': 'Hierros y mallas',
+  '0204': 'Ladrillos y bloques',
+  '0205': 'Áridos',
+  '0206': 'Aditivos',
+  '0207': 'Adhesivos y pastinas',
+  '0208': 'Membranas e impermeabilizantes',
+  '0209': 'Revestimientos',
+  '0301': 'Durlock — placas y perfiles',
+  '0302': 'Durlock — accesorios',
+  '0303': 'Superboard y fibrocemento',
+  '0304': 'Adhesivos para molduras',
+  '0305': 'Molduras',
+  '0307': 'Aislantes',
+  '0308': 'Herramientas eléctricas y de corte',
+  '0401': 'Herramientas de albañil',
+  '0402': 'Herramientas y accesorios',
+  '0403': 'Reglas',
+  '0404': 'Embalaje',
+  '0501': 'Pinturas',
+  '0606': 'Tejuelas',
+  '0700': 'Selladores',
 };
 
 const normKey = (k) => String(k || '').trim().toLowerCase().replace(/\s+/g, '_');
@@ -38,12 +77,30 @@ function mapRowToMaterial(row) {
   const out = {};
   for (const [target, aliases] of Object.entries(COLUMN_ALIASES)) {
     for (const a of aliases) {
-      if (lookup[a] != null && lookup[a] !== '') {
-        out[target] = lookup[a];
+      const v = lookup[normKey(a)];
+      if (v != null && String(v).trim() !== '') {
+        out[target] = v;
         break;
       }
     }
   }
+
+  // Tango: la categoría llega como código de familia (ej. "0101") → nombre legible.
+  if (out.categoria != null) {
+    const code = String(out.categoria).trim();
+    if (TANGO_FAMILIAS[code]) out.categoria = TANGO_FAMILIAS[code];
+    else if (/^\d{3,4}$/.test(code)) out.categoria = `Familia ${code}`;
+  }
+
+  // Unidad de medida (Tango UNIDADMED) + detalle adicional → se guardan juntos
+  // en desc_material (el modelo no tiene campo de unidad). "***" = sin unidad.
+  const unidad = lookup.unidadmed != null ? String(lookup.unidadmed).trim() : '';
+  const extras = [];
+  if (unidad && unidad !== '***') extras.push(unidad);
+  if (out.desc_material) extras.push(String(out.desc_material).trim());
+  if (extras.length) out.desc_material = extras.join(' · ');
+  else delete out.desc_material;
+
   return out;
 }
 
@@ -74,11 +131,16 @@ const ImportarCatalogo = ({ open, onClose, empresaId, empresaNombre, onDone }) =
     setError(null);
     setResult(null);
     try {
-      // CSV como string UTF-8 explícito (preserva tildes/eñes). XLSX como binario.
+      // CSV: bytes + UTF-8 con fallback a Windows-1252 (preserva tildes/eñes).
+      // XLSX como binario.
       const isCsv = /\.csv$/i.test(file?.name || '');
       let wb;
       if (isCsv) {
-        const text = await file.text();
+        const buf = await file.arrayBuffer();
+        let text = new TextDecoder('utf-8').decode(buf);
+        if (text.includes('�')) {
+          try { text = new TextDecoder('windows-1252').decode(buf); } catch (_) { /* noop */ }
+        }
         wb = XLSX.read(text, { type: 'string' });
       } else {
         const buf = await file.arrayBuffer();
@@ -134,6 +196,12 @@ const ImportarCatalogo = ({ open, onClose, empresaId, empresaNombre, onDone }) =
             Subí un .xlsx o .csv con columnas: <code>nombre</code> (obligatorio), <code>SKU</code>,
             {' '}<code>categoria</code>, <code>subcategoria</code>, <code>precio_unitario</code>,
             {' '}<code>stock_minimo</code>, <code>alias</code>, <code>desc_material</code>.
+            <br />
+            También se acepta el <strong>export de Tango</strong> (<code>FAMILIA</code>,
+            {' '}<code>COD_ARTIC</code>, <code>DESCRIP</code>, <code>UNIDADMED</code>,
+            {' '}<code>DESC_ADIC</code>): la familia se traduce a una categoría legible y, como
+            Tango no trae precio, los materiales se crean sin precio (lo completás después).
+            <br />
             La importación es idempotente por <strong>nombre</strong>: si el material ya existe se
             actualiza precio y categoría; si no, se crea.
           </Typography>
