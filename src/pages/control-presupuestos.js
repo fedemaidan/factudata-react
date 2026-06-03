@@ -88,9 +88,16 @@ const labelItem = (item, fallback = 'Ingreso general') => {
 };
 import dayjs from 'dayjs';
 import PresupuestoDrawer from 'src/components/PresupuestoDrawer';
+import ExportarPdfMenu from 'src/components/plantillasPdf/ExportarPdfMenu';
+import { buildControlPresupuestoData } from 'src/utils/controlPresupuesto/buildControlPresupuestoData';
 import Tooltip from '@mui/material/Tooltip';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import CloseIcon from '@mui/icons-material/Close';
+
+const loadDefaultControlPresupuestoDoc = () =>
+  import('src/utils/controlPresupuesto/PdfControlPresupuestoDocument').then(
+    (m) => m.PdfControlPresupuestoDocument
+  );
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import ListAltIcon from '@mui/icons-material/ListAlt';
@@ -2253,6 +2260,7 @@ const ControlPresupuestosPage = () => {
         onSuccess={handleDrawerSuccess}
         mode={drawerPresupuesto.mode}
         empresaId={empresaId}
+        empresaNombre={empresa?.nombre || ''}
         proyectoId={proyectoSeleccionado}
         userId={user?.uid}
         tipoAgrupacion={drawerPresupuesto.tipoAgrupacion}
@@ -2320,6 +2328,37 @@ const ControlPresupuestosPage = () => {
                 sx={{ cursor: 'pointer', fontSize: '0.65rem', height: 22, ml: 'auto' }}
               />
             </Tooltip>
+            {movDrawerData.length > 0 && (
+              <ExportarPdfMenu
+                empresaId={empresaId}
+                empresaNombre={empresa?.nombre || ''}
+                documentType="control_presupuesto"
+                fileName={`movimientos-${proyectoActual?.nombre || 'proyecto'}-${movDrawer.label}`}
+                defaultDocumentLoader={loadDefaultControlPresupuestoDoc}
+                onError={(message) => setAlert({ open: true, message, severity: 'error' })}
+                buildData={() => {
+                  const totales = calcularTotales();
+                  const presupuestado =
+                    movDrawer.tipo === 'egreso' ? totales.egresos.total
+                      : movDrawer.tipo === 'ingreso' ? totales.ingresos.total
+                        : 0;
+                  const titulo =
+                    movDrawer.tipo === 'egreso' ? 'RECIBO DE PAGOS'
+                      : movDrawer.tipo === 'ingreso' ? 'RECIBO DE INGRESOS'
+                        : 'ESTADO DE CUENTA';
+                  return buildControlPresupuestoData({
+                    movimientos: movDrawerData,
+                    titulo,
+                    presupuestoLabel: movDrawer.label,
+                    obra: proyectoActual?.nombre || '',
+                    empresaNombre: empresa?.nombre || '',
+                    moneda,
+                    presupuestado,
+                    tipo: movDrawer.tipo === 'ingreso' ? 'ingresos' : 'gastos',
+                  });
+                }}
+              />
+            )}
           </Stack>
 
           {movDrawerLoading ? (
