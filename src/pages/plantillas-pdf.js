@@ -1,44 +1,34 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Head from 'next/head';
-import dynamic from 'next/dynamic';
 import {
-  Alert, Box, Button, Card, CardContent, CardMedia, Chip, CircularProgress, Container,
+  Alert, Box, Button, Card, CardContent, CardMedia, CircularProgress, Container,
   Dialog, DialogActions, DialogContent, DialogTitle, Divider, Grid, IconButton, Menu,
   MenuItem, Snackbar, Stack, TextField, Tooltip, Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
-import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import ImageOutlinedIcon from '@mui/icons-material/ImageOutlined';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
-import StarIcon from '@mui/icons-material/Star';
-import StarBorderIcon from '@mui/icons-material/StarBorder';
-import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined';
 
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useAuthContext } from 'src/contexts/auth-context';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import empresaLogoService from 'src/services/empresaLogoService';
-import pdfPlantillaService from 'src/services/pdfPlantillaService';
+import SeccionPlantillas from 'src/components/plantillasPdf/SeccionPlantillas';
 import CONTROL_PRESUPUESTO_SAMPLE_DATA from 'src/utils/controlPresupuesto/sampleData';
+import COMPROBANTE_MOVIMIENTO_SAMPLE_DATA from 'src/utils/comprobanteMovimiento/sampleData';
 
-// El documento por defecto se carga client-side (importa @react-pdf, que no debe entrar al bundle SSR de la página).
+// Los documentos por defecto se cargan client-side (importan @react-pdf, fuera del bundle SSR).
 const loadDefaultControlPresupuestoDoc = () =>
   import('src/utils/controlPresupuesto/PdfControlPresupuestoDocument').then((m) => m.PdfControlPresupuestoDocument);
-
-const PdfPlantillaChatDialog = dynamic(
-  () => import('src/components/plantillasPdf/PdfPlantillaChatDialog'),
-  { ssr: false }
-);
-
-const DOC_TYPE = 'control_presupuesto';
+const loadDefaultComprobanteMovimientoDoc = () =>
+  import('src/utils/comprobanteMovimiento/PdfComprobanteMovimientoDocument').then((m) => m.PdfComprobanteMovimientoDocument);
 
 const PlantillasPdfPage = () => {
   const { user } = useAuthContext();
   const [empresa, setEmpresa] = useState(null);
   const [logos, setLogos] = useState([]);
-  const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [snack, setSnack] = useState(null); // { msg, severity }
 
@@ -54,22 +44,13 @@ const PlantillasPdfPage = () => {
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameValue, setRenameValue] = useState('');
 
-  // Chat dialog (crear/editar plantilla)
-  const [chatOpen, setChatOpen] = useState(false);
-  const [editingTemplate, setEditingTemplate] = useState(null);
-
   const empresaId = empresa?.id || null;
+  const empresaNombre = empresa?.nombre || '';
   const notify = (msg, severity = 'success') => setSnack({ msg, severity });
 
-  const cargar = useCallback(async (empId) => {
-    setLoading(true);
-    const [ls, ts] = await Promise.all([
-      empresaLogoService.listar(empId),
-      pdfPlantillaService.listar(empId, DOC_TYPE),
-    ]);
+  const cargarLogos = useCallback(async (empId) => {
+    const ls = await empresaLogoService.listar(empId);
     setLogos(ls || []);
-    setTemplates(ts || []);
-    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -78,10 +59,11 @@ const PlantillasPdfPage = () => {
       const emp = await getEmpresaDetailsFromUser(user);
       if (cancelled || !emp) { setLoading(false); return; }
       setEmpresa(emp);
-      await cargar(emp.id);
+      await cargarLogos(emp.id);
+      if (!cancelled) setLoading(false);
     })();
     return () => { cancelled = true; };
-  }, [user, cargar]);
+  }, [user, cargarLogos]);
 
   // ── Logos ──────────────────────────────────────────────────────────────────
   const handlePickLogoFile = (e) => {
@@ -100,7 +82,7 @@ const PlantillasPdfPage = () => {
     if (created) {
       setLogoDialogOpen(false); setLogoFile(null); setLogoNombre('');
       notify('Logo agregado');
-      cargar(empresaId);
+      cargarLogos(empresaId);
     } else {
       notify('No se pudo subir el logo', 'error');
     }
@@ -110,7 +92,7 @@ const PlantillasPdfPage = () => {
     const logo = logoMenu.logo;
     setRenameOpen(false);
     const updated = await empresaLogoService.renombrar(logo._id, renameValue);
-    if (updated) { notify('Logo renombrado'); cargar(empresaId); }
+    if (updated) { notify('Logo renombrado'); cargarLogos(empresaId); }
     else notify('No se pudo renombrar', 'error');
   };
 
@@ -118,26 +100,8 @@ const PlantillasPdfPage = () => {
     const logo = logoMenu.logo;
     setLogoMenu({ anchor: null, logo: null });
     const ok = await empresaLogoService.eliminar(logo._id);
-    if (ok) { notify('Logo eliminado'); cargar(empresaId); }
+    if (ok) { notify('Logo eliminado'); cargarLogos(empresaId); }
     else notify('No se pudo eliminar', 'error');
-  };
-
-  // ── Plantillas ───────────────────────────────────────────────────────────────
-  const abrirNueva = () => { setEditingTemplate(null); setChatOpen(true); };
-  const abrirEditar = (t) => { setEditingTemplate(t); setChatOpen(true); };
-
-  const handlePlantillaGuardada = () => { notify('Plantilla guardada'); cargar(empresaId); };
-
-  const handleEliminarPlantilla = async (t) => {
-    const ok = await pdfPlantillaService.eliminar(t._id);
-    if (ok) { notify('Plantilla eliminada'); cargar(empresaId); }
-    else notify('No se pudo eliminar', 'error');
-  };
-
-  const handleMarcarPrincipal = async (t) => {
-    const updated = await pdfPlantillaService.actualizar(t._id, { es_principal: true });
-    if (updated) { notify('Plantilla marcada como principal'); cargar(empresaId); }
-    else notify('No se pudo actualizar', 'error');
   };
 
   return (
@@ -192,73 +156,32 @@ const PlantillasPdfPage = () => {
               <Divider />
 
               {/* ─── Plantillas de control de presupuesto ─── */}
-              <Box>
-                <Stack direction="row" alignItems="center" sx={{ mb: 1.5 }}>
-                  <Typography variant="h6" sx={{ flex: 1 }}>Plantillas de control de presupuesto</Typography>
-                  <Button startIcon={<AutoFixHighIcon />} variant="contained" size="small" onClick={abrirNueva}>
-                    Nueva plantilla
-                  </Button>
-                </Stack>
-                <Grid container spacing={2} sx={{ mt: 0.5 }}>
-                  {/* Plantilla por defecto */}
-                  <Grid item xs={12} sm={6} md={4}>
-                    <Card variant="outlined" sx={{ height: '100%' }}>
-                      <Box sx={{ height: 120, bgcolor: 'grey.100', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <DescriptionOutlinedIcon sx={{ fontSize: 44, color: 'text.disabled' }} />
-                      </Box>
-                      <Divider />
-                      <CardContent sx={{ py: 1.5 }}>
-                        <Stack direction="row" alignItems="center" spacing={1}>
-                          <Typography variant="subtitle2" sx={{ flex: 1 }}>Plantilla por defecto</Typography>
-                          <Chip label="Siempre disponible" size="small" variant="outlined" sx={{ fontSize: 10, height: 20 }} />
-                        </Stack>
-                        <Typography variant="caption" color="text.secondary">
-                          Recibo de pagos estándar. Se usa cuando no hay una plantilla principal.
-                        </Typography>
-                      </CardContent>
-                    </Card>
-                  </Grid>
+              <SeccionPlantillas
+                empresaId={empresaId}
+                empresaNombre={empresaNombre}
+                logos={logos}
+                documentType="control_presupuesto"
+                titulo="Plantillas de control de presupuesto"
+                descripcionDefault="Recibo de pagos estándar. Se usa cuando no hay una plantilla principal."
+                sampleData={CONTROL_PRESUPUESTO_SAMPLE_DATA}
+                defaultDocumentLoader={loadDefaultControlPresupuestoDoc}
+                onNotify={notify}
+              />
 
-                  {/* Plantillas custom */}
-                  {templates.map((t) => (
-                    <Grid item xs={12} sm={6} md={4} key={t._id}>
-                      <Card variant="outlined" sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-                        {t.preview_image_url ? (
-                          <CardMedia component="img" image={t.preview_image_url} alt={t.nombre} sx={{ height: 120, objectFit: 'cover', objectPosition: 'top', bgcolor: 'grey.100' }} />
-                        ) : (
-                          <Box sx={{ height: 120, bgcolor: 'grey.100', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <DescriptionOutlinedIcon sx={{ fontSize: 44, color: 'text.disabled' }} />
-                          </Box>
-                        )}
-                        <Divider />
-                        <CardContent sx={{ py: 1.5, flex: 1 }}>
-                          <Stack direction="row" alignItems="center" spacing={1}>
-                            <Typography variant="subtitle2" noWrap sx={{ flex: 1 }} title={t.nombre}>{t.nombre}</Typography>
-                            {t.es_principal && <Chip color="primary" label="Principal" size="small" sx={{ fontSize: 10, height: 20 }} />}
-                          </Stack>
-                        </CardContent>
-                        <Divider />
-                        <Stack direction="row" sx={{ px: 0.5, py: 0.5 }}>
-                          <Tooltip title="Editar">
-                            <IconButton size="small" onClick={() => abrirEditar(t)}><EditOutlinedIcon fontSize="small" /></IconButton>
-                          </Tooltip>
-                          <Tooltip title={t.es_principal ? 'Es la principal' : 'Marcar como principal'}>
-                            <span>
-                              <IconButton size="small" disabled={t.es_principal} onClick={() => handleMarcarPrincipal(t)}>
-                                {t.es_principal ? <StarIcon fontSize="small" color="primary" /> : <StarBorderIcon fontSize="small" />}
-                              </IconButton>
-                            </span>
-                          </Tooltip>
-                          <Box sx={{ flex: 1 }} />
-                          <Tooltip title="Eliminar">
-                            <IconButton size="small" color="error" onClick={() => handleEliminarPlantilla(t)}><DeleteOutlineIcon fontSize="small" /></IconButton>
-                          </Tooltip>
-                        </Stack>
-                      </Card>
-                    </Grid>
-                  ))}
-                </Grid>
-              </Box>
+              <Divider />
+
+              {/* ─── Plantillas de comprobantes de movimiento ─── */}
+              <SeccionPlantillas
+                empresaId={empresaId}
+                empresaNombre={empresaNombre}
+                logos={logos}
+                documentType="comprobante_movimiento"
+                titulo="Plantillas de comprobantes de movimiento"
+                descripcionDefault="Comprobante de pago/cobro estándar. Se usa cuando no hay una plantilla principal."
+                sampleData={COMPROBANTE_MOVIMIENTO_SAMPLE_DATA}
+                defaultDocumentLoader={loadDefaultComprobanteMovimientoDoc}
+                onNotify={notify}
+              />
             </Stack>
           )}
         </Container>
@@ -310,22 +233,6 @@ const PlantillasPdfPage = () => {
           </Button>
         </DialogActions>
       </Dialog>
-
-      {/* Chat dialog */}
-      {empresaId && (
-        <PdfPlantillaChatDialog
-          open={chatOpen}
-          onClose={() => setChatOpen(false)}
-          empresaId={empresaId}
-          documentType={DOC_TYPE}
-          sampleData={CONTROL_PRESUPUESTO_SAMPLE_DATA}
-          defaultDocumentLoader={loadDefaultControlPresupuestoDoc}
-          empresaNombre={empresa?.nombre || ''}
-          logos={logos}
-          initialTemplate={editingTemplate}
-          onSaved={handlePlantillaGuardada}
-        />
-      )}
 
       <Snackbar open={!!snack} autoHideDuration={3500} onClose={() => setSnack(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
         {snack ? <Alert severity={snack.severity} onClose={() => setSnack(null)} variant="filled">{snack.msg}</Alert> : null}

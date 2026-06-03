@@ -17,27 +17,18 @@ import PictureAsPdfRoundedIcon from '@mui/icons-material/PictureAsPdfRounded';
 import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined';
 import StarRoundedIcon from '@mui/icons-material/StarRounded';
 import AddRoundedIcon from '@mui/icons-material/AddRounded';
-import pdfPlantillaService from 'src/services/pdfPlantillaService';
-import empresaLogoService from 'src/services/empresaLogoService';
-import { loadCustomComponentById } from 'src/utils/plantillasPdf/loadCustomComponent';
-import { renderPlantillaToPdf } from 'src/utils/plantillasPdf/exportPlantillaToPdf';
-import { loadImageAsDataUrl } from 'src/utils/presupuestos/loadLogoForPdf';
+import { useExportarPdf } from './useExportarPdf';
 
 /**
- * Botón "PDF" reutilizable que abre un menú chico para exportar a PDF.
+ * Botón "PDF" reutilizable (Chip + menú chico) para exportar a PDF.
  *
  * - Siempre ofrece la **plantilla por defecto** (libre para todos).
  * - Lista las plantillas personalizadas de la empresa para el `documentType` (la
  *   principal primero, marcada con ⭐).
  * - Ofrece "Crear plantilla personalizada" que redirige a /plantillas-pdf.
  *
- * Genérico por `documentType` para reusarlo a futuro en otros documentos.
- *
- * Props:
- *   empresaId, empresaNombre, documentType,
- *   buildData: () => objeto `data` (se llama al exportar, refleja el estado actual),
- *   defaultDocumentLoader: () => Promise<Component> (plantilla default, client-only),
- *   fileName, disabled, onError(msg)
+ * La lógica (listar + render) vive en el hook useExportarPdf, compartido con
+ * ExportarPdfDialog. Genérico por `documentType`.
  */
 export default function ExportarPdfMenu({
   empresaId,
@@ -51,64 +42,20 @@ export default function ExportarPdfMenu({
 }) {
   const router = useRouter();
   const [anchorEl, setAnchorEl] = useState(null);
-  const [loadingList, setLoadingList] = useState(false);
-  const [plantillas, setPlantillas] = useState([]);
-  const [logos, setLogos] = useState([]);
-  const [generating, setGenerating] = useState(false);
   const open = Boolean(anchorEl);
+  const { plantillas, loadingList, generating, cargarOpciones, exportar } = useExportarPdf({
+    empresaId, empresaNombre, documentType, buildData, defaultDocumentLoader, fileName, onError,
+  });
 
-  const abrir = async (e) => {
+  const abrir = (e) => {
     setAnchorEl(e.currentTarget);
-    setLoadingList(true);
-    try {
-      const [pls, lgs] = await Promise.all([
-        pdfPlantillaService.listar(empresaId, documentType),
-        empresaLogoService.listar(empresaId),
-      ]);
-      const ordenadas = [...(pls || [])].sort(
-        (a, b) => (b.es_principal ? 1 : 0) - (a.es_principal ? 1 : 0)
-      );
-      setPlantillas(ordenadas);
-      setLogos(lgs || []);
-    } catch (err) {
-      console.error('ExportarPdfMenu listar', err);
-    } finally {
-      setLoadingList(false);
-    }
+    cargarOpciones();
   };
-
   const cerrar = () => setAnchorEl(null);
 
-  const resolverLogo = async (logoId) => {
-    let logo = null;
-    if (logoId) logo = logos.find((l) => (l._id || l.id) === logoId);
-    if (!logo) logo = logos[0];
-    if (!logo?.url) return null;
-    return loadImageAsDataUrl(logo.url);
-  };
-
-  const exportar = async (plantilla) => {
+  const handleExportar = (plantilla) => {
     cerrar();
-    setGenerating(true);
-    try {
-      const data = typeof buildData === 'function' ? buildData() : buildData;
-      let Component;
-      let logoId = null;
-      if (plantilla) {
-        const loaded = await loadCustomComponentById(plantilla._id || plantilla.id);
-        Component = loaded.Component;
-        logoId = plantilla.logo_id || null;
-      } else {
-        Component = await defaultDocumentLoader();
-      }
-      const logoDataUrl = await resolverLogo(logoId);
-      await renderPlantillaToPdf({ Component, data, logoDataUrl, empresaNombre, fileName });
-    } catch (err) {
-      console.error('ExportarPdfMenu exportar', err);
-      if (onError) onError('No se pudo generar el PDF. Intentá de nuevo.');
-    } finally {
-      setGenerating(false);
-    }
+    exportar(plantilla);
   };
 
   return (
@@ -145,7 +92,7 @@ export default function ExportarPdfMenu({
           </Box>
         ) : (
           <Box>
-            <MenuItem onClick={() => exportar(null)} sx={{ py: 1 }}>
+            <MenuItem onClick={() => handleExportar(null)} sx={{ py: 1 }}>
               <ListItemIcon><DescriptionOutlinedIcon fontSize="small" /></ListItemIcon>
               <ListItemText primary="Plantilla por defecto" secondary="Recibo estándar" />
             </MenuItem>
@@ -156,7 +103,7 @@ export default function ExportarPdfMenu({
               </ListSubheader>
             )}
             {plantillas.map((p) => (
-              <MenuItem key={p._id || p.id} onClick={() => exportar(p)} sx={{ py: 1 }}>
+              <MenuItem key={p._id || p.id} onClick={() => handleExportar(p)} sx={{ py: 1 }}>
                 <ListItemIcon>
                   {p.es_principal ? (
                     <StarRoundedIcon fontSize="small" sx={{ color: 'warning.main' }} />

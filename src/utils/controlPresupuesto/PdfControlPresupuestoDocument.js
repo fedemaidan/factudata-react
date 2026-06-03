@@ -109,10 +109,6 @@ export function PdfControlPresupuestoDocument({ data, logoDataUrl, empresaNombre
           <Text style={styles.totalsLabel}>SALDO</Text>
           <Text style={styles.totalsValue}>{fmtMoney(d.saldo, d.moneda)}</Text>
         </View>
-
-        <Text style={styles.footer}>
-          {(empresaNombre ? empresaNombre + ' — ' : '') + 'Documento no válido como factura'}
-        </Text>
       </Page>
     </Document>
   );

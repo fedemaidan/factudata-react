@@ -32,7 +32,16 @@ import {
   CheckCircleIcon,
   DocumentMagnifyingGlassIcon,
   ArrowTopRightOnSquareIcon,
+  DocumentArrowDownIcon,
 } from '@heroicons/react/24/outline';
+import ExportarPdfDialog from 'src/components/plantillasPdf/ExportarPdfDialog';
+import { buildComprobanteMovimientoData } from 'src/utils/comprobanteMovimiento/buildComprobanteMovimientoData';
+
+// El componente por defecto se carga client-side (importa @react-pdf, fuera del bundle SSR).
+const loadDefaultComprobanteMovimientoDoc = () =>
+  import('src/utils/comprobanteMovimiento/PdfComprobanteMovimientoDocument').then(
+    (m) => m.PdfComprobanteMovimientoDocument
+  );
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import movimientosService from 'src/services/movimientosService';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
@@ -244,6 +253,7 @@ const MovementFormPage = () => {
   const [openEgresoConCajaPagadora, setOpenEgresoConCajaPagadora] = useState(false);
   const [accionesOpen, setAccionesOpen] = useState(false);
   const [auditOpen, setAuditOpen] = useState(false);
+  const [exportPdfOpen, setExportPdfOpen] = useState(false);
   const accionesRef = useRef(null);
   const [mediosPago, setMediosPago] = useState(['Efectivo', 'Transferencia', 'Tarjeta', 'Mercado Pago', 'Cheque']);
   const [asignados, setAsignados] = useState([]);
@@ -1057,6 +1067,9 @@ const createdAtStr = (() => {
       case 'auditoria':
         setAuditOpen(true);
         break;
+      case 'exportarPdf':
+        setExportPdfOpen(true);
+        break;
       case 'completarPago':
         setCompletarPagoDialogOpen(true);
         break;
@@ -1540,6 +1553,16 @@ const createdAtStr = (() => {
                       <DocumentTextIcon className="h-4 w-4 text-neutral-600" />
                       Ver auditoría
                     </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      disabled={!isEditMode}
+                      onClick={() => handleAccionesMenuItemClick('exportarPdf')}
+                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-neutral-50 disabled:opacity-40"
+                    >
+                      <DocumentArrowDownIcon className="h-4 w-4 text-neutral-600" />
+                      Exportar PDF
+                    </button>
                     {mostrarCompletarPago && (
                       <button
                         type="button"
@@ -1824,6 +1847,24 @@ const createdAtStr = (() => {
           open={pdfModalOpen}
           onClose={handleCloseComprobantePdfModal}
           pdfUrl={hasComprobante && isComprobantePdf ? comprobanteSrc : ''}
+        />
+
+        <ExportarPdfDialog
+          open={exportPdfOpen}
+          onClose={() => setExportPdfOpen(false)}
+          empresaId={empresa?.id}
+          empresaNombre={empresa?.nombre || ''}
+          documentType="comprobante_movimiento"
+          titulo="Exportar comprobante"
+          fileName={`comprobante-${movimiento?.codigo_operacion || movimientoId || 'movimiento'}`}
+          defaultDocumentLoader={loadDefaultComprobanteMovimientoDoc}
+          onError={(message) => setAlert({ open: true, message, severity: 'error' })}
+          buildData={() => buildComprobanteMovimientoData({
+            movimiento,
+            formValues: formik.values,
+            empresaNombre: empresa?.nombre || '',
+            obra: effectiveProyectoName || '',
+          })}
         />
 
         <Dialog
