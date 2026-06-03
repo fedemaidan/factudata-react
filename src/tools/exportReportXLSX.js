@@ -48,6 +48,9 @@ export function exportReportToXLSX(reportConfig, results, movimientos = [], disp
       case 'category_budget_matrix':
         exportCategoryBudgetMatrix(wb, sheetName, block.data, displayCurrency);
         break;
+      case 'income_budget_control':
+        exportIncomeBudgetControl(wb, sheetName, block.data);
+        break;
       case 'balance_between_partners':
         exportBalanceBetweenPartners(wb, sheetName, block.data, displayCurrency);
         break;
@@ -275,6 +278,73 @@ function exportCategoryBudgetMatrix(wb, name, data, displayCurrency) {
     }
     aoa.push(line);
   }
+
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  XLSX.utils.book_append_sheet(wb, ws, name);
+}
+
+function formatXlsxDate(value) {
+  if (!value) return '';
+  const d = value?.toDate ? value.toDate() : value?.seconds ? new Date(value.seconds * 1000) : new Date(value);
+  return isNaN(d.getTime()) ? '' : d.toLocaleDateString('es-AR');
+}
+
+function exportIncomeBudgetControl(wb, name, data) {
+  const presupuestoRows = data?.presupuesto?.rows || [];
+  const presupuestoTotals = data?.presupuesto?.totals || {};
+  const recibidoRows = data?.recibidos?.rows || [];
+  const recibidoTotals = data?.recibidos?.totals || {};
+  const saldo = data?.saldo || {};
+
+  const aoa = [
+    ['Resumen presupuestos'],
+    ['N°', 'Concepto', 'Fecha', 'I.CAC', 'Subtotal neto', 'U.CAC'],
+  ];
+
+  for (const row of presupuestoRows) {
+    aoa.push([
+      row.nro,
+      row.concepto,
+      formatXlsxDate(row.fecha),
+      Number(row.icac || 0),
+      Number(row.subtotal_neto || 0),
+      Number(row.cac_equivalente || 0),
+    ]);
+  }
+  aoa.push([
+    'TOTALES',
+    '',
+    '',
+    '',
+    Number(presupuestoTotals.subtotal_neto || 0),
+    Number(presupuestoTotals.cac_equivalente || 0),
+  ]);
+
+  aoa.push([]);
+  aoa.push(['Pagos netos recibidos']);
+  aoa.push(['N°', 'Fecha de pagos recibidos', 'I.CAC a la fecha', 'Pago neto ARS recibidos', 'U.CAC recibidos']);
+
+  for (const row of recibidoRows) {
+    aoa.push([
+      row.nro,
+      formatXlsxDate(row.fecha),
+      Number(row.icac || 0),
+      Number(row.pago_neto_ars || 0),
+      Number(row.cac_recibidos || 0),
+    ]);
+  }
+  aoa.push([
+    'TOTALES NETOS',
+    '',
+    '',
+    Number(recibidoTotals.pago_neto_ars || 0),
+    Number(recibidoTotals.cac_recibidos || 0),
+  ]);
+
+  aoa.push([]);
+  aoa.push(['Saldo U.CAC', Number(saldo.cac || 0)]);
+  aoa.push(['CAC hoy', Number(data?.cac_hoy || 0)]);
+  aoa.push(['Saldo (ARS) a la fecha', Number(saldo.ars_hoy || 0)]);
 
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   XLSX.utils.book_append_sheet(wb, ws, name);
