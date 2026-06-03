@@ -145,14 +145,6 @@ const PlantillasPdfPage = () => {
       <Head><title>Plantillas y logos</title></Head>
       <Box component="main" sx={{ flexGrow: 1, py: 4 }}>
         <Container maxWidth="lg">
-          <Stack spacing={1} sx={{ mb: 3 }}>
-            <Typography variant="h4">Plantillas y logos</Typography>
-            <Typography variant="body2" color="text.secondary">
-              Configurá los logos de tu empresa y diseñá las plantillas de exportación de tus documentos.
-              Hoy disponible para <strong>Control de presupuesto</strong> (recibo de pagos).
-            </Typography>
-          </Stack>
-
           {loading ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}><CircularProgress /></Box>
           ) : (
@@ -165,10 +157,6 @@ const PlantillasPdfPage = () => {
                     Agregar logo
                   </Button>
                 </Stack>
-                <Typography variant="caption" color="text.secondary">
-                  Subí uno o varios logos (por ejemplo, uno por cliente). Después elegís cuál usar en cada plantilla.
-                </Typography>
-
                 {logos.length === 0 ? (
                   <Card variant="outlined" sx={{ mt: 1.5, p: 3, textAlign: 'center', borderStyle: 'dashed' }}>
                     <ImageOutlinedIcon sx={{ fontSize: 36, color: 'text.disabled' }} />
@@ -211,10 +199,6 @@ const PlantillasPdfPage = () => {
                     Nueva plantilla
                   </Button>
                 </Stack>
-                <Typography variant="caption" color="text.secondary">
-                  Diseñá el recibo de pagos con IA y una vista previa en tiempo real. Si no creás ninguna, se usa la plantilla por defecto.
-                </Typography>
-
                 <Grid container spacing={2} sx={{ mt: 0.5 }}>
                   {/* Plantilla por defecto */}
                   <Grid item xs={12} sm={6} md={4}>
@@ -350,6 +334,8 @@ const PlantillasPdfPage = () => {
   );
 };
 
-PlantillasPdfPage.getLayout = (page) => <DashboardLayout>{page}</DashboardLayout>;
+PlantillasPdfPage.getLayout = (page) => (
+  <DashboardLayout title="Plantillas y logos">{page}</DashboardLayout>
+);
 
 export default PlantillasPdfPage;
