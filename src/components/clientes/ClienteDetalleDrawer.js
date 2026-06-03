@@ -24,9 +24,11 @@ import clienteService from 'src/services/clienteService';
 import grupoClienteService from 'src/services/grupoClienteService';
 import { formatCurrencyWithCode, formatTimestamp } from 'src/utils/formatters';
 import CobroFormDrawer from 'src/components/clientes/CobroFormDrawer';
+import DevolucionDrawer from 'src/components/clientes/DevolucionDrawer';
 
 export default function ClienteDetalleDrawer({ open, onClose, empresaId, clienteId, esCorralon, cajas = [], onEdit, onChanged }) {
   const [cobroOpen, setCobroOpen] = useState(false);
+  const [devolucionOpen, setDevolucionOpen] = useState(false);
   const [data, setData] = useState(null);
   const [grupoInfo, setGrupoInfo] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -255,6 +257,15 @@ export default function ClienteDetalleDrawer({ open, onClose, empresaId, cliente
             >
               Editar
             </button>
+            {esCorralon && (
+              <button
+                type="button"
+                onClick={() => setDevolucionOpen(true)}
+                className="rounded-lg border border-neutral-300 bg-white px-4 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+              >
+                Devolución
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setCobroOpen(true)}
@@ -272,6 +283,14 @@ export default function ClienteDetalleDrawer({ open, onClose, empresaId, cliente
         cliente={{ _id: clienteId, nombre: cliente.nombre }}
         cajas={cajas}
         onClose={() => setCobroOpen(false)}
+        onSaved={() => { cargar(); onChanged?.(); }}
+      />
+
+      <DevolucionDrawer
+        open={devolucionOpen}
+        empresaId={empresaId}
+        cliente={{ _id: clienteId, nombre: cliente.nombre }}
+        onClose={() => setDevolucionOpen(false)}
         onSaved={() => { cargar(); onChanged?.(); }}
       />
 

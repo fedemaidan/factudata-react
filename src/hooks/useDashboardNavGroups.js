@@ -15,6 +15,9 @@ import ContactsIcon from "@mui/icons-material/Contacts";
 import AssessmentIcon from "@mui/icons-material/Assessment";
 import ConstructionIcon from "@mui/icons-material/Construction";
 import AutoAwesomeRoundedIcon from "@mui/icons-material/AutoAwesomeRounded";
+import EventAvailableIcon from "@mui/icons-material/EventAvailable";
+import AssignmentReturnIcon from "@mui/icons-material/AssignmentReturn";
+import MoveToInboxIcon from "@mui/icons-material/MoveToInbox";
 import { useAuthContext } from "src/contexts/auth-context";
 import { getProyectosFromUser } from "src/services/proyectosService";
 import { getEmpresaDetailsFromUser } from "src/services/empresaService";
@@ -28,12 +31,11 @@ const icon = (Icon) => (
 const getPermisosVisibles = (empresaAcciones, permisosOcultos = []) =>
   (empresaAcciones || []).filter((accion) => !(permisosOcultos || []).includes(accion));
 
-async function buildDefaultGroups({ user, empresa, permisosUsuario }) {
+// Navegación dedicada de corralón: reorganizada por "lo que hace el usuario"
+// (Ventas / Clientes / Materiales / Caja y reportes / Configuración) en vez de
+// por categoría abstracta. Ver docs/corralones/11-propuesta-funcionalidades.md.
+function buildCorralonGroups({ user, empresa, permisosUsuario, esAdmin }) {
   const empId = empresa.id;
-  const esAdmin =
-    permisosUsuario.includes("VER_CAJAS") &&
-    !permisosUsuario.includes("CREAR_EGRESO_SIMPLIFICADO");
-  const esCorralon = empresa?.vertical === "corralon";
   const groups = [];
 
   // ——— INICIO ———
@@ -42,8 +44,77 @@ async function buildDefaultGroups({ user, empresa, permisosUsuario }) {
   if (user?.admin) {
     inicioItems.push({ title: "Panel de Control", path: "/control-panel", icon: icon(AdminPanelSettingsIcon) });
   }
+  inicioItems.push({ title: "Dashboard corralón", path: `/dashboard-corralon?empresaId=${empId}`, icon: icon(DashboardIcon) });
+  groups.push({ id: "inicio", label: "Inicio", alwaysOpen: true, items: inicioItems });
+
+  // ——— VENTAS (el corazón operativo) ———
+  const ventasItems = [];
+  ventasItems.push({ title: "Ventas", path: "/ventas", icon: icon(PaymentsIcon) });
+  ventasItems.push({ title: "Acopio", path: `/acopios?empresaId=${empId}`, icon: icon(InventoryIcon) });
+  ventasItems.push({ title: "Devoluciones", path: "/devoluciones", icon: icon(AssignmentReturnIcon) });
+  ventasItems.push({ title: "Cobranzas", path: "/cobros-cliente", icon: icon(AttachMoneyIcon) });
+  groups.push({ id: "ventas", label: "Ventas", items: ventasItems });
+
+  // ——— CLIENTES (ambas entradas por ahora, a pedido) ———
+  const clientesItems = [];
+  clientesItems.push({ title: "Clientes", path: "/clientes", icon: icon(PeopleIcon) });
+  clientesItems.push({ title: "Grupos de cliente", path: "/grupos-cliente", icon: icon(PeopleIcon) });
+  groups.push({ id: "clientes", label: "Clientes", items: clientesItems });
+
+  // ——— MATERIALES ———
+  const materialesItems = [];
+  materialesItems.push({ title: "Stock de materiales", path: `/stockMateriales?empresaId=${empId}`, icon: icon(InventoryIcon) });
+  materialesItems.push({ title: "Qué entregar", path: "/que-entregar", icon: icon(EventAvailableIcon) });
+  materialesItems.push({ title: "Recepción de proveedor", path: "/recepcion-proveedor", icon: icon(MoveToInboxIcon) });
+  materialesItems.push({ title: "Proveedores", path: "/proveedores", icon: icon(StoreIcon) });
+  groups.push({ id: "materiales", label: "Materiales", items: materialesItems });
+
+  // ——— CAJA Y REPORTES ———
+  const cajaItems = [];
+  if (esAdmin) {
+    cajaItems.push({ title: "Todos los movimientos", path: `/cajas?empresaId=${empId}&vista=todos`, icon: icon(AccountBalanceWallet) });
+    cajaItems.push({ title: "Revisión de facturas", path: `/revisionFacturas?empresaId=${empId}`, icon: icon(Checklist) });
+  }
+  cajaItems.push({ title: "Reportes", path: "/reportes", icon: icon(AssessmentIcon) });
+  groups.push({ id: "caja", label: "Caja y reportes", items: cajaItems });
+
+  // ——— CONFIGURACIÓN ———
+  const configItems = [];
+  configItems.push({ title: "Sucursales", path: "/sucursales", icon: icon(StoreIcon) });
+  configItems.push({ title: "Mi cuenta", path: "/account", icon: icon(PeopleIcon) });
+  if (user?.admin) {
+    configItems.push({ title: "Configurar " + empresa.nombre, path: `empresa?empresaId=${empId}`, icon: icon(SettingsIcon) });
+  }
+  if (permisosUsuario.includes("ADMIN_USUARIOS")) {
+    configItems.push({ title: "Administración", path: `/configuracionBasica/?empresaId=${empId}`, icon: icon(SettingsIcon) });
+  }
+  if (permisosUsuario.includes("VER_UNIDADES")) {
+    configItems.push({ title: "Unidades", path: `unidadesTable?empresaId=${empId}`, icon: icon(SettingsIcon) });
+  }
+  groups.push({ id: "configuracion", label: "Configuración", items: configItems });
+
+  return groups;
+}
+
+async function buildDefaultGroups({ user, empresa, permisosUsuario }) {
+  const empId = empresa.id;
+  const esAdmin =
+    permisosUsuario.includes("VER_CAJAS") &&
+    !permisosUsuario.includes("CREAR_EGRESO_SIMPLIFICADO");
+  const esCorralon = empresa?.vertical === "corralon";
+
+  // Corralón usa una navegación propia, reorganizada por flujo de trabajo.
   if (esCorralon) {
-    inicioItems.push({ title: "Dashboard corralón", path: `/dashboard-corralon?empresaId=${empId}`, icon: icon(DashboardIcon) });
+    return buildCorralonGroups({ user, empresa, permisosUsuario, esAdmin });
+  }
+
+  const groups = [];
+
+  // ——— INICIO ———
+  const inicioItems = [];
+  inicioItems.push({ title: "Asistente IA (Beta)", path: "/agente", icon: icon(AutoAwesomeRoundedIcon) });
+  if (user?.admin) {
+    inicioItems.push({ title: "Panel de Control", path: "/control-panel", icon: icon(AdminPanelSettingsIcon) });
   }
   if (esAdmin) {
     inicioItems.push({ title: "Resumen general", path: `/vistaResumen?empresaId=${empId}`, icon: icon(DashboardIcon) });
@@ -68,16 +139,8 @@ async function buildDefaultGroups({ user, empresa, permisosUsuario }) {
   if (permisosUsuario.includes("VER_CONTROL_PAGOS")) {
     finanzasItems.push({ title: "Control de pagos", path: "/control-pagos", icon: icon(LocalAtm) });
   }
-  // Corralón: forzamos "Proveedores" aunque el usuario no tenga el permiso explícito,
-  // porque para un corralón es operación core (CC con proveedores).
-  if (permisosUsuario.includes("GESTIONAR_PROVEEDORES") || permisosUsuario.includes("VER_CUENTA_CORRIENTE_PROVEEDORES") || esCorralon) {
+  if (permisosUsuario.includes("GESTIONAR_PROVEEDORES") || permisosUsuario.includes("VER_CUENTA_CORRIENTE_PROVEEDORES")) {
     finanzasItems.push({ title: "Proveedores", path: "/proveedores", icon: icon(StoreIcon) });
-  }
-  if (esCorralon) {
-    finanzasItems.push({ title: "Clientes", path: "/clientes", icon: icon(PeopleIcon) });
-    finanzasItems.push({ title: "Grupos de cliente", path: "/grupos-cliente", icon: icon(PeopleIcon) });
-    finanzasItems.push({ title: "Cobros de cliente", path: "/cobros-cliente", icon: icon(AttachMoneyIcon) });
-    finanzasItems.push({ title: "Ventas", path: "/ventas", icon: icon(PaymentsIcon) });
   }
   if (permisosUsuario.includes("VER_PLANES_COBRO") && !esCorralon) {
     // Plan de cobros (PlanCobroModel) es para constructoras. En corralón no aplica.
@@ -94,8 +157,7 @@ async function buildDefaultGroups({ user, empresa, permisosUsuario }) {
 
   // ——— MATERIALES ———
   const materialesItems = [];
-  // Corralón: forzar entrada de stock aunque no tenga el permiso explícito.
-  if (permisosUsuario.includes("VER_STOCK_MATERIALES") || esCorralon) {
+  if (permisosUsuario.includes("VER_STOCK_MATERIALES")) {
     materialesItems.push({ title: "Stock de materiales", path: `/stockMateriales?empresaId=${empId}`, icon: icon(InventoryIcon) });
   }
   if (permisosUsuario.includes("VER_INVENTARIO_PRODUCTOS")) {
@@ -168,9 +230,6 @@ async function buildDefaultGroups({ user, empresa, permisosUsuario }) {
   const configItems = [];
   if (user?.admin) {
     configItems.push({ title: "Configurar " + empresa.nombre, path: `empresa?empresaId=${empId}`, icon: icon(SettingsIcon) });
-  }
-  if (esCorralon) {
-    configItems.push({ title: "Sucursales", path: "/sucursales", icon: icon(StoreIcon) });
   }
   if (permisosUsuario.includes("ADMIN_USUARIOS")) {
     configItems.push({ title: "Administración", path: `/configuracionBasica/?empresaId=${empId}`, icon: icon(SettingsIcon) });

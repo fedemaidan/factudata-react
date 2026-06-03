@@ -33,6 +33,8 @@ import clienteService from 'src/services/clienteService';
 import acopioService from 'src/services/acopioService';
 import ventaService from 'src/services/ventaService';
 import CobroFormDrawer from 'src/components/clientes/CobroFormDrawer';
+import ClienteDetalleDrawer from 'src/components/clientes/ClienteDetalleDrawer';
+import VentaDetalleDrawer from 'src/components/ventas/VentaDetalleDrawer';
 import { formatCurrencyWithCode } from 'src/utils/formatters';
 
 /**
@@ -85,6 +87,9 @@ function DashboardContent({ empresa }) {
 
   // Cobro inline desde la tabla de CC pendiente.
   const [cobroCliente, setCobroCliente] = useState(null);
+  // Detalle inline (drawers) sin salir del dashboard.
+  const [detalleClienteId, setDetalleClienteId] = useState(null);
+  const [detalleVentaId, setDetalleVentaId] = useState(null);
 
   const fetchData = useCallback(async () => {
     if (!empresaId) return;
@@ -303,7 +308,7 @@ function DashboardContent({ empresa }) {
                       <TableRow key={r.cliente_id} hover>
                         <TableCell
                           sx={{ cursor: 'pointer' }}
-                          onClick={() => router.push(`/clientes?cliente=${r.cliente_id}`)}
+                          onClick={() => setDetalleClienteId(r.cliente_id)}
                         >
                           {c?.nombre || r.cliente_id}
                         </TableCell>
@@ -376,7 +381,7 @@ function DashboardContent({ empresa }) {
                         key={v._id}
                         hover
                         sx={{ cursor: 'pointer' }}
-                        onClick={() => router.push(`/ventas?venta=${v._id}`)}
+                        onClick={() => setDetalleVentaId(String(v._id))}
                       >
                         <TableCell>{c?.nombre || v.cliente_nombre || v.cliente_id}</TableCell>
                         <TableCell>
@@ -463,6 +468,27 @@ function DashboardContent({ empresa }) {
           setCobroCliente(null);
           fetchData();
         }}
+      />
+
+      <ClienteDetalleDrawer
+        open={Boolean(detalleClienteId)}
+        clienteId={detalleClienteId}
+        empresaId={empresaId}
+        esCorralon
+        cajas={empresa?.cajas_virtuales || []}
+        onClose={() => setDetalleClienteId(null)}
+        onChanged={() => fetchData()}
+        onEdit={(c) => { setDetalleClienteId(null); router.push(`/clientes?cliente=${c._id || c.id}`); }}
+      />
+
+      <VentaDetalleDrawer
+        open={Boolean(detalleVentaId)}
+        ventaId={detalleVentaId}
+        empresaId={empresaId}
+        cajas={empresa?.cajas_virtuales || []}
+        onClose={() => setDetalleVentaId(null)}
+        onChanged={() => fetchData()}
+        onEdit={(v) => { setDetalleVentaId(null); router.push(`/ventas?venta=${v._id}`); }}
       />
     </Container>
   );

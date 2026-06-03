@@ -162,7 +162,7 @@ function DetalleContent({ empresa, ventaId }) {
             <Typography variant="caption" color="text.secondary">Fecha entrega estimada</Typography>
             <Typography>
               {venta.fecha_entrega_estimada
-                ? new Date(venta.fecha_entrega_estimada).toLocaleDateString('es-AR')
+                ? new Date(venta.fecha_entrega_estimada).toLocaleDateString('es-AR', { timeZone: 'UTC' })
                 : '—'}
             </Typography>
           </Grid>

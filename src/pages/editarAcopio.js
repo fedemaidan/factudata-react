@@ -63,6 +63,7 @@ import { applyPriceFormulaToValue } from 'src/utils/importar/priceFormula';
 import { codeFromDescription } from 'src/utils/importar/codeFromDescription';
 import TooltipHelp from 'src/components/TooltipHelp';
 import { TOOLTIP_EDITAR_ACOPIO, TOOLTIP_REVISION_FINAL } from 'src/constant/tooltipTexts';
+import RecepcionNoAcordadoDrawer from 'src/components/acopio/RecepcionNoAcordadoDrawer';
 
 const mapComprasToProductos = (comprasData = [], acopioId = '') => (
   (comprasData || []).map((compra, i) => {
@@ -99,6 +100,9 @@ export default function EditarAcopioPage() {
   const [sucursalesOptions, setSucursalesOptions] = useState([]);
   const [contraparteRol, setContraparteRol] = useState('proveedor');
   const [sucursalId, setSucursalId] = useState('');
+  const [esCorralon, setEsCorralon] = useState(false);
+  const [empresaNombre, setEmpresaNombre] = useState('');
+  const [recepcionOpen, setRecepcionOpen] = useState(false);
 
   const [codigo, setCodigo] = useState('');
 
@@ -189,6 +193,8 @@ const goNext = () => setCurrentIdx((i) => (i + 1) % (urls?.length || 0));
         const rol = acopioData.contraparte_rol || 'proveedor';
         setContraparteRol(rol);
         setSucursalId(acopioData.sucursal_id || '');
+        setEsCorralon(empresa?.vertical === 'corralon');
+        setEmpresaNombre(empresa?.nombre || empresa?.razon_social || '');
         if (empresa?.vertical === 'corralon') {
           try {
             const sucursalService = (await import('src/services/sucursalService')).default;
@@ -772,13 +778,23 @@ const goNext = () => setCurrentIdx((i) => (i + 1) % (urls?.length || 0));
             ✏️ Editar Acopio {codigo ? `(${codigo})` : ''}
           </Typography>
           {hasUnsavedChanges && (
-            <Chip 
+            <Chip
               icon={<WarningAmberIcon />}
-              label="Cambios sin guardar" 
-              color="warning" 
+              label="Cambios sin guardar"
+              color="warning"
               size="small"
               variant="outlined"
             />
+          )}
+          {esCorralon && (
+            <Button
+              size="small"
+              variant="outlined"
+              sx={{ ml: 'auto' }}
+              onClick={() => setRecepcionOpen(true)}
+            >
+              Material no acordado
+            </Button>
           )}
         </Stack>
 
@@ -1562,6 +1578,18 @@ const goNext = () => setCurrentIdx((i) => (i + 1) % (urls?.length || 0));
           {alert.message}
         </Alert>
       </Snackbar>
+
+      {esCorralon && (
+        <RecepcionNoAcordadoDrawer
+          open={recepcionOpen}
+          onClose={() => setRecepcionOpen(false)}
+          empresaId={empresaId}
+          empresaNombre={empresaNombre}
+          acopioId={acopioId}
+          sucursalId={sucursalId || null}
+          onResolved={() => setAlert({ open: true, message: 'Recepción de material no acordado resuelta.', severity: 'success' })}
+        />
+      )}
     </Box>
   );
 }

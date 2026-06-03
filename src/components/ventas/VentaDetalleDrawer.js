@@ -21,6 +21,7 @@ import { XMarkIcon } from '@heroicons/react/24/outline';
 import ventaService from 'src/services/ventaService';
 import { formatCurrencyWithCode } from 'src/utils/formatters';
 import CobroFormDrawer from 'src/components/clientes/CobroFormDrawer';
+import DevolucionDrawer from 'src/components/clientes/DevolucionDrawer';
 
 const TIPO_LABEL = {
   acopio: 'Acopio',
@@ -72,6 +73,7 @@ export default function VentaDetalleDrawer({ open, onClose, empresaId, ventaId, 
   const [cancelMotivo, setCancelMotivo] = useState('');
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [cobroOpen, setCobroOpen] = useState(false);
+  const [devolucionOpen, setDevolucionOpen] = useState(false);
 
   const cargar = useCallback(async () => {
     if (!open || !ventaId) return;
@@ -186,6 +188,11 @@ export default function VentaDetalleDrawer({ open, onClose, empresaId, ventaId, 
   const puedeCancelar = !motivoCancelar;
   const puedeEliminar = !motivoEliminar;
   const puedeCobrar = venta && saldoCobro > 0;
+  // Devolución: aplica a ventas no-acopio con material ya entregado.
+  const puedeDevolver = venta && venta.tipo !== 'acopio' && Number(venta.entrega?.monto_entregado) > 0;
+  const itemsDevolucion = (venta?.materiales || [])
+    .filter((m) => Number(m.cantidad_entregada) > 0)
+    .map((m) => ({ descripcion: m.nombre, cantidad: Number(m.cantidad_entregada) || 0, precio_unitario: Number(m.precio_unitario) || 0 }));
 
   return (
     <Drawer
@@ -350,6 +357,15 @@ export default function VentaDetalleDrawer({ open, onClose, empresaId, ventaId, 
               </button>
               <button
                 type="button"
+                title={puedeDevolver ? 'Registrar devolución' : 'No hay material entregado para devolver'}
+                onClick={() => setDevolucionOpen(true)}
+                disabled={busy || !puedeDevolver}
+                className="rounded-lg border border-warning-main/50 bg-white px-4 py-1.5 text-sm font-medium text-warning-dark hover:bg-warning-main/5 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Devolución
+              </button>
+              <button
+                type="button"
                 title={puedeEntregar ? 'Registrar entrega' : 'No hay nada pendiente de entregar'}
                 onClick={abrirEntrega}
                 disabled={busy || !puedeEntregar}
@@ -446,6 +462,17 @@ export default function VentaDetalleDrawer({ open, onClose, empresaId, ventaId, 
         cliente={venta ? { _id: venta.cliente_id, nombre: venta.cliente_nombre } : null}
         cajas={cajas}
         onClose={() => setCobroOpen(false)}
+        onSaved={() => { cargar(); onChanged?.(); }}
+      />
+
+      {/* Drawer de devolución: repone stock y/o genera saldo a favor del cliente */}
+      <DevolucionDrawer
+        open={devolucionOpen}
+        empresaId={empresaId}
+        cliente={venta ? { _id: venta.cliente_id, nombre: venta.cliente_nombre } : null}
+        sucursalId={venta?.sucursal_id || null}
+        items={itemsDevolucion}
+        onClose={() => setDevolucionOpen(false)}
         onSaved={() => { cargar(); onChanged?.(); }}
       />
 
