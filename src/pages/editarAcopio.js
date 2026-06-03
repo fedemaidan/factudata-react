@@ -456,10 +456,13 @@ const goNext = () => setCurrentIdx((i) => (i + 1) % (urls?.length || 0));
       }
       
       // 4. Actualizar campos del acopio (PATCH) - tipo, url_image
-      // Nota: valor_acopio ya NO se envía — el backend lo calcula atómicamente con $inc
+      // En modo automático el backend ya calculó valor_acopio atómicamente con $inc al sincronizar
+      // productos, así que NO lo enviamos. En modo manual el usuario fijó un valor independiente
+      // de la suma de productos, por lo que lo persistimos de forma absoluta (override).
       const camposAcopio = {
         tipo: tipoLista,
         url_image: urls,
+        ...(actualizacionAutomatica ? {} : { valor_acopio: toNumber(valorTotal) }),
       };
       
       console.log('3. Actualizando campos del acopio:', camposAcopio);
