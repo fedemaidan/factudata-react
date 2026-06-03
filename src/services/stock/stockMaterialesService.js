@@ -47,6 +47,10 @@ const StockMaterialesService = {
       ...(raw.stockFilter && raw.stockFilter !== 'all' ? { stockFilter: raw.stockFilter } : {}),
       ...(raw.estadoEntrega && raw.estadoEntrega !== 'all' ? { estadoEntrega: raw.estadoEntrega } : {}),
 
+      // Fase 3C corralones: filtro por sucursal + columnas stock_comprometido/stock_disponible
+      ...(raw.sucursal_id ? { sucursal_id: String(raw.sucursal_id) } : {}),
+      ...(raw.con_disponible ? { con_disponible: 'true' } : {}),
+
       sort: (typeof raw.sort === 'string' && raw.sort.includes(':')) ? raw.sort : 'nombre:asc',
       limit: Number.isFinite(raw.limit) ? Number(raw.limit) : 50,
       page: Number.isFinite(raw.page) ? Number(raw.page) : 0,
@@ -150,6 +154,28 @@ const StockMaterialesService = {
     });
     if (res.status === 200) return res.data;
     throw new Error('Error al actualizar categorías');
+  },
+
+  // Fase 3C corralones: import masivo de catálogo (JSON pre-parseado del Excel/CSV)
+  importarCatalogo: async ({ empresa_id, empresa_nombre, materiales }) => {
+    if (!empresa_id) throw new Error('empresa_id es requerido');
+    if (!Array.isArray(materiales) || materiales.length === 0) {
+      throw new Error('materiales[] es requerido');
+    }
+    const res = await api.post('/materiales/import', { empresa_id, empresa_nombre, materiales });
+    if (res.status === 200) return res.data;
+    throw new Error('Error al importar catálogo');
+  },
+
+  // Fase 3C corralones: acopios activos que comprometen este material
+  acopiosComprometidos: async ({ empresa_id, material_id, sucursal_id }) => {
+    if (!empresa_id) throw new Error('empresa_id es requerido');
+    if (!material_id) throw new Error('material_id es requerido');
+    const params = { empresa_id };
+    if (sucursal_id) params.sucursal_id = sucursal_id;
+    const res = await api.get(`/materiales/${material_id}/acopios-comprometidos`, { params });
+    if (res.status === 200) return res.data;
+    throw new Error('Error al obtener acopios comprometidos');
   },
 
   // Fusionar materiales duplicados (mueve movimientos de origen_ids al destino_id y elimina los origenes)

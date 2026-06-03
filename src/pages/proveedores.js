@@ -681,18 +681,22 @@ const Page = () => {
   }, [user]);
 
   const acciones = user?.empresa?.acciones || user?.empresaData?.acciones || [];
+  // Corralón también tiene acceso por default (CC con proveedores es operación core).
+  const esCorralon = empresa?.vertical === 'corralon';
   const tienePermiso = user?.admin
+    || esCorralon
     || acciones.includes('GESTIONAR_PROVEEDORES')
     || acciones.includes('VER_CUENTA_CORRIENTE_PROVEEDORES');
 
   if (empresa && !tienePermiso) {
+    // El layout ya lo aplica Page.getLayout — no envolver de nuevo (causa top-nav duplicado).
     return (
-      <DashboardLayout>
+      <>
         <Head><title>Proveedores</title></Head>
         <Container maxWidth="lg" sx={{ py: 4 }}>
           <Alert severity="warning">No tenés permisos para ver esta sección.</Alert>
         </Container>
-      </DashboardLayout>
+      </>
     );
   }
 

@@ -28,6 +28,8 @@ import {
   Snackbar,
   Stack,
   Switch,
+  Tab,
+  Tabs,
   Table,
   TableBody,
   TableCell,
@@ -50,14 +52,24 @@ import ApartmentIcon from '@mui/icons-material/Apartment';
 import PlaylistAddCheckIcon from '@mui/icons-material/PlaylistAddCheck';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
+import AddIcon from '@mui/icons-material/Add';
+import ConstructionIcon from '@mui/icons-material/Construction';
+import StorefrontIcon from '@mui/icons-material/Storefront';
+import { Stepper, Step, StepLabel } from '@mui/material';
 import Head from 'next/head';
 import Link from 'next/link';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { es } from 'date-fns/locale';
-import { getAllEmpresas, deleteEmpresa, getInfoToDeleteEmpresa } from 'src/services/empresaService';
-import { getProyectosByEmpresaId } from 'src/services/proyectosService';
+import { getAllEmpresas, deleteEmpresa, getInfoToDeleteEmpresa, crearEmpresa, updateEmpresaDetails } from 'src/services/empresaService';
+import { getProyectosByEmpresaId, crearProyecto } from 'src/services/proyectosService';
+import profileService from 'src/services/profileService';
+import sucursalService from 'src/services/sucursalService';
+import clienteService from 'src/services/clienteService';
+import StockMaterialesService from 'src/services/stock/stockMaterialesService';
+import * as XLSX from 'xlsx';
+import { normalizePhone, isValidEmail } from 'src/utils/phone';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 
 function escapeCsvValue(value) {
@@ -208,6 +220,940 @@ StatCard.defaultProps = {
   subtitle: '',
 };
 
+const VERTICALES = [
+  {
+    key: 'Constructora',
+    label: 'Constructora',
+    description: 'Gestión de obras, notas de pedido, presupuestos y caja por proyecto.',
+    icon: <ConstructionIcon fontSize="large" />,
+    disponible: true,
+  },
+  {
+    key: 'Corralon',
+    label: 'Corralón',
+    description: 'Venta de materiales, sucursales, clientes con cuenta corriente, acopios y stock.',
+    icon: <StorefrontIcon fontSize="large" />,
+    disponible: true,
+  },
+];
+
+// Categorías default para corralón. Más simples que constructora.
+const CORRALON_CATEGORIAS = [
+  {
+    id: 1,
+    name: 'Materiales',
+    subcategorias: [
+      'Cemento', 'Hierro', 'Áridos', 'Aberturas', 'Sanitarios',
+      'Ferretería', 'Pintura', 'Maderera', 'Cerámicos', 'Eléctricos',
+    ],
+  },
+  {
+    id: 2,
+    name: 'Gastos operativos',
+    subcategorias: [
+      'Sueldos', 'Combustible', 'Mantenimiento vehículos',
+      'Servicios', 'Impuestos', 'Alquiler', 'Insumos oficina',
+    ],
+  },
+  {
+    id: 3,
+    name: 'Logística',
+    subcategorias: ['Fletes terceros', 'Combustible camiones', 'Mantenimiento camiones'],
+  },
+];
+
+function buildCorralonPayload({ nombre, razon_social, cuit, esCliente }) {
+  return {
+    tipo: 'Corralon',
+    vertical: 'corralon',
+    nombre,
+    razon_social: razon_social || '',
+    cuit: cuit || '',
+    esCliente: Boolean(esCliente),
+    fechaRegistroCliente: esCliente ? new Date().toISOString() : null,
+    acciones: [
+      'VER_CAJAS', 'CREAR_INGRESO', 'CREAR_EGRESO',
+      'VER_DRIVE', 'GESTIONAR_MOVIMIENTO',
+      'VER_CLIENTES', 'CREAR_CLIENTE',
+      'VER_COBROS', 'REGISTRAR_COBRO',
+      'VER_SUCURSALES',
+      'VER_ACOPIOS', 'CREAR_ACOPIO',
+      'VER_VENTAS_CONTRA_ENTREGA', 'CREAR_VENTA_CONTRA_ENTREGA',
+      // Stock — para que se vea la entrada en el sidebar
+      'VER_STOCK_MATERIALES', 'VER_STOCK_SOLICITUDES', 'VER_STOCK_MOVIMIENTOS',
+    ],
+    conf_fecha: 'REAL',
+    camposObligatorios: ['total'],
+    categorias: CORRALON_CATEGORIAS,
+    onboarding: ['verSaldoCaja', 'verClientes', 'verAcopios', 'finCorralon'],
+    con_estados: true,
+    estado_default_movimiento: 'Pendiente',
+    estados: ['Pendiente', 'Pagado', 'Parcialmente Pagado'],
+    medios_pago: ['Efectivo', 'Transferencia', 'Cheque', 'Tarjeta', 'Mercado Pago'],
+    medio_pago_default: 'Efectivo',
+    proveedores: [],
+    proyectosIds: [],
+    obras: [],
+    tags_extra: [],
+    comprobante_info: {
+      observacion: true, categoria: true, subcategoria: true,
+      proveedor: true, medio_pago: true,
+      cliente: true, sucursal: true,
+      proyecto: false, obra: false, etapa: false,
+      tipo_factura: true, total_original: false, factura_cliente: false,
+      fecha_pago: true, numero_factura: true, tags_extra: false, impuestos: true,
+    },
+    ingreso_info: {
+      observacion: true, medio_pago: true, categoria: false,
+      cliente: true, sucursal: true,
+    },
+  };
+}
+
+// Helpers para parsear Excel/CSV en los steps de import del wizard corralón.
+async function parseExcelToRows(file) {
+  // CSV → leer como string UTF-8 explícito (preserva tildes/eñes).
+  // XLSX → leer como Uint8Array binario.
+  const isCsv = /\.csv$/i.test(file?.name || '');
+  let wb;
+  if (isCsv) {
+    const text = await file.text();
+    wb = XLSX.read(text, { type: 'string' });
+  } else {
+    const buf = await file.arrayBuffer();
+    wb = XLSX.read(buf, { type: 'array' });
+  }
+  const sheet = wb.SheetNames[0];
+  return XLSX.utils.sheet_to_json(wb.Sheets[sheet], { defval: '' });
+}
+
+const normKey = (k) => String(k || '').trim().toLowerCase().replace(/\s+/g, '_');
+
+const MATERIAL_ALIASES = {
+  nombre: ['nombre', 'material', 'producto'],
+  SKU: ['sku', 'codigo', 'cod'],
+  categoria: ['categoria', 'rubro'],
+  subcategoria: ['subcategoria', 'sub_rubro'],
+  precio_unitario: ['precio_unitario', 'precio', 'pu'],
+  stock_minimo: ['stock_minimo', 'minimo', 'min'],
+  alias: ['alias', 'aliases'],
+  desc_material: ['desc_material', 'descripcion', 'detalle'],
+};
+
+const CLIENTE_ALIASES = {
+  nombre: ['nombre', 'cliente', 'nombre_cliente'],
+  razon_social: ['razon_social', 'razonsocial', 'razon'],
+  cuit: ['cuit', 'cuil', 'documento'],
+  direccion: ['direccion', 'domicilio'],
+  telefono: ['telefono', 'tel', 'celular', 'whatsapp'],
+  email: ['email', 'mail', 'correo'],
+  condicion_iva: ['condicion_iva', 'iva', 'cond_iva'],
+  alias: ['alias', 'aliases'],
+  categorias: ['categorias', 'categoria', 'rubros'],
+  notas: ['notas', 'observaciones'],
+  saldo_inicial: ['saldo_inicial', 'saldo inicial', 'saldo', 'deuda_inicial', 'deuda'],
+};
+
+const COND_IVA_MAP = {
+  'consumidor final': 'consumidor_final', 'cf': 'consumidor_final',
+  'monotributo': 'monotributo', 'monotributista': 'monotributo',
+  'responsable inscripto': 'responsable_inscripto', 'ri': 'responsable_inscripto', 'inscripto': 'responsable_inscripto',
+  'exento': 'exento',
+};
+
+function mapRow(row, aliases) {
+  const lookup = {};
+  Object.keys(row || {}).forEach((k) => { lookup[normKey(k)] = row[k]; });
+  const out = {};
+  for (const [target, alts] of Object.entries(aliases)) {
+    for (const a of alts) {
+      const n = normKey(a);
+      if (lookup[n] != null && lookup[n] !== '') { out[target] = lookup[a] ?? lookup[n]; break; }
+    }
+  }
+  return out;
+}
+
+function mapMaterialRow(row) {
+  const out = mapRow(row, MATERIAL_ALIASES);
+  if (typeof out.alias === 'string') out.alias = out.alias.split(/[;,|]/).map((s) => s.trim()).filter(Boolean);
+  return out;
+}
+
+function mapClienteRow(row) {
+  const out = mapRow(row, CLIENTE_ALIASES);
+  if (out.condicion_iva) {
+    const k = String(out.condicion_iva).trim().toLowerCase();
+    out.condicion_iva = COND_IVA_MAP[k] || (k.includes('consumidor') ? 'consumidor_final' : null);
+  }
+  if (typeof out.alias === 'string') out.alias = out.alias.split(/[;,|]/).map((s) => s.trim()).filter(Boolean);
+  if (typeof out.categorias === 'string') out.categorias = out.categorias.split(/[;,|]/).map((s) => s.trim()).filter(Boolean);
+  if (out.cuit) out.cuit = String(out.cuit).replace(/[^\d]/g, '');
+  if (out.saldo_inicial != null && out.saldo_inicial !== '') {
+    const raw = String(out.saldo_inicial).replace(/[^\d.,-]/g, '').replace(/\./g, '').replace(',', '.');
+    const n = parseFloat(raw);
+    out.saldo_inicial = Number.isFinite(n) ? n : null;
+  } else {
+    delete out.saldo_inicial;
+  }
+  return out;
+}
+
+// Espejo reducido de formDataConstructora (backend/src/services/constants_init/dataEmpresa.js).
+// Si cambian las acciones/configuraciones canónicas, actualizar ambos lugares.
+const CONSTRUCTORA_CATEGORIAS = [
+  {
+    id: 1,
+    name: 'Mano de obra',
+    subcategorias: [
+      'Tareas preliminares', 'Estructura', 'Albañilería', 'Instalaciones sanitarios',
+      'Instalaciones eléctricas', 'Instalaciones de gas', 'Cielorrasos', 'Colocaciones',
+      'Pintura', 'Climatización', 'Aire acondicionado', 'Pileta', 'Riego', 'Paisajismo', 'Limpieza',
+    ],
+  },
+  {
+    id: 2,
+    name: 'Materiales',
+    subcategorias: [
+      'Aberturas', 'Baño químico', 'Corralon', 'Durlock', 'Ferretería', 'Grillo Mov Suelos',
+      'Hierros', 'Hormigón', 'Maderera', 'Materiales Eléctricos', 'Piedra', 'Pileta',
+      'Pintureria', 'Sanitarios', 'Volquetes', 'Zingueria',
+    ],
+  },
+  {
+    id: 3,
+    name: 'Administración',
+    subcategorias: ['Sueldos', 'Honorarios', 'Alquiler oficina', 'Sistema gestión', 'Fotografía', 'Renders', 'Expensas'],
+  },
+];
+
+function buildConstructoraPayload({ nombre, razon_social, cuit, esCliente }) {
+  return {
+    tipo: 'Constructora',
+    nombre,
+    razon_social: razon_social || '',
+    cuit: cuit || '',
+    esCliente: Boolean(esCliente),
+    fechaRegistroCliente: esCliente ? new Date().toISOString() : null,
+    acciones: [
+      'VER_CAJAS', 'CREAR_INGRESO', 'CREAR_EGRESO', 'VER_DRIVE',
+      'VER_NOTAS_DE_PEDIDO', 'CREAR_NOTA_PEDIDO', 'ELIMINAR_NOTA_PEDIDO',
+      'MODIFICAR_NOTA_PEDIDO', 'GESTIONAR_MOVIMIENTO', 'VER_PRESUPUESTOS',
+      'CREAR_EGRESO_PRORATEADO', 'CREAR_EGRESOS_MASIVO',
+    ],
+    conf_fecha: 'REAL',
+    camposObligatorios: ['proyecto', 'total'],
+    categorias: CONSTRUCTORA_CATEGORIAS,
+    onboarding: ['verSaldoCaja', 'verDrive', 'notaPedido', 'finConstructora2'],
+    proveedores: [],
+    proyectosIds: [],
+    etapas: [],
+    obras: [],
+    tags_extra: [],
+    con_estados: false,
+    estados: ['Pendiente', 'Pagado'],
+    notas_estados: ['Pendiente', 'En proceso', 'Completo'],
+    medios_pago: ['Efectivo', 'Transferencia', 'Cheque', 'Tarjeta'],
+    medio_pago_default: 'Transferencia',
+    comprobante_info: {
+      observacion: true, proyecto: true, categoria: true, subcategoria: true,
+      proveedor: true, medio_pago: true, obra: true, etapa: false,
+      tipo_factura: false, total_original: false, factura_cliente: false,
+      fecha_pago: false, numero_factura: false, tags_extra: false, impuestos: false,
+    },
+    ingreso_info: { observacion: true, medio_pago: true, categoria: false },
+  };
+}
+
+const STEPS_CONSTRUCTORA = ['Vertical', 'Empresa', 'Usuarios', 'Proyectos'];
+const STEPS_CORRALON     = ['Vertical', 'Empresa', 'Usuarios', 'Sucursales', 'Datos iniciales'];
+function getSteps(vertical) {
+  return vertical === 'Corralon' ? STEPS_CORRALON : STEPS_CONSTRUCTORA;
+}
+
+function CreateEmpresaDialog({ open, onClose, onCreated }) {
+  const [activeStep, setActiveStep] = useState(0);
+  const [vertical, setVertical] = useState(null);
+  const [empresaForm, setEmpresaForm] = useState({ nombre: '', razon_social: '', cuit: '', esCliente: false });
+  const [proyectos, setProyectos] = useState(['']);
+  // Corralón: sucursales (nombre + dirección)
+  const [sucursales, setSucursales] = useState([{ nombre: '', direccion: '' }]);
+  // Step "Datos iniciales" (solo corralón): import opcional de catálogo y clientes
+  const [catalogoPreview, setCatalogoPreview] = useState([]);
+  const [clientesPreview, setClientesPreview] = useState([]);
+  const [importError, setImportError] = useState('');
+  const [usuarios, setUsuarios] = useState([{ nombre: '', email: '', phone: '' }]);
+  const [usuariosErrors, setUsuariosErrors] = useState([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitProgress, setSubmitProgress] = useState('');
+  const [submitError, setSubmitError] = useState('');
+
+  const steps = useMemo(() => getSteps(vertical), [vertical]);
+
+  const resetState = useCallback(() => {
+    setActiveStep(0);
+    setVertical(null);
+    setEmpresaForm({ nombre: '', razon_social: '', cuit: '', esCliente: false });
+    setProyectos(['']);
+    setSucursales([{ nombre: '', direccion: '' }]);
+    setCatalogoPreview([]);
+    setClientesPreview([]);
+    setImportError('');
+    setUsuarios([{ nombre: '', email: '', phone: '' }]);
+    setUsuariosErrors([]);
+    setIsSubmitting(false);
+    setSubmitProgress('');
+    setSubmitError('');
+  }, []);
+
+  const handleClose = useCallback(() => {
+    if (isSubmitting) return;
+    resetState();
+    onClose();
+  }, [isSubmitting, onClose, resetState]);
+
+  const handlePickVertical = useCallback((key) => {
+    setVertical(key);
+  }, []);
+
+  // Filas de usuario "completas" (con al menos nombre o email o phone). Filas vacías se descartan.
+  const usuariosUtiles = useMemo(
+    () => usuarios.filter((u) => (u.nombre || u.email || u.phone)),
+    [usuarios],
+  );
+
+  const validateUsuariosLocal = useCallback(() => {
+    const errors = usuarios.map((u) => {
+      const hasAny = Boolean(u.nombre || u.email || u.phone);
+      if (!hasAny) return null; // fila vacía → se descarta
+      const row = {};
+      if (!u.nombre?.trim()) row.nombre = 'Requerido';
+      if (!u.email?.trim() && !u.phone?.trim()) row.email = 'Email o teléfono requerido';
+      if (u.email?.trim() && !isValidEmail(u.email)) row.email = 'Email inválido';
+      if (u.phone?.trim() && normalizePhone(u.phone).length < 8) row.phone = 'Teléfono inválido';
+      return Object.keys(row).length ? row : null;
+    });
+    setUsuariosErrors(errors);
+    return errors.every((e) => !e);
+  }, [usuarios]);
+
+  // Validación + chequeo de duplicados al avanzar desde el paso de usuarios.
+  const handleNextFromUsuarios = useCallback(async () => {
+    if (!validateUsuariosLocal()) return;
+    const phones = usuariosUtiles.map((u) => normalizePhone(u.phone)).filter(Boolean);
+    if (phones.length) {
+      setIsSubmitting(true);
+      setSubmitProgress('Verificando que los teléfonos no estén en uso...');
+      try {
+        const checks = await Promise.all(phones.map((p) => profileService.getProfileByPhone(p).catch(() => null)));
+        const errors = [...usuariosErrors];
+        let hasDup = false;
+        let idx = 0;
+        usuarios.forEach((u, i) => {
+          if (!normalizePhone(u.phone)) return;
+          if (checks[idx]) {
+            errors[i] = { ...(errors[i] || {}), phone: 'Ya existe un usuario con ese teléfono' };
+            hasDup = true;
+          }
+          idx += 1;
+        });
+        if (hasDup) {
+          setUsuariosErrors(errors);
+          return;
+        }
+      } finally {
+        setIsSubmitting(false);
+        setSubmitProgress('');
+      }
+    }
+    setActiveStep(3);
+  }, [usuarios, usuariosErrors, usuariosUtiles, validateUsuariosLocal]);
+
+  const handleFormChange = useCallback((event) => {
+    const { name, value, type, checked } = event.target;
+    setEmpresaForm((current) => ({ ...current, [name]: type === 'checkbox' ? checked : value }));
+  }, []);
+
+  const handleUsuarioChange = useCallback((index, field, value) => {
+    setUsuarios((current) => current.map((u, i) => (i === index ? { ...u, [field]: value } : u)));
+  }, []);
+
+  const handleAddUsuario = useCallback(() => {
+    setUsuarios((current) => [...current, { nombre: '', email: '', phone: '' }]);
+  }, []);
+
+  const handleRemoveUsuario = useCallback((index) => {
+    setUsuarios((current) => current.filter((_, i) => i !== index));
+  }, []);
+
+  const handleProyectoChange = useCallback((index, value) => {
+    setProyectos((current) => current.map((nombre, i) => (i === index ? value : nombre)));
+  }, []);
+
+  const handleAddProyecto = useCallback(() => {
+    setProyectos((current) => [...current, '']);
+  }, []);
+
+  const handleRemoveProyecto = useCallback((index) => {
+    setProyectos((current) => current.filter((_, i) => i !== index));
+  }, []);
+
+  // ─── Sucursales (corralón) ────────────────────────────────────────────────
+  const handleSucursalChange = useCallback((index, field, value) => {
+    setSucursales((current) => current.map((s, i) => (i === index ? { ...s, [field]: value } : s)));
+  }, []);
+  const handleAddSucursal = useCallback(() => {
+    setSucursales((current) => [...current, { nombre: '', direccion: '' }]);
+  }, []);
+  const handleRemoveSucursal = useCallback((index) => {
+    setSucursales((current) => current.filter((_, i) => i !== index));
+  }, []);
+
+  // ─── Import opcional Excel (corralón) ─────────────────────────────────────
+  const handleCatalogoFile = useCallback(async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportError('');
+    try {
+      const rows = await parseExcelToRows(file);
+      const materiales = rows.map(mapMaterialRow).filter((m) => m.nombre && String(m.nombre).trim() !== '');
+      setCatalogoPreview(materiales);
+    } catch (err) {
+      setImportError(`Catálogo: ${err.message || 'no se pudo parsear'}`);
+    } finally {
+      e.target.value = '';
+    }
+  }, []);
+
+  const handleClientesFile = useCallback(async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportError('');
+    try {
+      const rows = await parseExcelToRows(file);
+      const cls = rows.map(mapClienteRow).filter((c) => c.nombre && String(c.nombre).trim() !== '');
+      setClientesPreview(cls);
+    } catch (err) {
+      setImportError(`Clientes: ${err.message || 'no se pudo parsear'}`);
+    } finally {
+      e.target.value = '';
+    }
+  }, []);
+
+  // ─── Submit corralón ──────────────────────────────────────────────────────
+  const sucursalesValidas = useMemo(
+    () => sucursales
+      .map((s) => ({ ...s, nombre: (s.nombre || '').trim() }))
+      .filter((s) => s.nombre),
+    [sucursales],
+  );
+
+  const handleSubmitCorralon = useCallback(async () => {
+    setSubmitError('');
+    setIsSubmitting(true);
+    try {
+      setSubmitProgress('Creando empresa corralón...');
+      const payload = buildCorralonPayload(empresaForm);
+      const response = await crearEmpresa(payload);
+      const empresaCreada = response?.empresa || response;
+      const empresaId = empresaCreada?.id || empresaCreada?._id;
+      if (!empresaId) throw new Error('No se obtuvo el ID de la empresa creada.');
+      const empresaNombre = empresaCreada?.nombre || empresaForm.nombre;
+
+      // Asegurar al menos 1 sucursal: si el usuario no cargó ninguna, crear "Sucursal Principal"
+      const sucursalesAcrear = sucursalesValidas.length
+        ? sucursalesValidas
+        : [{ nombre: 'Sucursal Principal', direccion: '' }];
+
+      let sucursalesCreadas = 0;
+      for (let i = 0; i < sucursalesAcrear.length; i += 1) {
+        setSubmitProgress(`Creando sucursal ${i + 1} de ${sucursalesAcrear.length}...`);
+        try {
+          await sucursalService.crear(empresaId, sucursalesAcrear[i]);
+          sucursalesCreadas += 1;
+        } catch (err) {
+          console.warn('Error creando sucursal', sucursalesAcrear[i].nombre, err);
+        }
+      }
+
+      // Usuarios (igual que constructora)
+      const usuariosValidos = usuariosUtiles.map((u) => ({
+        nombre: (u.nombre || '').trim(),
+        email: (u.email || '').trim(),
+        phone: normalizePhone(u.phone),
+      }));
+      let usuariosCreados = 0;
+      for (let i = 0; i < usuariosValidos.length; i += 1) {
+        const u = usuariosValidos[i];
+        setSubmitProgress(`Creando usuario ${i + 1} de ${usuariosValidos.length}...`);
+        const [firstName, ...rest] = u.nombre.split(' ');
+        const lastName = rest.join(' ');
+        const profileData = {
+          firstName: firstName || '',
+          lastName: lastName || '',
+          email: u.email || null,
+          phone: u.phone || null,
+          admin: false,
+        };
+        const created = await profileService.createProfile(profileData, { ...empresaCreada, id: empresaId });
+        if (created) usuariosCreados += 1;
+      }
+
+      // Catálogo (opcional)
+      let materialesCreados = 0;
+      if (catalogoPreview.length) {
+        setSubmitProgress(`Importando ${catalogoPreview.length} materiales...`);
+        try {
+          const res = await StockMaterialesService.importarCatalogo({
+            empresa_id: empresaId,
+            empresa_nombre: empresaNombre,
+            materiales: catalogoPreview,
+          });
+          materialesCreados = res?.creados_count ?? res?.creados ?? catalogoPreview.length;
+        } catch (err) {
+          console.warn('Error importando catálogo:', err);
+        }
+      }
+
+      // Clientes (opcional)
+      let clientesCreados = 0;
+      if (clientesPreview.length) {
+        setSubmitProgress(`Importando ${clientesPreview.length} clientes...`);
+        try {
+          const res = await clienteService.importar(empresaId, clientesPreview);
+          clientesCreados = res?.imported ?? clientesPreview.length;
+        } catch (err) {
+          console.warn('Error importando clientes:', err);
+        }
+      }
+
+      const partes = [`Corralón "${empresaNombre}" creado`];
+      if (sucursalesCreadas) partes.push(`${sucursalesCreadas} sucursales`);
+      if (usuariosCreados) partes.push(`${usuariosCreados} usuarios`);
+      if (materialesCreados) partes.push(`${materialesCreados} materiales`);
+      if (clientesCreados) partes.push(`${clientesCreados} clientes`);
+
+      resetState();
+      onCreated({ message: `${partes.join(' · ')}.` });
+    } catch (err) {
+      console.error('Error creando empresa Corralón:', err);
+      setSubmitError(err?.message || 'No se pudo crear la empresa.');
+      setIsSubmitting(false);
+    }
+  }, [empresaForm, sucursalesValidas, usuariosUtiles, catalogoPreview, clientesPreview, onCreated, resetState]);
+
+  const handleSubmitConstructora = useCallback(async () => {
+    setSubmitError('');
+    setIsSubmitting(true);
+    try {
+      setSubmitProgress('Creando empresa...');
+      const payload = buildConstructoraPayload(empresaForm);
+      const response = await crearEmpresa(payload);
+      const empresaCreada = response?.empresa || response;
+      const empresaId = empresaCreada?.id || empresaCreada?._id;
+      if (!empresaId) throw new Error('No se obtuvo el ID de la empresa creada.');
+
+      const nombresValidos = proyectos.map((p) => p.trim()).filter(Boolean);
+      const proyectoIds = [];
+      for (let i = 0; i < nombresValidos.length; i += 1) {
+        setSubmitProgress(`Creando proyecto ${i + 1} de ${nombresValidos.length}...`);
+        const proyectoCreado = await crearProyecto(
+          { nombre: nombresValidos[i], empresa_id: empresaId, activo: true },
+          empresaId,
+        );
+        const proyectoId = proyectoCreado?.id || proyectoCreado?._id;
+        if (proyectoId) proyectoIds.push(proyectoId);
+      }
+
+      if (proyectoIds.length) {
+        setSubmitProgress('Vinculando proyectos a la empresa...');
+        await updateEmpresaDetails(empresaId, { proyectosIds: proyectoIds });
+      }
+
+      const usuariosValidos = usuariosUtiles.map((u) => ({
+        nombre: (u.nombre || '').trim(),
+        email: (u.email || '').trim(),
+        phone: normalizePhone(u.phone),
+      }));
+
+      let usuariosCreados = 0;
+      for (let i = 0; i < usuariosValidos.length; i += 1) {
+        const u = usuariosValidos[i];
+        setSubmitProgress(`Creando usuario ${i + 1} de ${usuariosValidos.length}...`);
+        const [firstName, ...rest] = u.nombre.split(' ');
+        const lastName = rest.join(' ');
+        const profileData = {
+          firstName: firstName || '',
+          lastName: lastName || '',
+          email: u.email || null,
+          phone: u.phone || null,
+          admin: false,
+        };
+        const created = await profileService.createProfile(profileData, { ...empresaCreada, id: empresaId });
+        if (created) usuariosCreados += 1;
+      }
+
+      const partes = [`Empresa "${empresaCreada.nombre || empresaForm.nombre}" creada`];
+      if (proyectoIds.length) partes.push(`${proyectoIds.length} proyectos`);
+      if (usuariosCreados) partes.push(`${usuariosCreados} usuarios`);
+
+      resetState();
+      onCreated({ message: `${partes.join(' · ')}.` });
+    } catch (err) {
+      console.error('Error creando empresa Constructora:', err);
+      setSubmitError(err?.message || 'No se pudo crear la empresa.');
+      setIsSubmitting(false);
+    }
+  }, [empresaForm, onCreated, proyectos, resetState, usuariosUtiles]);
+
+  const verticalDisponible = useMemo(() => VERTICALES.find((v) => v.key === vertical)?.disponible, [vertical]);
+  const canNextEmpresa = empresaForm.nombre.trim().length > 0;
+  const canSubmitConstructora = canNextEmpresa;
+
+  return (
+    <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
+      <DialogTitle>Crear nueva empresa</DialogTitle>
+      <DialogContent>
+        <Stepper activeStep={activeStep} sx={{ mb: 3 }}>
+          {steps.map((label) => (
+            <Step key={label}><StepLabel>{label}</StepLabel></Step>
+          ))}
+        </Stepper>
+
+        {activeStep === 0 ? (
+          <Stack spacing={2}>
+            <Typography variant="body2" color="text.secondary">
+              Elegí el tipo de empresa. Cada vertical configura acciones, categorías y comprobantes propios.
+            </Typography>
+            <Grid container spacing={2}>
+              {VERTICALES.map((v) => (
+                <Grid item xs={12} md={6} key={v.key}>
+                  <Card
+                    variant="outlined"
+                    sx={{
+                      cursor: v.disponible ? 'pointer' : 'not-allowed',
+                      opacity: v.disponible ? 1 : 0.6,
+                      borderColor: vertical === v.key ? 'primary.main' : 'divider',
+                      '&:hover': { borderColor: v.disponible ? 'primary.main' : 'divider' },
+                    }}
+                    onClick={() => handlePickVertical(v.key)}
+                  >
+                    <CardContent>
+                      <Stack direction="row" spacing={2} alignItems="center">
+                        <Box sx={{ color: 'primary.main' }}>{v.icon}</Box>
+                        <Box sx={{ flex: 1 }}>
+                          <Typography variant="h6">{v.label}</Typography>
+                          <Typography variant="body2" color="text.secondary">{v.description}</Typography>
+                          {!v.disponible ? (
+                            <Chip label="En construcción" size="small" color="warning" sx={{ mt: 1 }} />
+                          ) : null}
+                        </Box>
+                      </Stack>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              ))}
+            </Grid>
+            {vertical && !verticalDisponible ? (
+              <Alert severity="info">
+                La creación de empresas de tipo {VERTICALES.find((v) => v.key === vertical)?.label} todavía no está disponible desde esta vista.
+              </Alert>
+            ) : null}
+          </Stack>
+        ) : null}
+
+        {activeStep === 1 ? (
+          <Stack spacing={2}>
+            <Typography variant="subtitle1">Datos de la empresa</Typography>
+            <TextField
+              label="Nombre"
+              name="nombre"
+              value={empresaForm.nombre}
+              onChange={handleFormChange}
+              required
+              fullWidth
+              autoFocus
+            />
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+              <TextField label="Razón social" name="razon_social" value={empresaForm.razon_social} onChange={handleFormChange} fullWidth />
+              <TextField label="CUIT" name="cuit" value={empresaForm.cuit} onChange={handleFormChange} fullWidth />
+            </Stack>
+            <FormControlLabel
+              control={(
+                <Switch
+                  name="esCliente"
+                  checked={empresaForm.esCliente}
+                  onChange={handleFormChange}
+                  color="primary"
+                />
+              )}
+              label={empresaForm.esCliente ? 'Marcar como cliente (se registra fecha de alta)' : 'No es cliente'}
+            />
+          </Stack>
+        ) : null}
+
+        {activeStep === 2 ? (
+          <Stack spacing={2}>
+            <Typography variant="subtitle1">Usuarios iniciales</Typography>
+            <Typography variant="body2" color="text.secondary">
+              Cargá los perfiles que van a tener acceso. Email o teléfono son obligatorios para identificar al usuario.
+              Podés dejar la lista vacía si vas a crear los usuarios más tarde desde la sección de la empresa.
+            </Typography>
+            <Stack spacing={1}>
+              {usuarios.map((usuario, index) => {
+                const err = usuariosErrors[index];
+                return (
+                  <Stack key={index} direction={{ xs: 'column', md: 'row' }} spacing={1} alignItems={{ xs: 'stretch', md: 'flex-start' }}>
+                    <TextField
+                      label="Nombre"
+                      value={usuario.nombre}
+                      onChange={(event) => handleUsuarioChange(index, 'nombre', event.target.value)}
+                      fullWidth
+                      error={Boolean(err?.nombre)}
+                      helperText={err?.nombre}
+                    />
+                    <TextField
+                      label="Email"
+                      type="email"
+                      value={usuario.email}
+                      onChange={(event) => handleUsuarioChange(index, 'email', event.target.value)}
+                      fullWidth
+                      error={Boolean(err?.email)}
+                      helperText={err?.email}
+                    />
+                    <TextField
+                      label="Teléfono"
+                      value={usuario.phone}
+                      onChange={(event) => handleUsuarioChange(index, 'phone', event.target.value)}
+                      fullWidth
+                      error={Boolean(err?.phone)}
+                      helperText={err?.phone}
+                    />
+                    <IconButton onClick={() => handleRemoveUsuario(index)} disabled={usuarios.length === 1} sx={{ alignSelf: 'center' }}>
+                      <DeleteIcon />
+                    </IconButton>
+                  </Stack>
+                );
+              })}
+              <Button startIcon={<AddIcon />} onClick={handleAddUsuario} size="small" sx={{ alignSelf: 'flex-start' }}>
+                Agregar usuario
+              </Button>
+            </Stack>
+            {isSubmitting && submitProgress ? (
+              <Box>
+                <Typography variant="body2" sx={{ mb: 1 }}>{submitProgress}</Typography>
+                <LinearProgress />
+              </Box>
+            ) : null}
+          </Stack>
+        ) : null}
+
+        {activeStep === 3 && vertical === 'Constructora' ? (
+          <Stack spacing={2}>
+            <Typography variant="subtitle1">Proyectos iniciales</Typography>
+            <Typography variant="body2" color="text.secondary">
+              Cargá los nombres de las obras o proyectos. Después podés configurarles carpeta de Drive, sheets y usuarios asignados desde la sección del proyecto.
+            </Typography>
+            <Stack spacing={1}>
+              {proyectos.map((nombre, index) => (
+                <Stack key={index} direction="row" spacing={1} alignItems="center">
+                  <TextField
+                    value={nombre}
+                    onChange={(event) => handleProyectoChange(index, event.target.value)}
+                    placeholder={`Proyecto ${index + 1}`}
+                    fullWidth
+                  />
+                  <IconButton onClick={() => handleRemoveProyecto(index)} disabled={proyectos.length === 1}>
+                    <DeleteIcon />
+                  </IconButton>
+                </Stack>
+              ))}
+              <Button startIcon={<AddIcon />} onClick={handleAddProyecto} size="small" sx={{ alignSelf: 'flex-start' }}>
+                Agregar proyecto
+              </Button>
+            </Stack>
+
+            <Alert severity="info">
+              Se va a crear: <strong>{empresaForm.nombre}</strong>
+              {empresaForm.esCliente ? ' (cliente)' : ''} con {usuariosUtiles.length} usuarios y {proyectos.map((p) => p.trim()).filter(Boolean).length} proyectos.
+            </Alert>
+
+            {submitError ? <Alert severity="error">{submitError}</Alert> : null}
+            {isSubmitting ? (
+              <Box>
+                <Typography variant="body2" sx={{ mb: 1 }}>{submitProgress}</Typography>
+                <LinearProgress />
+              </Box>
+            ) : null}
+          </Stack>
+        ) : null}
+
+        {activeStep === 3 && vertical === 'Corralon' ? (
+          <Stack spacing={2}>
+            <Typography variant="subtitle1">Sucursales</Typography>
+            <Typography variant="body2" color="text.secondary">
+              Cargá las sucursales físicas del corralón. Si no cargás ninguna, creamos una
+              <em> Sucursal Principal</em> por default.
+            </Typography>
+            <Stack spacing={1}>
+              {sucursales.map((s, index) => (
+                <Stack key={index} direction={{ xs: 'column', md: 'row' }} spacing={1} alignItems={{ xs: 'stretch', md: 'flex-start' }}>
+                  <TextField
+                    label="Nombre"
+                    value={s.nombre}
+                    onChange={(e) => handleSucursalChange(index, 'nombre', e.target.value)}
+                    placeholder={`Sucursal ${index + 1}`}
+                    fullWidth
+                  />
+                  <TextField
+                    label="Dirección"
+                    value={s.direccion}
+                    onChange={(e) => handleSucursalChange(index, 'direccion', e.target.value)}
+                    fullWidth
+                  />
+                  <IconButton onClick={() => handleRemoveSucursal(index)} disabled={sucursales.length === 1}>
+                    <DeleteIcon />
+                  </IconButton>
+                </Stack>
+              ))}
+              <Button startIcon={<AddIcon />} onClick={handleAddSucursal} size="small" sx={{ alignSelf: 'flex-start' }}>
+                Agregar sucursal
+              </Button>
+            </Stack>
+          </Stack>
+        ) : null}
+
+        {activeStep === 4 && vertical === 'Corralon' ? (
+          <Stack spacing={2}>
+            <Typography variant="subtitle1">Datos iniciales (opcional)</Typography>
+            <Typography variant="body2" color="text.secondary">
+              Podés precargar el catálogo de materiales y los clientes desde un Excel. Es opcional —
+              también lo podés hacer después desde las páginas de Materiales y Clientes.
+            </Typography>
+
+            <Grid container spacing={2}>
+              <Grid item xs={12} md={6}>
+                <Card variant="outlined">
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom>📦 Catálogo de materiales</Typography>
+                    <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
+                      Columnas: <code>nombre</code>, <code>SKU</code>, <code>categoria</code>,
+                      {' '}<code>precio_unitario</code>, <code>stock_minimo</code>…
+                    </Typography>
+                    <Button variant="outlined" component="label" size="small">
+                      Subir Excel
+                      <input type="file" accept=".xlsx,.xls,.csv" hidden onChange={handleCatalogoFile} />
+                    </Button>
+                    {catalogoPreview.length > 0 && (
+                      <Alert severity="success" sx={{ mt: 1 }}>
+                        {catalogoPreview.length} materiales detectados
+                      </Alert>
+                    )}
+                  </CardContent>
+                </Card>
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <Card variant="outlined">
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom>👥 Clientes</Typography>
+                    <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
+                      Columnas: <code>nombre</code>, <code>CUIT</code>, <code>razon_social</code>,
+                      {' '}<code>telefono</code>, <code>condicion_iva</code>…
+                    </Typography>
+                    <Button variant="outlined" component="label" size="small">
+                      Subir Excel
+                      <input type="file" accept=".xlsx,.xls,.csv" hidden onChange={handleClientesFile} />
+                    </Button>
+                    {clientesPreview.length > 0 && (
+                      <Alert severity="success" sx={{ mt: 1 }}>
+                        {clientesPreview.length} clientes detectados
+                      </Alert>
+                    )}
+                  </CardContent>
+                </Card>
+              </Grid>
+            </Grid>
+
+            {importError && <Alert severity="warning">{importError}</Alert>}
+
+            <Alert severity="info">
+              Se va a crear: <strong>{empresaForm.nombre}</strong>
+              {empresaForm.esCliente ? ' (cliente)' : ''} ·
+              {' '}{sucursalesValidas.length || 1} sucursales ·
+              {' '}{usuariosUtiles.length} usuarios
+              {catalogoPreview.length ? ` · ${catalogoPreview.length} materiales` : ''}
+              {clientesPreview.length ? ` · ${clientesPreview.length} clientes` : ''}.
+            </Alert>
+
+            {submitError ? <Alert severity="error">{submitError}</Alert> : null}
+            {isSubmitting ? (
+              <Box>
+                <Typography variant="body2" sx={{ mb: 1 }}>{submitProgress}</Typography>
+                <LinearProgress />
+              </Box>
+            ) : null}
+          </Stack>
+        ) : null}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={handleClose} disabled={isSubmitting}>Cancelar</Button>
+        {activeStep > 0 ? (
+          <Button onClick={() => setActiveStep((s) => s - 1)} disabled={isSubmitting}>Atrás</Button>
+        ) : null}
+
+        {activeStep === 0 ? (
+          <Button
+            variant="contained"
+            onClick={() => setActiveStep(1)}
+            disabled={!vertical || !verticalDisponible}
+          >
+            Siguiente
+          </Button>
+        ) : null}
+        {activeStep === 1 ? (
+          <Button variant="contained" onClick={() => setActiveStep(2)} disabled={!canNextEmpresa}>
+            Siguiente
+          </Button>
+        ) : null}
+        {activeStep === 2 ? (
+          <Button variant="contained" onClick={handleNextFromUsuarios} disabled={isSubmitting}>
+            Siguiente
+          </Button>
+        ) : null}
+        {activeStep === 3 && vertical === 'Constructora' ? (
+          <Button
+            variant="contained"
+            onClick={handleSubmitConstructora}
+            disabled={!canSubmitConstructora || isSubmitting}
+          >
+            Crear empresa
+          </Button>
+        ) : null}
+        {activeStep === 3 && vertical === 'Corralon' ? (
+          <Button variant="contained" onClick={() => setActiveStep(4)} disabled={isSubmitting}>
+            Siguiente
+          </Button>
+        ) : null}
+        {activeStep === 4 && vertical === 'Corralon' ? (
+          <Button
+            variant="contained"
+            onClick={handleSubmitCorralon}
+            disabled={!canNextEmpresa || isSubmitting}
+          >
+            Crear corralón
+          </Button>
+        ) : null}
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+CreateEmpresaDialog.propTypes = {
+  open: PropTypes.bool.isRequired,
+  onClose: PropTypes.func.isRequired,
+  onCreated: PropTypes.func.isRequired,
+};
+
 function EmpresasListPage() {
   const [empresas, setEmpresas] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -239,6 +1185,9 @@ function EmpresasListPage() {
   const [suspensionTo, setSuspensionTo] = useState(null);
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(25);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  // Tab activo: separa el listado por vertical (constructoras vs corralones).
+  const [verticalTab, setVerticalTab] = useState('constructora');
 
   const loadEmpresas = useCallback(async () => {
     try {
@@ -246,16 +1195,29 @@ function EmpresasListPage() {
       const empresasList = await getAllEmpresas();
       const enrichedEmpresas = await Promise.all((empresasList || []).map(async (empresa) => {
         const empresaId = String(empresa.id || empresa._id || '');
+        const vertical = (empresa?.vertical || 'constructora').toLowerCase();
         const proyectoIds = Array.isArray(empresa?.proyectosIds) ? empresa.proyectosIds : [];
         const proyectosData = empresaId && proyectoIds.length ? await getProyectosByEmpresaId(empresaId) : [];
         const projectNames = proyectosData.map((proyecto) => proyecto?.nombre).filter(Boolean);
         const actionLabels = getActionLabels(empresa?.acciones);
 
+        // Para corralones cargamos sucursales (paralelo). Para constructoras no.
+        let sucursales = [];
+        if (vertical === 'corralon' && empresaId) {
+          try {
+            sucursales = await sucursalService.getByEmpresa(empresaId);
+          } catch (_) { sucursales = []; }
+        }
+        const sucursalNames = Array.isArray(sucursales) ? sucursales.map((s) => s?.nombre).filter(Boolean) : [];
+
         return {
           ...empresa,
           id: empresaId,
+          vertical,
           projectNames,
           projectSearchBlob: normalizeText(projectNames.join(' ')),
+          sucursalNames,
+          sucursalesCount: sucursalNames.length,
           accionesLabels: actionLabels,
         };
       }));
@@ -282,7 +1244,20 @@ function EmpresasListPage() {
     return Array.from(actionsSet).sort((left, right) => left.localeCompare(right));
   }, [empresas]);
 
+  // Counts por vertical para los badges de los tabs (independientes del filtro).
+  const verticalCounts = useMemo(() => {
+    const counts = { constructora: 0, corralon: 0 };
+    for (const e of empresas) {
+      const v = (e?.vertical || 'constructora').toLowerCase();
+      if (v === 'corralon') counts.corralon += 1;
+      else counts.constructora += 1;
+    }
+    return counts;
+  }, [empresas]);
+
   const filteredEmpresas = useMemo(() => empresas.filter((empresa) => {
+    const empresaVertical = (empresa?.vertical || 'constructora').toLowerCase();
+    if (empresaVertical !== verticalTab) return false;
     const matchesNombre = normalizeText(empresa?.nombre).includes(normalizeText(filters.nombre));
     const matchesProyectoNombre = !filters.proyectoNombre || empresa?.projectSearchBlob?.includes(normalizeText(filters.proyectoNombre));
     const matchesRazonSocial = normalizeText(empresa?.razon_social).includes(normalizeText(filters.razonSocial));
@@ -296,7 +1271,7 @@ function EmpresasListPage() {
     const matchesActivationDate = matchesDateRange(empresa?.fechaRegistroCliente, activationFrom, activationTo);
     const matchesSuspensionDate = matchesDateRange(empresa?.fechaBaja, suspensionFrom, suspensionTo);
     return matchesNombre && matchesProyectoNombre && matchesRazonSocial && matchesCuit && matchesAccion && matchesProyectos && matchesCliente && matchesSuspendida && matchesCreatedAt && matchesActivationDate && matchesSuspensionDate;
-  }), [empresas, filters, soloClientes, createdFrom, createdTo, activationFrom, activationTo, suspensionFrom, suspensionTo]);
+  }), [empresas, verticalTab, filters, soloClientes, createdFrom, createdTo, activationFrom, activationTo, suspensionFrom, suspensionTo]);
 
   const sortedEmpresas = useMemo(() => {
     const rows = filteredEmpresas.slice();
@@ -324,6 +1299,7 @@ function EmpresasListPage() {
     visibles: filteredEmpresas.length,
     clientesVisibles: filteredEmpresas.filter((empresa) => empresa?.esCliente).length,
     proyectosVisibles: filteredEmpresas.reduce((accumulator, empresa) => accumulator + (empresa?.proyectosIds?.length || 0), 0),
+    sucursalesVisibles: filteredEmpresas.reduce((acc, empresa) => acc + (empresa?.sucursalesCount || 0), 0),
     seleccionadas: selectedEmpresas.length,
   }), [empresas.length, filteredEmpresas, selectedEmpresas.length]);
 
@@ -348,7 +1324,7 @@ function EmpresasListPage() {
 
   useEffect(() => {
     setPage(0);
-  }, [filters, soloClientes, sortBy, sortDirection, createdFrom, createdTo, activationFrom, activationTo, suspensionFrom, suspensionTo]);
+  }, [verticalTab, filters, soloClientes, sortBy, sortDirection, createdFrom, createdTo, activationFrom, activationTo, suspensionFrom, suspensionTo]);
 
   const handleCloseAlert = useCallback((_event, reason) => {
     if (reason === 'clickaway') return;
@@ -517,17 +1493,47 @@ function EmpresasListPage() {
       <Container maxWidth="xl">
         <Box sx={{ py: 4 }}>
           <Stack spacing={3}>
-            <Box>
-              <Typography variant="h4" fontWeight="bold">Empresas</Typography>
-              <Typography variant="body2" color="text.secondary">
-                La vista arranca filtrando solo clientes para priorizar las empresas relevantes.
-              </Typography>
+            <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', md: 'center' }} spacing={2}>
+              <Box>
+                <Typography variant="h4" fontWeight="bold">Empresas</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  La vista arranca filtrando solo clientes para priorizar las empresas relevantes.
+                </Typography>
+              </Box>
+              <Button
+                variant="contained"
+                startIcon={<AddIcon />}
+                onClick={() => setCreateDialogOpen(true)}
+              >
+                Nueva empresa
+              </Button>
+            </Stack>
+
+            <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+              <Tabs
+                value={verticalTab}
+                onChange={(_, v) => setVerticalTab(v)}
+                aria-label="Tipo de empresa"
+              >
+                <Tab
+                  value="constructora"
+                  icon={<ConstructionIcon />}
+                  iconPosition="start"
+                  label={`Constructoras (${verticalCounts.constructora})`}
+                />
+                <Tab
+                  value="corralon"
+                  icon={<StorefrontIcon />}
+                  iconPosition="start"
+                  label={`Corralones (${verticalCounts.corralon})`}
+                />
+              </Tabs>
             </Box>
 
             <Grid container spacing={2}>
-              <Grid item xs={12} md={3}><StatCard title="Empresas cargadas" value={summary.total} subtitle={`${summary.visibles} visibles`} icon={<BusinessIcon />} /></Grid>
+              <Grid item xs={12} md={3}><StatCard title={verticalTab === 'corralon' ? 'Corralones cargados' : 'Constructoras cargadas'} value={verticalCounts[verticalTab]} subtitle={`${summary.visibles} visibles`} icon={<BusinessIcon />} /></Grid>
               <Grid item xs={12} md={3}><StatCard title="Clientes visibles" value={summary.clientesVisibles} subtitle="Con filtro actual" icon={<ApartmentIcon />} /></Grid>
-              <Grid item xs={12} md={3}><StatCard title="Proyectos visibles" value={summary.proyectosVisibles} subtitle="Suma de proyectos" icon={<PlaylistAddCheckIcon />} /></Grid>
+              <Grid item xs={12} md={3}><StatCard title={verticalTab === 'corralon' ? 'Sucursales visibles' : 'Proyectos visibles'} value={verticalTab === 'corralon' ? summary.sucursalesVisibles : summary.proyectosVisibles} subtitle={verticalTab === 'corralon' ? 'Suma de sucursales' : 'Suma de proyectos'} icon={<PlaylistAddCheckIcon />} /></Grid>
               <Grid item xs={12} md={3}><StatCard title="Seleccionadas" value={summary.seleccionadas} subtitle="Para acciones masivas" icon={<DeleteIcon />} /></Grid>
             </Grid>
 
@@ -673,7 +1679,7 @@ function EmpresasListPage() {
                           </TableCell>
                           <TableCell>
                             <TableSortLabel active={sortBy === 'proyectos'} direction={sortBy === 'proyectos' ? sortDirection : 'desc'} onClick={() => handleRequestSort('proyectos')}>
-                              Cantidad de proyectos
+                              {verticalTab === 'corralon' ? 'Sucursales' : 'Cantidad de proyectos'}
                             </TableSortLabel>
                           </TableCell>
                           <TableCell>
@@ -703,10 +1709,21 @@ function EmpresasListPage() {
                               <Typography variant="caption" display="block" color="text.secondary">{empresa.tipo || 'Sin tipo'}</Typography>
                             </TableCell>
                             <TableCell>
-                              <Typography variant="body2">{empresa.proyectosIds?.length || 0}</Typography>
-                              <Typography variant="caption" display="block" color="text.secondary">
-                                {(empresa.projectNames || []).slice(0, 2).join(', ') || 'Sin proyectos'}
-                              </Typography>
+                              {verticalTab === 'corralon' ? (
+                                <>
+                                  <Typography variant="body2">{empresa.sucursalesCount || 0}</Typography>
+                                  <Typography variant="caption" display="block" color="text.secondary">
+                                    {(empresa.sucursalNames || []).slice(0, 2).join(', ') || 'Sin sucursales'}
+                                  </Typography>
+                                </>
+                              ) : (
+                                <>
+                                  <Typography variant="body2">{empresa.proyectosIds?.length || 0}</Typography>
+                                  <Typography variant="caption" display="block" color="text.secondary">
+                                    {(empresa.projectNames || []).slice(0, 2).join(', ') || 'Sin proyectos'}
+                                  </Typography>
+                                </>
+                              )}
                             </TableCell>
                             <TableCell sx={{ minWidth: 240, '& .hover-actions': { opacity: 0, maxHeight: 0, overflow: 'hidden', transition: 'opacity 0.15s ease, max-height 0.15s ease, margin 0.15s ease' }, '&:hover .hover-actions': { opacity: 1, maxHeight: 80, mt: 0.5 } }}>
                               <Stack direction="row" spacing={0.5} useFlexGap flexWrap="wrap">
@@ -759,6 +1776,16 @@ function EmpresasListPage() {
               {alert.message}
             </Alert>
           </Snackbar>
+
+          <CreateEmpresaDialog
+            open={createDialogOpen}
+            onClose={() => setCreateDialogOpen(false)}
+            onCreated={({ message }) => {
+              setCreateDialogOpen(false);
+              setAlert({ open: true, message, severity: 'success' });
+              loadEmpresas();
+            }}
+          />
 
           <Dialog open={confirmDialogOpen} onClose={handleCloseConfirmDialog} maxWidth="md" fullWidth>
             <DialogTitle>Confirmar eliminación</DialogTitle>

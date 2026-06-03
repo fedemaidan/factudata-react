@@ -28,6 +28,7 @@ export default function AjusteStockDialog({
   proyectos = [],
   user,
   loading = false,
+  labelEntidad = 'Proyecto', // 'Sucursal' en corralón
 }) {
   const [lineas, setLineas] = useState([emptyLinea()]);
   const [proyecto, setProyecto] = useState('');
@@ -138,10 +139,10 @@ export default function AjusteStockDialog({
 
           {/* Selector de proyecto */}
           <FormControl fullWidth>
-            <InputLabel id="ajuste-proyecto-label">Proyecto (opcional)</InputLabel>
+            <InputLabel id="ajuste-proyecto-label">{labelEntidad} (opcional)</InputLabel>
             <Select
               labelId="ajuste-proyecto-label"
-              label="Proyecto (opcional)"
+              label={`${labelEntidad} (opcional)`}
               value={proyecto}
               onChange={(e) => {
                 setProyecto(e.target.value);

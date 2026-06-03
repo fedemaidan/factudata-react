@@ -19,7 +19,10 @@ import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import StockMaterialesService from '../services/stock/stockMaterialesService';
 import ExportarStock from '../components/stock/ExportarStock';
 import ImportarStock from '../components/stock/ImportarStock';
+import ImportarCatalogo from '../components/stock/ImportarCatalogo';
+import AcopiosComprometidosDialog from '../components/stock/AcopiosComprometidosDialog';
 import AjusteStockService from '../services/stock/ajusteStockService';
+import { useSucursalContext } from '../contexts/sucursal-context';
 
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import { getProyectosFromUser } from 'src/services/proyectosService';
@@ -102,7 +105,7 @@ const SearchBox = memo(({ initialValue, onApply }) => {
 });
 
 const RowItem = memo(
-  ({ row, checked, onToggle, onClick }) => (
+  ({ row, checked, onToggle, onClick, esCorralon, onClickComprometido }) => (
     <TableRow
       hover
       onClick={() => onClick(row)}
@@ -225,6 +228,24 @@ const RowItem = memo(
               )}
             </Stack>
           )}
+          {/* Fase 3C corralones: stock comprometido + disponible (con click → drawer acopios) */}
+          {esCorralon && typeof row.stock_disponible === 'number' && (
+            <Stack spacing={0} alignItems="flex-end" sx={{ mt: 0.25 }}>
+              {row.stock_comprometido > 0 && (
+                <Typography
+                  variant="caption"
+                  onClick={(e) => { e.stopPropagation(); onClickComprometido?.(row); }}
+                  sx={{ color: '#ed6c02', lineHeight: 1.3, cursor: 'pointer', textDecoration: 'underline dotted' }}
+                  title="Ver acopios que comprometen este material"
+                >
+                  🔒 {row.stock_comprometido} comp.
+                </Typography>
+              )}
+              <Typography variant="caption" sx={{ color: row.stock_disponible < 0 ? '#d32f2f' : '#2e7d32', lineHeight: 1.3 }}>
+                ✅ {row.stock_disponible} disp.
+              </Typography>
+            </Stack>
+          )}
           {row.tienePendientes && (
             <Tooltip title={`${row.cantidadPendienteEntrega || 0} pendientes de recibir`}>
               <Chip
@@ -241,7 +262,10 @@ const RowItem = memo(
       </TableCell>
     </TableRow>
   ),
-  (prev, next) => prev.row === next.row && prev.checked === next.checked
+  (prev, next) =>
+    prev.row === next.row &&
+    prev.checked === next.checked &&
+    prev.esCorralon === next.esCorralon
 );
 
 
@@ -345,6 +369,14 @@ const StockMateriales = () => {
   // Estados para exportar/importar
   const [openExportar, setOpenExportar] = useState(false);
   const [openImportar, setOpenImportar] = useState(false);
+  // Fase 3C corralones: import de catálogo (Excel) + drawer de acopios comprometidos
+  const [openImportarCatalogo, setOpenImportarCatalogo] = useState(false);
+  const [acopiosDialog, setAcopiosDialog] = useState({ open: false, material: null });
+
+  // Empresa + sucursal seleccionada (vertical corralón)
+  const [empresaInfo, setEmpresaInfo] = useState(null);
+  const { sucursalId } = useSucursalContext();
+  const esCorralon = empresaInfo?.vertical === 'corralon';
 
   // Estado para categorías de materiales de la empresa
   const [categoriasMateriales, setCategoriasMateriales] = useState([]);
@@ -401,12 +433,20 @@ const StockMateriales = () => {
     const startedAt = Date.now();
     try {
       const empresa = await getEmpresaDetailsFromUser(user);
+      if (empresa && (!empresaInfo || empresaInfo.id !== empresa.id)) {
+        setEmpresaInfo(empresa);
+      }
+
+      const esCorralonLocal = empresa?.vertical === 'corralon';
 
       const params = {
         empresa_id: empresa.id,
         limit: rowsPerPage,
         page,
         sort: sortParam, // ej: "stock:desc"
+        // Fase 3C corralones: filtro por sucursal + columnas stock_comprometido/disponible
+        ...(esCorralonLocal && sucursalId ? { sucursal_id: sucursalId } : {}),
+        ...(esCorralonLocal ? { con_disponible: true } : {}),
       };
 
       // 🔎 filtros (solo envío si hay valor)
@@ -449,7 +489,7 @@ const StockMateriales = () => {
   useEffect(() => {
     fetchAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, stockFilter, estadoEntrega, categoriaFilter, subcategoriaFilter, sortParam, page, rowsPerPage, nombre]);
+  }, [user, stockFilter, estadoEntrega, categoriaFilter, subcategoriaFilter, sortParam, page, rowsPerPage, nombre, sucursalId]);
 
   // cargar totales valorizados (independiente de la paginación)
   useEffect(() => {
@@ -626,6 +666,10 @@ const StockMateriales = () => {
     router.push(`/stockSolicitudes?${params.toString()}`);
   }, [router]);
 
+  const onClickComprometido = useCallback((row) => {
+    setAcopiosDialog({ open: true, material: row });
+  }, []);
+
   const tableRows = useMemo(() => (
     pageRows.map((row) => (
       <RowItem
@@ -634,9 +678,11 @@ const StockMateriales = () => {
         checked={selectedIdSet.has(row._id)}
         onToggle={toggleSelectOne}
         onClick={handleOpenDetail}
+        esCorralon={esCorralon}
+        onClickComprometido={onClickComprometido}
       />
     ))
-  ), [pageRows, selectedIdSet, toggleSelectOne, handleOpenDetail]);
+  ), [pageRows, selectedIdSet, toggleSelectOne, handleOpenDetail, esCorralon, onClickComprometido]);
 
   const remove = async () => {
     if (!toDelete) return;
@@ -865,15 +911,26 @@ const StockMateriales = () => {
               >
                 Exportar
               </Button>
-              <Button 
+              <Button
                 size="small"
-                variant="outlined" 
+                variant="outlined"
                 startIcon={<UploadFileIcon />}
                 onClick={() => setOpenImportar(true)}
                 color="secondary"
               >
                 Importar
               </Button>
+              {esCorralon && (
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<UploadFileIcon />}
+                  onClick={() => setOpenImportarCatalogo(true)}
+                  color="info"
+                >
+                  Importar catálogo (Excel)
+                </Button>
+              )}
               <Button size="small" variant="contained" startIcon={<AddIcon />} onClick={handleOpenCreate}>
                 Agregar material
               </Button>
@@ -1774,6 +1831,28 @@ const StockMateriales = () => {
           proyectos={proyectos} // Pasar los proyectos para convertir nombres a IDs
           user={user}
         />
+
+        {/* Fase 3C corralones: Importar catálogo desde Excel */}
+        {esCorralon && (
+          <ImportarCatalogo
+            open={openImportarCatalogo}
+            onClose={() => setOpenImportarCatalogo(false)}
+            empresaId={empresaInfo?.id}
+            empresaNombre={empresaInfo?.nombre}
+            onDone={() => fetchAll()}
+          />
+        )}
+
+        {/* Fase 3C corralones: Acopios que comprometen un material */}
+        {esCorralon && (
+          <AcopiosComprometidosDialog
+            open={acopiosDialog.open}
+            material={acopiosDialog.material}
+            empresaId={empresaInfo?.id}
+            sucursalId={sucursalId}
+            onClose={() => setAcopiosDialog({ open: false, material: null })}
+          />
+        )}
 
         {/* 🔵 Overlay centrado mientras carga */}
         <Backdrop

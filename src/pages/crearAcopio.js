@@ -5,6 +5,9 @@ import { Box, Button, Container, Stack, Stepper, Step, StepLabel, Typography, Pa
 } from '@mui/material';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useBreadcrumbs } from 'src/contexts/breadcrumbs-context';
+import { ToggleButton, ToggleButtonGroup, Autocomplete, MenuItem } from '@mui/material';
+import clienteService from 'src/services/clienteService';
+import proveedorService from 'src/services/proveedorService';
 import HomeIcon from '@mui/icons-material/Home';
 import InventoryIcon from '@mui/icons-material/Inventory';
 import AddIcon from '@mui/icons-material/Add';
@@ -59,7 +62,17 @@ const ImportarPage = () => {
   const autoProcesoLanzado = React.useRef(false);
 
   const [proveedoresOptions, setProveedoresOptions] = useState([]);
+  const [clientesOptions, setClientesOptions] = useState([]);
   const [proyectosOptions, setProyectosOptions] = useState([]);
+  const [sucursalesOptions, setSucursalesOptions] = useState([]);
+  const [empresaVertical, setEmpresaVertical] = useState('constructora');
+  // Vertical corralón: indicar si la contraparte del acopio es cliente o proveedor.
+  // En constructoras siempre 'proveedor' (default).
+  const [contraparteRol, setContraparteRol] = useState('proveedor');
+  // Vertical corralón: sucursal seleccionada para el acopio.
+  const [sucursalAcopio, setSucursalAcopio] = useState('');
+  // Flag para deshabilitar el botón "Crear inline" mientras se hace la request.
+  const [creandoInline, setCreandoInline] = useState(false);
 
   const [activeStep, setActiveStep] = useState(0);
   const [tipoLista, setTipoLista] = useState('');
@@ -382,8 +395,25 @@ React.useEffect(() => {
     try {
       const empresa = await getEmpresaById(empresaId);
       setProveedoresOptions(empresa?.proveedores || []);
+      setEmpresaVertical(empresa?.vertical || 'constructora');
       const proyectos = await getProyectosByEmpresa(empresa);
       setProyectosOptions(proyectos);
+      // Si es corralón, cargar clientes y sucursales para los selectores nuevos.
+      if (empresa?.vertical === 'corralon') {
+        try {
+          const cs = await clienteService.getByEmpresa(empresaId);
+          setClientesOptions((cs || []).map((c) => ({ id: c._id, nombre: c.nombre })));
+        } catch (e) {
+          console.error('Error cargando clientes:', e);
+        }
+        try {
+          const sucursalService = (await import('src/services/sucursalService')).default;
+          const sucs = await sucursalService.getByEmpresa(empresaId);
+          setSucursalesOptions(sucs || []);
+        } catch (e) {
+          console.error('Error cargando sucursales:', e);
+        }
+      }
     } catch (err) {
       console.error('Error al cargar datos de empresa:', err);
     }
@@ -598,6 +628,11 @@ const guardarAcopio = async () => {
         valorTotal: Number(r.valorTotal) || 0,
         codigo: r.codigo || '',
       })),
+      // Para corralón el backend usa contraparte_rol para decidir si la
+      // contraparte de este acopio es cliente o proveedor.
+      contraparte_rol: contraparteRol,
+      // Corralón: la sucursal reemplaza al proyecto. Sin gating para mandar siempre el campo.
+      sucursal_id: sucursalAcopio || null,
       empresaId,
     };
 
@@ -890,20 +925,124 @@ const handleAddItem = (position = 'end', datosDefecto = null) => {
       );
     }
 
-    // Step 1: Proveedor
+    // Step 1: Contraparte (Proveedor / Cliente).
+    // En corralón se muestra el toggle de contraparte_rol arriba del selector.
+    // En constructora se renderiza el StepProveedor original sin cambios.
     if (activeStep === 1) {
+      if (empresaVertical !== 'corralon') {
+        return (
+          <StepProveedor
+            proveedor={proveedor}
+            setProveedor={setProveedor}
+            proveedoresOptions={proveedoresOptions}
+            onNext={handleNext}
+          />
+        );
+      }
+      // Corralón: toggle + selector dinámico con alta inline si no existe.
+      const opciones = contraparteRol === 'cliente' ? clientesOptions : proveedoresOptions;
+      const labelEntidad = contraparteRol === 'cliente' ? 'Cliente' : 'Proveedor';
+      const nombreTrim = (proveedor || '').trim();
+      const norm = (s) => (s || '').toString().trim().toLowerCase();
+      const yaExiste = !!nombreTrim && opciones.some((o) => norm(typeof o === 'string' ? o : o?.nombre) === norm(nombreTrim));
+      const handleCrearInline = async () => {
+        if (!nombreTrim || creandoInline) return;
+        try {
+          setCreandoInline(true);
+          if (contraparteRol === 'cliente') {
+            const result = await clienteService.crear(empresaId, { nombre: nombreTrim });
+            const nuevoNombre = result?.nombre || nombreTrim;
+            setClientesOptions((prev) => [...prev, { id: result?.cliente_id, nombre: nuevoNombre }]);
+            setProveedor(nuevoNombre);
+          } else {
+            const result = await proveedorService.crear(empresaId, { nombre: nombreTrim });
+            const nuevoNombre = result?.nombre || nombreTrim;
+            setProveedoresOptions((prev) => (prev.includes(nuevoNombre) ? prev : [...prev, nuevoNombre]));
+            setProveedor(nuevoNombre);
+          }
+        } catch (err) {
+          console.error('Error creando inline:', err);
+          alert(`No se pudo crear el ${labelEntidad.toLowerCase()}: ${err?.response?.data?.error || err.message}`);
+        } finally {
+          setCreandoInline(false);
+        }
+      };
       return (
-        <StepProveedor
-          proveedor={proveedor}
-          setProveedor={setProveedor}
-          proveedoresOptions={proveedoresOptions}
-          onNext={handleNext}
-        />
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Box>
+            <Typography variant="subtitle2" sx={{ mb: 1 }}>
+              ¿Acopio con quién?
+            </Typography>
+            <ToggleButtonGroup
+              exclusive
+              value={contraparteRol}
+              onChange={(_, v) => v && setContraparteRol(v)}
+              size="small"
+              color="primary"
+            >
+              <ToggleButton value="cliente">📥 Cliente (te acopia a vos)</ToggleButton>
+              <ToggleButton value="proveedor">📤 Proveedor (vos le acopiás)</ToggleButton>
+            </ToggleButtonGroup>
+          </Box>
+          <Autocomplete
+            options={opciones}
+            getOptionLabel={(opt) => (typeof opt === 'string' ? opt : (opt?.nombre || ''))}
+            value={opciones.find((o) => (typeof o === 'string' ? o : o.nombre) === proveedor) || null}
+            onChange={(_, val) => setProveedor(typeof val === 'string' ? val : (val?.nombre || ''))}
+            onInputChange={(_, val, reason) => { if (reason === 'input') setProveedor(val); }}
+            freeSolo
+            renderInput={(params) => <TextField {...params} label={labelEntidad} fullWidth />}
+          />
+          {nombreTrim && !yaExiste && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Typography variant="caption" color="text.secondary">
+                {`No encontré "${nombreTrim}".`}
+              </Typography>
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={handleCrearInline}
+                disabled={creandoInline}
+                startIcon={<AddIcon fontSize="small" />}
+              >
+                {creandoInline ? 'Creando…' : `Crear ${labelEntidad.toLowerCase()} "${nombreTrim}"`}
+              </Button>
+            </Box>
+          )}
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <Button variant="contained" disabled={!nombreTrim} onClick={handleNext}>
+              Siguiente
+            </Button>
+          </Box>
+        </Box>
       );
     }
 
-    // Step 2: Proyecto
+    // Step 2: Proyecto (constructora) o Sucursal (corralón)
     if (activeStep === 2) {
+      if (empresaVertical === 'corralon') {
+        return (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <Typography variant="subtitle2">¿En qué sucursal se va a operar el acopio?</Typography>
+            <TextField
+              select
+              label="Sucursal"
+              value={sucursalAcopio}
+              onChange={(e) => setSucursalAcopio(e.target.value)}
+              fullWidth
+              size="small"
+            >
+              <MenuItem value=""><em>Sin sucursal</em></MenuItem>
+              {sucursalesOptions.map((s) => (
+                <MenuItem key={s._id || s.id} value={s._id || s.id}>{s.nombre}</MenuItem>
+              ))}
+            </TextField>
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <Button variant="contained" onClick={handleNext}>Siguiente</Button>
+            </Box>
+          </Box>
+        );
+      }
       return (
         <StepProyecto
           proyecto={proyecto}

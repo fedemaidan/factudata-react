@@ -335,6 +335,12 @@ const ContactoSDRDetailPage = () => {
     const [loading, setLoading] = useState(true);
     const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
 
+    // Evento de Meta (CAPI) manual
+    const [metaMenuAnchor, setMetaMenuAnchor] = useState(null);
+    const [metaDialog, setMetaDialog] = useState({ open: false, eventName: null });
+    const [metaValue, setMetaValue] = useState('0');
+    const [metaSending, setMetaSending] = useState(false);
+
     // Scoring
     const [guardandoScoring, setGuardandoScoring] = useState(false);
     const [editandoPrioridadManual, setEditandoPrioridadManual] = useState(false);
@@ -742,6 +748,29 @@ const ContactoSDRDetailPage = () => {
 
     const handleWhatsApp = () => {
         if (contacto?.telefono) window.open(getWhatsAppLink(contacto.telefono), '_blank');
+    };
+
+    const abrirDialogEventoMeta = (eventName) => {
+        setMetaMenuAnchor(null);
+        setMetaValue('0');
+        setMetaDialog({ open: true, eventName });
+    };
+
+    const handleEnviarEventoMeta = async () => {
+        const { eventName } = metaDialog;
+        setMetaSending(true);
+        try {
+            const value = Number(metaValue) || 0;
+            const res = await SDRService.enviarEventoMeta(contacto._id, eventName, value);
+            const atr = res?.atribucion;
+            const detalle = atr ? ` (fbc: ${atr.fbc ? '✓' : '✗'}, fbp: ${atr.fbp ? '✓' : '✗'})` : '';
+            mostrarSnackbar(`Evento ${eventName} enviado a Meta${detalle}`);
+            setMetaDialog({ open: false, eventName: null });
+        } catch (err) {
+            mostrarSnackbar(err.response?.data?.error || 'Error al enviar el evento a Meta', 'error');
+        } finally {
+            setMetaSending(false);
+        }
     };
 
     const handleAccion = async (tipo, atendida = null) => {
@@ -1956,6 +1985,16 @@ const ContactoSDRDetailPage = () => {
                                                 <WhatsAppIcon sx={{ fontSize: 16, color: '#25D366' }} />
                                             </IconButton>
                                         </Tooltip>
+                                        <Button
+                                            size="small"
+                                            variant="outlined"
+                                            color="secondary"
+                                            startIcon={<SendIcon sx={{ fontSize: 14 }} />}
+                                            onClick={(e) => setMetaMenuAnchor(e.currentTarget)}
+                                            sx={{ ml: 0.5, py: 0.1, px: 1, fontSize: '0.7rem', textTransform: 'none' }}
+                                        >
+                                            Evento Meta
+                                        </Button>
                                     </Stack>
 
                                     {/* Teléfonos secundarios */}
@@ -4915,6 +4954,56 @@ const ContactoSDRDetailPage = () => {
                     {snackbar.message}
                 </Alert>
             </Snackbar>
+
+            {/* Menú de eventos de Meta */}
+            <Menu
+                anchorEl={metaMenuAnchor}
+                open={Boolean(metaMenuAnchor)}
+                onClose={() => setMetaMenuAnchor(null)}
+            >
+                {['StartTrial', 'Lead', 'Purchase', 'Schedule'].map((ev) => (
+                    <MenuItem key={ev} onClick={() => abrirDialogEventoMeta(ev)}>
+                        {ev}
+                    </MenuItem>
+                ))}
+            </Menu>
+
+            {/* Diálogo enviar evento de Meta */}
+            <Dialog
+                open={metaDialog.open}
+                onClose={() => !metaSending && setMetaDialog({ open: false, eventName: null })}
+                maxWidth="xs"
+                fullWidth
+            >
+                <DialogTitle>Enviar evento &quot;{metaDialog.eventName}&quot; a Meta</DialogTitle>
+                <DialogContent>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        Se enviará para {contacto?.nombre || contacto?.telefono}. Se buscará el lead por teléfono para la atribución (fbc/fbp).
+                    </Typography>
+                    <TextField
+                        label="Monto (value)"
+                        type="number"
+                        value={metaValue}
+                        onChange={(e) => setMetaValue(e.target.value)}
+                        fullWidth
+                        autoFocus
+                        inputProps={{ min: 0, step: '0.01' }}
+                    />
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setMetaDialog({ open: false, eventName: null })} disabled={metaSending}>
+                        Cancelar
+                    </Button>
+                    <Button
+                        variant="contained"
+                        onClick={handleEnviarEventoMeta}
+                        disabled={metaSending}
+                        startIcon={metaSending ? <CircularProgress size={16} color="inherit" /> : <SendIcon />}
+                    >
+                        Enviar
+                    </Button>
+                </DialogActions>
+            </Dialog>
 
             {/* Modal Selector de Templates WA */}
             <ModalSelectorTemplate

@@ -42,12 +42,13 @@ import movimientosService from 'src/services/movimientosService';
 
 const STEPS = ['Subir Factura', 'Revisar Materiales', 'Confirmar Ingreso'];
 
-export default function IngresoDesdeFactura({ 
-  open, 
-  onClose, 
-  onSuccess, 
-  user, 
-  proyectos = [] 
+export default function IngresoDesdeFactura({
+  open,
+  onClose,
+  onSuccess,
+  user,
+  proyectos = [],
+  labelEntidad = 'Proyecto', // 'Sucursal' en corralón
 }) {
   // Estado del stepper
   const [activeStep, setActiveStep] = useState(0);
@@ -640,9 +641,9 @@ export default function IngresoDesdeFactura({
       
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
         <FormControl sx={{ minWidth: 250 }}>
-          <InputLabel>Proyecto destino</InputLabel>
+          <InputLabel>{labelEntidad} destino</InputLabel>
           <Select
-            label="Proyecto destino"
+            label={`${labelEntidad} destino`}
             value={proyectoSeleccionado}
             onChange={(e) => setProyectoSeleccionado(e.target.value)}
           >
