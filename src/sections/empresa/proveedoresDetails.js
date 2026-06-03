@@ -219,14 +219,24 @@ export const ProveedoresDetails = ({ empresa }) => {
         const categoriasFiltradas = categoriasRaw
           .map(c => c.trim())
           .filter(c => categoriasValidas.has(c));
-  
+
+        // Saldo inicial opcional (positivo = le debemos al proveedor; negativo = nos debe).
+        const saldoRaw = row.SaldoInicial ?? row['Saldo Inicial'] ?? row.saldo_inicial ?? row.Saldo;
+        let saldoInicial = null;
+        if (saldoRaw != null && String(saldoRaw).trim() !== '') {
+          const cleaned = String(saldoRaw).replace(/[^\d.,-]/g, '').replace(/\./g, '').replace(',', '.');
+          const n = parseFloat(cleaned);
+          if (Number.isFinite(n)) saldoInicial = n;
+        }
+
         return {
           nombre: row.Nombre?.trim() ?? '',
           cuit: row.CUIT?.trim() ?? '',
           razon_social: row['Razon Social']?.trim() ?? '',
           direccion: row.Direccion?.trim() ?? '',
           alias: row.Alias?.split(',').map(a => a.trim()).filter(Boolean) ?? [],
-          categorias: categoriasFiltradas
+          categorias: categoriasFiltradas,
+          ...(saldoInicial != null ? { saldo_inicial: saldoInicial } : {}),
         };
       }).filter(p => p.nombre);
   

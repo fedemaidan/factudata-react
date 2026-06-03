@@ -15,6 +15,22 @@ const materialService = {
     }
   },
 
+  // Stock real por sucursal (+ sin asignar) para varios materiales.
+  // Devuelve { [material_id]: { total, sucursales: [{ sucursal_id, stock }] } }
+  getStockPorSucursal: async (empresaId, materialIds = []) => {
+    const ids = (Array.isArray(materialIds) ? materialIds : [materialIds]).filter(Boolean);
+    if (!ids.length) return {};
+    try {
+      const response = await api.get('/materiales/stock/por-sucursal', {
+        params: { empresa_id: empresaId, material_ids: ids.join(',') },
+      });
+      return response.data?.data || {};
+    } catch (err) {
+      console.error('Error al obtener stock por sucursal:', err);
+      return {};
+    }
+  },
+
   // Obtener todos los materiales
   getAllMateriales: async () => {
     try {

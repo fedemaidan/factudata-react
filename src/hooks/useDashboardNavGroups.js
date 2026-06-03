@@ -15,6 +15,9 @@ import ContactsIcon from "@mui/icons-material/Contacts";
 import AssessmentIcon from "@mui/icons-material/Assessment";
 import ConstructionIcon from "@mui/icons-material/Construction";
 import AutoAwesomeRoundedIcon from "@mui/icons-material/AutoAwesomeRounded";
+import EventAvailableIcon from "@mui/icons-material/EventAvailable";
+import AssignmentReturnIcon from "@mui/icons-material/AssignmentReturn";
+import MoveToInboxIcon from "@mui/icons-material/MoveToInbox";
 import { useAuthContext } from "src/contexts/auth-context";
 import { getProyectosFromUser } from "src/services/proyectosService";
 import { getEmpresaDetailsFromUser } from "src/services/empresaService";
@@ -28,11 +31,83 @@ const icon = (Icon) => (
 const getPermisosVisibles = (empresaAcciones, permisosOcultos = []) =>
   (empresaAcciones || []).filter((accion) => !(permisosOcultos || []).includes(accion));
 
+// Navegación dedicada de corralón: reorganizada por "lo que hace el usuario"
+// (Ventas / Clientes / Materiales / Caja y reportes / Configuración) en vez de
+// por categoría abstracta. Ver docs/corralones/11-propuesta-funcionalidades.md.
+function buildCorralonGroups({ user, empresa, permisosUsuario, esAdmin }) {
+  const empId = empresa.id;
+  const groups = [];
+
+  // ——— INICIO ———
+  const inicioItems = [];
+  inicioItems.push({ title: "Asistente IA (Beta)", path: "/agente", icon: icon(AutoAwesomeRoundedIcon) });
+  if (user?.admin) {
+    inicioItems.push({ title: "Panel de Control", path: "/control-panel", icon: icon(AdminPanelSettingsIcon) });
+  }
+  inicioItems.push({ title: "Dashboard corralón", path: `/dashboard-corralon?empresaId=${empId}`, icon: icon(DashboardIcon) });
+  groups.push({ id: "inicio", label: "Inicio", alwaysOpen: true, items: inicioItems });
+
+  // ——— VENTAS (el corazón operativo) ———
+  const ventasItems = [];
+  ventasItems.push({ title: "Ventas", path: "/ventas", icon: icon(PaymentsIcon) });
+  ventasItems.push({ title: "Acopio", path: `/acopios?empresaId=${empId}`, icon: icon(InventoryIcon) });
+  ventasItems.push({ title: "Devoluciones", path: "/devoluciones", icon: icon(AssignmentReturnIcon) });
+  ventasItems.push({ title: "Cobranzas", path: "/cobros-cliente", icon: icon(AttachMoneyIcon) });
+  groups.push({ id: "ventas", label: "Ventas", items: ventasItems });
+
+  // ——— CLIENTES (ambas entradas por ahora, a pedido) ———
+  const clientesItems = [];
+  clientesItems.push({ title: "Clientes", path: "/clientes", icon: icon(PeopleIcon) });
+  clientesItems.push({ title: "Grupos de cliente", path: "/grupos-cliente", icon: icon(PeopleIcon) });
+  groups.push({ id: "clientes", label: "Clientes", items: clientesItems });
+
+  // ——— MATERIALES ———
+  const materialesItems = [];
+  materialesItems.push({ title: "Stock de materiales", path: `/stockMateriales?empresaId=${empId}`, icon: icon(InventoryIcon) });
+  materialesItems.push({ title: "Qué entregar", path: "/que-entregar", icon: icon(EventAvailableIcon) });
+  materialesItems.push({ title: "Recepción de proveedor", path: "/recepcion-proveedor", icon: icon(MoveToInboxIcon) });
+  materialesItems.push({ title: "Proveedores", path: "/proveedores", icon: icon(StoreIcon) });
+  groups.push({ id: "materiales", label: "Materiales", items: materialesItems });
+
+  // ——— CAJA Y REPORTES ———
+  const cajaItems = [];
+  if (esAdmin) {
+    cajaItems.push({ title: "Todos los movimientos", path: `/cajas?empresaId=${empId}&vista=todos`, icon: icon(AccountBalanceWallet) });
+    cajaItems.push({ title: "Revisión de facturas", path: `/revisionFacturas?empresaId=${empId}`, icon: icon(Checklist) });
+  }
+  cajaItems.push({ title: "Reportes", path: "/reportes", icon: icon(AssessmentIcon) });
+  groups.push({ id: "caja", label: "Caja y reportes", items: cajaItems });
+
+  // ——— CONFIGURACIÓN ———
+  const configItems = [];
+  configItems.push({ title: "Sucursales", path: "/sucursales", icon: icon(StoreIcon) });
+  configItems.push({ title: "Mi cuenta", path: "/account", icon: icon(PeopleIcon) });
+  if (user?.admin) {
+    configItems.push({ title: "Configurar " + empresa.nombre, path: `empresa?empresaId=${empId}`, icon: icon(SettingsIcon) });
+  }
+  if (permisosUsuario.includes("ADMIN_USUARIOS")) {
+    configItems.push({ title: "Administración", path: `/configuracionBasica/?empresaId=${empId}`, icon: icon(SettingsIcon) });
+  }
+  if (permisosUsuario.includes("VER_UNIDADES")) {
+    configItems.push({ title: "Unidades", path: `unidadesTable?empresaId=${empId}`, icon: icon(SettingsIcon) });
+  }
+  groups.push({ id: "configuracion", label: "Configuración", items: configItems });
+
+  return groups;
+}
+
 async function buildDefaultGroups({ user, empresa, permisosUsuario }) {
   const empId = empresa.id;
   const esAdmin =
     permisosUsuario.includes("VER_CAJAS") &&
     !permisosUsuario.includes("CREAR_EGRESO_SIMPLIFICADO");
+  const esCorralon = empresa?.vertical === "corralon";
+
+  // Corralón usa una navegación propia, reorganizada por flujo de trabajo.
+  if (esCorralon) {
+    return buildCorralonGroups({ user, empresa, permisosUsuario, esAdmin });
+  }
+
   const groups = [];
 
   // ——— INICIO ———
@@ -67,10 +142,12 @@ async function buildDefaultGroups({ user, empresa, permisosUsuario }) {
   if (permisosUsuario.includes("GESTIONAR_PROVEEDORES") || permisosUsuario.includes("VER_CUENTA_CORRIENTE_PROVEEDORES")) {
     finanzasItems.push({ title: "Proveedores", path: "/proveedores", icon: icon(StoreIcon) });
   }
-  if (permisosUsuario.includes("VER_PLANES_COBRO")) {
+  if (permisosUsuario.includes("VER_PLANES_COBRO") && !esCorralon) {
+    // Plan de cobros (PlanCobroModel) es para constructoras. En corralón no aplica.
     finanzasItems.push({ title: "Plan de cobros", path: "cobros", icon: icon(AttachMoneyIcon) });
   }
-  if (esAdmin) {
+  if (esAdmin && !esCorralon) {
+    // Control de presupuestos / presupuestos profesionales son de obra (constructora).
     finanzasItems.push({ title: "Control presupuestos", path: "/control-presupuestos", icon: icon(NoteAltIcon) });
     if (permisosUsuario.includes("VER_PRESUPUESTOS_PROFESIONALES")) {
       finanzasItems.push({ title: "Presupuestos profesionales", path: "/presupuestosProfesionales", icon: icon(NoteAltIcon) });

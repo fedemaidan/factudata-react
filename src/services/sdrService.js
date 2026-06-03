@@ -217,6 +217,14 @@ const SDRService = {
         return res.data;
     },
 
+    /**
+     * Enviar un evento de Meta (CAPI) manual para un contacto
+     */
+    enviarEventoMeta: async (contactoId, eventName, value = 0) => {
+        const res = await api.post('/sdr/acciones/evento-meta', { contactoId, eventName, value });
+        return res.data;
+    },
+
     // ==================== REUNIONES ====================
 
     /**

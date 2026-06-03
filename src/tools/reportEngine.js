@@ -1309,6 +1309,268 @@ export function processCategoryBudgetMatrix(block, movimientos, presupuestos, cu
   };
 }
 
+function getSnapshotCac(snapshot = {}) {
+  const candidates = [
+    snapshot?.cac_indice,
+    snapshot?.cac_general,
+    snapshot?.cac_mano_obra,
+    snapshot?.cac_materiales,
+    snapshot?.cac,
+  ];
+  const value = candidates.find((v) => Number(v) > 0);
+  return value != null ? Number(value) : 0;
+}
+
+function getSnapshotUsd(snapshot = {}) {
+  const candidates = [
+    snapshot?.dolar_blue,
+    snapshot?.dolar,
+  ];
+  const value = candidates.find((v) => Number(v) > 0);
+  return value != null ? Number(value) : 0;
+}
+
+function getPresupuestoNominalArs(presupuesto, cotizaciones) {
+  const montoIngresado = Number(presupuesto?.monto_ingresado);
+  if (Number.isFinite(montoIngresado) && montoIngresado !== 0) return Math.abs(montoIngresado);
+
+  const indexacion = String(presupuesto?.indexacion || '').toUpperCase();
+  const montoBase = Number(
+    presupuesto?.monto_base
+    ?? presupuesto?.monto_original
+    ?? presupuesto?.monto_presupuestado
+    ?? presupuesto?.monto
+    ?? 0
+  );
+
+  if (!Number.isFinite(montoBase)) return 0;
+  if (indexacion === 'CAC') {
+    const cac = getSnapshotCac(presupuesto?.cotizacion_snapshot, cotizaciones);
+    return cac > 0 ? Math.abs(montoBase * cac) : Math.abs(montoBase);
+  }
+  if (indexacion === 'USD') {
+    const usd = getSnapshotUsd(presupuesto?.cotizacion_snapshot, cotizaciones);
+    return usd > 0 ? Math.abs(montoBase * usd) : Math.abs(montoBase);
+  }
+  return Math.abs(montoBase);
+}
+
+function getAdicionalNominalArs(adicional, presupuesto, cotizaciones) {
+  const monto = Number(adicional?.monto ?? adicional?.valor ?? 0);
+  if (!Number.isFinite(monto)) return 0;
+
+  const indexacion = String(presupuesto?.indexacion || '').toUpperCase();
+  if (indexacion === 'CAC') {
+    const cac = getSnapshotCac(adicional?.cotizacion_snapshot, cotizaciones);
+    return cac > 0 ? Math.abs(monto * cac) : 0;
+  }
+  if (indexacion === 'USD') {
+    const usd = getSnapshotUsd(adicional?.cotizacion_snapshot, cotizaciones);
+    return usd > 0 ? Math.abs(monto * usd) : 0;
+  }
+  return Math.abs(monto);
+}
+
+function getPresupuestoNominalCac(presupuesto, subtotalNeto, cotizaciones) {
+  const snapCac = getSnapshotCac(presupuesto?.cotizacion_snapshot, cotizaciones);
+  if (snapCac > 0) return Math.abs(subtotalNeto) / snapCac;
+  return Math.abs(getPresupuestoAmount(presupuesto, 'CAC', cotizaciones));
+}
+
+function getAdicionalNominalCac(adicional, presupuesto, subtotalNeto, cotizaciones) {
+  const indexacion = String(presupuesto?.indexacion || '').toUpperCase();
+  const monto = Number(adicional?.monto ?? adicional?.valor ?? 0);
+  if (indexacion === 'CAC' && Number.isFinite(monto)) return Math.abs(monto);
+
+  const snapCac = getSnapshotCac(adicional?.cotizacion_snapshot, cotizaciones);
+  if (snapCac > 0) return Math.abs(subtotalNeto) / snapCac;
+  return Math.abs(convertPresupuestoValue(presupuesto, Number.isFinite(monto) ? monto : 0, 'CAC', cotizaciones));
+}
+
+function resolvePresupuestoConcepto(presupuesto) {
+  return (
+    presupuesto?.nombre
+    || presupuesto?.concepto
+    || presupuesto?.descripcion
+    || presupuesto?.rubro
+    || (presupuesto?.codigo ? `Presupuesto ${presupuesto.codigo}` : 'Presupuesto inicial')
+  );
+}
+
+function resolvePresupuestoDate(presupuesto) {
+  return (
+    presupuesto?.fecha_presupuesto
+    || presupuesto?.fechaInicio
+    || presupuesto?.creadoEn
+    || presupuesto?.createdAt
+    || presupuesto?.cotizacion_snapshot?.fecha_presupuesto
+    || presupuesto?.cotizacion_snapshot?.fecha
+    || null
+  );
+}
+
+function resolveAdicionalDate(adicional, presupuesto) {
+  return (
+    adicional?.fecha_adicional
+    || adicional?.fecha
+    || adicional?.createdAt
+    || presupuesto?.fecha_presupuesto
+    || presupuesto?.fechaInicio
+    || null
+  );
+}
+
+function getIngresoMovimientoCacIndex(mov, subtotalArs, subtotalCac, cotizaciones) {
+  const direct = [
+    mov?.cac_referencia,
+    mov?.cac,
+    mov?.cotizacion_cac,
+    mov?.cotizacion_snapshot?.cac_indice,
+    mov?.cotizacion_snapshot?.cac_general,
+    mov?.cotizacion_snapshot?.cac,
+  ].find((v) => Number(v) > 0);
+  if (direct != null) return Number(direct);
+  if (Number(subtotalArs) > 0 && Number(subtotalCac) > 0) {
+    return Number(subtotalArs) / Number(subtotalCac);
+  }
+  return Number(cotizaciones?.cac || 0);
+}
+
+function getMovimientoCacAmount(mov, campo, subtotalArs, icac) {
+  const raw = mov?.equivalencias?.[campo]?.cac;
+  if (raw != null && !isNaN(raw)) return Math.abs(Number(raw));
+
+  if ((mov?.moneda || '').toUpperCase() === 'CAC') {
+    const original = campo === 'subtotal'
+      ? (mov?.subtotal ?? mov?.total ?? mov?.monto ?? 0)
+      : (mov?.total ?? mov?.monto ?? 0);
+    return Math.abs(Number(original || 0));
+  }
+
+  return Number(icac) > 0 ? Math.abs(Number(subtotalArs || 0)) / Number(icac) : 0;
+}
+
+/**
+ * Procesa el control de presupuesto de ingresos por proyecto.
+ *
+ * Tabla 1: presupuestos de ingreso iniciales + adicionales.
+ * Tabla 2: movimientos de ingreso recibidos en Sorby.
+ * Saldo: CAC presupuestado - CAC recibido, valorizado a CAC de hoy.
+ */
+export function processIncomeBudgetControl(block, movimientos, presupuestos, currencies, cotizaciones, extraContext = {}) {
+  const list = Array.isArray(presupuestos) ? presupuestos : [];
+  const movs = Array.isArray(movimientos) ? movimientos : [];
+  const runtimeProjectIds = new Set((extraContext?.filters?.proyectos || []).map((id) => String(id)));
+  const amountField = block.campo_monto || 'subtotal';
+  const cacHoy = Number(cotizaciones?.cac || 0);
+
+  let presFiltered = list.filter((p) => (p?.tipo || 'egreso') === 'ingreso');
+  if (runtimeProjectIds.size > 0) {
+    presFiltered = presFiltered.filter((p) => runtimeProjectIds.has(getPresupuestoProjectInfo(p).id));
+  }
+
+  const presupuestoRows = [];
+  let order = 1;
+  for (const p of presFiltered) {
+    const snapCac = getSnapshotCac(p?.cotizacion_snapshot, cotizaciones);
+    const subtotalNeto = getPresupuestoNominalArs(p, cotizaciones);
+    const cacEquivalente = getPresupuestoNominalCac(p, subtotalNeto, cotizaciones);
+
+    presupuestoRows.push({
+      nro: order,
+      concepto: resolvePresupuestoConcepto(p),
+      fecha: resolvePresupuestoDate(p),
+      icac: snapCac,
+      subtotal_neto: subtotalNeto,
+      cac_equivalente: cacEquivalente,
+      tipo: 'presupuesto',
+      presupuesto_id: getPresupuestoId(p),
+    });
+    order += 1;
+
+    const adicionales = Array.isArray(p?.adicionales) ? p.adicionales : [];
+    for (const adic of adicionales) {
+      const montoBase = Number(adic?.monto ?? adic?.valor ?? 0);
+      if (!Number.isFinite(montoBase) || montoBase === 0) continue;
+      const adicCac = getSnapshotCac(adic?.cotizacion_snapshot, cotizaciones);
+      const subtotalAdic = getAdicionalNominalArs(adic, p, cotizaciones);
+      const cacAdic = getAdicionalNominalCac(adic, p, subtotalAdic, cotizaciones);
+
+      presupuestoRows.push({
+        nro: order,
+        concepto: adic?.concepto || adic?.motivo || 'Adicional',
+        fecha: resolveAdicionalDate(adic, p),
+        icac: adicCac,
+        subtotal_neto: subtotalAdic,
+        cac_equivalente: cacAdic,
+        tipo: 'adicional',
+        presupuesto_id: getPresupuestoId(p),
+      });
+      order += 1;
+    }
+  }
+
+  const movimientosIngreso = applyBlockFilters(movs, {
+    ...block,
+    filtro_tipo: 'ingreso',
+  });
+
+  const movimientoRows = movimientosIngreso
+    .map((m, idx) => {
+      const subtotalArs = Math.abs(getAmount(m, 'ARS', amountField));
+      const rawSubtotalCac = m?.equivalencias?.[amountField]?.cac;
+      const subtotalCacForIndex = rawSubtotalCac != null && !isNaN(rawSubtotalCac)
+        ? Math.abs(Number(rawSubtotalCac))
+        : 0;
+      const icac = getIngresoMovimientoCacIndex(m, subtotalArs, subtotalCacForIndex, cotizaciones);
+      const subtotalCac = getMovimientoCacAmount(m, amountField, subtotalArs, icac);
+      return {
+        nro: idx + 1,
+        fecha: m?.fecha_factura || m?.fecha,
+        icac,
+        pago_neto_ars: subtotalArs,
+        cac_recibidos: subtotalCac || (icac > 0 ? subtotalArs / icac : 0),
+        movimiento: m,
+      };
+    })
+    .sort((a, b) => {
+      const da = toPlainDate(a.fecha)?.getTime() || 0;
+      const db = toPlainDate(b.fecha)?.getTime() || 0;
+      return da - db;
+    })
+    .map((row, idx) => ({ ...row, nro: idx + 1 }));
+
+  const totalPresupuestoArs = sum(presupuestoRows.map((r) => r.subtotal_neto));
+  const totalPresupuestoCac = sum(presupuestoRows.map((r) => r.cac_equivalente));
+  const totalRecibidoArs = sum(movimientoRows.map((r) => r.pago_neto_ars));
+  const totalRecibidoCac = round2(sum(movimientoRows.map((r) => r.cac_recibidos)));
+  const saldoCac = totalPresupuestoCac - totalRecibidoCac;
+  const saldoArsHoy = cacHoy > 0 ? saldoCac * cacHoy : 0;
+
+  return {
+    amountField,
+    cac_hoy: cacHoy,
+    presupuesto: {
+      rows: presupuestoRows,
+      totals: {
+        subtotal_neto: totalPresupuestoArs,
+        cac_equivalente: totalPresupuestoCac,
+      },
+    },
+    recibidos: {
+      rows: movimientoRows,
+      totals: {
+        pago_neto_ars: totalRecibidoArs,
+        cac_recibidos: totalRecibidoCac,
+      },
+    },
+    saldo: {
+      cac: saldoCac,
+      ars_hoy: saldoArsHoy,
+    },
+  };
+}
+
 /**
  * Procesa un control presupuestario mensual.
  * Columnas = categorías seleccionadas, filas = meses, avance = acumulado / presupuesto objetivo.
@@ -2057,6 +2319,7 @@ const BLOCK_PROCESSORS = {
   budget_vs_actual: processBudgetVsActual,
   monthly_budget_control: processMonthlyBudgetControl,
   category_budget_matrix: processCategoryBudgetMatrix,
+  income_budget_control: processIncomeBudgetControl,
   chart: processChart,
   grouped_detail: processGroupedDetail,
   balance_between_partners: processBalanceBetweenPartners,

@@ -61,6 +61,7 @@ export default function SolicitudFormDialog({
   user,
   stockConfig = {},
   proveedores = [],
+  labelEntidad = 'Proyecto', // 'Sucursal' en corralón
 }) {
   const distribucionPorLinea = stockConfig.distribucion_por_linea || false;
   const acopioHabilitado = stockConfig.acopio_habilitado || false;
@@ -133,10 +134,10 @@ export default function SolicitudFormDialog({
               <TextField label="Tipo" value={form.tipo} disabled sx={{ minWidth: 150 }} />
               <TextField type="date" label="Fecha" InputLabelProps={{ shrink: true }} value={form.fecha} onChange={(e) => patchForm('fecha', e.target.value)} sx={{ minWidth: 200 }} />
               <FormControl sx={{ minWidth: 250 }}>
-                <InputLabel id="proyecto-edit">Proyecto</InputLabel>
+                <InputLabel id="proyecto-edit">{labelEntidad}</InputLabel>
                 <Select
                   labelId="proyecto-edit"
-                  label="Proyecto"
+                  label={labelEntidad}
                   value={form.proyecto_id || ''}
                   onChange={(e) => {
                     const proyId = e.target.value;
@@ -291,10 +292,10 @@ export default function SolicitudFormDialog({
           {/* Selector de proyecto (creación rápida ingreso/egreso) */}
           {!editMode && modalMode && modalMode !== 'transferencia' && (
             <FormControl fullWidth>
-              <InputLabel id="proy-rapida">Proyecto (opcional - sin proyecto = "Sin asignar")</InputLabel>
+              <InputLabel id="proy-rapida">{labelEntidad} (opcional - sin {labelEntidad.toLowerCase()} = "Sin asignar")</InputLabel>
               <Select
                 labelId="proy-rapida"
-                label='Proyecto (opcional - sin proyecto = "Sin asignar")'
+                label={`${labelEntidad} (opcional - sin ${labelEntidad.toLowerCase()} = "Sin asignar")`}
                 value={form.proyecto_id || ''}
                 onChange={(e) => {
                   const id = e.target.value;
@@ -313,15 +314,15 @@ export default function SolicitudFormDialog({
           {!editMode && modalMode === 'transferencia' && (
             <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
               <FormControl fullWidth>
-                <InputLabel id="trans-egreso-label">Proyecto EGRESO (desde)</InputLabel>
-                <Select labelId="trans-egreso-label" label="Proyecto EGRESO (desde)" value={transProyectoEgreso} onChange={(e) => setTransProyectoEgreso(e.target.value)}>
+                <InputLabel id="trans-egreso-label">{labelEntidad} EGRESO (desde)</InputLabel>
+                <Select labelId="trans-egreso-label" label={`${labelEntidad} EGRESO (desde)`} value={transProyectoEgreso} onChange={(e) => setTransProyectoEgreso(e.target.value)}>
                   <MenuItem value=""><em>(sin proyecto - "Sin asignar")</em></MenuItem>
                   {proyectos.map((p) => <MenuItem key={p.id} value={p.id}>{p.nombre}</MenuItem>)}
                 </Select>
               </FormControl>
               <FormControl fullWidth>
-                <InputLabel id="trans-ingreso-label">Proyecto INGRESO (hacia)</InputLabel>
-                <Select labelId="trans-ingreso-label" label="Proyecto INGRESO (hacia)" value={transProyectoIngreso} onChange={(e) => setTransProyectoIngreso(e.target.value)}>
+                <InputLabel id="trans-ingreso-label">{labelEntidad} INGRESO (hacia)</InputLabel>
+                <Select labelId="trans-ingreso-label" label={`${labelEntidad} INGRESO (hacia)`} value={transProyectoIngreso} onChange={(e) => setTransProyectoIngreso(e.target.value)}>
                   <MenuItem value=""><em>(sin proyecto - "Sin asignar")</em></MenuItem>
                   {proyectos.map((p) => <MenuItem key={p.id} value={p.id}>{p.nombre}</MenuItem>)}
                 </Select>

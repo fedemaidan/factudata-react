@@ -26,6 +26,7 @@ const BLOCK_TYPE_LABELS = {
   budget_vs_actual: 'Presupuesto vs Real',
   monthly_budget_control: 'Control Presupuestario Mensual',
   category_budget_matrix: 'Matriz de Presupuestos por Proyecto',
+  income_budget_control: 'Control de Ingresos CAC',
   chart: 'Gráfico',
   grouped_detail: 'Detalle por Grupo',
   balance_between_partners: 'Balance entre Socios',
@@ -270,6 +271,9 @@ const ReportEditor = ({
         break;
       case 'category_budget_matrix':
         detail = 'Categoria: ' + (block.categoria_objetivo || 'Todas') + ' · Por proyecto';
+        break;
+      case 'income_budget_control':
+        detail = 'Ingresos · presupuestado vs recibido · saldo CAC a hoy';
         break;
       case 'chart':
         detail = (block.chart_type || 'bar') + ' · Por ' + (block.agrupar_por || 'categoria');

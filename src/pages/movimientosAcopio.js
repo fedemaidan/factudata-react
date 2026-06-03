@@ -53,7 +53,7 @@ import { TOOLTIP_MOVIMIENTOS } from 'src/constant/tooltipTexts';
 const ENABLE_HOJA_UPLOAD = false;  // activar cuando backend listo
 const ENABLE_HOJA_DELETE = false;  // activar cuando backend listo
 
-function DonutChart({ va, vd, pct, codigo, proveedor, proyecto }) {
+function DonutChart({ va, vd, pct, codigo, proveedor, proyecto, contraparteLabel = 'Proveedor', sucursalLabel = 'Proyecto' }) {
   const r = 52;
   const cx = 70;
   const cy = 70;
@@ -83,9 +83,9 @@ function DonutChart({ va, vd, pct, codigo, proveedor, proyecto }) {
   <g transform="translate(24, 36)">
     <text x="0" y="0" font-size="11" fill="#999">Código</text>
     <text x="0" y="22" font-size="15" font-weight="bold" fill="#333">${escapeXml(codigo)}</text>
-    <text x="${colW}" y="0" font-size="11" fill="#999">Proveedor</text>
+    <text x="${colW}" y="0" font-size="11" fill="#999">${escapeXml(contraparteLabel)}</text>
     <text x="${colW}" y="22" font-size="15" font-weight="bold" fill="#333">${escapeXml(proveedor)}</text>
-    <text x="${colW * 2}" y="0" font-size="11" fill="#999">Proyecto</text>
+    <text x="${colW * 2}" y="0" font-size="11" fill="#999">${escapeXml(sucursalLabel)}</text>
     <text x="${colW * 2}" y="22" font-size="15" font-weight="bold" fill="#333">${escapeXml(proyecto)}</text>
   </g>
 
@@ -191,6 +191,8 @@ const MovimientosAcopioPage = () => {
   const [alert, setAlert] = useState({ open: false, message: '', severity: 'info' });
 
   const [acopio, setAcopio] = useState(null);
+  // Mapa sucursal_id → nombre para mostrar en detalle cuando el acopio es de corralón.
+  const [sucursalesMap, setSucursalesMap] = useState({});
   const [descripcionDialogOpen, setDescripcionDialogOpen] = useState(false);
   const [descripcionEdit, setDescripcionEdit] = useState('');
   const [guardandoDescripcion, setGuardandoDescripcion] = useState(false);
@@ -292,6 +294,18 @@ const MovimientosAcopioPage = () => {
       }
 
       setAcopio(acopioData);
+
+      // Si es acopio de corralón (tiene sucursal_id o contraparte_rol='cliente'),
+      // cargar sucursales para mapear ID → nombre.
+      if (acopioData?.empresa_id && (acopioData.sucursal_id || acopioData.contraparte_rol === 'cliente')) {
+        try {
+          const sucursalService = (await import('src/services/sucursalService')).default;
+          const list = await sucursalService.getByEmpresa(acopioData.empresa_id);
+          const map = {};
+          (list || []).forEach((s) => { map[s._id || s.id] = s.nombre; });
+          setSucursalesMap(map);
+        } catch (_) {}
+      }
 
       // Cargar eventos del historial
       setEventos(acopioData.eventos || []);
@@ -487,7 +501,13 @@ const MovimientosAcopioPage = () => {
       // Fila 2: Info del acopio
       ws.insertRow(2, []);
       ws.mergeCells('A2:D2');
-      ws.getCell('A2').value = `Proveedor: ${acopio.proveedor || '-'} | Proyecto: ${acopio.proyecto_nombre || '-'}`;
+      ws.getCell('A2').value = (() => {
+        const esCliente = acopio.contraparte_rol === 'cliente';
+        const labelCP = esCliente ? 'Cliente' : 'Proveedor';
+        const labelSec = esCliente ? 'Sucursal' : 'Proyecto';
+        const valSec = esCliente ? (sucursalesMap[acopio.sucursal_id] || '-') : (acopio.proyecto_nombre || '-');
+        return `${labelCP}: ${acopio.proveedor || '-'} | ${labelSec}: ${valSec}`;
+      })();
       ws.getCell('A2').font = { italic: true, size: 11 };
 
       // Fila 3: Saldo inicial destacado
@@ -619,8 +639,13 @@ const MovimientosAcopioPage = () => {
       wsResumen.addRow([]);
       wsResumen.addRow({ concepto: 'Código Acopio', valor: acopio.codigo });
       wsResumen.addRow({ concepto: 'Descripción', valor: acopio.descripcion || '-' });
-      wsResumen.addRow({ concepto: 'Proveedor', valor: acopio.proveedor || '-' });
-      wsResumen.addRow({ concepto: 'Proyecto', valor: acopio.proyecto_nombre || '-' });
+      wsResumen.addRow({ concepto: acopio.contraparte_rol === 'cliente' ? 'Cliente' : 'Proveedor', valor: acopio.proveedor || '-' });
+      wsResumen.addRow({
+        concepto: acopio.contraparte_rol === 'cliente' ? 'Sucursal' : 'Proyecto',
+        valor: acopio.contraparte_rol === 'cliente'
+          ? (sucursalesMap[acopio.sucursal_id] || '-')
+          : (acopio.proyecto_nombre || '-'),
+      });
       wsResumen.addRow([]);
 
       const valorAcopiadoRow = wsResumen.addRow({ concepto: 'Valor Acopiado', valor: saldoInicial });
@@ -920,6 +945,7 @@ const MovimientosAcopioPage = () => {
         {/* HEADER */}
         <HeaderAcopioSummary
           acopio={acopio}
+          sucursalesMap={sucursalesMap}
           porcentajeDisponible={porcentajeDisponible}
           onVolver={() => router.push(`/acopios?empresaId=${acopio?.empresaId || ''}`)}
           onEditar={handleEditAcopio}
@@ -1127,12 +1153,20 @@ const MovimientosAcopioPage = () => {
                     <Typography variant="body1" fontWeight="medium">{acopio.codigo || '—'}</Typography>
                   </Grid>
                   <Grid item xs={6} sm={3}>
-                    <Typography variant="caption" color="text.secondary">Proveedor</Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {acopio.contraparte_rol === 'cliente' ? 'Cliente' : 'Proveedor'}
+                    </Typography>
                     <Typography variant="body1" fontWeight="medium">{acopio.proveedor || '—'}</Typography>
                   </Grid>
                   <Grid item xs={6} sm={3}>
-                    <Typography variant="caption" color="text.secondary">Proyecto</Typography>
-                    <Typography variant="body1" fontWeight="medium">{acopio.proyecto_nombre || '—'}</Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {acopio.contraparte_rol === 'cliente' ? 'Sucursal' : 'Proyecto'}
+                    </Typography>
+                    <Typography variant="body1" fontWeight="medium">
+                      {acopio.contraparte_rol === 'cliente'
+                        ? (sucursalesMap[acopio.sucursal_id] || '—')
+                        : (acopio.proyecto_nombre || '—')}
+                    </Typography>
                   </Grid>
                   <Grid item xs={6} sm={3}>
                     <Typography variant="caption" color="text.secondary">Tipo</Typography>
@@ -1175,7 +1209,16 @@ const MovimientosAcopioPage = () => {
                         </Grid>
                       </Grid>
                       {vd > 0 && vd < va && (
-                        <DonutChart va={va} vd={vd} pct={porcentajeDisponible} codigo={acopio?.codigo} proveedor={acopio?.proveedor} proyecto={acopio?.proyecto_nombre} />
+                        <DonutChart
+                          va={va}
+                          vd={vd}
+                          pct={porcentajeDisponible}
+                          codigo={acopio?.codigo}
+                          proveedor={acopio?.proveedor}
+                          proyecto={acopio?.contraparte_rol === 'cliente' ? (sucursalesMap[acopio?.sucursal_id] || '—') : (acopio?.proyecto_nombre || '—')}
+                          contraparteLabel={acopio?.contraparte_rol === 'cliente' ? 'Cliente' : 'Proveedor'}
+                          sucursalLabel={acopio?.contraparte_rol === 'cliente' ? 'Sucursal' : 'Proyecto'}
+                        />
                       )}
                     </Stack>
                   </Box>
