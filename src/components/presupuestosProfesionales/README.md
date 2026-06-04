@@ -86,6 +86,20 @@ Los handlers viven en `presupuestosHandlers.js` como funciones puras:
 Los handlers `pp*` en `src/pages/presupuestosProfesionales.js` son thin
 wrappers que invocan estas funciones puras en `setPpForm((f) => ...)`.
 
+## Plantillas con valores preestablecidos
+
+Las plantillas (`PlantillaFormDialog` y el import por archivo) pueden, de forma
+**opcional**, preestablecer por subrubro `cantidad`, `monto` (valor unitario) y
+`unidad` — la misma estructura que usa el presupuesto. El rubro suelto (sin
+subrubros con valor) puede llevar un `monto` propio. Todos son opcionales: si no
+se completan, la plantilla funciona igual que antes (solo nombre + incidencia).
+
+Al aplicar la plantilla (`plantillaRubrosToPresupuestoRubros`), esos valores se
+transfieren al presupuesto y quedan **editables** antes de guardar. El backend
+(`importPresupuestoService`) intenta extraer columnas de precio/cantidad/unidad
+del archivo importado (Excel/PDF/imagen). No se inventan campos que el modelo de
+presupuesto no tenga.
+
 ## Largest remainder (Hamilton) en `incidenciaHelpers.js`
 
 Las funciones `distribuirMontosPorIncidencia` y
