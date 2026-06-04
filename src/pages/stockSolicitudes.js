@@ -41,6 +41,8 @@ import StockMovimientosService from 'src/services/stock/stockMovimientosService'
 import StockConfigService from 'src/services/stock/stockConfigService';
 import api from 'src/services/axiosConfig';
 import { getProyectosFromUser } from 'src/services/proyectosService';
+import sucursalService from 'src/services/sucursalService';
+import { getEmpresaById } from 'src/services/empresaService';
 import useDebouncedValue from 'src/hooks/useDebouncedValue';
 
 // Sub-componentes extraídos
@@ -117,6 +119,10 @@ export default function StockSolicitudes() {
 
   // ===== empresa cacheada (evita refetch en cada fetchAll)
   const [empresa, setEmpresa] = useState(null);
+  // Vertical corralón: cuando es corralón, "Proyecto" se reemplaza por "Sucursal"
+  // en todos los labels visibles. El state `proyectos` se reusa para cargar sucursales.
+  const esCorralon = empresa?.vertical === 'corralon';
+  const labelEntidad = esCorralon ? 'Sucursal' : 'Proyecto';
 
   // ===== valores de búsqueda con debounce (evita 1 request por tecla)
   const dfBuscar = useDebouncedValue(fBuscar, 400);
@@ -208,7 +214,22 @@ export default function StockSolicitudes() {
           setUsuarios([]);
         }
 
-        if (projsRes.status === 'fulfilled') {
+        // Para corralones, el concepto "Proyecto" en stock se reemplaza por "Sucursal".
+        // Cargamos sucursales en el state `proyectos` (reuso del campo) para no romper
+        // los componentes hijos. Los strings visibles los cambiamos según vertical.
+        const esCorralonEmpresa = empresa?.vertical === 'corralon';
+        if (esCorralonEmpresa) {
+          try {
+            const sucs = await sucursalService.getByEmpresa(empresa.id);
+            setProyectos(
+              (sucs ?? [])
+                .map((s) => ({ id: s?._id || s?.id, nombre: s?.nombre || '(sin nombre)' }))
+                .filter((s) => s.id)
+            );
+          } catch {
+            setProyectos([]);
+          }
+        } else if (projsRes.status === 'fulfilled') {
           setProyectos(
             (projsRes.value ?? [])
               .map((p) => ({ id: p?.id || p?._id || p?.proyecto_id || p?.codigo, nombre: p?.nombre || p?.name || '(sin nombre)' }))
@@ -231,7 +252,7 @@ export default function StockSolicitudes() {
     fTipo && { k: 'Tipo', v: `${fTipo} (${total})`, onDelete: () => setFTipo('') },
     fSubtipo && { k: 'Subtipo', v: `${fSubtipo} (${total})`, onDelete: () => setFSubtipo('') },
     fEstado && { k: 'Estado', v: fEstado.replace('_', ' '), onDelete: () => setFEstado('') },
-    fProyecto && { k: 'Proyecto', v: proyectos.find((p) => p.id === fProyecto)?.nombre || fProyecto, onDelete: () => setFProyecto('') },
+    fProyecto && { k: labelEntidad, v: proyectos.find((p) => p.id === fProyecto)?.nombre || fProyecto, onDelete: () => setFProyecto('') },
     fDesde && { k: 'Desde', v: fDesde, onDelete: () => setFDesde('') },
     fHasta && { k: 'Hasta', v: fHasta, onDelete: () => setFHasta('') },
   ].filter(Boolean);
@@ -478,10 +499,10 @@ export default function StockSolicitudes() {
         const proyEgresoId = transProyectoEgreso || null;
         const proyIngresoId = transProyectoIngreso || null;
         const proyEgresoNombre = proyEgresoId
-          ? (proyectos.find((p) => p.id === proyEgresoId)?.nombre || 'Proyecto desconocido')
+          ? (proyectos.find((p) => p.id === proyEgresoId)?.nombre || labelEntidad + ' desconocida')
           : 'Sin asignar';
         const proyIngresoNombre = proyIngresoId
-          ? (proyectos.find((p) => p.id === proyIngresoId)?.nombre || 'Proyecto desconocido')
+          ? (proyectos.find((p) => p.id === proyIngresoId)?.nombre || labelEntidad + ' desconocida')
           : 'Sin asignar';
 
         effectiveMovs = movs.flatMap((m) => {
@@ -504,7 +525,7 @@ export default function StockSolicitudes() {
         effectiveMovs = (movs || []).map((m) => {
           const proyectoId = m.proyecto_id || form.proyecto_id || null;
           const proyectoNombre = proyectoId
-            ? (proyectos.find((p) => p.id === proyectoId)?.nombre || m.proyecto_nombre || 'Proyecto desconocido')
+            ? (proyectos.find((p) => p.id === proyectoId)?.nombre || m.proyecto_nombre || labelEntidad + ' desconocida')
             : 'Sin asignar';
           return { ...m, proyecto_id: proyectoId, proyecto_nombre: proyectoNombre };
         });
@@ -823,8 +844,8 @@ export default function StockSolicitudes() {
                     </Select>
                   </FormControl>
                   <FormControl sx={{ minWidth: 200 }}>
-                    <InputLabel id="proyecto-label">Proyecto / Obra</InputLabel>
-                    <Select labelId="proyecto-label" label="Proyecto / Obra" value={fProyecto} onChange={(e) => { setFProyecto(e.target.value); setPage(0); }}>
+                    <InputLabel id="proyecto-label">{esCorralon ? 'Sucursal' : 'Proyecto / Obra'}</InputLabel>
+                    <Select labelId="proyecto-label" label={esCorralon ? 'Sucursal' : 'Proyecto / Obra'} value={fProyecto} onChange={(e) => { setFProyecto(e.target.value); setPage(0); }}>
                       <MenuItem value=""><em>— Todos —</em></MenuItem>
                       {proyectos.map((p) => <MenuItem key={p.id} value={p.id}>{p.nombre}</MenuItem>)}
                     </Select>
@@ -872,7 +893,7 @@ export default function StockSolicitudes() {
                     <TableCell><Stack direction="row" alignItems="center" spacing={1}><CalendarTodayIcon fontSize="small" /><span>Fecha</span></Stack></TableCell>
                     <TableCell><Stack direction="row" alignItems="center" spacing={1}><UpdateIcon fontSize="small" /><span>Actualizado</span></Stack></TableCell>
                     <TableCell align="right"><Stack direction="row" alignItems="center" spacing={1} justifyContent="flex-end"><InventoryIcon fontSize="small" /><span>Items</span></Stack></TableCell>
-                    <TableCell><Stack direction="row" alignItems="center" spacing={1}><FolderIcon fontSize="small" /><span>Proyectos</span></Stack></TableCell>
+                    <TableCell><Stack direction="row" alignItems="center" spacing={1}><FolderIcon fontSize="small" /><span>{esCorralon ? 'Sucursales' : 'Proyectos'}</span></Stack></TableCell>
                     <TableCell align="right">Acciones</TableCell>
                   </TableRow>
                 </TableHead>
@@ -1084,6 +1105,7 @@ export default function StockSolicitudes() {
         patchMov={patchMov}
         handleQuitarMov={handleQuitarMov}
         proyectos={proyectos}
+        labelEntidad={labelEntidad}
         transProyectoEgreso={transProyectoEgreso}
         setTransProyectoEgreso={setTransProyectoEgreso}
         transProyectoIngreso={transProyectoIngreso}
@@ -1116,6 +1138,7 @@ export default function StockSolicitudes() {
         onClose={() => setOpenAjusteModal(false)}
         onGuardar={handleGuardarAjuste}
         proyectos={proyectos}
+        labelEntidad={labelEntidad}
         user={user}
         loading={ajusteLoading}
       />
@@ -1126,6 +1149,7 @@ export default function StockSolicitudes() {
         onSuccess={() => { setSnackbar({ open: true, message: 'Ingreso desde factura creado exitosamente', severity: 'success' }); fetchAll(); }}
         user={user}
         proyectos={proyectos}
+        labelEntidad={labelEntidad}
       />
 
       <EgresoDesdeRemito
@@ -1134,6 +1158,7 @@ export default function StockSolicitudes() {
         onSuccess={() => { setSnackbar({ open: true, message: 'Egreso desde remito creado exitosamente', severity: 'success' }); fetchAll(); }}
         user={user}
         proyectos={proyectos}
+        labelEntidad={labelEntidad}
       />
 
       {/* ─── Confirmación de actualización de precio en catálogo ─── */}

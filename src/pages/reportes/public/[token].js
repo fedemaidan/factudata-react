@@ -73,6 +73,11 @@ function buildPublicFiltrosSchema(filtrosSchema = {}) {
   };
 }
 
+function reportHasIncomeBudgetControl(report) {
+  return Array.isArray(report?.layout)
+    && report.layout.some((block) => block?.type === 'income_budget_control');
+}
+
 function getSharedProjectFilters(report) {
   const ids = Array.isArray(report?.proyectos_compartidos)
     ? report.proyectos_compartidos.map((id) => String(id)).filter(Boolean)
@@ -211,6 +216,7 @@ const PublicReportPage = () => {
 
   const displayCurrencies = useMemo(() => {
     if (!report) return ['ARS'];
+    if (reportHasIncomeBudgetControl(report)) return ['ARS'];
     // Si los filtros runtime cambiaron la moneda equivalente, usar esos
     if (filters.moneda_equivalente?.length > 0) return filters.moneda_equivalente;
     const eq = report.filtros_schema?.moneda_equivalente;
@@ -244,10 +250,17 @@ const PublicReportPage = () => {
     return filterMovimientos(allMovimientos, filters);
   }, [allMovimientos, filters]);
 
-  const publicFiltrosSchema = useMemo(
-    () => buildPublicFiltrosSchema(report?.filtros_schema || {}),
-    [report?.filtros_schema],
-  );
+  const publicFiltrosSchema = useMemo(() => {
+    const base = buildPublicFiltrosSchema(report?.filtros_schema || {});
+    if (!reportHasIncomeBudgetControl(report)) return base;
+    return {
+      ...base,
+      moneda_equivalente: {
+        ...(base.moneda_equivalente || {}),
+        enabled: false,
+      },
+    };
+  }, [report]);
 
   const editableFilters = useMemo(
     () => omitLockedPublicFilters(filters),

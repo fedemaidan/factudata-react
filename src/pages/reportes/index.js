@@ -313,6 +313,26 @@ const TEMPLATES = [
     ],
   },
   {
+    nombre: 'Control Presupuesto Ingresos CAC',
+    descripcion: 'Presupuesto de ingreso, adicionales, pagos recibidos y saldo CAC valorizado a hoy',
+    display_currency: 'ARS',
+    datasets: { movimientos: true, presupuestos: true },
+    filtros_schema: {
+      fecha: { enabled: false },
+      proyectos: { enabled: true },
+      tipo: { enabled: false, default_value: 'ingreso' },
+      categorias: { enabled: false },
+      moneda_equivalente: { enabled: false, default_values: ['ARS'] },
+    },
+    layout: [
+      {
+        type: 'income_budget_control',
+        titulo: 'Control presupuesto ingresos',
+        campo_monto: 'subtotal',
+      },
+    ],
+  },
+  {
     nombre: 'Balance entre Socios',
     descripcion: 'Calcula cuanto aporto cada socio en movimientos y quien debe a quien para equilibrar aportes',
     display_currency: 'ARS',

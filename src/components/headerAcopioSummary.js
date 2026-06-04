@@ -24,7 +24,14 @@ export default function HeaderAcopioSummary({
   onRecalibrarImagenes,
   onRefrescar,
   isAdmin,
+  sucursalesMap = {},
 }) {
+  const esCliente = acopio?.contraparte_rol === 'cliente';
+  const labelContraparte = esCliente ? 'Cliente' : 'Proveedor';
+  const labelSecundaria = esCliente ? 'Sucursal' : 'Proyecto';
+  const valorSecundaria = esCliente
+    ? (sucursalesMap[acopio?.sucursal_id] || 'Sin asignar')
+    : (acopio?.proyecto_nombre || 'Sin asignar');
   const [moreAnchor, setMoreAnchor] = useState(null);
 
   return (
@@ -90,8 +97,8 @@ export default function HeaderAcopioSummary({
           flexWrap: 'wrap',
         }}
       >
-        <Kpi label="Proyecto"          value={acopio?.proyecto_nombre || 'Sin asignar'} />
-        <Kpi label="Proveedor"         value={acopio?.proveedor || '—'} />
+        <Kpi label={labelSecundaria}   value={valorSecundaria} />
+        <Kpi label={labelContraparte}  value={acopio?.proveedor || '—'} />
         <Kpi label="Valor Acopiado"    value={fmtCurrency(acopio?.valor_acopio)} />
         <Kpi label="Valor Desacopiado" value={fmtCurrency(acopio?.valor_desacopio)} />
         <Box sx={{ minWidth: 240, flex: 1 }}>

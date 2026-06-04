@@ -23,6 +23,7 @@ import Bars3Icon from "@heroicons/react/24/solid/Bars3Icon";
 import NavigateNextIcon from "@mui/icons-material/NavigateNext";
 import { useRouter } from "next/router";
 import { AgentLauncher } from "src/components/agent/AgentLauncher";
+import { SucursalSelector } from "src/components/sucursales/SucursalSelector";
 
 const SIDE_NAV_WIDTH = 280;
 const TOP_NAV_HEIGHT = 64;
@@ -166,6 +167,7 @@ export const TopNav = (props) => {
 
           {/* Lado derecho: Launcher IA + Acciones + Avatar */}
           <Stack alignItems="center" direction="row" spacing={2}>
+            <SucursalSelector />
             <AgentLauncher />
             {requiereCargarDatos && (
               <Button

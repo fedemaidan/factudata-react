@@ -35,7 +35,7 @@ const normalizePath = (path) => {
 const flattenModules = (groups) =>
   (groups || []).flatMap((group) =>
     (group.items || [])
-      .filter((item) => item.path && item.path !== '/agente')
+      .filter((item) => item.path && item.path !== '/agente' && !item.disabled)
       .map((item) => ({
         title: item.title,
         path: normalizePath(item.path),
