@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import PresupuestoProfesionalService from 'src/services/presupuestoProfesional/presupuestoProfesionalService';
 
+const numOrNull = (v) =>
+  v != null && v !== '' && !Number.isNaN(Number(v)) ? Number(v) : null;
+
 const mapRubrosImportados = (rubros = []) => {
   return (rubros || []).map((r) => ({
     nombre: r.nombre || '',
@@ -8,12 +11,16 @@ const mapRubrosImportados = (rubros = []) => {
       r.incidencia_pct_sugerida != null && !Number.isNaN(Number(r.incidencia_pct_sugerida))
         ? Number(r.incidencia_pct_sugerida)
         : null,
+    monto: numOrNull(r.monto),
     tareas: (r.tareas || []).map((t) => ({
       descripcion: t.descripcion || '',
       incidencia_pct_sugerida:
         t.incidencia_pct_sugerida != null && !Number.isNaN(Number(t.incidencia_pct_sugerida))
           ? Number(t.incidencia_pct_sugerida)
           : null,
+      monto: numOrNull(t.monto),
+      cantidad: numOrNull(t.cantidad),
+      unidad: typeof t.unidad === 'string' ? t.unidad : '',
     })),
   }));
 };

@@ -167,6 +167,27 @@ const emptyPlantilla = {
   notas: '',
 };
 
+// Helpers de valores preestablecidos en plantillas (misma semántica que el
+// presupuesto: monto = valor unitario, cantidad, unidad; el monto del rubro es
+// derivado si sus subrubros tienen valor).
+const plSumaEfectivaTareas = (tareas) =>
+  (tareas || []).reduce(
+    (s, t) => s + (Number(t.cantidad) || 1) * (Number(t.monto) || 0),
+    0
+  );
+
+const plParseMonto = (raw) => {
+  if (raw === '' || raw == null) return null;
+  const n = Number(raw);
+  return Number.isNaN(n) ? null : Math.max(0, Math.round(n * 100) / 100);
+};
+
+const plParseCantidad = (raw) => {
+  if (raw === '' || raw == null) return null;
+  const n = Math.max(0, Number(raw) || 0);
+  return n || null;
+};
+
 /* ================================================================
    Componente principal
    ================================================================ */
@@ -1167,12 +1188,16 @@ const PresupuestosProfesionales = () => {
           incidencia_pct_sugerida: r.incidencia_pct_sugerida != null && !Number.isNaN(Number(r.incidencia_pct_sugerida))
             ? Number(r.incidencia_pct_sugerida)
             : null,
+          monto: r.monto != null && !Number.isNaN(Number(r.monto)) ? Number(r.monto) : null,
           tareas: (r.tareas || []).map((t) => ({
             descripcion: t.descripcion || '',
             incidencia_pct_sugerida:
               t.incidencia_pct_sugerida != null && !Number.isNaN(Number(t.incidencia_pct_sugerida))
                 ? Number(t.incidencia_pct_sugerida)
                 : null,
+            monto: t.monto != null && !Number.isNaN(Number(t.monto)) ? Number(t.monto) : null,
+            cantidad: t.cantidad != null && !Number.isNaN(Number(t.cantidad)) ? Number(t.cantidad) : null,
+            unidad: typeof t.unidad === 'string' ? t.unidad : '',
           })),
         })),
       });
@@ -1223,6 +1248,7 @@ const PresupuestosProfesionales = () => {
             incidencia_pct_sugerida: r.incidencia_pct_sugerida != null && !Number.isNaN(Number(r.incidencia_pct_sugerida))
               ? Number(r.incidencia_pct_sugerida)
               : null,
+            monto: r.monto != null && !Number.isNaN(Number(r.monto)) ? Number(r.monto) : null,
             tareas: (r.tareas || [])
               .filter((t) => t.descripcion?.trim())
               .map((t) => ({
@@ -1231,6 +1257,9 @@ const PresupuestosProfesionales = () => {
                   t.incidencia_pct_sugerida != null && !Number.isNaN(Number(t.incidencia_pct_sugerida))
                     ? Number(t.incidencia_pct_sugerida)
                     : null,
+                monto: t.monto != null && !Number.isNaN(Number(t.monto)) ? Number(t.monto) : null,
+                cantidad: t.cantidad != null && !Number.isNaN(Number(t.cantidad)) ? Number(t.cantidad) : null,
+                unidad: t.unidad?.trim() || null,
               })),
           })),
       };
@@ -1275,7 +1304,7 @@ const PresupuestosProfesionales = () => {
       plFocusRef.current = { type: 'rubro', rubroIdx: f.rubros.length };
       return {
         ...f,
-        rubros: [...f.rubros, { nombre: '', tareas: [], incidencia_pct_sugerida: null }],
+        rubros: [...f.rubros, { nombre: '', tareas: [], incidencia_pct_sugerida: null, monto: null }],
       };
     });
   };
@@ -1311,7 +1340,10 @@ const PresupuestosProfesionales = () => {
       plFocusRef.current = { type: 'tarea', rubroIdx, tareaIdx: newTareaIdx };
       rubros[rubroIdx] = {
         ...rubros[rubroIdx],
-        tareas: [...(rubros[rubroIdx].tareas || []), { descripcion: '', incidencia_pct_sugerida: null }],
+        tareas: [
+          ...(rubros[rubroIdx].tareas || []),
+          { descripcion: '', incidencia_pct_sugerida: null, monto: null, cantidad: null, unidad: '' },
+        ],
       };
       return { ...f, rubros };
     });
@@ -1320,10 +1352,62 @@ const PresupuestosProfesionales = () => {
   const plRemoveTarea = (rubroIdx, tareaIdx) => {
     setPlForm((f) => {
       const rubros = [...f.rubros];
-      rubros[rubroIdx] = {
-        ...rubros[rubroIdx],
-        tareas: rubros[rubroIdx].tareas.filter((_, i) => i !== tareaIdx),
-      };
+      const tareas = rubros[rubroIdx].tareas.filter((_, i) => i !== tareaIdx);
+      const suma = plSumaEfectivaTareas(tareas);
+      rubros[rubroIdx] =
+        suma > 0
+          ? { ...rubros[rubroIdx], tareas, monto: suma }
+          : { ...rubros[rubroIdx], tareas };
+      return { ...f, rubros };
+    });
+  };
+
+  // Monto del rubro suelto (solo editable si los subrubros no tienen valor).
+  const plUpdateRubroMonto = (idx, raw) => {
+    setPlForm((f) => {
+      const rubros = [...f.rubros];
+      const rubro = rubros[idx];
+      if (plSumaEfectivaTareas(rubro.tareas) > 0) return f; // derivado: no-op
+      rubros[idx] = { ...rubro, monto: plParseMonto(raw) };
+      return { ...f, rubros };
+    });
+  };
+
+  // Valor unitario de un subrubro. Recalcula el monto del rubro si hay valor.
+  const plUpdateTareaMonto = (rubroIdx, tareaIdx, raw) => {
+    setPlForm((f) => {
+      const rubros = [...f.rubros];
+      const tareas = [...rubros[rubroIdx].tareas];
+      tareas[tareaIdx] = { ...tareas[tareaIdx], monto: plParseMonto(raw) };
+      const suma = plSumaEfectivaTareas(tareas);
+      rubros[rubroIdx] =
+        suma > 0
+          ? { ...rubros[rubroIdx], tareas, monto: suma }
+          : { ...rubros[rubroIdx], tareas };
+      return { ...f, rubros };
+    });
+  };
+
+  const plUpdateTareaCantidad = (rubroIdx, tareaIdx, raw) => {
+    setPlForm((f) => {
+      const rubros = [...f.rubros];
+      const tareas = [...rubros[rubroIdx].tareas];
+      tareas[tareaIdx] = { ...tareas[tareaIdx], cantidad: plParseCantidad(raw) };
+      const suma = plSumaEfectivaTareas(tareas);
+      rubros[rubroIdx] =
+        suma > 0
+          ? { ...rubros[rubroIdx], tareas, monto: suma }
+          : { ...rubros[rubroIdx], tareas };
+      return { ...f, rubros };
+    });
+  };
+
+  const plUpdateTareaUnidad = (rubroIdx, tareaIdx, value) => {
+    setPlForm((f) => {
+      const rubros = [...f.rubros];
+      const tareas = [...rubros[rubroIdx].tareas];
+      tareas[tareaIdx] = { ...tareas[tareaIdx], unidad: value };
+      rubros[rubroIdx] = { ...rubros[rubroIdx], tareas };
       return { ...f, rubros };
     });
   };
@@ -1667,10 +1751,14 @@ const PresupuestosProfesionales = () => {
         removeRubro={plRemoveRubro}
         updateRubroNombre={plUpdateRubroNombre}
         updateRubroIncidencia={plUpdateRubroIncidencia}
+        updateRubroMonto={plUpdateRubroMonto}
         addTarea={plAddTarea}
         removeTarea={plRemoveTarea}
         updateTarea={plUpdateTarea}
         updateTareaIncidencia={plUpdateTareaIncidencia}
+        updateTareaMonto={plUpdateTareaMonto}
+        updateTareaCantidad={plUpdateTareaCantidad}
+        updateTareaUnidad={plUpdateTareaUnidad}
         moveTarea={plMoveTarea}
         focusRef={plFocusRef}
       />

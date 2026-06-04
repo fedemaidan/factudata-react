@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import {
   Box,
   Button,
+  Chip,
   CircularProgress,
   Dialog,
   DialogActions,
@@ -10,6 +11,7 @@ import {
   Divider,
   FormControlLabel,
   IconButton,
+  InputAdornment,
   Paper,
   Stack,
   Switch,
@@ -21,12 +23,26 @@ import AddIcon from '@mui/icons-material/Add';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import DeleteIcon from '@mui/icons-material/Delete';
+import { formatNumberForInput, parseNumberInput } from './constants';
 
 const sumaIncidenciasPlantilla = (rubros) =>
   (rubros || []).reduce((s, r) => s + (Number(r.incidencia_pct_sugerida) || 0), 0);
 
 const sumaIncidenciasSubrubros = (tareas) =>
   (tareas || []).reduce((s, t) => s + (Number(t.incidencia_pct_sugerida) || 0), 0);
+
+// Σ (cantidad || 1) × valor unitario de los subrubros. Si > 0, el monto del
+// rubro es derivado; si es 0, el rubro suelto puede llevar un monto propio.
+const sumaEfectivaTareas = (tareas) =>
+  (tareas || []).reduce(
+    (s, t) => s + (Number(t.cantidad) || 1) * (Number(t.monto) || 0),
+    0
+  );
+
+const formatMontoPlantilla = (value) => {
+  const n = Number(value) || 0;
+  return `$ ${n.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+};
 
 const PlantillaFormDialog = ({
   open,
@@ -40,10 +56,14 @@ const PlantillaFormDialog = ({
   removeRubro,
   updateRubroNombre,
   updateRubroIncidencia,
+  updateRubroMonto,
   addTarea,
   removeTarea,
   updateTarea,
   updateTareaIncidencia,
+  updateTareaMonto,
+  updateTareaCantidad,
+  updateTareaUnidad,
   moveTarea,
   focusRef,
 }) => {
@@ -162,6 +182,47 @@ const PlantillaFormDialog = ({
                 sx={{ width: 100 }}
                 inputProps={{ min: 0, max: 100, step: 0.1 }}
               />
+              {(() => {
+                // Monto del rubro: derivado (chip) si los subrubros tienen valor;
+                // editable si es un rubro suelto sin desglose con valor.
+                const suma = sumaEfectivaTareas(rubro.tareas);
+                if (suma > 0) {
+                  return (
+                    <Tooltip title="Calculado a partir de los subrubros" placement="top" arrow>
+                      <Chip
+                        label={formatMontoPlantilla(rubro.monto)}
+                        size="small"
+                        sx={{
+                          minWidth: 110,
+                          height: 32,
+                          bgcolor: 'action.hover',
+                          fontWeight: 600,
+                          '& .MuiChip-label': { px: 1.25 },
+                        }}
+                      />
+                    </Tooltip>
+                  );
+                }
+                return (
+                  <TextField
+                    size="small"
+                    label="Monto (opc.)"
+                    value={formatNumberForInput(rubro.monto, 2)}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      if (raw === '') {
+                        updateRubroMonto?.(ri, '');
+                        return;
+                      }
+                      const v = parseNumberInput(raw);
+                      if (v !== null) updateRubroMonto?.(ri, v);
+                    }}
+                    sx={{ width: 130 }}
+                    InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment> }}
+                    inputProps={{ inputMode: 'decimal', autoComplete: 'off' }}
+                  />
+                );
+              })()}
               <Tooltip title="Eliminar rubro">
                 <IconButton size="small" color="error" onClick={() => removeRubro(ri)}>
                   <DeleteIcon fontSize="small" />
@@ -216,6 +277,93 @@ const PlantillaFormDialog = ({
                       }
                     }}
                   />
+                  {(() => {
+                    const cantidadNum = Number(tarea.cantidad) || 1;
+                    const efectivo = cantidadNum * (Number(tarea.monto) || 0);
+                    const tieneValor = (Number(tarea.monto) || 0) > 0 || tarea.cantidad != null;
+                    return (
+                      <>
+                        <TextField
+                          size="small"
+                          label="Unidad"
+                          placeholder="ej: m²"
+                          value={tarea.unidad || ''}
+                          onChange={(e) => updateTareaUnidad?.(ri, ti, e.target.value)}
+                          sx={{ width: 76 }}
+                          inputProps={{ autoComplete: 'off', maxLength: 12 }}
+                        />
+                        <Stack
+                          direction="row"
+                          alignItems="center"
+                          spacing={0.5}
+                          sx={{
+                            border: '1px solid',
+                            borderStyle: tieneValor ? 'solid' : 'dashed',
+                            borderColor: tieneValor ? 'primary.main' : 'action.disabledBackground',
+                            borderRadius: 1,
+                            px: 0.75,
+                            py: 0.25,
+                          }}
+                        >
+                          <TextField
+                            size="small"
+                            label="Cant."
+                            placeholder="1"
+                            value={tarea.cantidad != null ? formatNumberForInput(tarea.cantidad, 2) : ''}
+                            onChange={(e) => {
+                              const raw = e.target.value;
+                              if (raw === '') {
+                                updateTareaCantidad?.(ri, ti, '');
+                                return;
+                              }
+                              const v = parseNumberInput(raw);
+                              if (v !== null) updateTareaCantidad?.(ri, ti, v);
+                            }}
+                            sx={{ width: 62 }}
+                            inputProps={{ inputMode: 'decimal', autoComplete: 'off' }}
+                          />
+                          <Typography variant="caption" color="text.disabled" sx={{ px: 0.25 }}>
+                            ×
+                          </Typography>
+                          <TextField
+                            size="small"
+                            label={cantidadNum > 1 ? 'Val. unit.' : 'Precio'}
+                            placeholder="opcional"
+                            value={tarea.monto == null ? '' : formatNumberForInput(tarea.monto, 2)}
+                            onChange={(e) => {
+                              const raw = e.target.value;
+                              if (raw === '') {
+                                updateTareaMonto?.(ri, ti, '');
+                                return;
+                              }
+                              const v = parseNumberInput(raw);
+                              if (v !== null) updateTareaMonto?.(ri, ti, v);
+                            }}
+                            sx={{ width: 110 }}
+                            InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment> }}
+                            inputProps={{ inputMode: 'decimal', autoComplete: 'off' }}
+                          />
+                          {cantidadNum > 1 && efectivo > 0 && (
+                            <>
+                              <Typography variant="caption" color="text.secondary">=</Typography>
+                              <Chip
+                                label={formatMontoPlantilla(efectivo)}
+                                size="small"
+                                sx={{
+                                  fontWeight: 700,
+                                  fontSize: '0.68rem',
+                                  height: 22,
+                                  bgcolor: 'primary.main',
+                                  color: 'primary.contrastText',
+                                  '& .MuiChip-label': { px: 1 },
+                                }}
+                              />
+                            </>
+                          )}
+                        </Stack>
+                      </>
+                    );
+                  })()}
                   <TextField
                     size="small"
                     label="% rubro"

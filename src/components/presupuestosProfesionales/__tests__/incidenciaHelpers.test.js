@@ -129,6 +129,32 @@ describe('plantillaRubrosToPresupuestoRubros', () => {
     const result = plantillaRubrosToPresupuestoRubros(plantilla);
     expect(result[0].incidencia_objetivo_pct).toBeNull();
   });
+
+  test('transfiere valor unitario, cantidad y unidad preestablecidos de los subrubros', () => {
+    const plantilla = [
+      {
+        nombre: 'Mampostería',
+        tareas: [
+          { descripcion: 'Pared', cantidad: 10, monto: 5000, unidad: 'm²' },
+          { descripcion: 'Dintel', monto: 2000 },
+        ],
+      },
+    ];
+    const result = plantillaRubrosToPresupuestoRubros(plantilla);
+    expect(result[0].tareas[0]).toMatchObject({ cantidad: 10, monto: 5000, unidad: 'm²' });
+    expect(result[0].tareas[1]).toMatchObject({ cantidad: null, monto: 2000, unidad: '' });
+    // El monto del rubro es derivado: 10×5000 + 1×2000 = 52000
+    expect(result[0].monto).toBe(52000);
+  });
+
+  test('usa el monto del rubro suelto cuando los subrubros no tienen valor', () => {
+    const plantilla = [
+      { nombre: 'Varios', monto: 30000, tareas: [{ descripcion: 'Ajustes' }] },
+    ];
+    const result = plantillaRubrosToPresupuestoRubros(plantilla);
+    expect(result[0].monto).toBe(30000);
+    expect(result[0].tareas[0].monto).toBeNull();
+  });
 });
 
 describe('sumaIncidenciasObjetivo', () => {
