@@ -231,6 +231,7 @@ async function buildDefaultGroups({ user, empresa, permisosUsuario }) {
   if (user?.admin) {
     configItems.push({ title: "Configurar " + empresa.nombre, path: `empresa?empresaId=${empId}`, icon: icon(SettingsIcon) });
   }
+  configItems.push({ title: "Plantillas y logos", path: "/plantillas-pdf", icon: icon(AutoAwesomeRoundedIcon) });
   if (permisosUsuario.includes("ADMIN_USUARIOS")) {
     configItems.push({ title: "Administración", path: `/configuracionBasica/?empresaId=${empId}`, icon: icon(SettingsIcon) });
   }

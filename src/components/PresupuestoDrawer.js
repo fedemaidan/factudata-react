@@ -79,6 +79,13 @@ import {
 } from 'src/utils/presupuestoLegacy';
 import ClasificacionesPicker from 'src/components/ClasificacionesPicker';
 import ProveedoresMultiSelect from 'src/components/ProveedoresMultiSelect';
+import ExportarPdfMenu from 'src/components/plantillasPdf/ExportarPdfMenu';
+import { buildControlPresupuestoData } from 'src/utils/controlPresupuesto/buildControlPresupuestoData';
+
+const loadDefaultControlPresupuestoDoc = () =>
+  import('src/utils/controlPresupuesto/PdfControlPresupuestoDocument').then(
+    (m) => m.PdfControlPresupuestoDocument
+  );
 
 // Helper: calcular la fecha YYYY-MM del CAC aplicado (regla -2 meses)
 const calcularFechaCACAplicada = (fechaStr) => {
@@ -123,6 +130,7 @@ const PresupuestoDrawer = ({
   onSuccess,
   mode = 'crear',
   empresaId,
+  empresaNombre = '',
   proyectoId,
   userId,
   // Crear
@@ -2620,6 +2628,32 @@ const PresupuestoDrawer = ({
                           sx={{ cursor: 'pointer', fontSize: '0.65rem', height: 22 }}
                         />
                       </Tooltip>
+                    )}
+                    {presupuesto?.id && movimientosFiltrados.length > 0 && (
+                      <ExportarPdfMenu
+                        empresaId={empresaId}
+                        empresaNombre={empresaNombre}
+                        documentType="control_presupuesto"
+                        fileName={`control-presupuesto-${presupuesto.nombre || presupuesto.categoria || presupuesto.id}`}
+                        defaultDocumentLoader={loadDefaultControlPresupuestoDoc}
+                        buildData={() => {
+                          const obra = proyectos.find((p) => p.id === proyectoId)?.nombre || '';
+                          const label = presupuesto.label || presupuesto.nombre || presupuesto.categoria || 'Presupuesto';
+                          const contratista = presupuesto.proveedores?.[0]?.nombre || presupuesto.categoria || '';
+                          const esIngreso = presupuesto.tipo === 'ingreso';
+                          return buildControlPresupuestoData({
+                            movimientos: movimientosFiltrados,
+                            titulo: esIngreso ? 'RECIBO DE INGRESOS' : 'RECIBO DE PAGOS',
+                            presupuestoLabel: label,
+                            contratista,
+                            obra,
+                            empresaNombre,
+                            moneda: presupuesto.moneda_display || presupuesto.moneda || 'ARS',
+                            presupuestado: Number(presupuesto.monto || presupuesto.monto_ingresado || 0),
+                            tipo: esIngreso ? 'ingresos' : 'gastos',
+                          });
+                        }}
+                      />
                     )}
                   </Stack>
 
