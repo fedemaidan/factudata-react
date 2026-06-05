@@ -911,6 +911,12 @@ const LandingFunnelPage = () => {
 
                             <AtribucionTabla
                                 extraSteps={totales.extraSteps}
+                                prefix="lp"
+                                title="🧪 A/B de la landing (variante del hero)"
+                                dimLabel="variante"
+                            />
+                            <AtribucionTabla
+                                extraSteps={totales.extraSteps}
                                 prefix="src"
                                 title="🎯 Atribución por fuente"
                                 dimLabel="fuente"
