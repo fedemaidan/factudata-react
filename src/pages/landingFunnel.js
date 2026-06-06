@@ -927,6 +927,12 @@ const LandingFunnelPage = () => {
                                 title="📣 Atribución por campaña de Meta"
                                 dimLabel="campaña"
                             />
+                            <AtribucionTabla
+                                extraSteps={totales.extraSteps}
+                                prefix="content"
+                                title="🖼️ Atribución por anuncio"
+                                dimLabel="anuncio"
+                            />
 
                             <TablaDaily rows={rows} />
 
