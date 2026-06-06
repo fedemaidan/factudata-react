@@ -346,7 +346,7 @@ function AtribucionTabla({ extraSteps, prefix, title, dimLabel }) {
         <Card sx={{ borderLeft: '4px solid #8b5cf6' }}>
             <CardHeader
                 title={title}
-                subheader={`${rows.length} ${dimLabel}${rows.length > 1 ? 's' : ''} detectada${rows.length > 1 ? 's' : ''} — embudo por dimensión`}
+                subheader={`${rows.length} ${dimLabel}${rows.length > 1 ? 's' : ''} detectada${rows.length > 1 ? 's' : ''} — embudo por dimensión · vis = % sobre visitas · ant = % sobre paso anterior`}
             />
             <CardContent sx={{ pt: 0 }}>
                 <TableContainer component={Paper} variant="outlined">
@@ -372,13 +372,30 @@ function AtribucionTabla({ extraSteps, prefix, title, dimLabel }) {
                                         <TableCell>
                                             <Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 600 }}>{r.dim}</Typography>
                                         </TableCell>
-                                        {METRICAS.map(m => (
-                                            <TableCell key={m.key} align="right">
-                                                <Typography variant="body2" sx={{ color: (r[m.key] || 0) > 0 ? m.color : 'text.disabled', fontWeight: (r[m.key] || 0) > 0 ? 700 : 400 }}>
-                                                    {r[m.key] > 0 ? r[m.key].toLocaleString('es-AR') : '—'}
-                                                </Typography>
-                                            </TableCell>
-                                        ))}
+                                        {METRICAS.map((m, i) => {
+                                            const val = r[m.key] || 0;
+                                            const base = r.visita || 0;
+                                            // Paso anterior del embudo (según el orden de METRICAS)
+                                            const prevVal = i > 0 ? (r[METRICAS[i - 1].key] || 0) : 0;
+                                            const mostrar = m.key !== 'visita' && val > 0;
+                                            return (
+                                                <TableCell key={m.key} align="right">
+                                                    <Typography variant="body2" sx={{ color: val > 0 ? m.color : 'text.disabled', fontWeight: val > 0 ? 700 : 400 }}>
+                                                        {val > 0 ? val.toLocaleString('es-AR') : '—'}
+                                                    </Typography>
+                                                    {mostrar && base > 0 && (
+                                                        <Typography variant="caption" sx={{ display: 'block', lineHeight: 1.15, color: 'text.secondary' }}>
+                                                            vis {pct(val, base)}
+                                                        </Typography>
+                                                    )}
+                                                    {mostrar && prevVal > 0 && (
+                                                        <Typography variant="caption" sx={{ display: 'block', lineHeight: 1.15, color: 'text.disabled' }}>
+                                                            ant {pct(val, prevVal)}
+                                                        </Typography>
+                                                    )}
+                                                </TableCell>
+                                            );
+                                        })}
                                         <TableCell align="right">
                                             <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary' }}>{cr}</Typography>
                                         </TableCell>
