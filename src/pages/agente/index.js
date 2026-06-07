@@ -16,6 +16,7 @@ import {
 } from '@mui/material';
 import RestartAltRoundedIcon from '@mui/icons-material/RestartAltRounded';
 import SendRoundedIcon from '@mui/icons-material/SendRounded';
+import AttachFileRoundedIcon from '@mui/icons-material/AttachFileRounded';
 import AutoAwesomeRoundedIcon from '@mui/icons-material/AutoAwesomeRounded';
 import EditRoundedIcon from '@mui/icons-material/EditRounded';
 import CheckCircleRoundedIcon from '@mui/icons-material/CheckCircleRounded';
@@ -33,8 +34,10 @@ const AgentChatPage = () => {
   const router = useRouter();
   const inputRef = useRef(null);
   const scrollRef = useRef(null);
+  const fileInputRef = useRef(null);
   const consumedQueryRef = useRef(null);
   const [draft, setDraft] = useState('');
+  const [attachedFiles, setAttachedFiles] = useState([]);
   const [confirmingReset, setConfirmingReset] = useState(false);
 
   const {
@@ -79,12 +82,31 @@ const AgentChatPage = () => {
     router.replace('/agente', undefined, { shallow: true });
   }, [router, hasLoadedHistory, sendMessage]);
 
+  const canAttach = !!specialists?.corralon;
+  const ATTACH_ACCEPT = 'image/*,application/pdf';
+  const MAX_ATTACHMENTS = 10;
+
   const handleSend = useCallback(() => {
     const value = draft.trim();
-    if (!value || isSending) return;
+    if ((!value && attachedFiles.length === 0) || isSending) return;
     setDraft('');
-    sendMessage(value);
-  }, [draft, isSending, sendMessage]);
+    const files = attachedFiles;
+    setAttachedFiles([]);
+    sendMessage(value, files);
+  }, [draft, attachedFiles, isSending, sendMessage]);
+
+  const handleFilesSelected = useCallback((e) => {
+    const picked = Array.from(e.target.files || []);
+    if (picked.length) {
+      setAttachedFiles((prev) => [...prev, ...picked].slice(0, MAX_ATTACHMENTS));
+    }
+    // Permite volver a elegir el mismo archivo si lo quitan y re-agregan.
+    e.target.value = '';
+  }, []);
+
+  const handleRemoveFile = useCallback((idx) => {
+    setAttachedFiles((prev) => prev.filter((_, i) => i !== idx));
+  }, []);
 
   const handleKeyDown = useCallback(
     (e) => {
@@ -345,6 +367,28 @@ const AgentChatPage = () => {
           }}
         >
           <Container maxWidth="md" disableGutters>
+            {attachedFiles.length > 0 ? (
+              <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mb: 1 }}>
+                {attachedFiles.map((f, i) => (
+                  <Chip
+                    key={`${f.name}-${i}`}
+                    size="small"
+                    icon={<AttachFileRoundedIcon />}
+                    label={f.name}
+                    onDelete={() => handleRemoveFile(i)}
+                    disabled={isSending}
+                  />
+                ))}
+              </Stack>
+            ) : null}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept={ATTACH_ACCEPT}
+              multiple
+              hidden
+              onChange={handleFilesSelected}
+            />
             <Box
               sx={{
                 display: 'flex',
@@ -362,6 +406,20 @@ const AgentChatPage = () => {
                 },
               }}
             >
+              {canAttach ? (
+                <Tooltip title="Adjuntar remito o comprobante (foto/PDF)">
+                  <span>
+                    <IconButton
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={isSending}
+                      sx={{ alignSelf: 'flex-end', color: 'text.secondary', width: 36, height: 36 }}
+                      aria-label="Adjuntar archivo"
+                    >
+                      <AttachFileRoundedIcon fontSize="small" />
+                    </IconButton>
+                  </span>
+                </Tooltip>
+              ) : null}
               <TextField
                 inputRef={inputRef}
                 value={draft}
@@ -378,7 +436,7 @@ const AgentChatPage = () => {
               />
               <IconButton
                 onClick={handleSend}
-                disabled={isSending || !draft.trim()}
+                disabled={isSending || (!draft.trim() && attachedFiles.length === 0)}
                 sx={{
                   background: (t) =>
                     `linear-gradient(135deg, ${t.palette.primary.main} 0%, ${t.palette.primary.dark} 100%)`,

@@ -99,9 +99,7 @@ function DashboardContent({ empresa }) {
       const [cl, res, acs, vts] = await Promise.all([
         clienteService.getByEmpresa(empresaId).catch(() => []),
         clienteService.getResumenFinanciero(empresaId).catch(() => []),
-        acopioService.getByEmpresa
-          ? acopioService.getByEmpresa(empresaId).catch(() => [])
-          : Promise.resolve([]),
+        acopioService.listarAcopios(empresaId).catch(() => []),
         ventaService.listar(empresaId, { sucursal_id: sucursalId || undefined }).catch(() => []),
       ]);
       setClientes(cl || []);
@@ -441,7 +439,7 @@ function DashboardContent({ empresa }) {
               <TableBody>
                 {acopiosFiltrados.slice(0, 10).map((a) => (
                   <TableRow key={a._id || a.id} hover>
-                    <TableCell>{a.contraparte_nombre || a.proveedor_nombre || '—'}</TableCell>
+                    <TableCell>{a.proveedor || a.contraparte_nombre || a.proveedor_nombre || '—'}</TableCell>
                     <TableCell>
                       <Chip
                         size="small"
@@ -449,7 +447,7 @@ function DashboardContent({ empresa }) {
                         variant="outlined"
                       />
                     </TableCell>
-                    <TableCell align="right">{formatCurrencyWithCode(a.saldo || 0)}</TableCell>
+                    <TableCell align="right">{formatCurrencyWithCode(a.totalValor ?? a.saldo ?? 0)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

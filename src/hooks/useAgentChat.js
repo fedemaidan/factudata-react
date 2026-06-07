@@ -103,18 +103,31 @@ export function useAgentChat() {
     }
   }, [state.hasLoadedHistory, state.isLoadingHistory]);
 
-  const sendMessage = useCallback(async (text) => {
+  const sendMessage = useCallback(async (text, files) => {
     const trimmed = (text || '').trim();
-    if (!trimmed || inFlightRef.current) return;
+    const fileList = Array.isArray(files) ? files.filter(Boolean) : [];
+    // Permitimos enviar si hay texto O al menos un archivo adjunto.
+    if ((!trimmed && fileList.length === 0) || inFlightRef.current) return;
     inFlightRef.current = true;
     const optimisticMessage = {
       role: 'user',
-      content: trimmed,
+      content: trimmed || '📎 Comprobante adjunto',
       createdAt: new Date().toISOString(),
     };
     dispatch({ type: 'send:start', payload: { optimisticMessage } });
     try {
-      const { data } = await api.post('/agent/chat', { message: trimmed });
+      let data;
+      if (fileList.length > 0) {
+        const form = new FormData();
+        if (trimmed) form.append('message', trimmed);
+        fileList.forEach((file) => form.append('archivos', file));
+        // No seteamos Content-Type: el browser agrega el boundary del multipart.
+        ({ data } = await api.post('/agent/chat', form, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        }));
+      } else {
+        ({ data } = await api.post('/agent/chat', { message: trimmed }));
+      }
       dispatch({
         type: 'send:success',
         payload: {

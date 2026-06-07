@@ -22,11 +22,21 @@ const REPORTES_ACTIONS = [
   'CREAR_INGRESO',
 ];
 
+// Espejo de CONVERSATIONAL_CORRALON_PERMISOS (backend utils/acciones.js).
+// El gate de corralón exige además empresa.vertical === 'corralon'.
+const CORRALON_ACTIONS = [
+  'VER_CAJAS',
+  'GESTIONAR_MOVIMIENTO',
+  'CREAR_INGRESO',
+  'LISTAR_MOVIMIENTOS',
+];
+
 const NO_SPECIALISTS = {
   movimiento: false,
   reportes: false,
   presupuestos_profesionales: false,
   presupuestos: false,
+  corralon: false,
 };
 
 const hasAny = (acciones, list) => list.some((a) => acciones.includes(a));
@@ -39,7 +49,7 @@ const hasAny = (acciones, list) => list.some((a) => acciones.includes(a));
  */
 export function useAgenteSpecialists() {
   const { canUse } = useAgenteAccess();
-  const { permisos, loading } = useDashboardNavGroups();
+  const { permisos, empresa, loading } = useDashboardNavGroups();
 
   return useMemo(() => {
     if (!canUse) {
@@ -48,6 +58,7 @@ export function useAgenteSpecialists() {
     const acciones = Array.isArray(permisos) ? permisos : [];
     const esAdmin =
       acciones.includes('VER_CAJAS') && !acciones.includes('CREAR_EGRESO_SIMPLIFICADO');
+    const esCorralon = empresa?.vertical === 'corralon';
     return {
       loading,
       specialists: {
@@ -55,7 +66,8 @@ export function useAgenteSpecialists() {
         reportes: hasAny(acciones, REPORTES_ACTIONS),
         presupuestos_profesionales: acciones.includes('VER_PRESUPUESTOS_PROFESIONALES'),
         presupuestos: esAdmin,
+        corralon: esCorralon && hasAny(acciones, CORRALON_ACTIONS),
       },
     };
-  }, [canUse, permisos, loading]);
+  }, [canUse, permisos, empresa, loading]);
 }
