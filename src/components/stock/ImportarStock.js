@@ -42,7 +42,68 @@ const ImportarStock = ({
   const [materialesNuevos, setMaterialesNuevos] = useState([]);
   const [showMaterialesNuevos, setShowMaterialesNuevos] = useState(false);
   const [crearMateriales, setCrearMateriales] = useState(false);
+  const [preciosPreview, setPreciosPreview] = useState([]); // cambios de precio detectados
+  const [preciosAplicados, setPreciosAplicados] = useState(0); // cantidad de precios actualizados
   const fileInputRef = useRef();
+  // Lista completa de materiales del sistema (se carga al procesar el archivo).
+  // Permite importar/conciliar materiales aunque no estén en la página visible de la grilla.
+  const materialesSistemaRef = useRef([]);
+
+  // Materiales del sistema a usar para conciliar: la lista completa si ya se cargó,
+  // o el prop (página actual) como fallback.
+  const getMats = () => (materialesSistemaRef.current.length ? materialesSistemaRef.current : materiales);
+
+  // Trae TODOS los materiales de la empresa paginando (igual que la exportación).
+  const fetchAllMateriales = async (empresaId) => {
+    const acumulados = [];
+    let pageIdx = 0;
+    for (let i = 0; i < 200; i++) {
+      const resp = await StockMaterialesService.listarMateriales({
+        empresa_id: empresaId,
+        limit: 200,
+        page: pageIdx,
+        sort: 'nombre:asc',
+        export_all: true,
+      });
+      const items = resp.items || [];
+      acumulados.push(...items);
+      const total = Number(resp.total) || acumulados.length;
+      if (acumulados.length >= total || items.length === 0 || !resp.hasMore) break;
+      pageIdx += 1;
+    }
+    return acumulados;
+  };
+
+  // Parsea el valor de la columna "Precio Unitario". Devuelve null si está vacío.
+  const parsePrecio = (value) => {
+    if (value === undefined || value === null) return null;
+    const str = String(value).trim();
+    if (str === '') return null;
+    // Soportar miles/decimales: quitar separadores de miles y normalizar coma decimal
+    const limpio = str.replace(/\s/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.');
+    const num = Number(limpio);
+    return Number.isFinite(num) && num >= 0 ? num : null;
+  };
+
+  // Detecta cambios de precio (deduplicados por material) comparando el Excel vs el sistema.
+  const computePriceUpdates = (ajustes) => {
+    const map = new Map();
+    (ajustes || []).forEach((a) => {
+      if (!a.materialId || a.precioExcel == null) return;
+      if (map.has(a.materialId)) return; // un solo cambio por material
+      const mat = getMats().find(m => m._id === a.materialId);
+      const precioSistema = mat?.precio_unitario != null ? Number(mat.precio_unitario) : null;
+      // Sin cambio si coinciden
+      if (precioSistema != null && precioSistema === Number(a.precioExcel)) return;
+      map.set(a.materialId, {
+        materialId: a.materialId,
+        materialNombre: a.materialNombre,
+        precioSistema,
+        precioExcel: Number(a.precioExcel),
+      });
+    });
+    return Array.from(map.values());
+  };
 
   const steps = ['Seleccionar archivo', 'Materiales nuevos', 'Revisar cambios', 'Confirmar ajustes'];
 
@@ -59,11 +120,27 @@ const ImportarStock = ({
     setAjustesPreview([]);
     setMaterialesNuevos([]);
     setShowMaterialesNuevos(false);
+    setPreciosPreview([]);
 
     try {
       const data = await readExcelFile(file);
+
+      // Cargar la lista COMPLETA de materiales del sistema para conciliar
+      // (no solo la página visible de la grilla). Clave para importar el catálogo completo.
+      try {
+        const empresa = await getEmpresaDetailsFromUser(user);
+        const all = await fetchAllMateriales(empresa.id);
+        materialesSistemaRef.current = all && all.length ? all : materiales;
+      } catch (e) {
+        console.warn('No se pudo cargar la lista completa de materiales, se usa la página actual:', e);
+        materialesSistemaRef.current = materiales;
+      }
+
       const result = validateAndProcessData(data);
-      
+
+      // Cambios de precio (sobre materiales existentes con ID)
+      setPreciosPreview(computePriceUpdates(result.ajustes));
+
       if (result.errores.length > 0) {
         setErrores(result.errores);
         setActiveStep(0);
@@ -120,7 +197,7 @@ const ImportarStock = ({
       // Manejar proyecto especial "Sin asignar"
       if (ajusteExcel.proyectoNombre === 'Sin asignar') {
         // Buscar el material en el sistema
-        const materialSistema = materiales.find(m => m._id === ajusteExcel.materialId);
+        const materialSistema = getMats().find(m => m._id === ajusteExcel.materialId);
         
         // Si no encontramos el material en la lista local, es porque es recién creado
         if (!materialSistema && ajusteExcel.materialId) {
@@ -175,7 +252,7 @@ const ImportarStock = ({
       }
 
       // Buscar el material en el sistema
-      const materialSistema = materiales.find(m => m._id === ajusteExcel.materialId);
+      const materialSistema = getMats().find(m => m._id === ajusteExcel.materialId);
       
       // Si no encontramos el material en la lista local, es porque es recién creado
       if (!materialSistema && ajusteExcel.materialId) {
@@ -249,6 +326,7 @@ const ImportarStock = ({
           categoria: material.categoria || null,
           subcategoria: material.subcategoria || null,
           alias: null, // Array o null, según el helper
+          precio_unitario: material.precioExcel != null ? material.precioExcel : null,
           empresa_nombre: empresa.nombre || null // Usar empresa.nombre
         };
 
@@ -425,7 +503,8 @@ const ImportarStock = ({
         const subcategoria = row['Subcategoría']?.toString().trim() || ''; // Opcional
         const sku = row['SKU']?.toString().trim() || '';
         const descripcion = row['Descripción']?.toString().trim() || ''; // Opcional
-        
+        const precioExcel = parsePrecio(row['Precio Unitario']); // Opcional (null si vacío)
+
         // Si no tiene ID de material, es un material nuevo potencial
         if (!materialId) {
           if (!materialNombre) {
@@ -450,13 +529,14 @@ const ImportarStock = ({
             subcategoria,
             sku,
             descripcion,
+            precioExcel,
             stockExcel,
             proyectoNombre,
             fila: row
           });
           return; // No procesamos como ajuste todavía
         }
-        
+
         const ajuste = {
           materialId,
           materialNombre,
@@ -464,6 +544,7 @@ const ImportarStock = ({
           subcategoria,
           sku,
           descripcion,
+          precioExcel,
           stockExcel,
           proyectoNombre,
           lineNumber
@@ -486,7 +567,7 @@ const ImportarStock = ({
         }
 
         // Validar que el material existe en el sistema
-        const materialExistente = materiales.find(m => m._id === materialId);
+        const materialExistente = getMats().find(m => m._id === materialId);
         if (!materialExistente) {
           errores.push(`Línea ${lineNumber}: Material con ID ${materialId} no existe en el sistema`);
           return;
@@ -522,12 +603,34 @@ const ImportarStock = ({
       }));
       
       const ajustesOmitidos = ajustesPreview.length - ajustesValidos.length;
-      
+
       console.log(`🚀 Enviando ${ajustesValidos.length} ajustes al padre (${ajustesOmitidos} omitidos por diferencia 0):`, ajustesConEmpresa);
-      
-      await onConfirmAjustes(ajustesConEmpresa);
+
+      // 1) Aplicar cambios de precio (atributo a nivel material, independiente del stock)
+      let preciosOk = 0;
+      const erroresPrecio = [];
+      for (const p of preciosPreview) {
+        try {
+          await StockMaterialesService.actualizarMaterial(p.materialId, { precio_unitario: p.precioExcel });
+          preciosOk += 1;
+        } catch (e) {
+          console.error('Error actualizando precio:', p, e);
+          erroresPrecio.push(`${p.materialNombre}: ${e?.response?.data?.error?.message || e.message}`);
+        }
+      }
+      setPreciosAplicados(preciosOk);
+
+      // 2) Aplicar ajustes de stock (si hay)
+      if (ajustesConEmpresa.length > 0) {
+        await onConfirmAjustes(ajustesConEmpresa);
+      }
+
+      if (erroresPrecio.length > 0) {
+        setErrores([`Se actualizaron ${preciosOk} precios. Errores en otros: ${erroresPrecio.join('; ')}`]);
+      }
+
       setActiveStep(3);
-      
+
       // Auto-cerrar después de 3 segundos
       setTimeout(() => {
         handleClose();
@@ -549,6 +652,8 @@ const ImportarStock = ({
     setMaterialesNuevos([]);
     setShowMaterialesNuevos(false);
     setCrearMateriales(false);
+    setPreciosPreview([]);
+    setPreciosAplicados(0);
     setProcessing(false);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -700,17 +805,54 @@ const ImportarStock = ({
               </Alert>
 
               <Box display="flex" gap={1} mb={2}>
-                <Chip 
-                  label={`${totalIngresos} Ingresos`} 
-                  color="success" 
-                  size="small" 
+                <Chip
+                  label={`${totalIngresos} Ingresos`}
+                  color="success"
+                  size="small"
                 />
-                <Chip 
-                  label={`${totalEgresos} Egresos`} 
-                  color="error" 
-                  size="small" 
+                <Chip
+                  label={`${totalEgresos} Egresos`}
+                  color="error"
+                  size="small"
                 />
+                {preciosPreview.length > 0 && (
+                  <Chip
+                    label={`${preciosPreview.length} cambios de precio`}
+                    color="info"
+                    size="small"
+                  />
+                )}
               </Box>
+
+              {/* Cambios de precio detectados */}
+              {preciosPreview.length > 0 && (
+                <Paper variant="outlined" sx={{ maxHeight: 220, overflow: 'auto', mb: 2 }}>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Material (precio)</TableCell>
+                        <TableCell align="right">Precio Sistema</TableCell>
+                        <TableCell align="right">Precio Excel</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {preciosPreview.map((p, idx) => (
+                        <TableRow key={`precio-${idx}`}>
+                          <TableCell>{p.materialNombre}</TableCell>
+                          <TableCell align="right">
+                            {p.precioSistema != null
+                              ? `$${Number(p.precioSistema).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                              : '—'}
+                          </TableCell>
+                          <TableCell align="right">
+                            <strong>${Number(p.precioExcel).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </Paper>
+              )}
 
               <Paper sx={{ maxHeight: 400, overflow: 'auto' }}>
                 <Table size="small">
@@ -789,7 +931,8 @@ const ImportarStock = ({
                 Ajustes procesados exitosamente
               </Typography>
               <Typography color="text.secondary">
-                Se han creado {ajustesValidos.length} movimientos de ajuste.
+                Se han creado {ajustesValidos.length} movimientos de ajuste
+                {preciosAplicados > 0 && ` y se actualizaron ${preciosAplicados} precios`}.
                 El diálogo se cerrará automáticamente.
               </Typography>
             </Box>
@@ -805,10 +948,12 @@ const ImportarStock = ({
           <Button
             onClick={handleConfirmAjustes}
             variant="contained"
-            disabled={processing || ajustesPreview.length === 0}
+            disabled={processing || (ajustesValidos.length === 0 && preciosPreview.length === 0)}
             startIcon={processing ? <CircularProgress size={16} /> : <CheckCircleIcon />}
           >
-            {processing ? 'Procesando...' : `Confirmar ${ajustesPreview.length} ajustes`}
+            {processing
+              ? 'Procesando...'
+              : `Confirmar ${ajustesValidos.length} ajustes${preciosPreview.length > 0 ? ` + ${preciosPreview.length} precios` : ''}`}
           </Button>
         )}
       </DialogActions>

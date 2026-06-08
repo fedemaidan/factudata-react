@@ -51,6 +51,9 @@ const StockMaterialesService = {
       ...(raw.sucursal_id ? { sucursal_id: String(raw.sucursal_id) } : {}),
       ...(raw.con_disponible ? { con_disponible: 'true' } : {}),
 
+      // export_all: el back devuelve TODOS los materiales (sin paginar) para exportar/importar catálogo
+      ...(raw.export_all ? { export_all: 'true' } : {}),
+
       sort: (typeof raw.sort === 'string' && raw.sort.includes(':')) ? raw.sort : 'nombre:asc',
       limit: Number.isFinite(raw.limit) ? Number(raw.limit) : 50,
       page: Number.isFinite(raw.page) ? Number(raw.page) : 0,

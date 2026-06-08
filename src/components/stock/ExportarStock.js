@@ -41,28 +41,71 @@ const ExportarStock = ({
 
       let materialesToExport = materiales;
 
-      // Si hay filtros activos y la paginación es server-side, traer todo para exportar
-      if (exportFilters && exportFilters.enabled) {
-        const resp = await StockMaterialesService.listarMateriales({
+      // Para "Catálogo" / "Todos los proyectos" o cuando hay filtros activos,
+      // traemos TODOS los materiales del backend paginando (no solo la página actual).
+      const necesitaTodos =
+        selectedProyecto === 'CATALOGO' ||
+        selectedProyecto === 'TODOS' ||
+        (exportFilters && exportFilters.enabled);
+
+      if (necesitaTodos) {
+        const baseParams = {
           empresa_id: empresa.id,
           limit: 200,
-          page: 0,
-          sort: exportFilters.sort || 'nombre:asc',
-          stockFilter: exportFilters.stockFilter || 'all',
-          estadoEntrega: exportFilters.estadoEntrega || 'all',
-          categoria: exportFilters.categoria || undefined,
-          subcategoria: exportFilters.subcategoria || undefined,
-          sin_categoria: exportFilters.sin_categoria ? true : undefined,
-          text: exportFilters.text || undefined,
-          export_all: true
-        });
-        materialesToExport = resp.items || [];
+          sort: exportFilters?.sort || 'nombre:asc',
+          // El catálogo exporta SIEMPRE todos los materiales (sin filtros de la grilla)
+          ...(selectedProyecto === 'CATALOGO' ? {} : {
+            stockFilter: exportFilters?.stockFilter || 'all',
+            estadoEntrega: exportFilters?.estadoEntrega || 'all',
+            categoria: exportFilters?.categoria || undefined,
+            subcategoria: exportFilters?.subcategoria || undefined,
+            sin_categoria: exportFilters?.sin_categoria ? true : undefined,
+            text: exportFilters?.text || undefined,
+          }),
+          export_all: true,
+        };
+
+        const acumulados = [];
+        let pageIdx = 0;
+        // Tope de seguridad para no entrar en bucle infinito
+        for (let i = 0; i < 200; i++) {
+          const resp = await StockMaterialesService.listarMateriales({ ...baseParams, page: pageIdx });
+          const items = resp.items || [];
+          acumulados.push(...items);
+          const total = Number(resp.total) || acumulados.length;
+          if (acumulados.length >= total || items.length === 0 || !resp.hasMore) break;
+          pageIdx += 1;
+        }
+        materialesToExport = acumulados;
       }
       
+      // Helper: precio unitario del material (vacío si no tiene)
+      const precioDe = (material) => (material.precio_unitario != null ? material.precio_unitario : '');
+
       // Preparar datos para el Excel
       let dataToExport = [];
-      
-      if (selectedProyecto === 'TODOS') {
+
+      if (selectedProyecto === 'CATALOGO') {
+        // Catálogo: una fila por material (sin desglose por proyecto).
+        // Pensado para revisar/actualizar PRECIOS de todos los materiales de una.
+        // Proyecto = "Sin asignar" + Stock Actual del stock sin asignar para que,
+        // al reimportar, no se generen movimientos de stock si solo se tocó el precio.
+        dataToExport = materialesToExport.map(material => {
+          const stockSinAsignarProyecto = material.porProyecto?.find(p => p.proyecto_id === 'SIN_ASIGNAR' || p.proyecto_id === null);
+          const stockSinAsignar = stockSinAsignarProyecto?.stock || 0;
+          return {
+            'ID Material': material._id,
+            'Nombre': material.nombre || '',
+            'Categoría': material.categoria || '',
+            'Subcategoría': material.subcategoria || '',
+            'SKU': material.SKU || '',
+            'Descripción': material.desc_material || '',
+            'Precio Unitario': precioDe(material),
+            'Stock Actual': stockSinAsignar,
+            'Proyecto': 'Sin asignar'
+          };
+        });
+      } else if (selectedProyecto === 'TODOS') {
         // Exportar todos los proyectos: crear una fila por cada combinación material-proyecto
         // TODOS los materiales deben aparecer para TODOS los proyectos (incluso con stock 0)
         materialesToExport.forEach(material => {
@@ -78,6 +121,7 @@ const ExportarStock = ({
               'Subcategoría': material.subcategoria || '',
               'SKU': material.SKU || '',
               'Descripción': material.desc_material || '',
+              'Precio Unitario': precioDe(material),
               'Stock Actual': stockActual,
               'Proyecto': proyecto.nombre
             });
@@ -95,6 +139,7 @@ const ExportarStock = ({
             'Subcategoría': material.subcategoria || '',
             'SKU': material.SKU || '',
             'Descripción': material.desc_material || '',
+            'Precio Unitario': precioDe(material),
             'Stock Actual': stockSinAsignar,
             'Proyecto': 'Sin asignar'
           });
@@ -113,6 +158,7 @@ const ExportarStock = ({
             'Subcategoría': material.subcategoria || '',
             'SKU': material.SKU || '',
             'Descripción': material.desc_material || '',
+            'Precio Unitario': precioDe(material),
             'Stock Actual': stockSinAsignar,
             'Proyecto': 'Sin asignar'
           };
@@ -131,6 +177,7 @@ const ExportarStock = ({
             'Subcategoría': material.subcategoria || '',
             'SKU': material.SKU || '',
             'Descripción': material.desc_material || '',
+            'Precio Unitario': precioDe(material),
             'Stock Actual': stockActual,
             'Proyecto': proyectoSeleccionado?.nombre || 'Proyecto desconocido'
           };
@@ -149,6 +196,7 @@ const ExportarStock = ({
         { wch: 20 }, // Subcategoría
         { wch: 15 }, // SKU
         { wch: 40 }, // Descripción
+        { wch: 14 }, // Precio Unitario
         { wch: 12 }, // Stock Actual
         { wch: 30 }  // Proyecto
       ];
@@ -170,7 +218,9 @@ const ExportarStock = ({
         { 'Instrucciones para el ajuste de stock': '6. Ejemplo: Sistema=0, Excel=20 → Movimiento INGRESO +20' },
         { 'Instrucciones para el ajuste de stock': '7. Ejemplo: Sistema=50, Excel=30 → Movimiento EGRESO -20' },
         { 'Instrucciones para el ajuste de stock': '8. Si exportó "Todos los proyectos", se creará una solicitud por proyecto' },
-        { 'Instrucciones para el ajuste de stock': '9. Guarde el archivo y luego impórtelo en el sistema' }
+        { 'Instrucciones para el ajuste de stock': '9. PRECIO: si modifica la columna "Precio Unitario", se actualizará el precio del material al importar' },
+        { 'Instrucciones para el ajuste de stock': '10. Use "Catálogo de materiales" para revisar/actualizar precios de TODOS los materiales en una sola hoja' },
+        { 'Instrucciones para el ajuste de stock': '11. Guarde el archivo y luego impórtelo en el sistema' }
       ];
       
       const wsInstrucciones = XLSX.utils.json_to_sheet(instrucciones);
@@ -178,7 +228,9 @@ const ExportarStock = ({
       XLSX.utils.book_append_sheet(wb, wsInstrucciones, 'Instrucciones');
 
       // Generar archivo
-      const fileName = selectedProyecto === 'TODOS' 
+      const fileName = selectedProyecto === 'CATALOGO'
+        ? `Catalogo_Materiales_${new Date().toISOString().split('T')[0]}.xlsx`
+        : selectedProyecto === 'TODOS'
         ? `Stock_TodosLosProyectos_${new Date().toISOString().split('T')[0]}.xlsx`
         : selectedProyecto === 'SIN_ASIGNAR'
         ? `Stock_SinAsignar_${new Date().toISOString().split('T')[0]}.xlsx`
@@ -219,6 +271,7 @@ const ExportarStock = ({
           <Alert severity="info">
             Exporte el stock de un proyecto específico para editarlo en Excel y luego reimportarlo.
             El sistema generará automáticamente los movimientos de ajuste necesarios.
+            Use <strong>Catálogo de materiales</strong> para revisar y actualizar los precios de todos los materiales en una sola hoja.
           </Alert>
 
           <FormControl fullWidth>
@@ -228,6 +281,9 @@ const ExportarStock = ({
               label="Seleccionar Proyecto"
               onChange={(e) => setSelectedProyecto(e.target.value)}
             >
+              <MenuItem value="CATALOGO">
+                <strong>Catálogo de materiales (todos, con precio)</strong>
+              </MenuItem>
               <MenuItem value="TODOS">
                 <strong>Todos los proyectos</strong>
               </MenuItem>
@@ -248,21 +304,31 @@ const ExportarStock = ({
                 Resumen de la exportación:
               </Typography>
               <Box display="flex" gap={1} flexWrap="wrap">
-                <Chip 
-                  label={selectedProyecto === 'TODOS' ? 'Todos los proyectos' : selectedProyecto === 'SIN_ASIGNAR' ? 'Sin asignar' : `Proyecto: ${selectedProyectoData?.nombre}`} 
-                  color="primary" 
-                  size="small" 
+                <Chip
+                  label={selectedProyecto === 'CATALOGO' ? 'Catálogo de materiales' : selectedProyecto === 'TODOS' ? 'Todos los proyectos' : selectedProyecto === 'SIN_ASIGNAR' ? 'Sin asignar' : `Proyecto: ${selectedProyectoData?.nombre}`}
+                  color="primary"
+                  size="small"
                 />
-                <Chip 
-                  label={`${materialesConStock.length} materiales${selectedProyecto === 'TODOS' ? ' × ' + proyectos.length + ' proyectos' : ' con stock'}`} 
-                  color="secondary" 
-                  size="small" 
-                />
-                <Chip 
-                  label={selectedProyecto === 'TODOS' ? `${materialesConStock.length * proyectos.length} filas totales` : `${materiales.length} materiales totales`} 
-                  color="default" 
-                  size="small" 
-                />
+                {selectedProyecto === 'CATALOGO' ? (
+                  <Chip
+                    label="1 fila por material · incluye Precio Unitario"
+                    color="secondary"
+                    size="small"
+                  />
+                ) : (
+                  <>
+                    <Chip
+                      label={`${materialesConStock.length} materiales${selectedProyecto === 'TODOS' ? ' × ' + proyectos.length + ' proyectos' : ' con stock'}`}
+                      color="secondary"
+                      size="small"
+                    />
+                    <Chip
+                      label={selectedProyecto === 'TODOS' ? `${materialesConStock.length * proyectos.length} filas totales` : `${materiales.length} materiales totales`}
+                      color="default"
+                      size="small"
+                    />
+                  </>
+                )}
                 {selectedProyecto === 'TODOS' && (
                   <Chip 
                     label={`${proyectos.length} proyectos`} 
@@ -273,7 +339,9 @@ const ExportarStock = ({
               </Box>
               
               <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-                {selectedProyecto === 'TODOS' 
+                {selectedProyecto === 'CATALOGO'
+                  ? 'El archivo Excel incluirá TODOS los materiales de la empresa (una fila por material), con su Precio Unitario actual. Edite la columna "Precio Unitario" y reimporte para actualizar los precios. El stock no se modificará a menos que cambie la columna "Stock Actual".'
+                  : selectedProyecto === 'TODOS'
                   ? 'El archivo Excel incluirá TODOS los materiales para TODOS los proyectos (incluso con stock 0). Esto le permitirá ajustar cualquier material en cualquier proyecto sin necesidad de agregar filas manualmente. Al importar, se creará una solicitud de ajuste por cada proyecto modificado.'
                   : 'El archivo Excel incluirá todos los materiales, permitiéndole ajustar tanto materiales existentes como agregar stock a materiales que actualmente no tienen stock en este proyecto.'
                 }

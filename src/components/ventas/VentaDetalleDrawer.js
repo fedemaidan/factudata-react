@@ -174,7 +174,7 @@ export default function VentaDetalleDrawer({ open, onClose, empresaId, ventaId, 
     : venta.tipo === 'acopio' ? 'El acopio se gestiona aparte'
     : venta.cerrada ? 'La venta está cerrada'
     : !sinCobrosReales ? 'Tiene cobros registrados: anulá los cobros primero'
-    : !entregaEditable ? 'Ya tiene entregas: cancelá y rehacé la venta'
+    : !entregaEditable ? 'Ya tiene entregas registradas: no se pueden editar los materiales (sí podés seguir entregando lo pendiente o registrar una devolución)'
     : null;
   const motivoEliminar = !venta ? 'Cargando…'
     : !sinCobrosReales ? 'Tiene cobros registrados: anulá los cobros primero'

@@ -1,14 +1,16 @@
 /**
  * DevolucionDrawer — registrar una devolución / reintegro de material de un cliente.
  *
- * Evento inverso a la salida de material. Para ventas de contado/CC repone stock real
- * y, si el destino es "cuenta corriente", genera un saldo a favor del cliente
- * (CobroCliente sin imputar). Ver docs/corralones/11-propuesta-funcionalidades.md §1.
- *
- * Dos modos:
+ * Evento inverso a la salida de material. Modos:
  *  - simple (default): muestra los pedidos ya entregados al cliente y se elige qué
- *    devolver de lo efectivamente entregado.
- *  - avanzado: carga libre de líneas, para material no registrado como entregado.
+ *    devolver. Manda solicitud_id → el backend revierte la entrega de esa venta
+ *    (cantidad entregada, estado de la solicitud y del header) además de reponer
+ *    stock y, si el reintegro es a CC, generar saldo a favor.
+ *  - avanzado: carga libre de líneas, para material no registrado como entregado
+ *    (devolución suelta: repone stock / saldo a favor, sin venta de origen).
+ *  - acopio: devuelve material a un acopio del cliente (deshace un desacopio).
+ *
+ * Ver docs/corralones/11-propuesta-funcionalidades.md §1.
  */
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -17,6 +19,7 @@ import {
 } from '@mui/material';
 import { XMarkIcon, TrashIcon, PlusIcon } from '@heroicons/react/24/outline';
 import devolucionService from 'src/services/devolucionService';
+import acopioService from 'src/services/acopioService';
 import { formatCurrencyWithCode } from 'src/utils/formatters';
 
 const lineaVacia = () => ({ descripcion: '', cantidad: '', precio_unitario: '' });
@@ -32,23 +35,29 @@ const TIPO_LABEL = { contado: 'Contado', cc: 'Cuenta corriente', contra_entrega:
 export default function DevolucionDrawer({ open, onClose, empresaId, cliente, clientes = [], sucursalId = null, items: itemsIniciales = null, onSaved }) {
   const clienteFijo = Boolean(cliente?._id || cliente?.id);
   const [clienteSel, setClienteSel] = useState(null);
-  const [destino, setDestino] = useState('cc'); // 'cc' (saldo a favor) | 'stock'
+  const [destino, setDestino] = useState('cc'); // 'cc' (saldo a favor) | 'stock' | 'acopio'
   const [avanzado, setAvanzado] = useState(false);
-  const [materiales, setMateriales] = useState([lineaVacia()]); // modo avanzado
+  const [materiales, setMateriales] = useState([lineaVacia()]); // modo avanzado / acopio
   const [elegibles, setElegibles] = useState([]); // modo simple: pedidos entregados
   const [loadingElegibles, setLoadingElegibles] = useState(false);
-  const [seleccion, setSeleccion] = useState({}); // key -> { sel, cantidad, nombre, precio_unitario }
+  const [seleccion, setSeleccion] = useState({}); // key -> { sel, cantidad, nombre, precio_unitario, solicitud_id, venta_id, tipo }
+  const [acopios, setAcopios] = useState([]); // modo acopio: acopios del cliente
+  const [acopioSel, setAcopioSel] = useState(null);
+  const [loadingAcopios, setLoadingAcopios] = useState(false);
   const [observacion, setObservacion] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
   const clienteId = clienteSel?._id || clienteSel?.id || null;
+  const modoAcopio = destino === 'acopio';
+  const cargaManual = avanzado || modoAcopio; // material a mano (avanzado o acopio)
 
   // Reset al abrir. Si llegan items precargados (p.ej. desde una venta), arranca
   // en modo avanzado con esas líneas; si no, modo simple.
   useEffect(() => {
     if (!open) return;
     setError(''); setObservacion(''); setDestino('cc'); setElegibles([]); setSeleccion({});
+    setAcopios([]); setAcopioSel(null);
     const hayItems = Array.isArray(itemsIniciales) && itemsIniciales.length > 0;
     setAvanzado(hayItems);
     setMateriales(hayItems
@@ -63,7 +72,7 @@ export default function DevolucionDrawer({ open, onClose, empresaId, cliente, cl
 
   // Modo simple: traer pedidos entregados del cliente.
   useEffect(() => {
-    if (!open || avanzado || !clienteId) { setElegibles([]); return; }
+    if (!open || cargaManual || !clienteId) { setElegibles([]); return; }
     let cancelado = false;
     setLoadingElegibles(true);
     devolucionService.elegibles(empresaId, clienteId)
@@ -78,6 +87,9 @@ export default function DevolucionDrawer({ open, onClose, empresaId, cliente, cl
               cantidad: Number(m.cantidad_entregada) || 0,
               nombre: m.nombre,
               precio_unitario: Number(m.precio_unitario) || 0,
+              solicitud_id: p.solicitud_id,
+              venta_id: p.venta_id,
+              tipo: p.tipo,
             };
           });
         });
@@ -86,7 +98,28 @@ export default function DevolucionDrawer({ open, onClose, empresaId, cliente, cl
       .catch((e) => { if (!cancelado) setError(e?.response?.data?.error || e.message || 'Error al cargar entregas.'); })
       .finally(() => { if (!cancelado) setLoadingElegibles(false); });
     return () => { cancelado = true; };
-  }, [open, avanzado, clienteId, empresaId]);
+  }, [open, cargaManual, clienteId, empresaId]);
+
+  // Modo acopio: traer acopios activos del cliente.
+  useEffect(() => {
+    if (!open || !modoAcopio || !clienteId) { setAcopios([]); setAcopioSel(null); return; }
+    let cancelado = false;
+    setLoadingAcopios(true);
+    acopioService.listarAcopios(empresaId)
+      .then((data) => {
+        if (cancelado) return;
+        const delCliente = (Array.isArray(data) ? data : []).filter(
+          (a) => a.contraparte_rol === 'cliente'
+            && String(a.proveedor_id) === String(clienteId)
+            && a.activo !== false && a.estado !== 'cerrado',
+        );
+        setAcopios(delCliente);
+        setAcopioSel(delCliente.length === 1 ? delCliente[0] : null);
+      })
+      .catch((e) => { if (!cancelado) setError(e?.response?.data?.error || e.message || 'Error al cargar acopios.'); })
+      .finally(() => { if (!cancelado) setLoadingAcopios(false); });
+    return () => { cancelado = true; };
+  }, [open, modoAcopio, clienteId, empresaId]);
 
   function toggleSel(key, checked) {
     setSeleccion((s) => ({ ...s, [key]: { ...s[key], sel: checked } }));
@@ -102,9 +135,9 @@ export default function DevolucionDrawer({ open, onClose, empresaId, cliente, cl
   function addLinea() { setMateriales((s) => [...s, lineaVacia()]); }
   function delLinea(idx) { setMateriales((s) => (s.length > 1 ? s.filter((_, i) => i !== idx) : s)); }
 
-  // Materiales finales según el modo activo.
+  // Materiales finales (para validación / total) según el modo activo.
   const matsFinales = useMemo(() => {
-    if (avanzado) {
+    if (cargaManual) {
       return materiales
         .map((m) => ({
           descripcion: String(m.descripcion || '').trim(),
@@ -121,34 +154,82 @@ export default function DevolucionDrawer({ open, onClose, empresaId, cliente, cl
         precio_unitario: Number(s.precio_unitario) || 0,
       }))
       .filter((m) => m.descripcion && m.cantidad > 0);
-  }, [avanzado, materiales, seleccion]);
+  }, [cargaManual, materiales, seleccion]);
 
   const totalCredito = useMemo(
     () => matsFinales.reduce((a, m) => a + m.cantidad * m.precio_unitario, 0),
     [matsFinales],
   );
 
+  // Selecciones del modo simple agrupadas por pedido (solicitud) → una devolución por venta.
+  const gruposSimple = useMemo(() => {
+    const groups = new Map();
+    Object.values(seleccion)
+      .filter((s) => s.sel && Number(s.cantidad) > 0)
+      .forEach((s) => {
+        const k = s.solicitud_id || s.venta_id;
+        if (!groups.has(k)) groups.set(k, { solicitud_id: s.solicitud_id, tipo: s.tipo, materiales: [] });
+        groups.get(k).materiales.push({
+          descripcion: String(s.nombre || '').trim(),
+          cantidad: Math.abs(Number(s.cantidad) || 0),
+          precio_unitario: Number(s.precio_unitario) || 0,
+        });
+      });
+    return [...groups.values()];
+  }, [seleccion]);
+
   async function submit() {
     setError('');
-    if (destino === 'cc' && !clienteId) { setError('Para reintegrar a cuenta corriente elegí un cliente.'); return; }
+    if (!clienteId && (destino === 'cc' || modoAcopio)) {
+      setError(modoAcopio ? 'Elegí el cliente y su acopio.' : 'Para reintegrar a cuenta corriente elegí un cliente.');
+      return;
+    }
     if (!matsFinales.length) { setError('Elegí al menos un material con cantidad mayor a 0.'); return; }
     if (destino === 'cc' && totalCredito <= 0) {
       setError('Para generar saldo a favor los materiales necesitan precio.');
       return;
     }
+    if (modoAcopio && !acopioSel) { setError('Elegí a qué acopio del cliente vuelve el material.'); return; }
 
     setSaving(true);
     try {
-      await devolucionService.registrar(empresaId, {
-        origen: {
-          tipo: destino === 'cc' ? 'cc' : 'contado',
-          cliente_id: clienteId || undefined,
-          sucursal_id: sucursalId || undefined,
-        },
-        materiales: matsFinales,
-        observacion: observacion || null,
-        destino_reintegro: destino,
-      });
+      if (modoAcopio) {
+        // Devolución a un acopio del cliente.
+        await devolucionService.registrar(empresaId, {
+          origen: { tipo: 'acopio', acopio_id: acopioSel._id || acopioSel.id },
+          materiales: matsFinales,
+          observacion: observacion || null,
+        });
+      } else if (cargaManual) {
+        // Devolución suelta (sin venta de origen).
+        await devolucionService.registrar(empresaId, {
+          origen: {
+            tipo: destino === 'cc' ? 'cc' : 'contado',
+            cliente_id: clienteId || undefined,
+            sucursal_id: sucursalId || undefined,
+          },
+          materiales: matsFinales,
+          observacion: observacion || null,
+          destino_reintegro: destino,
+        });
+      } else {
+        // Modo simple: una devolución por pedido (manda solicitud_id + tipo real,
+        // así el backend revierte la entrega de esa venta).
+        for (const g of gruposSimple) {
+          // eslint-disable-next-line no-await-in-loop
+          await devolucionService.registrar(empresaId, {
+            origen: {
+              tipo: g.tipo || (destino === 'cc' ? 'cc' : 'contado'),
+              solicitud_id: g.solicitud_id || undefined,
+              cliente_id: clienteId || undefined,
+              sucursal_id: sucursalId || undefined,
+            },
+            materiales: g.materiales,
+            observacion: observacion || null,
+            destino_reintegro: destino,
+          });
+        }
+      }
       onSaved?.();
       onClose?.();
     } catch (e) {
@@ -190,25 +271,50 @@ export default function DevolucionDrawer({ open, onClose, empresaId, cliente, cl
                 <Select label="Reintegro" value={destino} onChange={(e) => setDestino(e.target.value)}>
                   <MenuItem value="cc">Saldo a favor (cuenta corriente)</MenuItem>
                   <MenuItem value="stock">Solo reponer stock</MenuItem>
+                  <MenuItem value="acopio">Volver a un acopio del cliente</MenuItem>
                 </Select>
               </FormControl>
             </div>
 
-            {/* Toggle simple / avanzado */}
-            <div className="flex items-center justify-between rounded-xl border border-divider bg-white px-3 py-1.5 shadow-sm">
-              <span className="text-xs text-neutral-600">
-                {avanzado ? 'Carga manual de materiales' : 'Elegí de lo entregado al cliente'}
-              </span>
-              <FormControlLabel
-                sx={{ m: 0 }}
-                control={<Switch size="small" checked={avanzado} onChange={(e) => setAvanzado(e.target.checked)} />}
-                label={<span className="text-xs text-neutral-700">Avanzado</span>}
-                labelPlacement="start"
-              />
-            </div>
+            {/* MODO ACOPIO: selector de acopio del cliente */}
+            {modoAcopio && (
+              <div className="rounded-xl border border-divider bg-white p-3 shadow-sm">
+                {!clienteId ? (
+                  <p className="text-xs text-neutral-400">Elegí un cliente para ver sus acopios.</p>
+                ) : loadingAcopios ? (
+                  <div className="flex justify-center py-3"><CircularProgress size={20} /></div>
+                ) : acopios.length === 0 ? (
+                  <p className="text-xs text-neutral-400">Este cliente no tiene acopios activos.</p>
+                ) : (
+                  <Autocomplete
+                    options={acopios}
+                    getOptionLabel={(a) => `${a.codigo ? `${a.codigo} · ` : ''}${a.descripcion || a.proveedor || 'Acopio'}`}
+                    isOptionEqualToValue={(a, v) => String(a._id || a.id) === String(v._id || v.id)}
+                    value={acopioSel}
+                    onChange={(_, v) => setAcopioSel(v)}
+                    renderInput={(params) => <TextField {...params} label="Acopio del cliente" size="small" />}
+                  />
+                )}
+              </div>
+            )}
+
+            {/* Toggle simple / avanzado (no aplica en modo acopio, que es siempre manual) */}
+            {!modoAcopio && (
+              <div className="flex items-center justify-between rounded-xl border border-divider bg-white px-3 py-1.5 shadow-sm">
+                <span className="text-xs text-neutral-600">
+                  {avanzado ? 'Carga manual de materiales' : 'Elegí de lo entregado al cliente'}
+                </span>
+                <FormControlLabel
+                  sx={{ m: 0 }}
+                  control={<Switch size="small" checked={avanzado} onChange={(e) => setAvanzado(e.target.checked)} />}
+                  label={<span className="text-xs text-neutral-700">Avanzado</span>}
+                  labelPlacement="start"
+                />
+              </div>
+            )}
 
             {/* MODO SIMPLE: pedidos entregados */}
-            {!avanzado && (
+            {!cargaManual && (
               <>
                 {!clienteId ? (
                   <div className="rounded-xl border border-dashed border-divider bg-white px-3 py-4 text-center text-xs text-neutral-400">
@@ -258,8 +364,8 @@ export default function DevolucionDrawer({ open, onClose, empresaId, cliente, cl
               </>
             )}
 
-            {/* MODO AVANZADO: carga libre */}
-            {avanzado && (
+            {/* MODO AVANZADO / ACOPIO: carga libre de materiales */}
+            {cargaManual && (
               <div className="rounded-xl border border-divider bg-white shadow-sm">
                 <div className="flex items-center justify-between border-b border-divider px-3 py-2">
                   <h3 className="text-sm font-semibold text-neutral-900">Materiales devueltos</h3>
