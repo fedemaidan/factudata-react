@@ -619,6 +619,7 @@ const guardarAcopio = async () => {
       proyecto_id: proyecto,
       proyecto_nombre,
       descripcion: descripcion || '',
+      instrucciones_extraccion: instruccionesExtraccion || '',
       valorTotal: Number(valorTotal) || 0,
       url_imagen_compra: urls || [],
       productos: finalRows.map((r) => ({
