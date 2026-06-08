@@ -703,6 +703,13 @@ const CargaMasivaDialog = ({ open, onClose, empresa, proyectos, user, onSuccess 
             key={`val-${importWizardData.analisisCsv?.timestamp || 0}-${(importWizardData.aclaracionesUsuario || '').length}`}
             ref={validacionRef}
             {...common}
+            proveedores={drawerCatalogos.proveedores}
+            categorias={drawerCatalogos.categorias}
+            tagsExtra={drawerCatalogos.tagsExtra}
+            mediosPago={drawerCatalogos.mediosPago}
+            etapas={drawerCatalogos.etapas}
+            obrasOptions={drawerCatalogos.obrasOptions}
+            clientesOptions={drawerCatalogos.clientesOptions}
             hideNavigation
           />
         );
