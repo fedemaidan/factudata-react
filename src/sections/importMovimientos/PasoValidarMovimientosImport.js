@@ -40,12 +40,44 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import RestoreIcon from '@mui/icons-material/Restore';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
+import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
+import VisibilityOffOutlinedIcon from '@mui/icons-material/VisibilityOffOutlined';
 import importMovimientosService from 'src/services/importMovimientosService';
 import { useAuthContext } from 'src/contexts/auth-context';
+import BatchValidationForm from 'src/components/movimientos/cargaMasiva/BatchValidationForm';
+import { getCamposVisibles } from 'src/components/movementFieldsConfig';
+import { formatNumberWithThousands } from 'src/utils/celulandia/separacionMiles';
 
 const POLL_MS = 4000;
 const MONEDA_OPTIONS = ['ARS', 'USD'];
 const ESTADO_OPTIONS = ['Pendiente', 'Parcialmente Pagado', 'Pagado'];
+
+// Columnas de la tabla derivadas de los campos visibles de la empresa. Se excluyen los campos
+// que ya tienen su propia columna (tipo, estado) o que no aportan en una grilla (USD readonly).
+const COLUMNAS_CAMPO_EXCLUIDAS = new Set(['type', 'estado', 'subtotal_dolar', 'total_dolar']);
+// Orden preferido al frente; el resto sigue el orden de definición de los campos.
+const COLUMNAS_CAMPO_PRIORITARIAS = ['fecha_factura', 'total', 'moneda', 'subtotal', 'total_original'];
+const COLUMNAS_CAMPO_NUMERICAS = new Set([
+  'total',
+  'subtotal',
+  'total_original',
+  'monto_aprobado',
+  'dolar_referencia',
+]);
+
+const esColumnaNumerica = (campo) =>
+  COLUMNAS_CAMPO_NUMERICAS.has(campo.name) || campo.type === 'impuestos';
+
+// Render compacto del valor de un campo en una celda de la tabla, según su tipo.
+function renderValorCeldaCampo(campo, d) {
+  const v = d?.[campo.name];
+  if (v === undefined || v === null || v === '') return '—';
+  if (campo.type === 'boolean') return v === true || v === 'true' ? 'Sí' : 'No';
+  if (campo.type === 'tags') return Array.isArray(v) ? (v.length ? v.join(', ') : '—') : String(v);
+  if (campo.type === 'impuestos') return Array.isArray(v) && v.length ? String(v.length) : '—';
+  if (COLUMNAS_CAMPO_NUMERICAS.has(campo.name)) return formatNumberWithThousands(v);
+  return String(v);
+}
 
 const makeClientId = () => `pv-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
@@ -101,13 +133,34 @@ function rowIsValid(row, requiereProyecto) {
 }
 
 const PasoValidarMovimientosImport = forwardRef(
-  ({ empresa, wizardData, updateWizardData, perfiles = [], setLoading: _setLoading, setError, hideNavigation, onNext, onBack }, ref) => {
+  (
+    {
+      empresa,
+      wizardData,
+      updateWizardData,
+      perfiles = [],
+      setLoading: _setLoading,
+      setError,
+      hideNavigation,
+      onNext,
+      onBack,
+      proveedores = [],
+      categorias = [],
+      tagsExtra = [],
+      mediosPago = [],
+      etapas = [],
+      obrasOptions = [],
+      clientesOptions = [],
+    },
+    ref,
+  ) => {
     const { user } = useAuthContext();
     const [filas, setFilas] = useState([]);
     const [cargando, setCargando] = useState(true);
     const [mensajeProgreso, setMensajeProgreso] = useState('Iniciando análisis…');
     const [editRow, setEditRow] = useState(null);
     const [formEdicion, setFormEdicion] = useState(null);
+    const [mostrarColumnasVacias, setMostrarColumnasVacias] = useState(false);
     const pollingRef = useRef(null);
     const iniciadoRef = useRef(false);
 
@@ -117,6 +170,115 @@ const PasoValidarMovimientosImport = forwardRef(
         Array.isArray(empresa?.proyectos) &&
         empresa.proyectos.length > 0,
       [wizardData.tipoImportacion, empresa?.proyectos],
+    );
+
+    // El tipo (egreso/ingreso) define qué campos visibles aplican (comprobante_info vs ingreso_info).
+    const tipoMovEdicion =
+      formEdicion?.accion === 'CREAR_INGRESO' ? 'ingreso' : 'egreso';
+
+    // Tipos de movimiento presentes en los datos. Definen qué config de visibilidad aplica
+    // (comprobante_info para egresos, ingreso_info para ingresos). Evita arrastrar columnas
+    // de un tipo que no está en la importación (ej. campos visibles solo en ingreso cuando
+    // la carga es 100% egresos).
+    const tiposPresentes = useMemo(() => {
+      const tipos = new Set();
+      filas.forEach((r) => {
+        tipos.add(r?.ia_data?.accion === 'CREAR_INGRESO' ? 'ingreso' : 'egreso');
+      });
+      return tipos.size ? tipos : new Set(['egreso']);
+    }, [filas]);
+
+    // Columnas dinámicas de la tabla: campos visibles según la config, pero solo de los tipos
+    // presentes. Son los mismos campos que muestra el formulario de movimiento (movementForm).
+    const columnasCampos = useMemo(() => {
+      const ci = empresa?.comprobante_info || {};
+      const ii = empresa?.ingreso_info || {};
+      const union = new Map();
+      const fuentes = [];
+      if (tiposPresentes.has('egreso')) fuentes.push(getCamposVisibles(ci, empresa, ii, 'egreso'));
+      if (tiposPresentes.has('ingreso')) fuentes.push(getCamposVisibles(ci, empresa, ii, 'ingreso'));
+      fuentes.flat().forEach((campo) => {
+        if (COLUMNAS_CAMPO_EXCLUIDAS.has(campo.name) || union.has(campo.name)) return;
+        union.set(campo.name, campo);
+      });
+      const peso = (name) => {
+        const i = COLUMNAS_CAMPO_PRIORITARIAS.indexOf(name);
+        return i === -1 ? COLUMNAS_CAMPO_PRIORITARIAS.length : i;
+      };
+      return [...union.values()].sort((a, b) => peso(a.name) - peso(b.name));
+    }, [empresa, tiposPresentes]);
+
+    // Columnas cuyo valor está vacío en TODAS las filas: ocupan espacio y estorban al validar.
+    // Por defecto se ocultan; el toggle las vuelve a mostrar al final de la tabla.
+    const columnasVaciasNombres = useMemo(() => {
+      if (filas.length === 0) return new Set();
+      const vacias = new Set();
+      columnasCampos.forEach((campo) => {
+        const todasVacias = filas.every(
+          (r) => renderValorCeldaCampo(campo, r.ia_data || {}) === '—',
+        );
+        if (todasVacias) vacias.add(campo.name);
+      });
+      return vacias;
+    }, [columnasCampos, filas]);
+
+    // Orden final de columnas: primero las que tienen datos; las vacías solo si se piden ver,
+    // y siempre al final para no estorbar.
+    const columnasVisibles = useMemo(() => {
+      const conDatos = columnasCampos.filter((c) => !columnasVaciasNombres.has(c.name));
+      if (!mostrarColumnasVacias) return conDatos;
+      const vacias = columnasCampos.filter((c) => columnasVaciasNombres.has(c.name));
+      return [...conDatos, ...vacias];
+    }, [columnasCampos, columnasVaciasNombres, mostrarColumnasVacias]);
+
+    // BatchValidationForm rinde los campos configurables; el Tipo, Proyecto, Estado y Creador
+    // se manejan acá explícitamente (lógica específica del import). Por eso suprimimos en el
+    // form interno el campo proyecto (proyecto: false) y el estado (con_estados: false) para
+    // no duplicarlos.
+    const empresaCamposExtra = useMemo(
+      () => ({ ...(empresa || {}), con_estados: false }),
+      [empresa],
+    );
+    const comprobanteInfoCampos = useMemo(
+      () => ({ ...(empresa?.comprobante_info || {}), proyecto: false }),
+      [empresa],
+    );
+    const ingresoInfoCampos = useMemo(
+      () => ({ ...(empresa?.ingreso_info || {}), proyecto: false }),
+      [empresa],
+    );
+
+    // Catálogos para los selects/autocompletes de los campos. Se prefieren los que llegan
+    // por props (CargaMasivaDialog ya los trae cargados); si no, se derivan de `empresa`
+    // para que la página standalone (importMovimientos.js) siga funcionando.
+    const catalogos = useMemo(
+      () => ({
+        proveedores,
+        categorias: categorias.length ? categorias : empresa?.categorias || [],
+        tagsExtra: tagsExtra.length ? tagsExtra : empresa?.tags_extra || [],
+        mediosPago: mediosPago.length
+          ? mediosPago
+          : empresa?.medios_pago?.length
+            ? empresa.medios_pago
+            : ['Efectivo', 'Transferencia', 'Tarjeta', 'Mercado Pago', 'Cheque'],
+        etapas: etapas.length ? etapas : empresa?.etapas || [],
+        obrasOptions: obrasOptions.length
+          ? obrasOptions
+          : (empresa?.obras || []).map((o) => o.nombre).filter(Boolean),
+        clientesOptions: clientesOptions.length
+          ? clientesOptions
+          : [...new Set((empresa?.obras || []).map((o) => o.cliente).filter(Boolean))],
+      }),
+      [
+        empresa,
+        proveedores,
+        categorias,
+        tagsExtra,
+        mediosPago,
+        etapas,
+        obrasOptions,
+        clientesOptions,
+      ],
     );
 
     const limpiarPolling = useCallback(() => {
@@ -385,24 +547,66 @@ const PasoValidarMovimientosImport = forwardRef(
               En modo general, cada movimiento debe tener proyecto asignado.
             </Typography>
           )}
+          {columnasVaciasNombres.size > 0 && (
+            <Button
+              size="small"
+              variant="text"
+              color="inherit"
+              startIcon={mostrarColumnasVacias ? <VisibilityOffOutlinedIcon /> : <VisibilityOutlinedIcon />}
+              onClick={() => setMostrarColumnasVacias((v) => !v)}
+              sx={{ ml: 'auto', textTransform: 'none', color: 'text.secondary' }}
+            >
+              {mostrarColumnasVacias
+                ? 'Ocultar columnas sin datos'
+                : `Ver ${columnasVaciasNombres.size} columna${columnasVaciasNombres.size === 1 ? '' : 's'} sin datos`}
+            </Button>
+          )}
         </Paper>
 
-        <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 420 }}>
-          <Table size="small" stickyHeader>
+        <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 460 }}>
+          <Table
+            size="small"
+            stickyHeader
+            sx={{ '& td, & th': { whiteSpace: 'nowrap' } }}
+          >
             <TableHead>
               <TableRow>
-                <TableCell width={48}>#</TableCell>
-                <TableCell>Tipo</TableCell>
-                <TableCell>Fecha</TableCell>
-                <TableCell align="right">Total</TableCell>
-                <TableCell>Moneda</TableCell>
+                <TableCell sx={{ position: 'sticky', left: 0, zIndex: 3, bgcolor: 'background.paper', width: 48 }}>
+                  #
+                </TableCell>
+                <TableCell
+                  sx={{
+                    position: 'sticky',
+                    left: 48,
+                    zIndex: 3,
+                    bgcolor: 'background.paper',
+                    borderRight: '1px solid',
+                    borderColor: 'divider',
+                  }}
+                >
+                  Tipo
+                </TableCell>
                 <TableCell>Proyecto</TableCell>
-                <TableCell>Proveedor</TableCell>
-                <TableCell>Categoría</TableCell>
+                {columnasVisibles.map((campo) => (
+                  <TableCell key={campo.name} align={esColumnaNumerica(campo) ? 'right' : 'left'}>
+                    {campo.label}
+                  </TableCell>
+                ))}
                 <TableCell>Estado</TableCell>
                 <TableCell>Creador</TableCell>
                 <TableCell>Validación</TableCell>
-                <TableCell align="right" width={120}>
+                <TableCell
+                  align="right"
+                  sx={{
+                    position: 'sticky',
+                    right: 0,
+                    zIndex: 3,
+                    bgcolor: 'background.paper',
+                    borderLeft: '1px solid',
+                    borderColor: 'divider',
+                    width: 120,
+                  }}
+                >
                   Acciones
                 </TableCell>
               </TableRow>
@@ -415,36 +619,44 @@ const PasoValidarMovimientosImport = forwardRef(
                   d.proyecto_nombre ||
                   proyectos.find((p) => p.id === d.proyecto_id)?.nombre ||
                   '—';
+                const stickyBg = row.omitido ? 'grey.100' : 'background.paper';
                 return (
-                  <TableRow
-                    key={row.clientId}
-                    sx={{
-                      opacity: row.omitido ? 0.45 : 1,
-                      bgcolor: row.omitido ? 'action.hover' : 'inherit',
-                    }}
-                  >
-                    <TableCell>{row.fila}</TableCell>
-                    <TableCell>
+                  <TableRow key={row.clientId} sx={{ opacity: row.omitido ? 0.5 : 1 }}>
+                    <TableCell sx={{ position: 'sticky', left: 0, zIndex: 1, bgcolor: stickyBg }}>
+                      {row.fila}
+                    </TableCell>
+                    <TableCell
+                      sx={{
+                        position: 'sticky',
+                        left: 48,
+                        zIndex: 1,
+                        bgcolor: stickyBg,
+                        borderRight: '1px solid',
+                        borderColor: 'divider',
+                      }}
+                    >
                       {d.accion === 'CREAR_INGRESO' ? 'Ingreso' : 'Egreso'}
                     </TableCell>
-                    <TableCell>{d.fecha_factura || '—'}</TableCell>
-                    <TableCell align="right">{d.total !== undefined && d.total !== '' ? d.total : '—'}</TableCell>
-                    <TableCell>{d.moneda || '—'}</TableCell>
                     <TableCell>
-                      <Typography variant="body2" noWrap sx={{ maxWidth: 140 }}>
+                      <Typography variant="body2" noWrap sx={{ maxWidth: 160 }}>
                         {proyectoNombre}
                       </Typography>
                     </TableCell>
-                    <TableCell>
-                      <Typography variant="body2" noWrap sx={{ maxWidth: 120 }}>
-                        {d.nombre_proveedor || '—'}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Typography variant="body2" noWrap sx={{ maxWidth: 100 }}>
-                        {d.categoria || '—'}
-                      </Typography>
-                    </TableCell>
+                    {columnasVisibles.map((campo) => {
+                      const numerica = esColumnaNumerica(campo);
+                      const contenido = renderValorCeldaCampo(campo, d);
+                      return numerica ? (
+                        <TableCell key={campo.name} align="right" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+                          {contenido}
+                        </TableCell>
+                      ) : (
+                        <TableCell key={campo.name}>
+                          <Typography variant="body2" noWrap sx={{ maxWidth: 180 }}>
+                            {contenido}
+                          </Typography>
+                        </TableCell>
+                      );
+                    })}
                     <TableCell>
                       {d.estado ? (
                         <Chip
@@ -501,7 +713,17 @@ const PasoValidarMovimientosImport = forwardRef(
                         <Chip size="small" label="Incompleto" color="error" variant="outlined" />
                       )}
                     </TableCell>
-                    <TableCell align="right">
+                    <TableCell
+                      align="right"
+                      sx={{
+                        position: 'sticky',
+                        right: 0,
+                        zIndex: 1,
+                        bgcolor: stickyBg,
+                        borderLeft: '1px solid',
+                        borderColor: 'divider',
+                      }}
+                    >
                       <Tooltip title={row.omitido ? 'Incluir de nuevo' : 'Excluir'}>
                         <IconButton
                           size="small"
@@ -550,7 +772,7 @@ const PasoValidarMovimientosImport = forwardRef(
           </Box>
         )}
 
-        <Dialog open={Boolean(editRow)} onClose={() => setEditRow(null)} maxWidth="sm" fullWidth scroll="body">
+        <Dialog open={Boolean(editRow)} onClose={() => setEditRow(null)} maxWidth="md" fullWidth scroll="body">
           <DialogTitle>Editar movimiento</DialogTitle>
           <DialogContent dividers>
             {formEdicion && (
@@ -568,42 +790,33 @@ const PasoValidarMovimientosImport = forwardRef(
                     <MenuItem value="CREAR_INGRESO">Ingreso</MenuItem>
                   </Select>
                 </FormControl>
-                <TextField
-                  size="small"
-                  label="Fecha factura"
-                  value={formEdicion.fecha_factura || ''}
-                  onChange={(e) =>
-                    setFormEdicion((prev) => ({ ...prev, fecha_factura: e.target.value }))
-                  }
-                  fullWidth
-                  required
-                />
-                <TextField
-                  size="small"
-                  label="Total"
-                  value={formEdicion.total ?? ''}
-                  onChange={(e) =>
-                    setFormEdicion((prev) => ({ ...prev, total: e.target.value }))
-                  }
-                  fullWidth
-                  required
-                />
-                <FormControl fullWidth size="small">
-                  <InputLabel>Moneda</InputLabel>
-                  <Select
-                    label="Moneda"
-                    value={formEdicion.moneda || 'ARS'}
-                    onChange={(e) =>
-                      setFormEdicion((prev) => ({ ...prev, moneda: e.target.value }))
-                    }
-                  >
-                    {MONEDA_OPTIONS.map((option) => (
-                      <MenuItem key={option} value={option}>
-                        {option}
+                {proyectos.length > 0 && (
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Proyecto</InputLabel>
+                    <Select
+                      label="Proyecto"
+                      value={formEdicion.proyecto_id || ''}
+                      onChange={(e) => {
+                        const id = e.target.value;
+                        const p = proyectos.find((x) => x.id === id);
+                        setFormEdicion((prev) => ({
+                          ...prev,
+                          proyecto_id: id,
+                          proyecto_nombre: p?.nombre || '',
+                        }));
+                      }}
+                    >
+                      <MenuItem value="">
+                        <em>Sin proyecto</em>
                       </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
+                      {proyectos.map((p) => (
+                        <MenuItem key={p.id} value={p.id}>
+                          {p.nombre}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                )}
                 <FormControl fullWidth size="small">
                   <InputLabel>Estado</InputLabel>
                   <Select
@@ -660,79 +873,22 @@ const PasoValidarMovimientosImport = forwardRef(
                     </Select>
                   </FormControl>
                 )}
-                {proyectos.length > 0 && (
-                  <FormControl fullWidth size="small">
-                    <InputLabel>Proyecto</InputLabel>
-                    <Select
-                      label="Proyecto"
-                      value={formEdicion.proyecto_id || ''}
-                      onChange={(e) => {
-                        const id = e.target.value;
-                        const p = proyectos.find((x) => x.id === id);
-                        setFormEdicion((prev) => ({
-                          ...prev,
-                          proyecto_id: id,
-                          proyecto_nombre: p?.nombre || '',
-                        }));
-                      }}
-                    >
-                      <MenuItem value="">
-                        <em>Sin proyecto</em>
-                      </MenuItem>
-                      {proyectos.map((p) => (
-                        <MenuItem key={p.id} value={p.id}>
-                          {p.nombre}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                )}
-                <TextField
-                  size="small"
-                  label="Proveedor"
-                  value={formEdicion.nombre_proveedor || ''}
-                  onChange={(e) =>
-                    setFormEdicion((prev) => ({ ...prev, nombre_proveedor: e.target.value }))
-                  }
-                  fullWidth
-                />
-                <TextField
-                  size="small"
-                  label="Categoría"
-                  value={formEdicion.categoria || ''}
-                  onChange={(e) =>
-                    setFormEdicion((prev) => ({ ...prev, categoria: e.target.value }))
-                  }
-                  fullWidth
-                />
-                <TextField
-                  size="small"
-                  label="Subcategoría"
-                  value={formEdicion.subcategoria || ''}
-                  onChange={(e) =>
-                    setFormEdicion((prev) => ({ ...prev, subcategoria: e.target.value }))
-                  }
-                  fullWidth
-                />
-                <TextField
-                  size="small"
-                  label="Medio de pago"
-                  value={formEdicion.medio_pago || ''}
-                  onChange={(e) =>
-                    setFormEdicion((prev) => ({ ...prev, medio_pago: e.target.value }))
-                  }
-                  fullWidth
-                />
-                <TextField
-                  size="small"
-                  label="Observación"
-                  value={formEdicion.observacion || ''}
-                  onChange={(e) =>
-                    setFormEdicion((prev) => ({ ...prev, observacion: e.target.value }))
-                  }
-                  fullWidth
-                  multiline
-                  minRows={2}
+                {/* Campos del movimiento según la configuración de la empresa
+                    (comprobante_info / ingreso_info). Mismo motor que el flujo OCR. */}
+                <BatchValidationForm
+                  form={formEdicion}
+                  onFormChange={setFormEdicion}
+                  empresa={empresaCamposExtra}
+                  comprobanteInfo={comprobanteInfoCampos}
+                  ingresoInfo={ingresoInfoCampos}
+                  proveedores={catalogos.proveedores}
+                  categorias={catalogos.categorias}
+                  tagsExtra={catalogos.tagsExtra}
+                  mediosPago={catalogos.mediosPago}
+                  etapas={catalogos.etapas}
+                  obrasOptions={catalogos.obrasOptions}
+                  clientesOptions={catalogos.clientesOptions}
+                  tipoMov={tipoMovEdicion}
                 />
               </Stack>
             )}
@@ -762,12 +918,26 @@ PasoValidarMovimientosImport.propTypes = {
   hideNavigation: PropTypes.bool,
   onNext: PropTypes.func,
   onBack: PropTypes.func,
+  proveedores: PropTypes.array,
+  categorias: PropTypes.array,
+  tagsExtra: PropTypes.array,
+  mediosPago: PropTypes.array,
+  etapas: PropTypes.array,
+  obrasOptions: PropTypes.array,
+  clientesOptions: PropTypes.array,
 };
 
 PasoValidarMovimientosImport.defaultProps = {
   hideNavigation: false,
   onNext: undefined,
   onBack: undefined,
+  proveedores: [],
+  categorias: [],
+  tagsExtra: [],
+  mediosPago: [],
+  etapas: [],
+  obrasOptions: [],
+  clientesOptions: [],
 };
 
 export default PasoValidarMovimientosImport;
