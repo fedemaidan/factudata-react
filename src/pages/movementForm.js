@@ -262,6 +262,7 @@ const MovementFormPage = () => {
   const fileInputRef = useRef(null);
   const pendingExtraccionRef = useRef(false);
   const returnAfterSaveRef = useRef(false);
+  const exportAfterSaveRef = useRef(false);
   const [createdUser, setCreatedUser] = useState(null);
   const [comprobanteModalOpen, setComprobanteModalOpen] = useState(false);
   const [imagenModal, setImagenModal] = useState('');
@@ -372,11 +373,14 @@ const MovementFormPage = () => {
       if (returnAfterSaveRef.current) {
         showGlobalAlert({ message: 'Movimiento guardado con éxito!', severity: 'success' });
         pushBack(router, lastPageUrl, '/');
+      } else if (exportAfterSaveRef.current) {
+        setExportPdfOpen(true);
       }
     } catch (err) {
       setAlert({ open: true, message: err.message, severity: 'error' });
     } finally {
       returnAfterSaveRef.current = false;
+      exportAfterSaveRef.current = false;
       setIsLoading(false);
       setConfirmOpen(false);
       setPendingPayload(null);
@@ -790,6 +794,12 @@ const createdAtStr = (() => {
     handleSubmitForm();
   };
 
+  // Guarda y, al crear, abre el diálogo de exportar PDF sin salir de la página.
+  const handleSaveAndExport = () => {
+    exportAfterSaveRef.current = true;
+    handleSubmitForm();
+  };
+
   const formik = useFormik({
     initialValues: {
       fecha_factura: getTodayLocalDate(),
@@ -1066,9 +1076,6 @@ const createdAtStr = (() => {
         break;
       case 'auditoria':
         setAuditOpen(true);
-        break;
-      case 'exportarPdf':
-        setExportPdfOpen(true);
         break;
       case 'completarPago':
         setCompletarPagoDialogOpen(true);
@@ -1494,6 +1501,16 @@ const createdAtStr = (() => {
                   {isExtractingData ? 'Extrayendo…' : 'Extraer datos de archivo'}
                 </button>
               )}
+              {isEditMode && (
+                <button
+                  type="button"
+                  onClick={() => setExportPdfOpen(true)}
+                  className="inline-flex items-center gap-1 rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium text-neutral-800 shadow-sm hover:bg-neutral-50"
+                >
+                  <DocumentArrowDownIcon className="h-4 w-4" aria-hidden />
+                  Exportar PDF
+                </button>
+              )}
               <div className="relative" ref={accionesRef}>
                 <button
                   type="button"
@@ -1552,16 +1569,6 @@ const createdAtStr = (() => {
                     >
                       <DocumentTextIcon className="h-4 w-4 text-neutral-600" />
                       Ver auditoría
-                    </button>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      disabled={!isEditMode}
-                      onClick={() => handleAccionesMenuItemClick('exportarPdf')}
-                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-neutral-50 disabled:opacity-40"
-                    >
-                      <DocumentArrowDownIcon className="h-4 w-4 text-neutral-600" />
-                      Exportar PDF
                     </button>
                     {mostrarCompletarPago && (
                       <button
@@ -1628,11 +1635,24 @@ const createdAtStr = (() => {
               </button>
               <button
                 type="button"
-                onClick={handleSubmitForm}
+                onClick={isEditMode ? handleSubmitForm : handleSaveAndExport}
                 disabled={isLoading}
-                className="inline-flex min-w-[5.5rem] items-center justify-center rounded-lg border border-primary-main bg-white px-4 py-1.5 text-sm font-semibold text-primary-dark shadow-sm hover:bg-primary-lightest disabled:opacity-50"
+                className="inline-flex min-w-[5.5rem] items-center justify-center gap-1 rounded-lg border border-primary-main bg-white px-4 py-1.5 text-sm font-semibold text-primary-dark shadow-sm hover:bg-primary-lightest disabled:opacity-50"
               >
-                {isLoading && !returnAfterSaveRef.current ? <ArrowPathIcon className="h-5 w-5 animate-spin" aria-label="Cargando" /> : (isEditMode ? 'Guardar' : 'Crear')}
+                {isEditMode ? (
+                  isLoading && !returnAfterSaveRef.current ? (
+                    <ArrowPathIcon className="h-5 w-5 animate-spin" aria-label="Cargando" />
+                  ) : (
+                    'Guardar'
+                  )
+                ) : isLoading && exportAfterSaveRef.current ? (
+                  <ArrowPathIcon className="h-5 w-5 animate-spin" aria-label="Cargando" />
+                ) : (
+                  <>
+                    <DocumentArrowDownIcon className="h-4 w-4" aria-hidden />
+                    Guardar y exportar
+                  </>
+                )}
               </button>
               <button
                 type="button"
