@@ -84,6 +84,75 @@ const PROYECTO = {
   total: 1_240_093_855,
 };
 
+// ─── Contrato: moneda + redeterminación + deducciones (ajustes #1 y #2) ─────────
+// Unidad de cuenta separada de la política de captura del coeficiente.
+const CONTRATO = {
+  unidad_cuenta: 'CAC',                  // 'ARS' | 'USD' | 'CAC'
+  fecha_base: '01/03/2026',              // fecha de los precios del contrato → coef base = 1
+  politica_redeterminacion: 'continua',  // 'firme' | 'continua' | 'por_salto' | 'periodica'
+  umbral_salto_pct: 5,                   // si por_salto
+  periodo_meses: 3,                      // si periodica
+  retencion_pct: 0.05,                   // fondo de reparo (5%)
+  anticipo_pct: 0.20,                    // anticipo (20%)
+  amortiza_anticipo: true,               // cada certificado amortiza una fracción del anticipo
+};
+
+// Serie del índice CAC (base mar-2026 = 100). Valor por mes.
+const SERIE_CAC = {
+  codigo: 'CAC',
+  valores: [
+    { fecha: '01/02/2026', valor: 100 },
+    { fecha: '01/03/2026', valor: 100 },
+    { fecha: '01/04/2026', valor: 105 },
+    { fecha: '01/05/2026', valor: 110 },
+    { fecha: '01/06/2026', valor: 116 },
+    { fecha: '01/07/2026', valor: 122 },
+    { fecha: '01/08/2026', valor: 128 },
+    { fecha: '01/09/2026', valor: 134 },
+    { fecha: '01/10/2026', valor: 141 },
+    { fecha: '01/11/2026', valor: 148 },
+    { fecha: '01/12/2026', valor: 155 },
+  ],
+};
+
+const UNIDAD_LABEL = { ARS: 'ARS', USD: 'USD', CAC: 'índice CAC' };
+
+const idxKey = (str) => { const [, m, y] = str.split('/').map(Number); return y * 12 + m; };
+
+// Índice vigente a una fecha = último valor de la serie con mes ≤ fecha.
+const indiceEnFecha = (str) => {
+  const k = idxKey(str);
+  let val = SERIE_CAC.valores[0].valor;
+  SERIE_CAC.valores.forEach(v => { if (idxKey(v.fecha) <= k) val = v.valor; });
+  return val;
+};
+
+// Coeficiente de redeterminación a aplicar sobre el monto_base, según la política del contrato.
+const coefRedeterminacion = (fechaValorizacion) => {
+  const c = CONTRATO;
+  if (!fechaValorizacion || c.politica_redeterminacion === 'firme') return 1;
+  const base = indiceEnFecha(c.fecha_base);
+  if (c.politica_redeterminacion === 'periodica') {
+    // Recalcula cada `periodo_meses`: se snapea la fecha al inicio del bloque vigente.
+    const k0 = idxKey(c.fecha_base);
+    const bloques = Math.max(0, Math.floor((idxKey(fechaValorizacion) - k0) / c.periodo_meses));
+    const kSnap = k0 + bloques * c.periodo_meses;
+    const fechaSnap = `01/${String(kSnap % 12 || 12).padStart(2, '0')}/${Math.floor((kSnap - 1) / 12)}`;
+    return indiceEnFecha(fechaSnap) / base;
+  }
+  if (c.politica_redeterminacion === 'por_salto') {
+    // El coef sólo salta cuando la variación acumulada supera el umbral; entre saltos, congelado.
+    let coefCong = 1, baseCong = base;
+    for (const v of SERIE_CAC.valores) {
+      if (idxKey(v.fecha) < idxKey(c.fecha_base) || idxKey(v.fecha) > idxKey(fechaValorizacion)) continue;
+      if ((v.valor / baseCong - 1) * 100 >= c.umbral_salto_pct) { coefCong = v.valor / base; baseCong = v.valor; }
+    }
+    return coefCong;
+  }
+  // continua (default)
+  return indiceEnFecha(fechaValorizacion) / base;
+};
+
 /*
   Estructura de 3 niveles:
     rubro → sub_rubros → tareas (ítems)
@@ -364,36 +433,64 @@ const RUBROS = [
 
 const RUBROS_MAP = Object.fromEntries(RUBROS.map((r) => [r.id, r]));
 
+/*
+  Certificado = PERÍODO con RENGLONES (ajuste #3). Cada renglón es una línea por rubro.
+  - monto_base: monto en la unidad de cuenta del contrato (precios fecha_base).
+  - coeficiente_aplicado / monto_ars: CONGELADOS al aprobar (ajuste #1). En certs no aprobados
+    van en null y se calculan en vivo con coefRedeterminacion(fecha_valorizacion).
+  Los certs históricos aprobados traen el coef ya congelado a su fecha de valorización.
+*/
 const CERTIFICADOS_INIT = [
   {
-    id: 'c1', numero: '001', fecha: '10/02/2026', rubro: 'Trabajos Preliminares', rubro_id: 'r1',
-    avance_pct: 100, monto: 34_629_353, notas: 'Demolición y acometidas completadas.',
+    id: 'c1', numero: '001', fecha: '10/02/2026', periodo: '2026-02', fecha_valorizacion: '10/02/2026',
+    notas: 'Demolición y acometidas completadas.',
     estado: 'aprobado', fecha_envio: '11/02/2026', fecha_aprobacion: '14/02/2026',
+    aprobacion: { fecha_aprobacion_cliente: '14/02/2026', fecha_registro: '14/02/2026', medio: 'mail', registrado_por: 'director' },
     adjuntos: ['foto_demolicion_final.jpg', 'foto_acometida_electrica.jpg'],
+    renglones: [
+      { rubro_id: 'r1', rubro: 'Trabajos Preliminares', avance_acumulado_pct: 100, avance_periodo_pct: 100, monto_base: 34_629_353, coeficiente_aplicado: 1.000, monto_ars: 34_629_353 },
+    ],
   },
   {
-    id: 'c2', numero: '002', fecha: '28/02/2026', rubro: 'Excavaciones y Mov. de Suelos', rubro_id: 'r2',
-    avance_pct: 100, monto: 39_506_537, notas: 'Relleno y compactación finalizados.',
+    id: 'c2', numero: '002', fecha: '28/02/2026', periodo: '2026-02', fecha_valorizacion: '28/02/2026',
+    notas: 'Relleno y compactación finalizados.',
     estado: 'aprobado', fecha_envio: '01/03/2026', fecha_aprobacion: '05/03/2026',
+    aprobacion: { fecha_aprobacion_cliente: '05/03/2026', fecha_registro: '05/03/2026', medio: 'whatsapp', registrado_por: 'director' },
     adjuntos: ['foto_relleno_compactado.jpg', 'informe_densidad.pdf'],
+    renglones: [
+      { rubro_id: 'r2', rubro: 'Excavaciones y Mov. de Suelos', avance_acumulado_pct: 100, avance_periodo_pct: 100, monto_base: 39_506_537, coeficiente_aplicado: 1.000, monto_ars: 39_506_537 },
+    ],
   },
   {
-    id: 'c3', numero: '003', fecha: '31/03/2026', rubro: 'Estructuras', rubro_id: 'r3',
-    avance_pct: 50, monto: 39_543_152, notas: 'Bases, vigas fundación y encadenados terminados.',
+    id: 'c3', numero: '003', fecha: '31/03/2026', periodo: '2026-03', fecha_valorizacion: '31/03/2026',
+    notas: 'Bases, vigas fundación y encadenados terminados.',
     estado: 'aprobado', fecha_envio: '01/04/2026', fecha_aprobacion: '07/04/2026',
+    aprobacion: { fecha_aprobacion_cliente: '07/04/2026', fecha_registro: '07/04/2026', medio: 'presencial', registrado_por: 'director' },
     adjuntos: ['foto_bases_ha.jpg', 'foto_encadenados.jpg', 'acta_inspeccion.pdf'],
+    renglones: [
+      { rubro_id: 'r3', rubro: 'Estructuras', avance_acumulado_pct: 50, avance_periodo_pct: 50, monto_base: 39_543_152, coeficiente_aplicado: 1.000, monto_ars: 39_543_152 },
+    ],
   },
   {
-    id: 'c4', numero: '004', fecha: '15/04/2026', rubro: 'Cubiertas Metálicas', rubro_id: 'r4',
-    avance_pct: 20, monto: 20_847_056, notas: 'Avance parcial cubierta existente — chapa y aislación sector norte.',
-    estado: 'enviado', fecha_envio: '16/04/2026', fecha_aprobacion: null,
+    id: 'c4', numero: '004', fecha: '15/04/2026', periodo: '2026-04', fecha_valorizacion: '15/04/2026',
+    notas: 'Avance parcial cubierta existente — chapa y aislación sector norte.',
+    estado: 'enviado', fecha_envio: '16/04/2026', fecha_aprobacion: null, aprobacion: null,
     adjuntos: ['foto_cubierta_norte.jpg', 'foto_aislacion_termica.jpg'],
+    renglones: [
+      // Sin aprobar → coef y monto_ars en null: se calculan en vivo (coef abr = 1.05).
+      { rubro_id: 'r4', rubro: 'Cubiertas Metálicas', avance_acumulado_pct: 20, avance_periodo_pct: 20, monto_base: 20_847_056, coeficiente_aplicado: null, monto_ars: null },
+    ],
   },
   {
-    id: 'c5', numero: '005', fecha: '05/05/2026', rubro: 'Estructuras', rubro_id: 'r3',
-    avance_pct: 68, monto: 14_235_534, notas: 'Avance adicional vigas y losas visto.',
+    id: 'c5', numero: '005', fecha: '05/05/2026', periodo: '2026-05', fecha_valorizacion: '05/05/2026',
+    notas: 'Avance adicional vigas y losas visto — redeterminado a CAC mayo.',
     estado: 'aprobado', fecha_envio: '06/05/2026', fecha_aprobacion: '09/05/2026',
+    aprobacion: { fecha_aprobacion_cliente: '09/05/2026', fecha_registro: '09/05/2026', medio: 'mail', registrado_por: 'director' },
     adjuntos: ['foto_vigas_hav.jpg', 'foto_losas_ha.jpg'],
+    renglones: [
+      // Mismo rubro que c3 pero valorizado en mayo → coef 1.10 (demuestra #1: distinto ARS).
+      { rubro_id: 'r3', rubro: 'Estructuras', avance_acumulado_pct: 68, avance_periodo_pct: 18, monto_base: 14_235_534, coeficiente_aplicado: 1.100, monto_ars: 15_659_087 },
+    ],
   },
 ];
 
@@ -447,11 +544,38 @@ const ANEXOS_INIT = [
 const gastoRealPorRubro = (rubroId, gastos) =>
   gastos.reduce((sum, g) => sum + g.imputaciones.filter(i => i.rubro_id === rubroId).reduce((s, i) => s + i.monto_imputado, 0), 0);
 
+// Monto ARS de un renglón: congelado si el cert está aprobado, en vivo si no (coef × base).
+const renglonArs = (cert, ren) =>
+  ren.monto_ars != null
+    ? ren.monto_ars
+    : Math.round(ren.monto_base * coefRedeterminacion(cert.fecha_valorizacion));
+
+// Total ARS de un certificado = suma de sus renglones (ajuste #3).
+const certTotalArs = (cert) => cert.renglones.reduce((s, r) => s + renglonArs(cert, r), 0);
+const certTotalBase = (cert) => cert.renglones.reduce((s, r) => s + r.monto_base, 0);
+
+// Suma ARS de los renglones de un rubro entre todos los certs.
 const certMontoTotal = (rubroId, certs) =>
-  certs.filter(c => c.rubro_id === rubroId).reduce((s, c) => s + c.monto, 0);
+  certs.reduce((s, c) => s + c.renglones.filter(r => r.rubro_id === rubroId).reduce((a, r) => a + renglonArs(c, r), 0), 0);
 
 const certMontoAprobado = (rubroId, certs) =>
-  certs.filter(c => c.rubro_id === rubroId && c.estado === 'aprobado').reduce((s, c) => s + c.monto, 0);
+  certs.filter(c => c.estado === 'aprobado')
+    .reduce((s, c) => s + c.renglones.filter(r => r.rubro_id === rubroId).reduce((a, r) => a + renglonArs(c, r), 0), 0);
+
+// Avance certificado de un rubro = DERIVADO del máximo acumulado entre renglones de certs APROBADOS.
+// Un borrador o un cert rechazado no cuentan; al rechazarse, el avance vuelve solo.
+const certAvanceAprobado = (rubroId, certs) =>
+  certs.filter(c => c.estado === 'aprobado')
+    .flatMap(c => c.renglones.filter(r => r.rubro_id === rubroId))
+    .reduce((max, r) => Math.max(max, r.avance_acumulado_pct), 0);
+
+// ─── Deducciones del contrato (ajuste #2): retención + amortización del anticipo ──
+// Aplican sobre el monto BRUTO liberado de cada cuota tipo certificado, antes del cobro.
+const desgloseCobro = (montoBruto) => {
+  const retencion    = Math.round(montoBruto * CONTRATO.retencion_pct);
+  const amortizacion = CONTRATO.amortiza_anticipo ? Math.round(montoBruto * CONTRATO.anticipo_pct) : 0;
+  return { bruto: montoBruto, retencion, amortizacion, neto: montoBruto - retencion - amortizacion };
+};
 
 // ─── KPI Card ─────────────────────────────────────────────────────────────────
 
@@ -501,10 +625,13 @@ function TabEjecucion({ rubros, certificados, gastos }) {
   const [expandedSR, setExpandedSR] = useState({});
 
   const totalPresupuestado  = PROYECTO.total;
-  const montoCertTot        = certificados.reduce((s, c) => s + c.monto, 0);
-  const montoCertAprobado   = certificados.filter(c => c.estado === 'aprobado').reduce((s, c) => s + c.monto, 0);
+  const montoCertTot        = certificados.reduce((s, c) => s + certTotalArs(c), 0);
+  const montoCertAprobado   = certificados.filter(c => c.estado === 'aprobado').reduce((s, c) => s + certTotalArs(c), 0);
   const montoEnviado        = montoCertTot - montoCertAprobado;
-  const pctCertificado      = (montoCertTot / totalPresupuestado) * 100;
+  // Avance certificado (económico) = aprobado / contrato. Distinto del avance físico declarado.
+  const pctCertAprob        = (montoCertAprobado / totalPresupuestado) * 100;
+  // Avance físico ponderado = Σ(avance físico del rubro × incidencia del rubro en el contrato).
+  const avanceFisicoPond    = rubros.reduce((s, r) => s + r.avance * (r.monto / totalPresupuestado), 0);
   const totalGastado        = gastos.reduce((s, g) => s + g.monto, 0);
   const margenEjecutado     = montoCertAprobado - gastos.filter(g => g.imputaciones.length > 0).reduce((s, g) => s + g.monto, 0);
   const certsPendientes     = certificados.filter(c => c.estado === 'enviado');
@@ -528,7 +655,7 @@ function TabEjecucion({ rubros, certificados, gastos }) {
             const dias = diasDesde(c.fecha_envio);
             return (
               <Typography key={c.id} variant="caption" display="block" mt={0.25}>
-                Cert. #{c.numero} — {c.rubro} — enviado hace <strong>{dias} días</strong> ({fmtM(c.monto)})
+                Cert. #{c.numero} — {c.renglones.length === 1 ? c.renglones[0].rubro : `${c.renglones.length} rubros`} — enviado hace <strong>{dias} días</strong> ({fmtM(certTotalArs(c))})
               </Typography>
             );
           })}
@@ -538,8 +665,9 @@ function TabEjecucion({ rubros, certificados, gastos }) {
       {/* KPIs */}
       <Stack direction="row" spacing={2} flexWrap="wrap" mb={3} useFlexGap>
         <KpiCard label="Presupuesto total" value={fmtM(totalPresupuestado)} sub="22 rubros · contrato original" tooltip="Suma de todos los rubros del PP aceptado." />
-        <KpiCard label="Certificado" value={fmtM(montoCertTot)} sub={`${pctCertificado.toFixed(1)}% · ${montoCertAprobado < montoCertTot ? `${ fmtM(montoEnviado)} pend. aprobación` : 'todo aprobado'}`} color="warning.main" tooltip="Avance físico formalizado. Incluye enviados y aprobados." />
-        <KpiCard label="Gastado real" value={fmtM(totalGastado)} sub={`${gastos.filter(g => g.imputaciones.length === 0).length} gastos sin imputar`} tooltip="Suma de todos los gastos registrados en caja, con o sin imputación." />
+        <KpiCard label="Avance físico ponderado" value={`${avanceFisicoPond.toFixed(1)}%`} sub="ejecutado en obra · ponderado por incidencia" tooltip="Σ(avance físico del rubro × incidencia). Realidad de obra declarada por el director, independiente de la certificación." />
+        <KpiCard label="Certificado aprobado" value={fmtM(montoCertAprobado)} sub={`${pctCertAprob.toFixed(1)}% del contrato${montoEnviado > 0 ? ` · +${fmtM(montoEnviado)} pend.` : ''}`} color="warning.main" tooltip="Avance económico formalizado y aprobado por el cliente. Lo enviado pero no aprobado se muestra aparte." />
+        <KpiCard label="Gastado real" value={fmtM(totalGastado)} sub={`${gastos.filter(g => g.imputaciones.length === 0).length} gastos sin imputar`} tooltip="Suma de todos los gastos registrados en caja, con o sin imputación. La imputación se hace en Caja." />
         <KpiCard
           label="Margen ejecutado"
           value={fmtM(Math.abs(margenEjecutado))}
@@ -570,9 +698,11 @@ function TabEjecucion({ rubros, certificados, gastos }) {
               const hasSub      = r.sub_rubros?.length > 0;
               const certTotal   = certMontoTotal(r.id, certificados);
               const certAprov   = certMontoAprobado(r.id, certificados);
+              const certEnviado = certTotal - certAprov;   // certificado pendiente de aprobación
               const gastado     = gastoRealPorRubro(r.id, gastos);
-              const margen      = certTotal > 0 ? certTotal - gastado : null;
-              const hayEnviado  = certificados.some(c => c.rubro_id === r.id && c.estado === 'enviado');
+              // Margen económico = certificado APROBADO (cobrable) − gastado real. No cuenta lo enviado.
+              const margen      = certAprov > 0 ? certAprov - gastado : null;
+              const hayEnviado  = certEnviado > 0;
               return (
                 <React.Fragment key={r.id}>
                   <TableRow
@@ -613,8 +743,8 @@ function TabEjecucion({ rubros, certificados, gastos }) {
                     <TableCell align="right">
                       {certTotal > 0 ? (
                         <Stack alignItems="flex-end">
-                          <Typography variant="body2" fontWeight={600}>{fmt(certTotal)}</Typography>
-                          {hayEnviado && <Typography variant="caption" color="warning.main" sx={{ fontSize: 10 }}>⏳ pend. aprob.</Typography>}
+                          <Typography variant="body2" fontWeight={600}>{certAprov > 0 ? fmt(certAprov) : '—'}</Typography>
+                          {hayEnviado && <Typography variant="caption" color="warning.main" sx={{ fontSize: 10 }}>+{fmtM(certEnviado)} pend. aprob.</Typography>}
                         </Stack>
                       ) : <Typography variant="body2" color="text.disabled">—</Typography>}
                     </TableCell>
@@ -697,11 +827,16 @@ function TabEjecucion({ rubros, certificados, gastos }) {
               <TableCell><Typography variant="caption" color="text.secondary">{mesAFecha(1)} → {mesAFecha(10)}</Typography></TableCell>
               <TableCell>
                 <Stack direction="row" alignItems="center" spacing={1}>
-                  <LinearProgress variant="determinate" value={pctCertificado} color="warning" sx={{ flex: 1, height: 6, borderRadius: 3, bgcolor: 'neutral.100' }} />
-                  <Typography variant="caption" width={32} textAlign="right">{pctCertificado.toFixed(1)}%</Typography>
+                  <LinearProgress variant="determinate" value={avanceFisicoPond} color="warning" sx={{ flex: 1, height: 6, borderRadius: 3, bgcolor: 'neutral.100' }} />
+                  <Typography variant="caption" width={32} textAlign="right">{avanceFisicoPond.toFixed(1)}%</Typography>
                 </Stack>
               </TableCell>
-              <TableCell align="right"><Typography variant="body2" fontWeight={700}>{fmt(montoCertTot)}</Typography></TableCell>
+              <TableCell align="right">
+                <Stack alignItems="flex-end">
+                  <Typography variant="body2" fontWeight={700}>{fmt(montoCertAprobado)}</Typography>
+                  {montoEnviado > 0 && <Typography variant="caption" color="warning.main" sx={{ fontSize: 10 }}>+{fmtM(montoEnviado)} pend. aprob.</Typography>}
+                </Stack>
+              </TableCell>
               <TableCell align="right"><Typography variant="body2" fontWeight={700}>{fmt(totalGastado)}</Typography></TableCell>
               <TableCell align="right">
                 <Typography variant="body2" fontWeight={700} color={margenEjecutado >= 0 ? 'success.main' : 'error.main'}>
@@ -719,18 +854,27 @@ function TabEjecucion({ rubros, certificados, gastos }) {
 
 // ─── Tab: Plan de Cobro ────────────────────────────────────────────────────────
 
-function TabPlanCobro({ cuotas, rubros, onAgregarCuota, onCobrar }) {
+function TabPlanCobro({ cuotas, rubros, certificados, onAgregarCuota, onCobrar }) {
+  // Deducciones (#2): sólo las cuotas tipo certificado descuentan retención + amortización del bruto liberado.
+  const desgQ = (q) => q.tipo === 'certificado'
+    ? desgloseCobro(q.monto_liberado)
+    : { bruto: q.monto_liberado, retencion: 0, amortizacion: 0, neto: q.monto_liberado };
+
   const totalCobrado    = cuotas.reduce((s, q) => s + q.monto_cobrado, 0);
-  const totalLiberado   = cuotas.reduce((s, q) => s + q.monto_liberado, 0);
-  const porCobrar       = totalLiberado - totalCobrado;
+  const netoLiberado    = cuotas.reduce((s, q) => s + desgQ(q).neto, 0);
+  const fondoReparo     = cuotas.reduce((s, q) => s + desgQ(q).retencion, 0);
+  const amortizado      = cuotas.reduce((s, q) => s + desgQ(q).amortizacion, 0);
+  const porCobrarNeto   = netoLiberado - totalCobrado;
   const proximaCuota    = cuotas.find(q => q.estado === 'esperando');
 
   return (
     <Box>
       <Stack direction="row" spacing={2} flexWrap="wrap" mb={3} useFlexGap>
-        <KpiCard label="Cobrado" value={fmtM(totalCobrado)} sub={`${((totalCobrado / PROYECTO.total) * 100).toFixed(1)}% del contrato`} color="success.main" />
-        <KpiCard label="Liberado por cobrar" value={fmtM(porCobrar)} sub="certificado aprobado, pendiente de cobro" color="warning.main" tooltip="Trabajo certificado y aprobado por el cliente que todavía no se cobró." />
-        <KpiCard label="Próxima cuota" value={proximaCuota ? fmtM(proximaCuota.monto_liberado) : '—'} sub={proximaCuota ? `de ${fmtM(proximaCuota.monto)} total` : 'Sin cuotas disponibles'} color="warning.main" />
+        <KpiCard label="Cobrado (neto)" value={fmtM(totalCobrado)} sub={`${((totalCobrado / PROYECTO.total) * 100).toFixed(1)}% del contrato`} color="success.main" />
+        <KpiCard label="Liberado por cobrar (neto)" value={fmtM(porCobrarNeto)} sub="certificado aprobado, neto de deducciones" color="warning.main" tooltip={`Neto = bruto − retención (${Math.round(CONTRATO.retencion_pct * 100)}%) − amortización del anticipo (${Math.round(CONTRATO.anticipo_pct * 100)}%).`} />
+        <KpiCard label="Fondo de reparo retenido" value={fmtM(fondoReparo)} sub={`retención ${Math.round(CONTRATO.retencion_pct * 100)}% · se libera en recepción definitiva`} tooltip="Retención acumulada que se libera recién en la recepción definitiva de la obra (evento liberacion_retenciones)." />
+        <KpiCard label="Anticipo amortizado" value={fmtM(amortizado)} sub={`de ${fmtM(Math.round(PROYECTO.total * CONTRATO.anticipo_pct))} de anticipo`} tooltip="El anticipo se cobró una vez al inicio; cada certificado lo amortiza. No se cuenta dos veces." />
+        <KpiCard label="Próxima cuota" value={proximaCuota ? fmtM(desgQ(proximaCuota).neto) : '—'} sub={proximaCuota ? `neto · de ${fmtM(proximaCuota.monto)} total` : 'Sin cuotas disponibles'} color="warning.main" />
       </Stack>
 
       <Stack spacing={2}>
@@ -763,16 +907,32 @@ function TabPlanCobro({ cuotas, rubros, onAgregarCuota, onCobrar }) {
                   <Box mt={1}>
                     <Stack direction="row" alignItems="center" spacing={1} mb={1} flexWrap="wrap">
                       <Typography variant="body2" color="text.secondary">Condición: {q.condicion}</Typography>
-                      {rubroRef && <Chip size="small" label={`${rubroRef.nombre}: ${rubroRef.avance}% avanzado`} color={rubroRef.avance === 100 ? 'success' : 'warning'} />}
+                      {rubroRef && (() => {
+                        const certPct = certAvanceAprobado(rubroRef.id, certificados);
+                        return <Chip size="small" label={`${rubroRef.nombre}: ${certPct}% certificado`} color={certPct === 100 ? 'success' : 'warning'} />;
+                      })()}
                     </Stack>
                     {/* Barra de liberado */}
                     <Stack spacing={0.5}>
                       <Stack direction="row" justifyContent="space-between">
-                        <Typography variant="caption" color="text.secondary">Liberado (cert. aprobado)</Typography>
+                        <Typography variant="caption" color="text.secondary">Liberado bruto (cert. aprobado)</Typography>
                         <Typography variant="caption" fontWeight={600}>{fmtM(q.monto_liberado)} de {fmtM(q.monto)}</Typography>
                       </Stack>
                       <LinearProgress variant="determinate" value={pctLib} color="warning" sx={{ height: 8, borderRadius: 4, bgcolor: 'neutral.100' }} />
                     </Stack>
+                    {/* Desglose de deducciones (#2) */}
+                    {q.monto_liberado > 0 && (() => {
+                      const d = desgQ(q);
+                      return (
+                        <Stack spacing={0.25} mt={1} sx={{ bgcolor: 'neutral.50', borderRadius: 1, p: 1 }}>
+                          <Stack direction="row" justifyContent="space-between"><Typography variant="caption" color="text.secondary">Bruto liberado</Typography><Typography variant="caption">{fmt(d.bruto)}</Typography></Stack>
+                          <Stack direction="row" justifyContent="space-between"><Typography variant="caption" color="text.secondary">− Retención ({Math.round(CONTRATO.retencion_pct * 100)}%)</Typography><Typography variant="caption" color="error.main">−{fmt(d.retencion)}</Typography></Stack>
+                          <Stack direction="row" justifyContent="space-between"><Typography variant="caption" color="text.secondary">− Amortización anticipo ({Math.round(CONTRATO.anticipo_pct * 100)}%)</Typography><Typography variant="caption" color="error.main">−{fmt(d.amortizacion)}</Typography></Stack>
+                          <Divider sx={{ my: 0.25 }} />
+                          <Stack direction="row" justifyContent="space-between"><Typography variant="caption" fontWeight={700}>Neto a cobrar</Typography><Typography variant="caption" fontWeight={700} color="warning.main">{fmt(d.neto)}</Typography></Stack>
+                        </Stack>
+                      );
+                    })()}
                     {q.monto_cobrado > 0 && q.monto_cobrado < q.monto_liberado && (
                       <Stack spacing={0.5} mt={1}>
                         <Stack direction="row" justifyContent="space-between">
@@ -794,7 +954,7 @@ function TabPlanCobro({ cuotas, rubros, onAgregarCuota, onCobrar }) {
                   <Box>
                     <Typography variant="h6" fontWeight={700}>{fmt(q.monto)}</Typography>
                     {q.tipo === 'certificado' && q.monto_liberado > 0 && q.monto_cobrado === 0 && (
-                      <Typography variant="caption" color="warning.main">Disponible para cobrar: {fmtM(q.monto_liberado)}</Typography>
+                      <Typography variant="caption" color="warning.main">Disponible para cobrar (neto): {fmtM(desgQ(q).neto)}</Typography>
                     )}
                     {q.estado === 'cobrado' && q.fecha_cobro && (
                       <Typography variant="caption" color="success.main">Cobrado el {q.fecha_cobro}</Typography>
@@ -802,7 +962,7 @@ function TabPlanCobro({ cuotas, rubros, onAgregarCuota, onCobrar }) {
                   </Box>
                   {q.estado === 'esperando' && q.monto_liberado > 0 && (
                     <Button size="small" variant="contained" color="warning" startIcon={<CheckCircleIcon />} onClick={() => onCobrar(q.id)}>
-                      Registrar cobro — {fmtM(q.monto_liberado)}
+                      Registrar cobro — {fmtM(desgQ(q).neto)}
                     </Button>
                   )}
                   {q.estado === 'bloqueada' && (
@@ -832,62 +992,100 @@ function TabPlanCobro({ cuotas, rubros, onAgregarCuota, onCobrar }) {
 const ADJUNTOS_MOCK = ['foto_avance_1.jpg', 'foto_avance_2.jpg', 'medicion_parcial.pdf'];
 
 function DialogNuevoCertificado({ open, onClose, rubros, cuotas, certificados, onGuardar }) {
-  const [step,    setStep]    = useState(0);
-  const [rubroId, setRubroId] = useState('');
-  const [avance,  setAvance]  = useState('');
-  const [notas,   setNotas]   = useState('');
-  const [adjuntos,setAdjuntos]= useState([]);
+  const [step,      setStep]      = useState(0);
+  const [renglones, setRenglones] = useState([{ rubroId: '', avance: '' }]);
+  const [notas,     setNotas]     = useState('');
+  const [adjuntos,  setAdjuntos]  = useState([]);
 
-  const rubroSel      = rubros.find(r => r.id === rubroId);
-  const avanceNum     = Number(avance);
-  const montoEstimado = rubroSel ? rubroSel.monto * (Math.max(avanceNum - rubroSel.avance, 0) / 100) : 0;
+  const hoyStr  = hoy.toLocaleDateString('es-AR');
+  const periodo = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}`;
+  const coefHoy = coefRedeterminacion(hoyStr);   // coeficiente vigente a la fecha de valorización
 
-  // Cuotas que se desbloquearían (proporcional)
-  const cuotasAfectadas = cuotas.filter(q => q.tipo === 'certificado' && q.rubro_id === rubroId && q.estado !== 'cobrado');
+  // Renglones calculados: base (período) y ars (× coef vigente). El coef se congela recién al aprobar.
+  const renglonesCalc = renglones.map(rl => {
+    const rubro     = rubros.find(r => r.id === rl.rubroId);
+    const avanceNum = Number(rl.avance);
+    const certPrev  = rubro ? certAvanceAprobado(rl.rubroId, certificados) : 0;
+    const periodoPct = Math.max(avanceNum - certPrev, 0);
+    const montoBase = rubro ? Math.round(rubro.monto * periodoPct / 100) : 0;
+    return { ...rl, rubro, avanceNum, certPrev, periodoPct, montoBase, montoArs: Math.round(montoBase * coefHoy) };
+  });
+  const valida    = renglonesCalc.filter(r => r.rubro && r.avanceNum > 0);
+  const totalArs  = valida.reduce((s, r) => s + r.montoArs, 0);
+  const totalBase = valida.reduce((s, r) => s + r.montoBase, 0);
 
-  const reset = () => { setStep(0); setRubroId(''); setAvance(''); setNotas(''); setAdjuntos([]); };
+  const setRow = (i, patch) => setRenglones(p => p.map((r, j) => j === i ? { ...r, ...patch } : r));
+  const addRow = () => setRenglones(p => [...p, { rubroId: '', avance: '' }]);
+  const delRow = (i) => setRenglones(p => p.filter((_, j) => j !== i));
+
+  const reset = () => { setStep(0); setRenglones([{ rubroId: '', avance: '' }]); setNotas(''); setAdjuntos([]); };
 
   const handleGuardar = () => {
-    onGuardar({ rubroId, rubroNombre: rubroSel?.nombre, avance: avanceNum, monto: montoEstimado, notas, adjuntos, enviar: false });
+    onGuardar({
+      periodo, fechaValorizacion: hoyStr, notas, adjuntos, enviar: false,
+      renglones: valida.map(r => ({
+        rubro_id: r.rubroId, rubro: r.rubro.nombre,
+        avance_acumulado_pct: r.avanceNum, avance_periodo_pct: r.periodoPct, monto_base: r.montoBase,
+      })),
+    });
     reset(); onClose();
   };
 
-  const steps = ['Avance', 'Adjuntos', 'Envío'];
+  const steps = ['Renglones', 'Adjuntos', 'Envío'];
 
   return (
     <Dialog open={open} onClose={() => { reset(); onClose(); }} maxWidth="sm" fullWidth>
-      <DialogTitle>Nuevo certificado de avance</DialogTitle>
+      <DialogTitle>Nuevo certificado de avance · período {periodo}</DialogTitle>
       <DialogContent>
         <Stepper activeStep={step} sx={{ mb: 3, mt: 1 }}>
           {steps.map(s => <Step key={s}><StepLabel>{s}</StepLabel></Step>)}
         </Stepper>
 
         {step === 0 && (
-          <Stack spacing={2.5}>
-            <FormControl fullWidth size="small">
-              <InputLabel>Rubro</InputLabel>
-              <Select value={rubroId} onChange={e => setRubroId(e.target.value)} label="Rubro">
-                {rubros.map(r => (
-                  <MenuItem key={r.id} value={r.id} disabled={r.avance === 100}>
-                    <Stack direction="row" justifyContent="space-between" width="100%">
-                      <span>{r.num}. {r.nombre}</span>
-                      <Typography variant="caption" color="text.secondary">Actual: {r.avance}%</Typography>
-                    </Stack>
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            <TextField
-              label="% de avance certificado"
-              size="small" type="number" value={avance}
-              onChange={e => setAvance(e.target.value)}
-              inputProps={{ min: rubroSel?.avance ?? 0, max: 100 }}
-              helperText={rubroSel ? `Avance previo: ${rubroSel.avance}%. Monto adicional: ${fmt(montoEstimado)}` : ''}
-            />
+          <Stack spacing={2}>
+            <Typography variant="caption" color="text.secondary">
+              Un certificado es un período con uno o varios renglones (una línea por rubro). Valorización {hoyStr} · coef CAC ×{coefHoy.toFixed(3)}.
+            </Typography>
+            {renglonesCalc.map((rl, i) => (
+              <Paper key={i} variant="outlined" sx={{ p: 1.5 }}>
+                <Stack direction="row" spacing={1} alignItems="flex-start">
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Rubro</InputLabel>
+                    <Select value={rl.rubroId} onChange={e => setRow(i, { rubroId: e.target.value })} label="Rubro">
+                      {rubros.map(r => {
+                        const certPrev = certAvanceAprobado(r.id, certificados);
+                        return (
+                          <MenuItem key={r.id} value={r.id} disabled={certPrev === 100}>
+                            <Stack direction="row" justifyContent="space-between" width="100%">
+                              <span>{r.num}. {r.nombre}</span>
+                              <Typography variant="caption" color="text.secondary">Cert: {certPrev}%</Typography>
+                            </Stack>
+                          </MenuItem>
+                        );
+                      })}
+                    </Select>
+                  </FormControl>
+                  <TextField
+                    label="% acum." size="small" type="number" value={rl.avance} sx={{ width: 110 }}
+                    onChange={e => setRow(i, { avance: e.target.value })}
+                    inputProps={{ min: rl.certPrev, max: 100 }}
+                  />
+                  {renglones.length > 1 && (
+                    <IconButton size="small" color="error" onClick={() => delRow(i)} sx={{ mt: 0.5 }}><ThumbDownIcon fontSize="small" /></IconButton>
+                  )}
+                </Stack>
+                {rl.rubro && rl.avanceNum > 0 && (
+                  <Typography variant="caption" color="text.secondary" mt={0.5} display="block">
+                    Período +{rl.periodoPct}% (cert. previo {rl.certPrev}%) · base {fmtM(rl.montoBase)} · ARS {fmt(rl.montoArs)}
+                  </Typography>
+                )}
+              </Paper>
+            ))}
+            <Box><Button size="small" startIcon={<AddIcon />} onClick={addRow}>Agregar renglón</Button></Box>
             <TextField label="Descripción del avance" size="small" multiline rows={2} value={notas} onChange={e => setNotas(e.target.value)} placeholder="Qué trabajo se completó..." />
-            {cuotasAfectadas.length > 0 && avanceNum > 0 && (
+            {valida.length > 0 && (
               <Alert severity="info" icon={<VerifiedIcon />}>
-                Al aprobarse este certificado se liberará <strong>{fmtM(Math.round(cuotasAfectadas[0].monto * avanceNum / 100))}</strong> de la {cuotasAfectadas[0].descripcion}.
+                Total del certificado: <strong>{fmt(totalArs)}</strong> ({CONTRATO.unidad_cuenta}, base {fmtM(totalBase)}). Al aprobarse se congela el coeficiente y se libera la parte proporcional de las cuotas vinculadas (neto de retención {Math.round(CONTRATO.retencion_pct * 100)}% y amortización {Math.round(CONTRATO.anticipo_pct * 100)}%).
               </Alert>
             )}
           </Stack>
@@ -921,19 +1119,21 @@ function DialogNuevoCertificado({ open, onClose, rubros, cuotas, certificados, o
           <Stack spacing={2}>
             <Card variant="outlined">
               <CardContent sx={{ pb: '12px !important' }}>
-                <Typography variant="caption" color="text.secondary" display="block">Vista previa del informe</Typography>
+                <Typography variant="caption" color="text.secondary" display="block">Vista previa del informe · período {periodo}</Typography>
                 <Typography variant="subtitle2" fontWeight={700} mt={0.5}>{PROYECTO.nombre} — Cert. #{String(certificados.length + 1).padStart(3, '0')}</Typography>
-                <Typography variant="body2" color="text.secondary">{rubroSel?.nombre} — {avance}% completado</Typography>
-                <Typography variant="body2" color="text.secondary">Monto: {fmt(montoEstimado)}</Typography>
+                {valida.map((r, i) => (
+                  <Typography key={i} variant="body2" color="text.secondary">{r.rubro.nombre} — {r.avanceNum}% acum. (+{r.periodoPct}%) · {fmt(r.montoArs)}</Typography>
+                ))}
+                <Typography variant="body2" fontWeight={700} mt={0.5}>Total: {fmt(totalArs)} ({CONTRATO.unidad_cuenta})</Typography>
                 {adjuntos.length > 0 && <Typography variant="caption" color="text.secondary">{adjuntos.length} adjunto{adjuntos.length > 1 ? 's' : ''}</Typography>}
               </CardContent>
             </Card>
             <Button variant="outlined" startIcon={<PictureAsPdfIcon />} fullWidth size="large" color="error"
-              onClick={() => alert('PDF generado: Certificado_' + (certificados.length + 1).toString().padStart(3,'0') + '_' + rubroSel?.nombre?.replace(/ /g,'_') + '.pdf\n\n(En producción esto descarga el archivo real)')}>
+              onClick={() => alert('PDF generado: Certificado_' + (certificados.length + 1).toString().padStart(3,'0') + '_' + periodo + '.pdf\n\n' + valida.length + ' renglón(es) · un solo PDF y una sola aprobación\n(En producción esto descarga el archivo real)')}>
               Descargar informe PDF
             </Button>
             <Alert severity="info" icon={<SendIcon />}>
-              Descargá el PDF y envialo vos desde tu mail a <strong>{PROYECTO.cliente}</strong>. Cuando el cliente apruebe, marcalo como aprobado desde la lista de certificados.
+              Descargá el PDF y envialo vos desde tu mail a <strong>{PROYECTO.cliente}</strong>. Cuando el cliente apruebe, registralo como aprobado desde la lista de certificados.
             </Alert>
           </Stack>
         )}
@@ -942,7 +1142,7 @@ function DialogNuevoCertificado({ open, onClose, rubros, cuotas, certificados, o
         {step > 0 && <Button onClick={() => setStep(p => p - 1)}>Atrás</Button>}
         <Button onClick={() => { reset(); onClose(); }}>Cancelar</Button>
         {step < 2
-          ? <Button variant="contained" onClick={() => setStep(p => p + 1)} disabled={step === 0 && (!rubroId || !avanceNum)}>Siguiente</Button>
+          ? <Button variant="contained" onClick={() => setStep(p => p + 1)} disabled={step === 0 && valida.length === 0}>Siguiente</Button>
           : <Button variant="contained" startIcon={<EditNoteIcon />} onClick={handleGuardar}>Guardar borrador</Button>
         }
       </DialogActions>
@@ -970,27 +1170,42 @@ function DialogInformeCertificado({ open, onClose, cert, onAprobar, onRechazar }
               <Typography variant="body2" color="text.secondary">{PROYECTO.cliente}</Typography>
             </Box>
             <Box textAlign="right">
-              <Typography variant="overline" color="text.secondary">Certificado</Typography>
+              <Typography variant="overline" color="text.secondary">Certificado · Período {cert.periodo}</Typography>
               <Typography variant="h6" fontWeight={700}>#{cert.numero}</Typography>
               <Typography variant="body2" color="text.secondary">{cert.fecha}</Typography>
             </Box>
           </Stack>
           <Divider sx={{ mb: 2 }} />
-          {/* Detalle */}
+          {/* Detalle — un renglón por rubro (#3) */}
           <TableContainer>
             <Table size="small">
               <TableHead>
                 <TableRow>
                   <TableCell>Rubro</TableCell>
-                  <TableCell align="center">Avance</TableCell>
-                  <TableCell align="right">Monto certificado</TableCell>
+                  <TableCell align="center">Avance acum.</TableCell>
+                  <TableCell align="center">Del período</TableCell>
+                  <TableCell align="right">Base</TableCell>
+                  <TableCell align="center">Coef.</TableCell>
+                  <TableCell align="right">Monto ARS</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
+                {cert.renglones.map((ren, i) => {
+                  const coef = ren.coeficiente_aplicado ?? coefRedeterminacion(cert.fecha_valorizacion);
+                  return (
+                    <TableRow key={i}>
+                      <TableCell><Typography variant="body2" fontWeight={600}>{ren.rubro}</Typography></TableCell>
+                      <TableCell align="center"><Chip size="small" label={`${ren.avance_acumulado_pct}%`} color={ren.avance_acumulado_pct === 100 ? 'success' : 'warning'} /></TableCell>
+                      <TableCell align="center"><Typography variant="caption" color="text.secondary">+{ren.avance_periodo_pct}%</Typography></TableCell>
+                      <TableCell align="right"><Typography variant="caption" color="text.secondary">{fmtM(ren.monto_base)}</Typography></TableCell>
+                      <TableCell align="center"><Typography variant="caption" color={coef !== 1 ? 'warning.main' : 'text.secondary'}>×{coef.toFixed(3)}</Typography></TableCell>
+                      <TableCell align="right"><Typography variant="body2" fontWeight={700}>{fmt(renglonArs(cert, ren))}</Typography></TableCell>
+                    </TableRow>
+                  );
+                })}
                 <TableRow>
-                  <TableCell><Typography variant="body2" fontWeight={600}>{cert.rubro}</Typography></TableCell>
-                  <TableCell align="center"><Chip size="small" label={`${cert.avance_pct}%`} color={cert.avance_pct === 100 ? 'success' : 'warning'} /></TableCell>
-                  <TableCell align="right"><Typography variant="body2" fontWeight={700}>{fmt(cert.monto)}</Typography></TableCell>
+                  <TableCell colSpan={5} align="right"><Typography variant="body2" fontWeight={700}>Total {CONTRATO.unidad_cuenta}</Typography></TableCell>
+                  <TableCell align="right"><Typography variant="body2" fontWeight={700}>{fmt(certTotalArs(cert))}</Typography></TableCell>
                 </TableRow>
               </TableBody>
             </Table>
@@ -1022,7 +1237,10 @@ function DialogInformeCertificado({ open, onClose, cert, onAprobar, onRechazar }
           </Alert>
         )}
         {cert.estado === 'aprobado' && (
-          <Alert severity="success" icon={<CheckCircleIcon />}>Aprobado por el cliente el {cert.fecha_aprobacion}.</Alert>
+          <Alert severity="success" icon={<CheckCircleIcon />}>
+            Aprobado por el cliente el {cert.aprobacion?.fecha_aprobacion_cliente ?? cert.fecha_aprobacion}
+            {cert.aprobacion?.medio ? ` · registrado por el director (vía ${cert.aprobacion.medio})` : ''}. Coeficiente CAC congelado.
+          </Alert>
         )}
       </DialogContent>
       <DialogActions>
@@ -1055,7 +1273,15 @@ function DialogWASimulator({ open, onClose, rubros, onGuardar }) {
   const montoEst = r5 ? r5.monto * 0.80 : 0;
 
   const handleConfirmar = () => {
-    onGuardar({ rubroId: 'r5', rubroNombre: r5?.nombre ?? 'Mampostería y Tabiques', avance: 80, monto: montoEst, notas: 'Cargado desde WhatsApp.', adjuntos: ['foto_wa_mamposteria.jpg'], enviar: false });
+    const hoyStr = hoy.toLocaleDateString('es-AR');
+    onGuardar({
+      periodo: `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}`,
+      fechaValorizacion: hoyStr, notas: 'Cargado desde WhatsApp.', adjuntos: ['foto_wa_mamposteria.jpg'], enviar: false,
+      renglones: [{
+        rubro_id: 'r5', rubro: r5?.nombre ?? 'Mampostería y Tabiques',
+        avance_acumulado_pct: 80, avance_periodo_pct: 80, monto_base: Math.round(montoEst),
+      }],
+    });
     setPaso(0); onClose();
   };
 
@@ -1115,7 +1341,7 @@ function DialogWASimulator({ open, onClose, rubros, onGuardar }) {
 
 function TabCertificados({ certificados, rubros, onNuevoCert, onEnviar, onAprobar, onRechazar, onWA, readOnly }) {
   const [certInforme, setCertInforme] = useState(null);
-  const totalCert   = certificados.reduce((s, c) => s + c.monto, 0);
+  const totalCert   = certificados.reduce((s, c) => s + certTotalArs(c), 0);
   const aprobados   = certificados.filter(c => c.estado === 'aprobado').length;
   const pendientes  = certificados.filter(c => c.estado === 'enviado').length;
 
@@ -1125,6 +1351,7 @@ function TabCertificados({ certificados, rubros, onNuevoCert, onEnviar, onAproba
         <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap flex={1}>
           <KpiCard label="Emitidos" value={certificados.length} sub={`${aprobados} aprobados · ${pendientes} en revisión`} />
           <KpiCard label="Total certificado" value={fmtM(totalCert)} sub="aprobados + enviados" color="warning.main" />
+          <KpiCard label="Unidad de cuenta" value={CONTRATO.unidad_cuenta} sub={`redeterminación ${CONTRATO.politica_redeterminacion}`} tooltip={`Los montos se valorizan en ${UNIDAD_LABEL[CONTRATO.unidad_cuenta]} (base ${CONTRATO.fecha_base}). El coeficiente se congela al aprobar cada certificado.`} />
         </Stack>
         {!readOnly && (
           <Stack direction="row" spacing={1} ml={2} flexShrink={0}>
@@ -1139,10 +1366,10 @@ function TabCertificados({ certificados, rubros, onNuevoCert, onEnviar, onAproba
           <TableHead>
             <TableRow sx={{ bgcolor: 'neutral.50' }}>
               <TableCell>#</TableCell>
-              <TableCell>Fecha</TableCell>
-              <TableCell>Rubro</TableCell>
+              <TableCell>Período</TableCell>
+              <TableCell>Renglones</TableCell>
               <TableCell align="center">Avance</TableCell>
-              <TableCell align="right">Monto</TableCell>
+              <TableCell align="right">Monto ARS</TableCell>
               <TableCell align="center">Estado</TableCell>
               <TableCell>Enviado</TableCell>
               {!readOnly && <TableCell align="center">Acciones</TableCell>}
@@ -1152,18 +1379,31 @@ function TabCertificados({ certificados, rubros, onNuevoCert, onEnviar, onAproba
             {[...certificados].reverse().map(c => {
               const est = ESTADO_CERT[c.estado];
               const dias = c.fecha_envio ? diasDesde(c.fecha_envio) : null;
+              const unRenglon = c.renglones.length === 1;
+              const totalArs  = certTotalArs(c);
+              const totalBase = certTotalBase(c);
+              const redeterm  = totalArs !== totalBase;
               return (
                 <TableRow key={c.id} hover>
                   <TableCell><Chip size="small" label={`#${c.numero}`} variant="outlined" /></TableCell>
-                  <TableCell><Typography variant="body2">{c.fecha}</Typography></TableCell>
+                  <TableCell><Typography variant="body2">{c.periodo}</Typography><Typography variant="caption" color="text.disabled">{c.fecha}</Typography></TableCell>
                   <TableCell>
-                    <Typography variant="body2" fontWeight={500}>{c.rubro}</Typography>
+                    {unRenglon
+                      ? <Typography variant="body2" fontWeight={500}>{c.renglones[0].rubro}</Typography>
+                      : <Typography variant="body2" fontWeight={500}>{c.renglones.length} rubros (consolidado)</Typography>}
                     {c.adjuntos?.length > 0 && (
                       <Typography variant="caption" color="text.disabled"><AttachFileIcon sx={{ fontSize: 11, verticalAlign: 'middle' }} />{c.adjuntos.length}</Typography>
                     )}
                   </TableCell>
-                  <TableCell align="center"><Chip size="small" label={`${c.avance_pct}%`} color={c.avance_pct === 100 ? 'success' : 'warning'} /></TableCell>
-                  <TableCell align="right"><Typography variant="body2" fontWeight={600}>{fmt(c.monto)}</Typography></TableCell>
+                  <TableCell align="center">
+                    {unRenglon
+                      ? <Chip size="small" label={`${c.renglones[0].avance_acumulado_pct}%`} color={c.renglones[0].avance_acumulado_pct === 100 ? 'success' : 'warning'} />
+                      : <Chip size="small" variant="outlined" label="varios" />}
+                  </TableCell>
+                  <TableCell align="right">
+                    <Typography variant="body2" fontWeight={600}>{fmt(totalArs)}</Typography>
+                    {redeterm && <Typography variant="caption" color="text.disabled">base {fmtM(totalBase)} · CAC</Typography>}
+                  </TableCell>
                   <TableCell align="center"><Chip size="small" label={est.label} color={est.color} icon={est.icon} /></TableCell>
                   <TableCell>
                     {c.fecha_envio
@@ -1504,7 +1744,7 @@ function TabFlujoCaja({ rubros, certificados, cuotas }) {
     const porMes = Array(TOTAL_MESES).fill(0);
     certificados.filter(c => c.estado === 'aprobado').forEach(c => {
       const m = fechaToMes(c.fecha_aprobacion ?? c.fecha);
-      if (m) porMes[m - 1] += c.monto;
+      if (m) porMes[m - 1] += certTotalArs(c);
     });
     return porMes.reduce((acc, v, i) => { acc.push(Math.round(((i > 0 ? acc[i - 1] * 1_000_000 : 0) + v) / 1_000_000)); return acc; }, []);
   }, [certificados]);
@@ -1521,8 +1761,8 @@ function TabFlujoCaja({ rubros, certificados, cuotas }) {
 
   const mesActual  = fechaToMes('13/05/2026') ?? 3;
   const atraso     = planAcum[mesActual - 1] - certAcum[mesActual - 1];
-  const picoMes    = Math.max(...planMensual);
-  const picoLabel  = labels[planMensual.indexOf(picoMes)];
+  // Avance físico ponderado = Σ(avance físico del rubro × incidencia). Realidad de obra, no economía.
+  const avanceFisicoPond = rubros.reduce((s, r) => s + r.avance * (r.monto / PROYECTO.total), 0);
 
   return (
     <Box>
@@ -1534,6 +1774,7 @@ function TabFlujoCaja({ rubros, certificados, cuotas }) {
       <Stack direction="row" spacing={2} flexWrap="wrap" mb={3} useFlexGap>
         <KpiCard label="Planificado al mes actual" value={`$${planAcum[mesActual - 1]}M`} sub={labels[mesActual - 1]} />
         <KpiCard label="Certificado al mes actual" value={`$${certAcum[mesActual - 1]}M`} sub="solo certs aprobados" color="warning.main" />
+        <KpiCard label="Avance físico ponderado" value={`${avanceFisicoPond.toFixed(1)}%`} sub="ejecutado en obra (≠ certificado)" tooltip="Σ(avance físico × incidencia). Trabajo realmente ejecutado, independiente de lo certificado. El gap físico − certificado es trabajo hecho sin certificar." />
         <KpiCard label="Atraso financiero" value={`$${atraso}M`} sub="plan − certificado" color={atraso > 50 ? 'error.main' : 'text.primary'} tooltip="Cuánto deberías haber certificado vs. lo que certificaste. Lluvia y burocracia explicada aquí." />
         <KpiCard label="Cobrado" value={`$${cobradoAcum[mesActual - 1]}M`} sub="cuotas efectivamente cobradas" color="success.main" />
       </Stack>
@@ -1592,7 +1833,7 @@ const ROL_INFO = {
 function MockObraPage() {
   const [tab,          setTab]          = useState(0);
   const [rol,          setRol]          = useState('admin');
-  const [rubros,       setRubros]       = useState(RUBROS);
+  const [rubros]                        = useState(RUBROS);
   const [certificados, setCertificados] = useState(CERTIFICADOS_INIT);
   const [cuotas,       setCuotas]       = useState(CUOTAS_INIT);
   const [gastos]                        = useState(GASTOS_INIT);
@@ -1610,20 +1851,26 @@ function MockObraPage() {
     setTab(0);
   };
 
-  // Crear cert como borrador (o enviado si el usuario eligió enviar)
-  const handleGuardarCert = ({ rubroId, rubroNombre, avance, monto, notas, adjuntos, enviar }) => {
+  // Crear cert (período con renglones) como borrador. coef/monto_ars quedan en null hasta aprobar.
+  const handleGuardarCert = ({ periodo, fechaValorizacion, renglones, notas, adjuntos, enviar }) => {
     const numero = String(certificados.length + 1).padStart(3, '0');
     const hoyStr = hoy.toLocaleDateString('es-AR');
     const nuevo = {
       id: `c${certificados.length + 1}`, numero,
-      fecha: hoyStr, rubro: rubroNombre, rubro_id: rubroId,
-      avance_pct: avance, monto, notas, adjuntos: adjuntos ?? [],
+      fecha: hoyStr, periodo, fecha_valorizacion: fechaValorizacion ?? hoyStr,
+      notas, adjuntos: adjuntos ?? [],
       estado: enviar ? 'enviado' : 'borrador',
       fecha_envio: enviar ? hoyStr : null,
-      fecha_aprobacion: null,
+      fecha_aprobacion: null, aprobacion: null,
+      renglones: (renglones ?? []).map(r => ({
+        rubro_id: r.rubro_id, rubro: r.rubro,
+        avance_acumulado_pct: r.avance_acumulado_pct, avance_periodo_pct: r.avance_periodo_pct,
+        monto_base: r.monto_base, coeficiente_aplicado: null, monto_ars: null,
+      })),
     };
     setCertificados(p => [...p, nuevo]);
-    setRubros(prev => prev.map(r => r.id === rubroId ? { ...r, avance } : r));
+    // El avance certificado NO se toca al crear: es derivado de los certs aprobados (certAvanceAprobado).
+    // r.avance queda como avance FÍSICO declarado, independiente del certificado.
   };
 
   const handleEnviarCert = (certId) => {
@@ -1636,15 +1883,21 @@ function MockObraPage() {
     const cert = certificados.find(c => c.id === certId);
     if (!cert) return;
     const hoyStr = hoy.toLocaleDateString('es-AR');
-    setCertificados(prev => prev.map(c => c.id === certId ? { ...c, estado: 'aprobado', fecha_aprobacion: hoyStr } : c));
-    // Desbloqueo proporcional: mayor avance aprobado para ese rubro entre todos los certs
-    const maxAvance = Math.max(
-      cert.avance_pct,
-      ...certificados.filter(c => c.rubro_id === cert.rubro_id && c.estado === 'aprobado').map(c => c.avance_pct)
-    );
+    // 1) Aprobar y CONGELAR coeficiente + monto_ars de cada renglón a la fecha de valorización (#1).
+    const coef = coefRedeterminacion(cert.fecha_valorizacion);
+    const certAprobado = {
+      ...cert, estado: 'aprobado', fecha_aprobacion: hoyStr,
+      aprobacion: { fecha_aprobacion_cliente: hoyStr, fecha_registro: hoyStr, medio: 'mail', registrado_por: 'director' },
+      renglones: cert.renglones.map(r => ({ ...r, coeficiente_aplicado: coef, monto_ars: Math.round(r.monto_base * coef) })),
+    };
+    const certsAfter = certificados.map(c => c.id === certId ? certAprobado : c);
+    setCertificados(certsAfter);
+    // 2) Desbloqueo proporcional por rubro de cada renglón (avance certificado acumulado aprobado).
     setCuotas(prev => prev.map(q => {
-      if (q.tipo !== 'certificado' || q.rubro_id !== cert.rubro_id) return q;
-      const nuevoLiberado = Math.round(q.monto * maxAvance / 100);
+      if (q.tipo !== 'certificado') return q;
+      const avance = certAvanceAprobado(q.rubro_id, certsAfter);
+      if (avance === 0) return q;
+      const nuevoLiberado = Math.round(q.monto * avance / 100);
       return {
         ...q,
         monto_liberado: nuevoLiberado,
@@ -1660,12 +1913,13 @@ function MockObraPage() {
   const handleCobrarCuota = (cuotaId) => {
     setCuotas(prev => prev.map(q => {
       if (q.id !== cuotaId) return q;
-      const montoCobrado = q.monto_liberado;
+      // El cobro es el NETO (bruto − retención − amortización) para cuotas tipo certificado (#2).
+      const montoCobrado = q.tipo === 'certificado' ? desgloseCobro(q.monto_liberado).neto : q.monto_liberado;
       return {
         ...q,
         monto_cobrado: montoCobrado,
         fecha_cobro: hoy.toLocaleDateString('es-AR'),
-        estado: montoCobrado >= q.monto ? 'cobrado' : 'esperando',
+        estado: q.monto_liberado >= q.monto ? 'cobrado' : 'esperando',
       };
     }));
   };
@@ -1738,7 +1992,7 @@ function MockObraPage() {
       {/* Contenido */}
       <Container maxWidth="xl" sx={{ py: 3 }}>
         {activeKey === 'ejecucion'  && <TabEjecucion rubros={rubros} certificados={certificados} gastos={gastos} />}
-        {activeKey === 'cobro'      && <TabPlanCobro cuotas={cuotas} rubros={rubros} onAgregarCuota={() => {}} onCobrar={handleCobrarCuota} />}
+        {activeKey === 'cobro'      && <TabPlanCobro cuotas={cuotas} rubros={rubros} certificados={certificados} onAgregarCuota={() => {}} onCobrar={handleCobrarCuota} />}
         {activeKey === 'certs'      && <TabCertificados certificados={certificados} rubros={rubros} onNuevoCert={() => setDlgCert(true)} onEnviar={handleEnviarCert} onAprobar={handleAprobarCert} onRechazar={handleRechazarCert} onWA={() => setDlgWA(true)} readOnly={rol === 'comercial'} />}
         {activeKey === 'anexos'     && <TabAnexos anexos={anexos} onNuevoAnexo={() => setDlgAnexo(true)} />}
         {activeKey === 'cronograma' && <TabCronograma rubros={rubros} />}

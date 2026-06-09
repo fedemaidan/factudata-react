@@ -8,6 +8,7 @@ import {
   onAuthStateChanged,
   sendPasswordResetEmail,
   updateEmail,
+  updatePassword,
   reauthenticateWithCredential,
   EmailAuthProvider,
 } from 'firebase/auth';
@@ -438,6 +439,17 @@ export const AuthProvider = (props) => {
     }
   };
 
+  const changePassword = async (newPassword) => {
+    if (!auth.currentUser) {
+      const e = new Error('No hay usuario logueado.');
+      e.code = 'sorby/no-current-user';
+      throw e;
+    }
+    // Puede lanzar auth/requires-recent-login; re-lanzamos preservando el code
+    await updatePassword(auth.currentUser, newPassword);
+    return true;
+  };
+
   const reauthenticateUser = async (currentPassword) => {
     if (!auth.currentUser) throw new Error('No hay sesión activa');
     const email = auth.currentUser.email;
@@ -532,6 +544,7 @@ export const AuthProvider = (props) => {
         refreshUser,
         sendResetPasswordEmail,
         updateUserEmail,
+        changePassword,
         reauthenticateUser,
         spyUser,
         returnToOriginalUser,

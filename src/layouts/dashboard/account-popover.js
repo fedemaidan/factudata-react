@@ -38,6 +38,7 @@ export const AccountPopover = (props) => {
   const {
     user,
     updateUserEmail,
+    changePassword,
     reauthenticateUser,
     isSpying,
     spyUser,
@@ -59,12 +60,19 @@ export const AccountPopover = (props) => {
   const [newEmail, setNewEmail] = useState("");
   const [savingEmail, setSavingEmail] = useState(false);
 
+  // --- Cambiar contraseña (UI estado) ---
+  const [passwordOpen, setPasswordOpen] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [savingPassword, setSavingPassword] = useState(false);
+
   // --- Reautenticación (UI estado) ---
   const [reauthOpen, setReauthOpen] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [reauthLoading, setReauthLoading] = useState(false);
   // guardamos el intento para reintentar después de reauth
   const [pendingEmailAfterReauth, setPendingEmailAfterReauth] = useState(null);
+  const [pendingPasswordAfterReauth, setPendingPasswordAfterReauth] = useState(null);
 
   // --- Espiar cuenta (UI estado) ---
   const [spyOpen, setSpyOpen] = useState(false);
@@ -112,7 +120,50 @@ export const AccountPopover = (props) => {
     }
   }, [emailError, newEmail, updateUserEmail, user?.id]);
 
-  // --- Reautenticar y reintentar el cambio de email ---
+  // --- Cambiar contraseña ---
+  const handleOpenChangePassword = useCallback(() => {
+    setNewPassword("");
+    setConfirmPassword("");
+    setPasswordOpen(true);
+  }, []);
+
+  const handleCloseChangePassword = useCallback(() => {
+    if (!savingPassword) setPasswordOpen(false);
+  }, [savingPassword]);
+
+  const passwordError = useMemo(() => {
+    if (!passwordOpen) return "";
+    if (!newPassword) return "La contraseña es obligatoria";
+    if (newPassword.length < 6) return "La contraseña debe tener al menos 6 caracteres";
+    if (confirmPassword && newPassword !== confirmPassword) return "Las contraseñas no coinciden";
+    return "";
+  }, [passwordOpen, newPassword, confirmPassword]);
+
+  const handleConfirmChangePassword = useCallback(async () => {
+    if (passwordError || !confirmPassword) return;
+    try {
+      setSavingPassword(true);
+      await changePassword(newPassword);
+      setSnack({ open: true, message: "Contraseña actualizada correctamente.", severity: "success" });
+      setPasswordOpen(false);
+    } catch (error) {
+      if (error?.code === "auth/requires-recent-login") {
+        // Guardamos la contraseña que queríamos setear y pedimos la actual
+        setPendingPasswordAfterReauth(newPassword);
+        setReauthOpen(true);
+      } else {
+        setSnack({
+          open: true,
+          message: error?.message || "No se pudo actualizar la contraseña.",
+          severity: "error",
+        });
+      }
+    } finally {
+      setSavingPassword(false);
+    }
+  }, [passwordError, confirmPassword, newPassword, changePassword]);
+
+  // --- Reautenticar y reintentar el cambio pendiente (email o contraseña) ---
   const handleReauthAndRetry = useCallback(async () => {
     try {
       setReauthLoading(true);
@@ -121,12 +172,25 @@ export const AccountPopover = (props) => {
       setCurrentPassword("");
 
       if (pendingEmailAfterReauth) {
-        // reintento
+        // reintento email
         setSavingEmail(true);
         await updateUserEmail(user.id, pendingEmailAfterReauth);
         setSnack({ open: true, message: "Email actualizado correctamente.", severity: "success" });
         setEmailOpen(false);
         setPendingEmailAfterReauth(null);
+      }
+
+      if (pendingPasswordAfterReauth) {
+        // reintento contraseña
+        setSavingPassword(true);
+        await changePassword(pendingPasswordAfterReauth);
+        setSnack({
+          open: true,
+          message: "Contraseña actualizada correctamente.",
+          severity: "success",
+        });
+        setPasswordOpen(false);
+        setPendingPasswordAfterReauth(null);
       }
     } catch (error) {
       const msg =
@@ -137,8 +201,17 @@ export const AccountPopover = (props) => {
     } finally {
       setReauthLoading(false);
       setSavingEmail(false);
+      setSavingPassword(false);
     }
-  }, [currentPassword, pendingEmailAfterReauth, reauthenticateUser, updateUserEmail, user?.id]);
+  }, [
+    currentPassword,
+    pendingEmailAfterReauth,
+    pendingPasswordAfterReauth,
+    reauthenticateUser,
+    updateUserEmail,
+    changePassword,
+    user?.id,
+  ]);
 
   const handleOpenSpyUser = useCallback(() => {
     setSpyOpen(true);
@@ -229,6 +302,7 @@ export const AccountPopover = (props) => {
           }}
         >
           <MenuItem onClick={handleOpenChangeEmail}>Cambiar email</MenuItem>
+          <MenuItem onClick={handleOpenChangePassword}>Cambiar contraseña</MenuItem>
           {canSpy &&
             (!isSpying() ? (
               <MenuItem onClick={handleOpenSpyUser}>Espiar cuenta</MenuItem>
@@ -277,6 +351,47 @@ export const AccountPopover = (props) => {
             disabled={!!emailError || savingEmail}
           >
             {savingEmail ? "Guardando…" : "Guardar"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Modal Cambiar Contraseña */}
+      <Dialog open={passwordOpen} onClose={handleCloseChangePassword} fullWidth maxWidth="sm">
+        <DialogTitle>Cambiar contraseña</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mb: 2 }}>
+            Ingresá tu nueva contraseña. Por seguridad, puede que te pidamos confirmar tu
+            identidad.
+          </Typography>
+          <TextField
+            autoFocus
+            fullWidth
+            label="Nueva contraseña"
+            type="password"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            sx={{ mb: 2 }}
+          />
+          <TextField
+            fullWidth
+            label="Repetir contraseña"
+            type="password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            error={!!passwordError}
+            helperText={passwordError || " "}
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={handleCloseChangePassword} disabled={savingPassword}>
+            Cancelar
+          </Button>
+          <Button
+            onClick={handleConfirmChangePassword}
+            variant="contained"
+            disabled={!!passwordError || !newPassword || !confirmPassword || savingPassword}
+          >
+            {savingPassword ? "Guardando…" : "Guardar"}
           </Button>
         </DialogActions>
       </Dialog>
