@@ -85,12 +85,13 @@ const estadoChipColor = (estado) => {
 
 // ─── Tab: Datos ───────────────────────────────────────────────────────────────
 
-function TabDatos({ proveedor, empresaId, categoriasEmpresa, onSaved, onArchived }) {
+function TabDatos({ proveedor, empresaId, categoriasEmpresa, estadoDefaultEmpresa = 'Pagado', onSaved, onArchived }) {
   const provId = proveedor?._id || proveedor?.id;
 
   const [form, setForm] = useState({
     nombre: '', razon_social: '', cuit: '', direccion: '',
     tipo: 'materiales', tiene_cuenta_corriente: true, alias: [], categorias: [],
+    estado_inicial: null,
   });
   const [aliasInput, setAliasInput] = useState('');
   const [saving, setSaving] = useState(false);
@@ -110,6 +111,7 @@ function TabDatos({ proveedor, empresaId, categoriasEmpresa, onSaved, onArchived
       tiene_cuenta_corriente: proveedor.tiene_cuenta_corriente !== false,
       alias: proveedor.alias || [],
       categorias: proveedor.categorias || [],
+      estado_inicial: proveedor.estado_inicial ?? null,
     });
   }, [proveedor]);
 
@@ -127,6 +129,7 @@ function TabDatos({ proveedor, empresaId, categoriasEmpresa, onSaved, onArchived
         tiene_cuenta_corriente: form.tiene_cuenta_corriente,
         alias: form.alias,
         categorias: form.categorias,
+        estado_inicial: form.estado_inicial,
       });
       onSaved?.();
     } catch {
@@ -192,6 +195,19 @@ function TabDatos({ proveedor, empresaId, categoriasEmpresa, onSaved, onArchived
           >
             <MenuItem value="materiales">Materiales</MenuItem>
             <MenuItem value="mano_de_obra">Mano de obra</MenuItem>
+          </Select>
+        </FormControl>
+
+        <FormControl fullWidth>
+          <InputLabel>Estado por defecto de movimientos</InputLabel>
+          <Select
+            value={form.estado_inicial ?? ''}
+            label="Estado por defecto de movimientos"
+            onChange={e => setForm(f => ({ ...f, estado_inicial: e.target.value === '' ? null : e.target.value }))}
+          >
+            <MenuItem value="">Usar default de empresa ({estadoDefaultEmpresa})</MenuItem>
+            <MenuItem value="Pendiente">Siempre Pendiente</MenuItem>
+            <MenuItem value="Pagado">Siempre Pagado</MenuItem>
           </Select>
         </FormControl>
 
@@ -1154,7 +1170,7 @@ function TabPresupuestos({ presupuestos = [], loading, onRegistrarPresupuesto, p
 
 // ─── ProveedorDrawer ──────────────────────────────────────────────────────────
 
-function ProveedorDrawer({ open, onClose, proveedorId, proveedorNombreHint, empresaId, categoriasEmpresa, onUpdate }) {
+function ProveedorDrawer({ open, onClose, proveedorId, proveedorNombreHint, empresaId, categoriasEmpresa, estadoDefaultEmpresa, onUpdate }) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const router = useRouter();
@@ -1369,6 +1385,7 @@ function ProveedorDrawer({ open, onClose, proveedorId, proveedorNombreHint, empr
             proveedor={proveedor}
             empresaId={empresaId}
             categoriasEmpresa={categoriasEmpresa}
+            estadoDefaultEmpresa={estadoDefaultEmpresa}
             onSaved={() => { fetchData(); onUpdate?.(); }}
             onArchived={() => { onClose(); onUpdate?.(); }}
           />
@@ -1469,7 +1486,7 @@ function ProveedorDrawer({ open, onClose, proveedorId, proveedorNombreHint, empr
 
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
-export function ProveedorDrawerProvider({ children, empresaId, categoriasEmpresa, onUpdate }) {
+export function ProveedorDrawerProvider({ children, empresaId, categoriasEmpresa, estadoDefaultEmpresa, onUpdate }) {
   const [open, setOpen] = useState(false);
   const [proveedorId, setProveedorId] = useState(null);
 
@@ -1491,6 +1508,7 @@ export function ProveedorDrawerProvider({ children, empresaId, categoriasEmpresa
         proveedorId={proveedorId}
         empresaId={empresaId}
         categoriasEmpresa={categoriasEmpresa}
+        estadoDefaultEmpresa={estadoDefaultEmpresa}
         onUpdate={onUpdate}
       />
     </ProveedorDrawerContext.Provider>
