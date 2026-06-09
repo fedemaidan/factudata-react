@@ -237,6 +237,8 @@ const MovementFormPage = () => {
   const [movimiento, setMovimiento] = useState(null);
   const [categorias, setCategorias] = useState([]);
   const [proveedores, setProveedores] = useState([]);
+  // nombre de proveedor → estado_inicial ('Pendiente' | 'Pagado' | null = usar default empresa)
+  const [proveedoresEstadoMap, setProveedoresEstadoMap] = useState({});
   const [comprobante_info, setComprobanteInfo] = useState([]);
   const [ingreso_info, setIngresoInfo] = useState({});
   const [categoriaSeleccionada, setCategoriaSeleccionada] = useState(null);
@@ -508,7 +510,11 @@ const MovementFormPage = () => {
       );
       setProyectos(proyectosData);
       const cates = [...empresa.categorias, { name: 'Ingreso dinero', subcategorias: [] }, { name: 'Ajuste', subcategorias: ['Ajuste'] }];
-      const provs = await proveedorService.getNombres(empresa.id);
+      const provsFull = await proveedorService.getByEmpresa(empresa.id);
+      const provs = provsFull.map((p) => p.nombre).sort();
+      const estadoMap = {};
+      provsFull.forEach((p) => { if (p?.nombre) estadoMap[p.nombre] = p.estado_inicial ?? null; });
+      setProveedoresEstadoMap(estadoMap);
       setComprobanteInfo(empresa.comprobante_info || []);
       setIngresoInfo(empresa.ingreso_info || {});
       setCategorias(cates);
@@ -976,6 +982,21 @@ const createdAtStr = (() => {
       setParcialMonto('');
     }
   }, [formik.values.estado, formik.values.type]);
+
+  // Autocompletar el estado según el proveedor elegido. Regla:
+  // proveedor.estado_inicial ('Pendiente'|'Pagado') > default de empresa
+  // (con_estados ? estado_default_movimiento : 'Pagado'). "Autocompletar siempre":
+  // cada cambio de proveedor reescribe el estado. No aplica en edición ni a ingresos.
+  useEffect(() => {
+    if (isEditMode || !empresa || formik.values.type !== 'egreso') return;
+    const override = proveedoresEstadoMap[formik.values.nombre_proveedor];
+    const defaultEmpresa = empresa.con_estados ? (empresa.estado_default_movimiento || 'Pendiente') : 'Pagado';
+    const resuelto = (override === 'Pendiente' || override === 'Pagado') ? override : defaultEmpresa;
+    if (resuelto !== formik.values.estado) {
+      formik.setFieldValue('estado', resuelto);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formik.values.nombre_proveedor, formik.values.type, empresa, proveedoresEstadoMap, isEditMode]);
 
   const handleParcialMontoChange = (value) => {
     setParcialMonto(value);

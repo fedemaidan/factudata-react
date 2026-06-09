@@ -708,6 +708,7 @@ const Page = () => {
       <ProveedorDrawerProvider
         empresaId={empresa?.id}
         categoriasEmpresa={empresa?.categorias || []}
+        estadoDefaultEmpresa={empresa?.con_estados ? (empresa?.estado_default_movimiento || 'Pendiente') : 'Pagado'}
         onUpdate={() => setRefreshKey((k) => k + 1)}
       >
         <ProveedoresContent empresa={empresa} refreshKey={refreshKey} />
