@@ -885,8 +885,16 @@ const ControlPresupuestosPage = () => {
 
     if (items.length === 1) {
       const item = items[0];
-      const ej = ejecutadoDelBucket();
-      const ejecutadoReal = ej != null ? ej : (item.ejecutado || 0);
+      // Ejecutado en la MISMA unidad que item.monto (moneda nativa del presupuesto),
+      // SIN convertir a la moneda de vista. Para indexados (CAC/USD) item.moneda es la
+      // unidad indexada y monto/ejecutado deben compararse en esa unidad; usar el bucket
+      // convertido (ejecutadoDelBucket) mezclaba ARS con CAC en la card.
+      const bucketKey = tipoAgrupacion === 'categoria' ? 'porCategoria'
+        : tipoAgrupacion === 'proveedor' ? 'porProveedor' : null;
+      const ejNativo = bucketKey
+        ? resumen?.egresosPorMoneda?.[item.moneda || 'ARS']?.[bucketKey]?.[valor]?.ejecutado
+        : null;
+      const ejecutadoReal = ejNativo != null ? ejNativo : (item.ejecutado || 0);
       return {
         presupuesto: item.monto,
         ejecutado: ejecutadoReal,
