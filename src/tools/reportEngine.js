@@ -44,6 +44,13 @@ export function getAmount(mov, displayCurrency = 'ARS', campo = 'total') {
     if (dolarField != null && !isNaN(dolarField)) return Number(dolarField);
   }
 
+  if (displayCurrency === 'ARS' && (mov?.moneda || 'ARS') === 'USD' && Number(mov?.dolar_referencia) > 0) {
+    const baseAmount = campo === 'subtotal'
+      ? (mov.subtotal ?? mov.total ?? mov.monto ?? 0)
+      : (mov.total ?? mov.monto ?? 0);
+    return Number(baseAmount || 0) * Number(mov.dolar_referencia);
+  }
+
   const key = CURRENCY_FIELD[displayCurrency];
   if (!key) return mov.total ?? mov.monto ?? 0;
 
@@ -66,6 +73,13 @@ function getConvertedAmount(mov, displayCurrency = 'ARS', campo = 'total') {
     }
     const dolarField = campo === 'subtotal' ? mov?.subtotal_dolar : mov?.total_dolar;
     if (dolarField != null && !isNaN(dolarField)) return Number(dolarField);
+  }
+
+  if (displayCurrency === 'ARS' && mov?.moneda === 'USD' && Number(mov?.dolar_referencia) > 0) {
+    const baseAmount = campo === 'subtotal'
+      ? (mov.subtotal ?? mov.total ?? mov.monto ?? 0)
+      : (mov.total ?? mov.monto ?? 0);
+    return Number(baseAmount || 0) * Number(mov.dolar_referencia);
   }
 
   const key = CURRENCY_FIELD[displayCurrency];
@@ -355,6 +369,57 @@ function getMovimientoPhoneCandidates(m) {
   }
 
   return [...set];
+}
+
+function isPhoneLike(value) {
+  const normalized = normalizePhone(value);
+  return /^\d{8,}$/.test(normalized || '');
+}
+
+function getProfileDisplayName(profile) {
+  return getUserDisplayCandidates(profile)[0] || '';
+}
+
+function resolveUserById(usersLookup, ids = []) {
+  for (const id of ids) {
+    const profile = usersLookup.byId.get(String(id || '').trim());
+    const label = getProfileDisplayName(profile);
+    if (label) return label;
+  }
+  return '';
+}
+
+function resolveUserByPhone(usersLookup, values = []) {
+  for (const value of values) {
+    const normalized = normalizePhone(value);
+    if (!normalized) continue;
+    for (const phone of getPhoneCandidates(normalized)) {
+      const profile = usersLookup.byPhone.get(phone);
+      const label = getProfileDisplayName(profile);
+      if (label) return label;
+    }
+  }
+  return '';
+}
+
+function resolveMovimientoUserLabel(mov, usersLookup) {
+  const byId = resolveUserById(usersLookup, getMovimientoUserIdCandidates(mov));
+  if (byId) return byId;
+
+  const userCandidates = getMovimientoUserCandidates(mov);
+  const phoneCandidates = new Set(getMovimientoPhoneCandidates(mov));
+  for (const candidate of userCandidates) {
+    if (isPhoneLike(candidate)) {
+      phoneCandidates.add(candidate);
+    }
+  }
+
+  const byPhone = resolveUserByPhone(usersLookup, [...phoneCandidates]);
+  if (byPhone) return byPhone;
+
+  return userCandidates.find((candidate) => !isPhoneLike(candidate))
+    || userCandidates[0]
+    || 'Sin usuario';
 }
 
 // ─── Filtrado ───
@@ -686,6 +751,19 @@ function groupMovimientosByProject(movimientos, extraContext = {}) {
   return [...map.values()].map((group) => [group.label, group.items]);
 }
 
+function groupMovimientosByUsuario(movimientos, extraContext = {}) {
+  const usersLookup = buildCompanyUsersLookup(extraContext);
+  const map = new Map();
+
+  for (const mov of movimientos) {
+    const key = resolveMovimientoUserLabel(mov, usersLookup);
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(mov);
+  }
+
+  return [...map.entries()];
+}
+
 // ─── Procesadores de bloques ───
 
 /**
@@ -774,6 +852,8 @@ export function processSummaryTable(block, movimientos, _presupuestos, currencie
   const data = applyBlockFilters(movimientos, block);
   const groupedEntries = block.agrupar_por === 'proyecto'
     ? groupMovimientosByProject(data, extraContext)
+    : block.agrupar_por === 'usuario'
+      ? groupMovimientosByUsuario(data, extraContext)
     : [...groupBy(data, block.agrupar_por).entries()];
   const columnas = block.columnas || [{ id: 'total', titulo: 'Total', operacion: 'sum', campo: 'total', formato: 'currency' }];
   const primaryCurrency = currencies[0];

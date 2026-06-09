@@ -123,7 +123,6 @@ export const UsuariosDetails = ({ empresa }) => {
     default_caja_chica: null,
     notificacion_nota_pedido: null,
     modo_estado_carga_bot: '',
-    proyecto_borrador_default_id: '',
     proyectos: []
   });
   
@@ -357,7 +356,6 @@ export const UsuariosDetails = ({ empresa }) => {
       default_caja_chica: editingUsuario ? editingUsuario.default_caja_chica : null,
       notificacion_nota_pedido: editingUsuario ? editingUsuario.notificacion_nota_pedido : false,
       modo_estado_carga_bot: editingUsuario ? (editingUsuario.modo_estado_carga_bot || '') : '',
-      proyecto_borrador_default_id: editingUsuario ? (editingUsuario.proyecto_borrador_default_id || '') : '',
       carga_borrador_default: editingUsuario ? !!editingUsuario.carga_borrador_default : false,
     },
     enableReinitialize: true,
@@ -397,7 +395,7 @@ export const UsuariosDetails = ({ empresa }) => {
         }
 
         if (editingUsuario) {
-          const updatedUsuario = { ...values, phone: phoneNorm, proyecto_borrador_default_id: values.proyecto_borrador_default_id || null };
+          const updatedUsuario = { ...values, phone: phoneNorm };
           const updatedUsuarios = usuarios.map((user) =>
             user.id === editingUsuario.id ? { ...user, ...updatedUsuario, proyectosData: values.proyectos.map(projId => proyectos.find(p => p.id === projId)) } : user
           );
@@ -424,7 +422,6 @@ export const UsuariosDetails = ({ empresa }) => {
             default_caja_chica: values.default_caja_chica,
             notificacion_nota_pedido: values.notificacion_nota_pedido || false,
             modo_estado_carga_bot: values.modo_estado_carga_bot || null,
-            proyecto_borrador_default_id: values.proyecto_borrador_default_id || null,
             carga_borrador_default: !!values.carga_borrador_default,
           };
           const createdUsuario = await profileService.createProfile(newUsuario, empresa);
@@ -483,7 +480,6 @@ export const UsuariosDetails = ({ empresa }) => {
       default_caja_chica: usuario.default_caja_chica ?? null,
       notificacion_nota_pedido: usuario.notificacion_nota_pedido || false,
       modo_estado_carga_bot: usuario.modo_estado_carga_bot ?? "",
-      proyecto_borrador_default_id: usuario.proyecto_borrador_default_id ?? "",
       carga_borrador_default: !!usuario.carga_borrador_default,
     });
     setIsDialogOpen(true);
@@ -667,7 +663,6 @@ export const UsuariosDetails = ({ empresa }) => {
       default_caja_chica: null,
       notificacion_nota_pedido: null,
       modo_estado_carga_bot: '',
-      proyecto_borrador_default_id: '',
       proyectos: []
     });
     setBulkConfigDialogOpen(true);
@@ -696,11 +691,6 @@ export const UsuariosDetails = ({ empresa }) => {
       }
       if (bulkConfig.modo_estado_carga_bot !== '') {
         updates.modo_estado_carga_bot = bulkConfig.modo_estado_carga_bot;
-      }
-      if (bulkConfig.proyecto_borrador_default_id !== '') {
-        // '__none__' = sin proyecto por defecto (null); cualquier otro = id de proyecto.
-        updates.proyecto_borrador_default_id =
-          bulkConfig.proyecto_borrador_default_id === '__none__' ? null : bulkConfig.proyecto_borrador_default_id;
       }
       if (bulkConfig.proyectos.length > 0) {
         updates.proyectos = bulkConfig.proyectos;
@@ -1625,35 +1615,9 @@ export const UsuariosDetails = ({ empresa }) => {
                 <MenuItem value="siempre_borrador">Siempre borrador (validar en panel)</MenuItem>
                 <MenuItem value="siempre_confirmar">Siempre confirmar (flujo actual)</MenuItem>
                 <MenuItem value="doble_verificacion">Doble verificación (validar en bot + panel)</MenuItem>
+                <MenuItem value="valida_proyecto_panel">Validación de proyecto + panel</MenuItem>
               </Select>
             </FormControl>
-
-            {['siempre_borrador', 'doble_verificacion'].includes(formik.values.modo_estado_carga_bot) && (
-              (formik.values.proyectos || []).length === 0 ? (
-                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-                  Asigná al menos un proyecto para poder elegir el proyecto por defecto de los borradores.
-                </Typography>
-              ) : (
-                <FormControl fullWidth margin="dense">
-                  <InputLabel id="proyecto-borrador-default-label">Proyecto por defecto de borradores</InputLabel>
-                  <Select
-                    labelId="proyecto-borrador-default-label"
-                    name="proyecto_borrador_default_id"
-                    value={formik.values.proyecto_borrador_default_id}
-                    onChange={formik.handleChange}
-                  >
-                    <MenuItem value="">Sin proyecto por defecto (se asigna en el panel)</MenuItem>
-                    {proyectos
-                      .filter((p) => (formik.values.proyectos || []).includes(p.id))
-                      .map((project) => (
-                        <MenuItem key={project?.id} value={project?.id}>
-                          {project.nombre}
-                        </MenuItem>
-                      ))}
-                  </Select>
-                </FormControl>
-              )
-            )}
 
             <FormControl fullWidth margin="dense">
               <InputLabel id="carga-borrador-default-label">Carga de remitos por WhatsApp — modo borrador automático</InputLabel>
@@ -1896,23 +1860,7 @@ Probá ahora, te espero acá 👇`}
                 <MenuItem value="siempre_borrador">Siempre borrador (validar en panel)</MenuItem>
                 <MenuItem value="siempre_confirmar">Siempre confirmar (flujo actual)</MenuItem>
                 <MenuItem value="doble_verificacion">Doble verificación (validar en bot + panel)</MenuItem>
-              </Select>
-            </FormControl>
-
-            <FormControl fullWidth margin="dense">
-              <InputLabel>Proyecto por defecto de borradores</InputLabel>
-              <Select
-                value={bulkConfig.proyecto_borrador_default_id}
-                onChange={handleBulkConfigChange('proyecto_borrador_default_id')}
-                label="Proyecto por defecto de borradores"
-              >
-                <MenuItem value="">-- No cambiar --</MenuItem>
-                <MenuItem value="__none__">Sin proyecto por defecto (se asigna en el panel)</MenuItem>
-                {proyectos.map((project) => (
-                  <MenuItem key={project?.id} value={project?.id}>
-                    {project.nombre}
-                  </MenuItem>
-                ))}
+                <MenuItem value="valida_proyecto_panel">Validación de proyecto + panel</MenuItem>
               </Select>
             </FormControl>
 

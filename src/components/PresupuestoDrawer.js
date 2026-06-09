@@ -2636,20 +2636,29 @@ const PresupuestoDrawer = ({
                         documentType="control_presupuesto"
                         fileName={`control-presupuesto-${presupuesto.nombre || presupuesto.categoria || presupuesto.id}`}
                         defaultDocumentLoader={loadDefaultControlPresupuestoDoc}
-                        buildData={() => {
+                        tituloEditable
+                        defaultTitulo={presupuesto.tipo === 'ingreso' ? 'RECIBO DE INGRESOS' : 'RECIBO DE PAGOS'}
+                        buildData={(opts) => {
                           const obra = proyectos.find((p) => p.id === proyectoId)?.nombre || '';
                           const label = presupuesto.label || presupuesto.nombre || presupuesto.categoria || 'Presupuesto';
                           const contratista = presupuesto.proveedores?.[0]?.nombre || presupuesto.categoria || '';
                           const esIngreso = presupuesto.tipo === 'ingreso';
                           return buildControlPresupuestoData({
                             movimientos: movimientosFiltrados,
-                            titulo: esIngreso ? 'RECIBO DE INGRESOS' : 'RECIBO DE PAGOS',
+                            titulo: opts?.titulo || (esIngreso ? 'RECIBO DE INGRESOS' : 'RECIBO DE PAGOS'),
                             presupuestoLabel: label,
                             contratista,
                             obra,
                             empresaNombre,
-                            moneda: presupuesto.moneda_display || presupuesto.moneda || 'ARS',
-                            presupuestado: Number(presupuesto.monto || presupuesto.monto_ingresado || 0),
+                            // Contexto del presupuesto → moneda/indexación dinámica en el PDF.
+                            indexacion: presupuesto.indexacion || null,
+                            monedaPresupuesto: presupuesto.moneda || 'ARS',
+                            cacTipo: presupuesto.cac_tipo || null,
+                            baseCalculo: presupuesto.base_calculo || 'total',
+                            presupuestadoNativo: Number(presupuesto.monto != null ? presupuesto.monto : presupuesto.monto_ingresado || 0),
+                            montoIngresado: presupuesto.monto_ingresado != null ? Number(presupuesto.monto_ingresado) : null,
+                            cacIndiceActual: cacActualEfectivo || cacEfectivo,
+                            tipoCambioActual: dolarEfectivo,
                             tipo: esIngreso ? 'ingresos' : 'gastos',
                           });
                         }}

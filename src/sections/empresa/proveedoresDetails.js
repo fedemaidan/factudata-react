@@ -361,26 +361,24 @@ export const ProveedoresDetails = ({ empresa }) => {
               )}
             />
 
-            {empresa.con_estados && (
-              <FormControl fullWidth sx={{ mt: 2 }}>
-                <InputLabel>Estado inicial de movimientos</InputLabel>
-                <Select
-                  name="estado_inicial"
-                  value={formik.values.estado_inicial}
-                  label="Estado inicial de movimientos"
-                  onChange={formik.handleChange}
-                >
-                  <MenuItem value="">
-                    Usar default de la empresa ({empresa.estado_default_movimiento || 'Pendiente'})
-                  </MenuItem>
-                  <MenuItem value="Pendiente">Siempre Pendiente</MenuItem>
-                  <MenuItem value="Pagado">Siempre Pagado (se cierra al instante)</MenuItem>
-                </Select>
-                <FormHelperText>
-                  Cuando cargues un movimiento de este proveedor, ¿con qué estado debe arrancar?
-                </FormHelperText>
-              </FormControl>
-            )}
+            <FormControl fullWidth sx={{ mt: 2 }}>
+              <InputLabel>Estado inicial de movimientos</InputLabel>
+              <Select
+                name="estado_inicial"
+                value={formik.values.estado_inicial}
+                label="Estado inicial de movimientos"
+                onChange={formik.handleChange}
+              >
+                <MenuItem value="">
+                  Usar default de la empresa ({empresa.con_estados ? (empresa.estado_default_movimiento || 'Pendiente') : 'Pagado'})
+                </MenuItem>
+                <MenuItem value="Pendiente">Siempre Pendiente</MenuItem>
+                <MenuItem value="Pagado">Siempre Pagado (se cierra al instante)</MenuItem>
+              </Select>
+              <FormHelperText>
+                Cuando cargues un movimiento de este proveedor, ¿con qué estado debe arrancar?
+              </FormHelperText>
+            </FormControl>
           </DialogContent>
           <DialogActions>
             <Button onClick={cancelarEdicion}>Cancelar</Button>

@@ -885,8 +885,16 @@ const ControlPresupuestosPage = () => {
 
     if (items.length === 1) {
       const item = items[0];
-      const ej = ejecutadoDelBucket();
-      const ejecutadoReal = ej != null ? ej : (item.ejecutado || 0);
+      // Ejecutado en la MISMA unidad que item.monto (moneda nativa del presupuesto),
+      // SIN convertir a la moneda de vista. Para indexados (CAC/USD) item.moneda es la
+      // unidad indexada y monto/ejecutado deben compararse en esa unidad; usar el bucket
+      // convertido (ejecutadoDelBucket) mezclaba ARS con CAC en la card.
+      const bucketKey = tipoAgrupacion === 'categoria' ? 'porCategoria'
+        : tipoAgrupacion === 'proveedor' ? 'porProveedor' : null;
+      const ejNativo = bucketKey
+        ? resumen?.egresosPorMoneda?.[item.moneda || 'ARS']?.[bucketKey]?.[valor]?.ejecutado
+        : null;
+      const ejecutadoReal = ejNativo != null ? ejNativo : (item.ejecutado || 0);
       return {
         presupuesto: item.monto,
         ejecutado: ejecutadoReal,
@@ -2336,24 +2344,33 @@ const ControlPresupuestosPage = () => {
                 fileName={`movimientos-${proyectoActual?.nombre || 'proyecto'}-${movDrawer.label}`}
                 defaultDocumentLoader={loadDefaultControlPresupuestoDoc}
                 onError={(message) => setAlert({ open: true, message, severity: 'error' })}
-                buildData={() => {
+                tituloEditable
+                defaultTitulo={
+                  movDrawer.tipo === 'egreso' ? 'RECIBO DE PAGOS'
+                    : movDrawer.tipo === 'ingreso' ? 'RECIBO DE INGRESOS'
+                      : 'ESTADO DE CUENTA'
+                }
+                buildData={(opts) => {
                   const totales = calcularTotales();
                   const presupuestado =
                     movDrawer.tipo === 'egreso' ? totales.egresos.total
                       : movDrawer.tipo === 'ingreso' ? totales.ingresos.total
                         : 0;
-                  const titulo =
+                  const titulo = opts?.titulo || (
                     movDrawer.tipo === 'egreso' ? 'RECIBO DE PAGOS'
                       : movDrawer.tipo === 'ingreso' ? 'RECIBO DE INGRESOS'
-                        : 'ESTADO DE CUENTA';
+                        : 'ESTADO DE CUENTA'
+                  );
+                  // Export a nivel proyecto: presupuestos mixtos, sin indexación única.
+                  // El builder cae al modo "moneda de vista" (sin columna de equivalencia).
                   return buildControlPresupuestoData({
                     movimientos: movDrawerData,
                     titulo,
                     presupuestoLabel: movDrawer.label,
                     obra: proyectoActual?.nombre || '',
                     empresaNombre: empresa?.nombre || '',
-                    moneda,
-                    presupuestado,
+                    monedaPresupuesto: moneda,
+                    presupuestadoNativo: presupuestado,
                     tipo: movDrawer.tipo === 'ingreso' ? 'ingresos' : 'gastos',
                   });
                 }}
