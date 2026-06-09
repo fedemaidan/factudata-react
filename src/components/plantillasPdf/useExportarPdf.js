@@ -10,11 +10,12 @@ import { loadImageAsDataUrl } from 'src/utils/presupuestos/loadLogoForPdf';
  * (ExportarPdfMenu en los drawers, ExportarPdfDialog en movementForm, …).
  *
  * - cargarOpciones(): trae plantillas (por document_type) + logos de la empresa.
- * - exportar(plantilla|null): arma los datos (buildData puede ser async), resuelve
- *   el componente (default vs custom), carga el logo y dispara la descarga.
+ * - exportar(plantilla|null, opts): arma los datos (buildData puede ser async),
+ *   resuelve el componente (default vs custom), carga el logo y dispara la descarga.
  *
- * `buildData` se `await`-ea: soporta builders sync (control_presupuesto) y async
- * (comprobante de movimiento, que carga la imagen adjunta).
+ * `buildData(opts)` se `await`-ea y recibe las opciones del disparador (ej. `{ titulo }`
+ * cuando el menú ofrece título editable). Soporta builders sync (control_presupuesto)
+ * y async (comprobante de movimiento, que carga la imagen adjunta).
  */
 export function useExportarPdf({
   empresaId,
@@ -57,10 +58,10 @@ export function useExportarPdf({
     return loadImageAsDataUrl(logo.url);
   };
 
-  const exportar = async (plantilla) => {
+  const exportar = async (plantilla, opts) => {
     setGenerating(true);
     try {
-      const data = await (typeof buildData === 'function' ? buildData() : buildData);
+      const data = await (typeof buildData === 'function' ? buildData(opts) : buildData);
       let Component;
       let logoId = null;
       if (plantilla) {
