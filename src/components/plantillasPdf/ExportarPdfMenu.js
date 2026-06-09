@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import {
   Chip,
@@ -12,6 +12,7 @@ import {
   Box,
   Typography,
   Tooltip,
+  TextField,
 } from '@mui/material';
 import PictureAsPdfRoundedIcon from '@mui/icons-material/PictureAsPdfRounded';
 import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined';
@@ -26,6 +27,9 @@ import { useExportarPdf } from './useExportarPdf';
  * - Lista las plantillas personalizadas de la empresa para el `documentType` (la
  *   principal primero, marcada con ⭐).
  * - Ofrece "Crear plantilla personalizada" que redirige a /plantillas-pdf.
+ * - Si `tituloEditable`, muestra un campo de título (default `defaultTitulo`) cuyo
+ *   valor se pasa al `buildData({ titulo })` → el usuario controla el encabezado del
+ *   PDF desde el export (no depende de la plantilla del agente).
  *
  * La lógica (listar + render) vive en el hook useExportarPdf, compartido con
  * ExportarPdfDialog. Genérico por `documentType`.
@@ -39,13 +43,19 @@ export default function ExportarPdfMenu({
   fileName = 'documento',
   disabled = false,
   onError,
+  tituloEditable = false,
+  defaultTitulo = '',
 }) {
   const router = useRouter();
   const [anchorEl, setAnchorEl] = useState(null);
+  const [titulo, setTitulo] = useState(defaultTitulo);
   const open = Boolean(anchorEl);
   const { plantillas, loadingList, generating, cargarOpciones, exportar } = useExportarPdf({
     empresaId, empresaNombre, documentType, buildData, defaultDocumentLoader, fileName, onError,
   });
+
+  // Mantener el título sincronizado con el default cuando cambia el contexto (ej. otro presupuesto).
+  useEffect(() => { setTitulo(defaultTitulo); }, [defaultTitulo]);
 
   const abrir = (e) => {
     setAnchorEl(e.currentTarget);
@@ -55,7 +65,8 @@ export default function ExportarPdfMenu({
 
   const handleExportar = (plantilla) => {
     cerrar();
-    exportar(plantilla);
+    const opts = tituloEditable ? { titulo: (titulo || '').trim() || defaultTitulo } : undefined;
+    exportar(plantilla, opts);
   };
 
   return (
@@ -84,6 +95,23 @@ export default function ExportarPdfMenu({
         <ListSubheader sx={{ lineHeight: '32px', fontWeight: 700, color: 'text.secondary' }}>
           Exportar como PDF
         </ListSubheader>
+
+        {tituloEditable && (
+          <Box
+            sx={{ px: 2, pt: 0.5, pb: 1 }}
+            onKeyDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <TextField
+              label="Título del documento"
+              value={titulo}
+              onChange={(e) => setTitulo(e.target.value)}
+              size="small"
+              fullWidth
+              variant="outlined"
+            />
+          </Box>
+        )}
 
         {loadingList ? (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 2, py: 1.5 }}>
