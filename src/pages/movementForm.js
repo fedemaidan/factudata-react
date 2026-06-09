@@ -263,6 +263,8 @@ const MovementFormPage = () => {
   const pendingExtraccionRef = useRef(false);
   const returnAfterSaveRef = useRef(false);
   const exportAfterSaveRef = useRef(false);
+  // "Guardar y exportar": tras cerrar el diálogo de PDF, volver a la página anterior (cajas).
+  const returnAfterExportRef = useRef(false);
   const [createdUser, setCreatedUser] = useState(null);
   const [comprobanteModalOpen, setComprobanteModalOpen] = useState(false);
   const [imagenModal, setImagenModal] = useState('');
@@ -374,6 +376,7 @@ const MovementFormPage = () => {
         showGlobalAlert({ message: 'Movimiento guardado con éxito!', severity: 'success' });
         pushBack(router, lastPageUrl, '/');
       } else if (exportAfterSaveRef.current) {
+        returnAfterExportRef.current = true;
         setExportPdfOpen(true);
       }
     } catch (err) {
@@ -1871,7 +1874,13 @@ const createdAtStr = (() => {
 
         <ExportarPdfDialog
           open={exportPdfOpen}
-          onClose={() => setExportPdfOpen(false)}
+          onClose={() => {
+            setExportPdfOpen(false);
+            if (returnAfterExportRef.current) {
+              returnAfterExportRef.current = false;
+              pushBack(router, lastPageUrl, '/');
+            }
+          }}
           empresaId={empresa?.id}
           empresaNombre={empresa?.nombre || ''}
           documentType="comprobante_movimiento"
