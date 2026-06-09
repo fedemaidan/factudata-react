@@ -486,7 +486,7 @@ const EmpresaPage = () => {
                 {currentTab === 'configuracion' && <ConfiguracionGeneral empresa={empresa} updateEmpresaData={updateEmpresaDetails} hasPermission={hasPermission}/>}
                 {currentTab === 'permisos' && <PermisosUsuarios empresa={empresa} />}
                 {currentTab === 'medios_pago' && <MediosPagoDetails empresa={empresa} />}
-                {currentTab === 'impuestos' && <ImpuestosDetails empresa={empresa} />}
+                {currentTab === 'impuestos' && <ImpuestosDetails empresa={empresa} refreshEmpresa={() => empresaId && getEmpresaById(empresaId).then(setEmpresa)} />}
                 {currentTab === 'obras' && <ObrasDetails empresa={empresa} />}
               </>
             )}

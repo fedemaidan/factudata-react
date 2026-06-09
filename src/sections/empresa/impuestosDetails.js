@@ -1,5 +1,5 @@
 // src/sections/empresa/impuestosDetails.js
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Card, CardHeader, CardContent, CardActions, Divider,
   List, ListItem, ListItemText,
@@ -49,6 +49,19 @@ export const ImpuestosDetails = ({ empresa, refreshEmpresa }) => {
   });
 
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
+
+  // Siembra al primer ingreso: si la empresa nunca configuró impuestos, persistir los
+  // sugeridos para que pasen a ser registros reales (y así se puedan borrar/usar de verdad).
+  // Sin esto, los defaults se mostraban pero no existían en la DB, y al borrar "reaparecían".
+  const seededRef = useRef(false);
+  useEffect(() => {
+    const yaConfigurados = Array.isArray(empresa.impuestos_data) && empresa.impuestos_data.length > 0;
+    if (yaConfigurados || seededRef.current) return;
+    seededRef.current = true;
+    updateEmpresaDetails(empresa.id, { impuestos_data: impuestosDefault })
+      .then(() => refreshEmpresa?.());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [empresa.id]);
 
   const reset = () => {
     setForm({
