@@ -11,9 +11,18 @@ const initialState = {
   awaitingConfirm: false,
   confirmAction: null,
   activeSpecialist: null,
+  reportDraft: null,
   error: null,
   hasLoadedHistory: false,
 };
+
+// El specialist de reportes no persiste activeSpecialist (queda null), así que el draft
+// se mantiene mientras llegue uno nuevo y se limpia solo si el turno fue claramente de
+// OTRO specialist (activeSpecialist no nulo y distinto de 'reportes').
+function resolveReportDraft(state, payload) {
+  if (payload.activeSpecialist && payload.activeSpecialist !== 'reportes') return null;
+  return payload.reportDraft ?? state.reportDraft;
+}
 
 function reducer(state, action) {
   switch (action.type) {
@@ -29,6 +38,7 @@ function reducer(state, action) {
         awaitingConfirm: action.payload.awaitingConfirm,
         confirmAction: action.payload.confirmAction,
         activeSpecialist: action.payload.activeSpecialist || null,
+        reportDraft: resolveReportDraft(state, action.payload),
       };
     case 'load:error':
       // Marcamos hasLoadedHistory: true aunque haya fallado para evitar reintentos
@@ -51,6 +61,7 @@ function reducer(state, action) {
         awaitingConfirm: action.payload.awaitingConfirm,
         confirmAction: action.payload.confirmAction,
         activeSpecialist: action.payload.activeSpecialist,
+        reportDraft: resolveReportDraft(state, action.payload),
         lastDebugTrace: action.payload.debugTrace || null,
       };
     case 'send:error':
@@ -142,6 +153,7 @@ export function useAgentChat() {
           awaitingConfirm: data.awaitingConfirm,
           confirmAction: data.confirmAction,
           activeSpecialist: data.activeSpecialist || null,
+          reportDraft: data.reportDraft ?? null,
           debugTrace: data.debugTrace || null,
         },
       });
