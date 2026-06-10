@@ -57,8 +57,10 @@ import { formatCurrencyWithCode, formatTimestamp } from 'src/utils/formatters';
 import RegistrarPagoDialog from 'src/components/pagos/RegistrarPagoDialog';
 import AnularPagoDialog from 'src/components/pagos/AnularPagoDialog';
 import CombinarProveedorDialog from 'src/components/proveedores/CombinarProveedorDialog';
-import RegistrarPresupuestoDialog from 'src/components/presupuestos/RegistrarPresupuestoDialog';
+import PresupuestoDrawer from 'src/components/PresupuestoDrawer';
 import { getProyectosByEmpresaId } from 'src/services/proyectosService';
+import { getEmpresaById } from 'src/services/empresaService';
+import { useAuthContext } from 'src/contexts/auth-context';
 
 // ─── Context ──────────────────────────────────────────────────────────────────
 
@@ -1174,6 +1176,7 @@ function ProveedorDrawer({ open, onClose, proveedorId, proveedorNombreHint, empr
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const router = useRouter();
+  const { user } = useAuthContext();
 
   const [tab, setTab] = useState(TAB_DATOS);
   const [data, setData] = useState(null); // { proveedor, movimientos, pagos, presupuesto, pretendidos }
@@ -1186,8 +1189,10 @@ function ProveedorDrawer({ open, onClose, proveedorId, proveedorNombreHint, empr
   const [anularPagoOpen, setAnularPagoOpen] = useState(false);
   const [pagoAAnular, setPagoAAnular] = useState(null);
 
-  // Dialog presupuesto
-  const [registrarPresupuestoOpen, setRegistrarPresupuestoOpen] = useState(false);
+  // Drawer de nuevo presupuesto (PresupuestoDrawer con el proveedor pre-cargado)
+  const [presupuestoDrawerOpen, setPresupuestoDrawerOpen] = useState(false);
+  const [etapasEmpresa, setEtapasEmpresa] = useState([]);
+  const [proveedoresNombres, setProveedoresNombres] = useState([]);
 
   // Imputar saldo a favor (reparte monto_sin_imputar entre facturas pendientes)
   const [imputarSaldoFavorLoading, setImputarSaldoFavorLoading] = useState(false);
@@ -1264,6 +1269,19 @@ function ProveedorDrawer({ open, onClose, proveedorId, proveedorNombreHint, empr
     if (proyectos.length > 0) return;
     getProyectosByEmpresaId(empresaId).then(setProyectos).catch(() => setProyectos([]));
   }, [open, empresaId, proyectos.length]);
+
+  // Cargar etapas y nombres de proveedores al abrir el drawer de nuevo presupuesto (cache simple)
+  useEffect(() => {
+    if (!presupuestoDrawerOpen || !empresaId) return;
+    if (etapasEmpresa.length === 0) {
+      getEmpresaById(empresaId)
+        .then((emp) => setEtapasEmpresa(emp?.etapas || []))
+        .catch(() => {});
+    }
+    if (proveedoresNombres.length === 0) {
+      proveedorService.getNombres(empresaId).then(setProveedoresNombres).catch(() => {});
+    }
+  }, [presupuestoDrawerOpen, empresaId, etapasEmpresa.length, proveedoresNombres.length]);
 
   const handleToggleFavorito = async () => {
     if (!data?.proveedor || togglingFav) return;
@@ -1423,7 +1441,7 @@ function ProveedorDrawer({ open, onClose, proveedorId, proveedorNombreHint, empr
           <TabPresupuestos
             presupuestos={data?.presupuestos || []}
             loading={loading && !data}
-            onRegistrarPresupuesto={() => setRegistrarPresupuestoOpen(true)}
+            onRegistrarPresupuesto={() => setPresupuestoDrawerOpen(true)}
             proyectos={proyectos}
           />
         )}
@@ -1466,18 +1484,28 @@ function ProveedorDrawer({ open, onClose, proveedorId, proveedorNombreHint, empr
         proveedorNombre={proveedor?.nombre}
       />
 
-      {registrarPresupuestoOpen && proveedor && (
-        <RegistrarPresupuestoDialog
-          open={registrarPresupuestoOpen}
-          onClose={() => setRegistrarPresupuestoOpen(false)}
+      {presupuestoDrawerOpen && proveedor && (
+        <PresupuestoDrawer
+          open={presupuestoDrawerOpen}
+          onClose={() => setPresupuestoDrawerOpen(false)}
           onSuccess={() => {
-            setRegistrarPresupuestoOpen(false);
+            setPresupuestoDrawerOpen(false);
             fetchData();
             onUpdate?.();
           }}
+          mode="crear"
           empresaId={empresaId}
-          proveedor={proveedor}
-          categoriasEmpresa={categoriasEmpresa}
+          userId={user?.uid}
+          showFullForm
+          preFill={{
+            clasificaciones: [],
+            proveedores: [{ id: proveedor._id || proveedor.id, nombre: proveedor.nombre }],
+            etapa: null,
+          }}
+          proveedoresEmpresa={proveedoresNombres}
+          proyectos={proyectos}
+          categorias={categoriasEmpresa || []}
+          etapas={etapasEmpresa}
         />
       )}
     </Drawer>

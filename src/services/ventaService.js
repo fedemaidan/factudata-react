@@ -28,9 +28,28 @@ const ventaService = {
     return data;
   },
 
-  // Acopio (lógica propia).
+  // Acopio (lógica propia). payload acepta: tipo ('materiales'|'lista_precios'),
+  // materiales[] (lista de precios congelada) y cobrado (pagado al momento).
   async crearAcopio(empresaId, payload) {
     const { data } = await api.post(`/empresa/${empresaId}/ventas/acopio`, payload);
+    return data;
+  },
+
+  // Lista de precios congelada + saldo de un acopio de cliente.
+  async listaPreciosAcopio(empresaId, acopioId) {
+    const { data } = await api.get(`/empresa/${empresaId}/ventas/acopio/${acopioId}/lista-precios`);
+    return data;
+  },
+
+  // Retiro de material de un acopio de cliente (corralón). Sin impacto en stock.
+  async desacopioCliente(empresaId, acopioId, payload) {
+    const { data } = await api.post(`/empresa/${empresaId}/ventas/acopio/${acopioId}/desacopio`, payload);
+    return data;
+  },
+
+  // Recarga de saldo del acopio (precios congelados sin cambios).
+  async recargarAcopio(empresaId, acopioId, payload) {
+    const { data } = await api.post(`/empresa/${empresaId}/ventas/acopio/${acopioId}/recargar`, payload);
     return data;
   },
 
