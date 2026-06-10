@@ -53,6 +53,8 @@ const ENTREGA_COLOR = { pendiente: 'warning', parcial: 'info', entregado: 'succe
 const COBRO_COLOR = { pendiente: 'warning', parcial: 'info', pagado: 'success' };
 const ENTREGA_LABEL = { pendiente: 'Pendiente', parcial: 'Parcial', entregado: 'Entregado', na: 'N/A' };
 const COBRO_LABEL = { pendiente: 'Pendiente', parcial: 'Parcial', pagado: 'Pagado' };
+const ESTADO_VENTA_LABEL = { borrador: 'Borrador', cotizada: 'Cotizada', confirmada: 'Confirmada' };
+const ESTADO_VENTA_COLOR = { borrador: 'default', cotizada: 'info', confirmada: 'success' };
 
 function ProgresoCobro({ venta }) {
   const total = Number(venta.total) || 0;
@@ -82,6 +84,7 @@ function PageContent({ empresa }) {
   const [filtroEntrega, setFiltroEntrega] = useState('');
   const [filtroCobro, setFiltroCobro] = useState('');
   const [filtroCliente, setFiltroCliente] = useState('');
+  const [verBorradores, setVerBorradores] = useState(false);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [detalleId, setDetalleId] = useState(null);
@@ -124,10 +127,11 @@ function PageContent({ empresa }) {
       const [data, cs] = await Promise.all([
         ventaService.listar(empresaId, {
           sucursal_id: sucursalId || undefined,
-          tipo: filtroTipo || undefined,
-          estado_entrega: filtroEntrega || undefined,
-          estado_cobro: filtroCobro || undefined,
+          tipo: verBorradores ? undefined : (filtroTipo || undefined),
+          estado_entrega: verBorradores ? undefined : (filtroEntrega || undefined),
+          estado_cobro: verBorradores ? undefined : (filtroCobro || undefined),
           cliente_id: filtroCliente || undefined,
+          solo_borradores: verBorradores ? true : undefined,
         }),
         clienteService.getByEmpresa(empresaId).catch(() => []),
       ]);
@@ -138,7 +142,18 @@ function PageContent({ empresa }) {
     } finally {
       setLoading(false);
     }
-  }, [empresaId, sucursalId, filtroTipo, filtroEntrega, filtroCobro, filtroCliente]);
+  }, [empresaId, sucursalId, filtroTipo, filtroEntrega, filtroCobro, filtroCliente, verBorradores]);
+
+  async function confirmarBorradorRow(e, v) {
+    e.stopPropagation();
+    setError('');
+    try {
+      await ventaService.confirmarBorrador(empresaId, v._id);
+      cargar();
+    } catch (err) {
+      setError(err?.response?.data?.error || err.message || 'Error al confirmar el borrador');
+    }
+  }
 
   useEffect(() => {
     cargar();
@@ -155,14 +170,23 @@ function PageContent({ empresa }) {
   return (
     <Container maxWidth="xl" sx={{ py: 3 }}>
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
-        <Typography variant="h5" fontWeight={600}>Ventas</Typography>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={() => setDrawerOpen(true)}
-        >
-          Nueva venta
-        </Button>
+        <Typography variant="h5" fontWeight={600}>{verBorradores ? 'Sin confirmar' : 'Ventas'}</Typography>
+        <Stack direction="row" spacing={1}>
+          <Button
+            variant={verBorradores ? 'contained' : 'outlined'}
+            color={verBorradores ? 'primary' : 'inherit'}
+            onClick={() => setVerBorradores((v) => !v)}
+          >
+            {verBorradores ? 'Ver ventas' : 'Sin confirmar'}
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => setDrawerOpen(true)}
+          >
+            Nueva venta
+          </Button>
+        </Stack>
       </Stack>
 
       {error && (
@@ -229,7 +253,7 @@ function PageContent({ empresa }) {
         ) : ventas.length === 0 ? (
           <Box sx={{ p: 3, textAlign: 'center' }}>
             <Typography variant="body2" color="text.secondary">
-              No hay ventas con esos filtros.
+              {verBorradores ? 'No hay borradores ni cotizaciones.' : 'No hay ventas con esos filtros.'}
             </Typography>
           </Box>
         ) : (
@@ -240,9 +264,18 @@ function PageContent({ empresa }) {
                 <TableCell>Cliente</TableCell>
                 <TableCell>Fecha</TableCell>
                 <TableCell align="right">Total</TableCell>
-                <TableCell>Entrega</TableCell>
-                <TableCell>Cobro</TableCell>
-                <TableCell>Avance cobro</TableCell>
+                {verBorradores ? (
+                  <>
+                    <TableCell>Estado</TableCell>
+                    <TableCell align="right">Acciones</TableCell>
+                  </>
+                ) : (
+                  <>
+                    <TableCell>Entrega</TableCell>
+                    <TableCell>Cobro</TableCell>
+                    <TableCell>Avance cobro</TableCell>
+                  </>
+                )}
               </TableRow>
             </TableHead>
             <TableBody>
@@ -253,7 +286,7 @@ function PageContent({ empresa }) {
                   <TableRow
                     key={v._id}
                     hover
-                    onClick={() => setDetalleId(v._id)}
+                    onClick={() => (verBorradores ? (setVentaEdit(v), setDrawerOpen(true)) : setDetalleId(v._id))}
                     sx={{ cursor: 'pointer' }}
                   >
                     <TableCell>
@@ -262,25 +295,45 @@ function PageContent({ empresa }) {
                     <TableCell>{c?.nombre || v.cliente_nombre || v.cliente_id || '—'}</TableCell>
                     <TableCell>{fecha}</TableCell>
                     <TableCell align="right">{formatCurrencyWithCode(v.total || 0, v.moneda)}</TableCell>
-                    <TableCell>
-                      <Chip
-                        size="small"
-                        label={ENTREGA_LABEL[v.entrega?.estado] || v.entrega?.estado}
-                        color={ENTREGA_COLOR[v.entrega?.estado] || 'default'}
-                        variant="outlined"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Chip
-                        size="small"
-                        label={COBRO_LABEL[v.cobro?.estado] || v.cobro?.estado}
-                        color={COBRO_COLOR[v.cobro?.estado] || 'default'}
-                        variant="outlined"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <ProgresoCobro venta={v} />
-                    </TableCell>
+                    {verBorradores ? (
+                      <>
+                        <TableCell>
+                          <Chip
+                            size="small"
+                            label={ESTADO_VENTA_LABEL[v.estado_venta] || v.estado_venta}
+                            color={ESTADO_VENTA_COLOR[v.estado_venta] || 'default'}
+                            variant="outlined"
+                          />
+                        </TableCell>
+                        <TableCell align="right">
+                          <Button size="small" variant="contained" onClick={(e) => confirmarBorradorRow(e, v)}>
+                            Confirmar
+                          </Button>
+                        </TableCell>
+                      </>
+                    ) : (
+                      <>
+                        <TableCell>
+                          <Chip
+                            size="small"
+                            label={ENTREGA_LABEL[v.entrega?.estado] || v.entrega?.estado}
+                            color={ENTREGA_COLOR[v.entrega?.estado] || 'default'}
+                            variant="outlined"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Chip
+                            size="small"
+                            label={COBRO_LABEL[v.cobro?.estado] || v.cobro?.estado}
+                            color={COBRO_COLOR[v.cobro?.estado] || 'default'}
+                            variant="outlined"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <ProgresoCobro venta={v} />
+                        </TableCell>
+                      </>
+                    )}
                   </TableRow>
                 );
               })}

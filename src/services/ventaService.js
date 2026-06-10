@@ -58,6 +58,22 @@ const ventaService = {
     const { data } = await api.delete(`/empresa/${empresaId}/ventas/${id}`);
     return data;
   },
+
+  // ── Borradores (venta inerte: se completa/confirma después) ──
+  async crearBorrador(empresaId, payload) {
+    const { data } = await api.post(`/empresa/${empresaId}/ventas/borrador`, payload);
+    return data;
+  },
+
+  async editarBorrador(empresaId, id, payload = {}) {
+    const { data } = await api.put(`/empresa/${empresaId}/ventas/${id}/borrador`, payload);
+    return data;
+  },
+
+  async confirmarBorrador(empresaId, id) {
+    const { data } = await api.post(`/empresa/${empresaId}/ventas/${id}/confirmar-borrador`);
+    return data;
+  },
 };
 
 export default ventaService;

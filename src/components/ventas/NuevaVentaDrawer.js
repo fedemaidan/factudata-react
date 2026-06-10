@@ -90,6 +90,8 @@ export default function NuevaVentaDrawer({ open, onClose, empresa, onCreated, ve
   const empresaId = empresa?.id || empresa?._id;
   const { sucursalId: sucursalGlobal } = useSucursalContext();
   const esEdicion = Boolean(ventaEdit?._id);
+  const esInerte = ['borrador', 'cotizada'].includes(ventaEdit?.estado_venta);
+  const etiquetaInerte = ventaEdit?.estado_venta === 'cotizada' ? 'cotización' : 'borrador';
 
   const [operacion, setOperacion] = useState('productos'); // 'productos' | 'acopio'
 
@@ -132,17 +134,21 @@ export default function NuevaVentaDrawer({ open, onClose, empresa, onCreated, ve
       setFecha(toDateInput(ventaEdit.fecha));
       setMoneda(ventaEdit.moneda || 'ARS');
       setNotas(ventaEdit.notas || '');
-      setModalidad(ventaEdit.tipo || 'contado');
-      setFechaEntrega(toDateInput(ventaEdit.fecha_entrega_estimada));
+      setModalidad((esInerte ? ventaEdit.borrador_data?.modalidad : ventaEdit.tipo) || 'contado');
+      setFechaEntrega(toDateInput(esInerte ? ventaEdit.borrador_data?.fecha_entrega_estimada : ventaEdit.fecha_entrega_estimada));
       setCobrado(ventaEdit.cobro?.estado === 'pagado');
-      const rows = (ventaEdit.materiales || []).map((m) => ({
-        material_id: m.id_material || '',
-        nombre: m.nombre || '',
-        descripcion: m.id_material ? '' : (m.nombre || ''),
-        cantidad: m.cantidad || 1,
-        precio_unitario: m.precio_unitario || 0,
-        libre: !m.id_material,
-      }));
+      const fuenteMats = (esInerte ? ventaEdit.borrador_data?.materiales : ventaEdit.materiales) || [];
+      const rows = fuenteMats.map((m) => {
+        const mid = m.material_id || m.id_material || '';
+        return {
+          material_id: mid,
+          nombre: m.nombre || '',
+          descripcion: mid ? '' : (m.nombre || ''),
+          cantidad: m.cantidad || 1,
+          precio_unitario: m.precio_unitario || 0,
+          libre: !mid,
+        };
+      });
       setItems(rows.length ? [...rows, emptyRow()] : [emptyRow()]);
     } else {
       setOperacion('productos');
@@ -255,14 +261,10 @@ export default function NuevaVentaDrawer({ open, onClose, empresa, onCreated, ve
     return null;
   }
 
-  async function submit() {
-    if (operacion === 'acopio') return; // placeholder: no crea nada
-    setError('');
-    const msg = validar();
-    if (msg) { setError(msg); return; }
+  function buildPayload() {
     const cliente_id = clienteSel._id || clienteSel.id;
     const sucursal_id = sucursalSel || null;
-    const payload = {
+    return {
       cliente_id, sucursal_id, fecha: fecha || null,
       fecha_entrega_estimada: modalidad === 'contra_entrega' ? (fechaEntrega || null) : null,
       moneda, modalidad,
@@ -276,11 +278,60 @@ export default function NuevaVentaDrawer({ open, onClose, empresa, onCreated, ve
         precio_unitario: Number(it.precio_unitario) || 0,
       })),
     };
+  }
+
+  async function submit() {
+    if (operacion === 'acopio') return; // placeholder: no crea nada
+    setError('');
+    const msg = validar();
+    if (msg) { setError(msg); return; }
     setSubmitting(true);
     try {
-      const res = esEdicion
-        ? await ventaService.editar(empresaId, ventaEdit._id, payload)
-        : await ventaService.crear(empresaId, payload);
+      const payload = buildPayload();
+      let res;
+      if (esInerte) res = await ventaService.editarBorrador(empresaId, ventaEdit._id, payload);
+      else if (esEdicion) res = await ventaService.editar(empresaId, ventaEdit._id, payload);
+      else res = await ventaService.crear(empresaId, payload);
+      onCreated?.(res?.venta || res || null);
+      onClose?.();
+    } catch (e) {
+      setError(e?.response?.data?.error || e.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  // Guarda la venta como BORRADOR (sin confirmar). Disponible al crear o editando un borrador.
+  async function guardarComoBorrador() {
+    if (operacion === 'acopio') return;
+    setError('');
+    if (!clienteSel) { setError('Seleccioná un cliente'); return; }
+    if (itemsValidos.length === 0) { setError('Agregá al menos un producto con cantidad'); return; }
+    setSubmitting(true);
+    try {
+      const payload = buildPayload();
+      const res = esInerte
+        ? await ventaService.editarBorrador(empresaId, ventaEdit._id, payload)
+        : await ventaService.crearBorrador(empresaId, payload);
+      onCreated?.(res?.venta || res || null);
+      onClose?.();
+    } catch (e) {
+      setError(e?.response?.data?.error || e.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  // Confirma un borrador → crea la venta real.
+  async function confirmarBorradorAhora() {
+    setError('');
+    const msg = validar();
+    if (msg) { setError(msg); return; }
+    setSubmitting(true);
+    try {
+      // Guardamos primero los cambios del snapshot y luego confirmamos.
+      await ventaService.editarBorrador(empresaId, ventaEdit._id, buildPayload());
+      const res = await ventaService.confirmarBorrador(empresaId, ventaEdit._id);
       onCreated?.(res?.venta || res || null);
       onClose?.();
     } catch (e) {
@@ -304,7 +355,7 @@ export default function NuevaVentaDrawer({ open, onClose, empresa, onCreated, ve
         <header className="shrink-0 border-b border-divider bg-white px-4 py-3">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-base font-bold tracking-tight text-neutral-900">{esEdicion ? 'Editar venta' : 'Nueva venta'}</h2>
+              <h2 className="text-base font-bold tracking-tight text-neutral-900">{esInerte ? `Editar ${etiquetaInerte}` : (esEdicion ? 'Editar venta' : 'Nueva venta')}</h2>
               <div className="mt-1 flex flex-wrap items-center gap-1">
                 {clienteSel && (
                   <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] text-neutral-800">
@@ -553,13 +604,23 @@ export default function NuevaVentaDrawer({ open, onClose, empresa, onCreated, ve
             >
               Cancelar
             </button>
+            {(!esEdicion || esInerte) && operacion !== 'acopio' && (
+              <button
+                type="button"
+                onClick={guardarComoBorrador}
+                disabled={submitting}
+                className="rounded-lg border border-primary-main bg-white px-4 py-1.5 text-sm font-semibold text-primary-dark hover:bg-primary-main/5 disabled:opacity-50"
+              >
+                {esInerte ? `Guardar ${etiquetaInerte}` : 'Guardar borrador'}
+              </button>
+            )}
             <button
               type="button"
-              onClick={submit}
+              onClick={esInerte ? confirmarBorradorAhora : submit}
               disabled={submitting || operacion === 'acopio'}
               className="rounded-lg bg-primary-main px-4 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-primary-dark disabled:opacity-50"
             >
-              {submitting ? 'Guardando…' : (esEdicion ? 'Guardar cambios' : 'Crear venta')}
+              {submitting ? 'Guardando…' : (esInerte ? 'Confirmar venta' : (esEdicion ? 'Guardar cambios' : 'Crear venta'))}
             </button>
           </div>
         </footer>

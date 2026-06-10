@@ -127,17 +127,35 @@ export const getProyectosByEmpresa = async (empresa) => {
         console.log('Referencias de proyectos no proporcionadas o incompletas en el objeto usuario');
         return [];
       }
-      
-        const proyectos = await Promise.all(empresa.proyectosIds.map(async (id) => {
-        const proyectoData = await getProyectoById(id); 
+
+      // Path principal: 1 sola request al endpoint batch por empresa, y filtramos
+      // localmente por los ids que tiene la empresa. Evita el N+1 (1 GET por
+      // proyecto) que saturaba el backend con tokens vencidos.
+      const empresaId = empresa.id || empresa._id || null;
+      if (empresaId) {
+        const todosDeEmpresa = await getProyectosByEmpresaId(empresaId);
+        if (Array.isArray(todosDeEmpresa) && todosDeEmpresa.length > 0) {
+          const idsEmpresa = new Set(empresa.proyectosIds.map(String));
+          const filtrados = todosDeEmpresa.filter(
+            (p) => p && p.eliminado !== true && (idsEmpresa.has(String(p._id)) || idsEmpresa.has(String(p.id)))
+          );
+          if (filtrados.length > 0) return filtrados;
+          // Si el filtro quedó vacío (ids del objeto empresa desfasados del batch),
+          // caemos al path por id, que ya usa caché + coalescing.
+        }
+      }
+
+      // Fallback: pedir uno por uno (pasa por caché en memoria y coalescing).
+      const proyectos = await Promise.all(empresa.proyectosIds.map(async (id) => {
+        const proyectoData = await getProyectoById(id);
         return proyectoData;
-        
+
       }));
-  
+
       return proyectos.filter(proyecto => proyecto !== null && proyecto.eliminado !== true);
     } catch (err) {
       console.error('Error al obtener los proyectos del usuario:', err);
-      return []; 
+      return [];
     }
   };
 
