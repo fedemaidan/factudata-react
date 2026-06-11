@@ -231,6 +231,7 @@ const TEMPLATES = [
         type: 'budget_vs_actual',
         titulo: 'Presupuesto vs Ejecución',
         mostrar_tipo: 'egreso',
+        presupuestos_con_campo: 'categoria',
         alerta_sobreejecucion: true,
         incluir_sin_presupuesto: false,
       },
@@ -290,7 +291,7 @@ const TEMPLATES = [
     nombre: 'Categoria por Proyecto',
     descripcion: 'Planilla por categoria con inicial, adicionales, total, recibido y saldo por proyecto',
     display_currency: 'ARS',
-    datasets: { movimientos: false, presupuestos: true },
+    datasets: { movimientos: true, presupuestos: true },
     filtros_schema: {
       fecha: { enabled: false },
       proyectos: { enabled: false },

@@ -51,8 +51,11 @@ const CategoryBudgetMatrixBlock = ({ data, displayCurrency, cotizaciones, onDril
     return valueInCac * cotizaciones.cac;
   };
 
-  // Obtener tooltip text si es CAC
-  const getTooltipText = (displayCurr, value) => {
+  const getTooltipText = (row, projectId, displayCurr, value) => {
+    const todayValue = row.todayValues?.[projectId];
+    if (todayValue != null && !isNaN(todayValue)) {
+      return `Hoy: ${formatValue(todayValue, 'currency', displayCurr)}`;
+    }
     if (displayCurr !== 'CAC' || !cotizaciones?.cac) return null;
     const arsValue = convertCacToArs(value);
     if (arsValue === null) return null;
@@ -172,7 +175,7 @@ const CategoryBudgetMatrixBlock = ({ data, displayCurrency, cotizaciones, onDril
                       ? (row._movimientos_by_project?.[project.id] || [])
                       : [];
                     const canDrillDown = row.key === 'recibido' && receivedMovs.length > 0 && !!onDrillDown;
-                    const tooltipText = getTooltipText(displayCurrency, val);
+                    const tooltipText = getTooltipText(row, project.id, displayCurrency, val);
                     const formattedValue = formatValue(val, 'currency', displayCurrency);
 
                     return (
