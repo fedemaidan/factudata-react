@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-import { Avatar, Box, Button, Stack, Typography, alpha, useTheme } from '@mui/material';
+import { Avatar, Box, Button, Chip, Stack, Typography, alpha, useTheme } from '@mui/material';
 import AutoAwesomeRoundedIcon from '@mui/icons-material/AutoAwesomeRounded';
+import AttachFileRoundedIcon from '@mui/icons-material/AttachFileRounded';
 import LaunchRoundedIcon from '@mui/icons-material/LaunchRounded';
 import BookmarkAddRoundedIcon from '@mui/icons-material/BookmarkAddRounded';
 import AccountBalanceWalletOutlinedIcon from '@mui/icons-material/AccountBalanceWalletOutlined';
@@ -189,6 +190,7 @@ export function AgentMessage({
   debugTrace,
   debugVisible = false,
   actions,
+  attachments,
   onAction,
 }) {
   const theme = useTheme();
@@ -197,6 +199,11 @@ export function AgentMessage({
   const time = formatTimestamp(createdAt);
   const showTrace = isAssistant && debugVisible && debugTrace;
   const hasActions = isAssistant && Array.isArray(actions) && actions.length > 0;
+  const fileList = Array.isArray(attachments) ? attachments.filter(Boolean) : [];
+  const hasAttachments = fileList.length > 0;
+  // Si solo se adjuntó un archivo (sin texto real), el chip ya lo muestra: no repetimos el placeholder.
+  const isPlaceholder = content === '📎 Archivo adjunto' || content === '📎 Comprobante adjunto';
+  const showContent = !!content && !(hasAttachments && isPlaceholder);
 
   const [expanded, setExpanded] = useState(false);
   const [overflows, setOverflows] = useState(false);
@@ -279,27 +286,49 @@ export function AgentMessage({
             '& a': { color: 'inherit', textDecoration: 'underline' },
           }}
         >
-          <Box
-            ref={contentRef}
-            sx={{
-              overflow: 'hidden',
-              maxHeight: collapsing ? COLLAPSED_HEIGHT : 'none',
-              transition: 'max-height 0.25s ease',
-            }}
-          >
-            <Typography
-              component="div"
-              variant="body2"
+          {hasAttachments ? (
+            <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mb: content ? 1 : 0 }}>
+              {fileList.map((att, i) => (
+                <Chip
+                  key={`${att.filename || 'archivo'}-${i}`}
+                  size="small"
+                  icon={<AttachFileRoundedIcon sx={{ fontSize: 15 }} />}
+                  label={att.filename || 'archivo'}
+                  sx={{
+                    maxWidth: 220,
+                    height: 26,
+                    backgroundColor: isUser ? 'rgba(255,255,255,0.2)' : 'action.hover',
+                    color: isUser ? 'primary.contrastText' : 'text.primary',
+                    '& .MuiChip-icon': { color: 'inherit' },
+                    '& .MuiChip-label': { fontSize: '0.78rem', fontWeight: 500 },
+                  }}
+                />
+              ))}
+            </Stack>
+          ) : null}
+          {showContent ? (
+            <Box
+              ref={contentRef}
               sx={{
-                lineHeight: 1.55,
-                fontSize: '0.9375rem',
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-word',
+                overflow: 'hidden',
+                maxHeight: collapsing ? COLLAPSED_HEIGHT : 'none',
+                transition: 'max-height 0.25s ease',
               }}
             >
-              <ReactMarkdown>{whatsappToMarkdown(content)}</ReactMarkdown>
-            </Typography>
-          </Box>
+              <Typography
+                component="div"
+                variant="body2"
+                sx={{
+                  lineHeight: 1.55,
+                  fontSize: '0.9375rem',
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                }}
+              >
+                <ReactMarkdown>{whatsappToMarkdown(content)}</ReactMarkdown>
+              </Typography>
+            </Box>
+          ) : null}
           {collapsing && (
             <Box
               aria-hidden

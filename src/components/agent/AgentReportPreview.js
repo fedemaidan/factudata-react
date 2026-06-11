@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Box,
@@ -15,12 +15,10 @@ import {
 import BookmarkAddRoundedIcon from '@mui/icons-material/BookmarkAddRounded';
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
 import InsightsRoundedIcon from '@mui/icons-material/InsightsRounded';
-import AutoFixHighRoundedIcon from '@mui/icons-material/AutoFixHighRounded';
 import ReportView from 'src/components/reportes/ReportView';
 import { useReportDataSources } from 'src/hooks/useReportDataSources';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import { buildSampleMovimientos } from 'src/utils/reportes/sampleMovimientos';
-import api from 'src/services/axiosConfig';
 
 /**
  * Panel de previsualización en vivo del reporte que el agente va armando. Reutiliza
@@ -32,14 +30,9 @@ import api from 'src/services/axiosConfig';
  * @param {Function} props.onSave    - (nombre) => void: dispara el guardado vía chat
  * @param {Function} [props.onClose] - cierra el panel (solo en el Dialog mobile)
  */
-export default function AgentReportPreview({ draft, user, onSave, onDraftCorrected, onClose }) {
+export default function AgentReportPreview({ draft, user, onSave, onClose }) {
   const [empresaId, setEmpresaId] = useState(null);
   const [name, setName] = useState(draft?.nombre || 'Reporte sin título');
-  const [improving, setImproving] = useState(false);
-  // Nodo del reporte renderizado (lo capturamos con html2canvas para el corrector con visión).
-  const reportNodeRef = useRef(null);
-  // Solo auto-mejoramos el PRIMER borrador completo; el resto, a pedido con el botón.
-  const didAutoImproveRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -103,45 +96,6 @@ export default function AgentReportPreview({ draft, user, onSave, onDraftCorrect
   );
   const movimientosParaVista = usandoEjemplo ? sampleMovimientos : filteredMovimientos;
   const canSave = blockCount > 0 && !!name.trim();
-  const previewListo = blockCount > 0 && !loading && (hasData || usandoEjemplo);
-
-  // Corrector con visión: captura el reporte renderizado y pide al backend un layout pulido.
-  const runImprove = useCallback(async () => {
-    const node = reportNodeRef.current;
-    if (!node || improving) return;
-    setImproving(true);
-    try {
-      const html2canvas = (await import('html2canvas')).default;
-      const canvas = await html2canvas(node, {
-        backgroundColor: '#ffffff',
-        scale: 1,
-        logging: false,
-        useCORS: true,
-      });
-      const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.9));
-      if (!blob) return;
-      const form = new FormData();
-      form.append('preview', blob, 'preview.jpg');
-      const { data } = await api.post('/agent/report-critique', form, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-      if (data?.reportDraft && onDraftCorrected) onDraftCorrected(data.reportDraft);
-    } catch (err) {
-      console.error('AgentReportPreview: error mejorando diseño', err);
-    } finally {
-      setImproving(false);
-    }
-  }, [improving, onDraftCorrected]);
-
-  // Auto-mejora una sola vez, cuando el primer borrador completo terminó de renderizar.
-  useEffect(() => {
-    if (didAutoImproveRef.current) return;
-    if (!previewListo) return;
-    didAutoImproveRef.current = true;
-    // Esperamos un frame para asegurar que el DOM del reporte esté pintado.
-    const id = requestAnimationFrame(() => runImprove());
-    return () => cancelAnimationFrame(id);
-  }, [previewListo, runImprove]);
 
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: 'background.default' }}>
@@ -199,28 +153,10 @@ export default function AgentReportPreview({ draft, user, onSave, onDraftCorrect
               }}
             />
             <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
-              {improving ? 'Mejorando diseño…' : loading ? 'Actualizando…' : 'Vista previa con tus datos reales'}
+              {loading ? 'Actualizando…' : 'Vista previa con tus datos reales'}
             </Typography>
           </Stack>
         </Box>
-        {blockCount > 0 ? (
-          <Tooltip title="Mejorar el diseño del reporte automáticamente">
-            <span>
-              <Button
-                size="small"
-                variant="outlined"
-                onClick={runImprove}
-                disabled={improving || !previewListo}
-                startIcon={
-                  improving ? <CircularProgress size={13} color="inherit" /> : <AutoFixHighRoundedIcon sx={{ fontSize: 16 }} />
-                }
-                sx={{ borderRadius: 2, whiteSpace: 'nowrap', textTransform: 'none', px: 1.25 }}
-              >
-                Mejorar diseño
-              </Button>
-            </span>
-          </Tooltip>
-        ) : null}
         {(displayCurrencies || []).slice(0, 2).map((c) => (
           <Chip key={c} label={c} size="small" variant="outlined" sx={{ height: 22, fontSize: '0.68rem' }} />
         ))}
@@ -245,7 +181,6 @@ export default function AgentReportPreview({ draft, user, onSave, onDraftCorrect
           </Box>
         ) : (
           <Box
-            ref={reportNodeRef}
             sx={{
               backgroundColor: 'background.paper',
               borderRadius: 2,

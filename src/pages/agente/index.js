@@ -59,7 +59,6 @@ const AgentChatPage = () => {
     confirmCurrent,
     cancelCurrent,
     dismissError,
-    replaceReportDraft,
   } = useAgentChat();
   const { enabled: debugVisible, toggle: toggleDebugVisible } = useAgentDebugTrace();
   const { user, originalUser } = useAuthContext();
@@ -359,6 +358,7 @@ const AgentChatPage = () => {
                     debugTrace={m.debugTrace}
                     debugVisible={debugVisible}
                     actions={m.actions}
+                    attachments={m.attachments}
                     onAction={handleMessageAction}
                   />
                 ))}
@@ -570,12 +570,7 @@ const AgentChatPage = () => {
 
         {showPreview && isDesktop ? (
           <Box sx={{ width: { md: '48%', lg: '54%' }, height: '100%', flexShrink: 0 }}>
-            <AgentReportPreview
-              draft={reportDraft}
-              user={user}
-              onSave={handleSaveReport}
-              onDraftCorrected={replaceReportDraft}
-            />
+            <AgentReportPreview draft={reportDraft} user={user} onSave={handleSaveReport} />
           </Box>
         ) : null}
       </Box>
@@ -611,7 +606,6 @@ const AgentChatPage = () => {
               draft={reportDraft}
               user={user}
               onSave={handleSaveReport}
-              onDraftCorrected={replaceReportDraft}
               onClose={() => setMobilePreviewOpen(false)}
             />
           </Dialog>

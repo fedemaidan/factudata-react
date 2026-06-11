@@ -76,8 +76,6 @@ function reducer(state, action) {
         error: action.payload,
         // Mantenemos el mensaje optimista del user; solo no se agrega el del assistant
       };
-    case 'reportDraft:replace':
-      return { ...state, reportDraft: action.payload };
     case 'reset':
       return { ...initialState, hasLoadedHistory: true };
     case 'error:dismiss':
@@ -129,8 +127,9 @@ export function useAgentChat() {
     inFlightRef.current = true;
     const optimisticMessage = {
       role: 'user',
-      content: trimmed || '📎 Comprobante adjunto',
+      content: trimmed || '📎 Archivo adjunto',
       createdAt: new Date().toISOString(),
+      ...(fileList.length ? { attachments: fileList.map((f) => ({ filename: f.name })) } : {}),
     };
     dispatch({ type: 'send:start', payload: { optimisticMessage } });
     try {
@@ -184,10 +183,6 @@ export function useAgentChat() {
   const confirmCurrent = useCallback(() => sendMessage('sí'), [sendMessage]);
   const cancelCurrent = useCallback(() => sendMessage('cancelar'), [sendMessage]);
   const dismissError = useCallback(() => dispatch({ type: 'error:dismiss' }), []);
-  // Reemplaza el borrador en vivo sin pasar por el chat (lo usa el corrector con visión).
-  const replaceReportDraft = useCallback((draft) => {
-    if (draft) dispatch({ type: 'reportDraft:replace', payload: draft });
-  }, []);
 
   return {
     ...state,
@@ -197,7 +192,6 @@ export function useAgentChat() {
     confirmCurrent,
     cancelCurrent,
     dismissError,
-    replaceReportDraft,
   };
 }
 
