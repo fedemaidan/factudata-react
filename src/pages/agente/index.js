@@ -161,19 +161,29 @@ const AgentChatPage = () => {
     [isSending, sendMessage],
   );
 
-  const handleQuickAction = useCallback((prefill) => {
-    setDraft(prefill);
-    requestAnimationFrame(() => {
-      const el = inputRef.current;
-      if (!el) return;
-      el.focus();
-      try {
-        el.setSelectionRange(prefill.length, prefill.length);
-      } catch (_) {
-        /* noop */
+  const handleQuickAction = useCallback(
+    (action) => {
+      const prefill = typeof action === 'string' ? action : action?.prefill || '';
+      // autosend: la acción se envía sola (onboarding proactivo); el agente responde
+      // sin que el usuario tenga que escribir.
+      if (action && typeof action === 'object' && action.autosend) {
+        if (!isSending) sendMessage(prefill);
+        return;
       }
-    });
-  }, []);
+      setDraft(prefill);
+      requestAnimationFrame(() => {
+        const el = inputRef.current;
+        if (!el) return;
+        el.focus();
+        try {
+          el.setSelectionRange(prefill.length, prefill.length);
+        } catch (_) {
+          /* noop */
+        }
+      });
+    },
+    [isSending, sendMessage],
+  );
 
   // Despacho de acciones declarativas que vienen en el message del asistente
   // (open_report → navega; suggest_create_report → manda mensaje al chat).
@@ -684,7 +694,7 @@ function EmptyState({ onQuickAction, onPromptClick, disabled, quickActions, exam
                 title={action.label}
                 description={action.description}
                 disabled={disabled}
-                onClick={() => onQuickAction(action.prefill)}
+                onClick={() => onQuickAction(action)}
               />
             ))}
           </Box>
