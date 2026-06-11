@@ -102,7 +102,10 @@ const AgentChatPage = () => {
   }, [router, hasLoadedHistory, sendMessage]);
 
   const canAttach = !!specialists?.corralon || !!specialists?.reportes;
-  const ATTACH_ACCEPT = 'image/*,application/pdf';
+  // reportes acepta Excel/CSV como referencia de formato; corralón solo foto/PDF.
+  const ATTACH_ACCEPT = specialists?.reportes
+    ? 'image/*,application/pdf,.xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv'
+    : 'image/*,application/pdf';
   const MAX_ATTACHMENTS = 10;
 
   const handleSend = useCallback(() => {
@@ -496,7 +499,7 @@ const AgentChatPage = () => {
               }}
             >
               {canAttach ? (
-                <Tooltip title="Adjuntar archivo (foto/PDF): comprobante o un reporte de referencia">
+                <Tooltip title={specialists?.reportes ? 'Adjuntar archivo: comprobante (foto/PDF) o un reporte de referencia (Excel, PDF o foto)' : 'Adjuntar archivo (foto/PDF): comprobante o un reporte de referencia'}>
                   <span>
                     <IconButton
                       onClick={() => fileInputRef.current?.click()}
