@@ -500,7 +500,7 @@ const AgentChatPage = () => {
               }}
             >
               {canAttach ? (
-                <Tooltip title={specialists?.reportes ? 'Adjuntar archivo: comprobante (foto/PDF) o un reporte de referencia (Excel, PDF o foto)' : 'Adjuntar archivo (foto/PDF): comprobante o un reporte de referencia'}>
+                <Tooltip title={'Adjuntar archivo'}>
                   <span>
                     <IconButton
                       onClick={() => fileInputRef.current?.click()}

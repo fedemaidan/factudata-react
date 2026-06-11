@@ -153,7 +153,7 @@ export default function AgentReportPreview({ draft, user, onSave, onClose }) {
               }}
             />
             <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
-              {loading ? 'Actualizando…' : 'Vista previa con tus datos reales'}
+              {loading ? 'Actualizando…' : 'Previsualización con tus datos reales'}
             </Typography>
           </Stack>
         </Box>
