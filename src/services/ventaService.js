@@ -17,6 +17,12 @@ const ventaService = {
     return data;
   },
 
+  // Variante paginada: devuelve { items, total } (con_total=1 en el backend).
+  async listarPaginado(empresaId, filtros = {}) {
+    const data = await this.listar(empresaId, { ...filtros, con_total: 1 });
+    return data && Array.isArray(data.items) ? data : { items: [], total: 0 };
+  },
+
   async obtener(empresaId, id) {
     const { data } = await api.get(`/empresa/${empresaId}/ventas/${id}`);
     return data;
@@ -32,6 +38,18 @@ const ventaService = {
   // materiales[] (lista de precios congelada) y cobrado (pagado al momento).
   async crearAcopio(empresaId, payload) {
     const { data } = await api.post(`/empresa/${empresaId}/ventas/acopio`, payload);
+    return data;
+  },
+
+  // OCR de cotización (PDF/foto) para precargar venta o acopio. Devuelve
+  // { tipo, cliente_detectado, total, neto, impuestos, fecha_entrega, items[] }
+  // con items ya conciliados contra el catálogo (material_id cuando matchea).
+  async extraerCotizacion(empresaId, files) {
+    const form = new FormData();
+    (Array.isArray(files) ? files : [files]).forEach((f) => form.append('archivos', f));
+    const { data } = await api.post(`/empresa/${empresaId}/ventas/extraer-cotizacion`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
     return data;
   },
 

@@ -6,7 +6,7 @@ import { CacheProvider } from '@emotion/react';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { es } from 'date-fns/locale';
-import { CssBaseline } from '@mui/material';
+import { Box, CircularProgress, CssBaseline } from '@mui/material';
 import { ThemeProvider } from '@mui/material/styles';
 import { AuthConsumer, AuthProvider, useAuthContext } from 'src/contexts/auth-context';
 import { useNProgress } from 'src/hooks/use-nprogress';
@@ -22,7 +22,20 @@ import { SucursalProvider } from 'src/contexts/sucursal-context';
 
 const clientSideEmotionCache = createEmotionCache();
 
-const SplashScreen = () => null;
+// Pantalla de carga mientras auth se inicializa. Antes era null → cualquier demora
+// de Firebase se veía como página blanca rota; ahora se ve como carga normal.
+const SplashScreen = () => (
+  <Box
+    sx={{
+      height: '100vh',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+    }}
+  >
+    <CircularProgress size={32} />
+  </Box>
+);
 
 /**
  * Identifica al usuario logueado en Clarity para poder filtrar

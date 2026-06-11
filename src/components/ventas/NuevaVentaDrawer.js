@@ -7,7 +7,7 @@
  *   tipo de operación → datos → productos → modalidad de pago.
  * El acopio tiene sus propios campos.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Autocomplete,
   Checkbox,
@@ -117,6 +117,47 @@ export default function NuevaVentaDrawer({ open, onClose, empresa, onCreated, ve
   const [tipoAcopio, setTipoAcopio] = useState('lista_precios'); // 'lista_precios' | 'materiales'
   const [cobradoAcopio, setCobradoAcopio] = useState(false);
 
+  // Importar cotización (PDF/foto): mismo OCR que WhatsApp, precarga el formulario.
+  const fileInputRef = useRef(null);
+  const [importando, setImportando] = useState(false);
+  const [importMsg, setImportMsg] = useState('');
+
+  async function importarCotizacion(file) {
+    if (!file) return;
+    setImportando(true); setError(''); setImportMsg('');
+    try {
+      const res = await ventaService.extraerCotizacion(empresaId, file);
+      // Líneas (ya conciliadas contra el catálogo en el backend).
+      const rows = (res.items || [])
+        .filter((it) => it.nombre)
+        .map((it) => ({
+          material_id: it.material_id || '',
+          nombre: it.nombre,
+          descripcion: it.material_id ? '' : it.nombre,
+          cantidad: Number(it.cantidad) || 1,
+          precio_unitario: Number(it.precio_unitario) || 0,
+          libre: !it.material_id,
+        }));
+      if (rows.length) setItems([...rows, emptyRow()]);
+      // Cliente detectado → seleccionar si existe (se ignora consumidor final).
+      const det = String(res.cliente_detectado || '').trim();
+      if (det && !/cons\.?\s*final|consumidor final/i.test(det)) {
+        const norm = (s) => String(s || '').toLowerCase().trim();
+        const match = clientes.find((c) => norm(c.nombre) === norm(det));
+        if (match) setClienteSel(match);
+      }
+      // Monto (modo acopio: el total de la cotización como sugerencia).
+      if (operacion === 'acopio' && Number(res.total) > 0) setMontoAcopio(String(res.total));
+      const conc = rows.filter((r) => r.material_id).length;
+      setImportMsg(`Cotización leída: ${rows.length} ítems (${conc} conciliados)${res.total ? ` · total ${formatCurrencyWithCode(res.total, moneda)}` : ''}${det ? ` · cliente: ${det}` : ''}`);
+    } catch (e) {
+      setError(e?.response?.data?.error || e.message || 'No pude leer la cotización.');
+    } finally {
+      setImportando(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  }
+
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -132,6 +173,7 @@ export default function NuevaVentaDrawer({ open, onClose, empresa, onCreated, ve
     setMatOptions({});
     setStockByMaterial({});
     setError('');
+    setImportMsg('');
     if (esEdicion) {
       setOperacion('productos');
       setClienteSel(ventaEdit.cliente_id ? { _id: ventaEdit.cliente_id, nombre: ventaEdit.cliente_nombre } : null);
@@ -424,13 +466,31 @@ export default function NuevaVentaDrawer({ open, onClose, empresa, onCreated, ve
               <XMarkIcon className="h-5 w-5" />
             </IconButton>
           </div>
-          <div className="mt-3" hidden={esEdicion}>
+          <div className="mt-3 flex flex-wrap items-center gap-2" hidden={esEdicion}>
             <Segmented
               value={operacion}
               onChange={setOperacion}
               options={[{ key: 'productos', titulo: 'Venta de productos' }, { key: 'acopio', titulo: 'Acopio' }]}
             />
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf,image/*"
+              className="hidden"
+              onChange={(e) => importarCotizacion(e.target.files?.[0])}
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={importando}
+              className="rounded-md border border-neutral-300 px-2 py-1 text-[11px] font-medium text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+            >
+              {importando ? 'Leyendo cotización…' : '📄 Importar cotización (PDF/foto)'}
+            </button>
           </div>
+          {importMsg && (
+            <p className="mt-1 text-[11px] text-primary-dark">{importMsg}</p>
+          )}
         </header>
 
         {/* Body scrollable */}
