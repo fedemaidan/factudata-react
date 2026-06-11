@@ -18,6 +18,7 @@ import InsightsRoundedIcon from '@mui/icons-material/InsightsRounded';
 import ReportView from 'src/components/reportes/ReportView';
 import { useReportDataSources } from 'src/hooks/useReportDataSources';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
+import { buildSampleMovimientos } from 'src/utils/reportes/sampleMovimientos';
 
 /**
  * Panel de previsualización en vivo del reporte que el agente va armando. Reutiliza
@@ -57,6 +58,7 @@ export default function AgentReportPreview({ draft, user, onSave, onClose }) {
   const {
     loadDataForDraft,
     filteredMovimientos,
+    totalMovimientos,
     presupuestos,
     proyectos,
     usuariosEmpresa,
@@ -84,6 +86,15 @@ export default function AgentReportPreview({ draft, user, onSave, onClose }) {
 
   const blockCount = Array.isArray(draft?.layout) ? draft.layout.length : 0;
   const hasData = filteredMovimientos.length > 0;
+  // La empresa todavía no cargó NINGÚN movimiento → mostramos datos de ejemplo para que
+  // el usuario vea cómo se verá. Distinto de "los filtros no devolvieron nada" (totalMov>0).
+  const empresaSinDatos = !loading && totalMovimientos === 0;
+  const usandoEjemplo = !hasData && empresaSinDatos && blockCount > 0;
+  const sampleMovimientos = useMemo(
+    () => (usandoEjemplo ? buildSampleMovimientos(draft) : null),
+    [usandoEjemplo, draft],
+  );
+  const movimientosParaVista = usandoEjemplo ? sampleMovimientos : filteredMovimientos;
   const canSave = blockCount > 0 && !!name.trim();
 
   return (
@@ -179,15 +190,20 @@ export default function AgentReportPreview({ draft, user, onSave, onClose }) {
               p: { xs: 1.5, md: 2.5 },
             }}
           >
-            {!hasData ? (
+            {usandoEjemplo ? (
+              <Alert severity="info" icon={false} sx={{ mb: 2 }}>
+                📊 <strong>Datos de ejemplo</strong> — así se va a ver tu reporte cuando cargues tus
+                movimientos reales.
+              </Alert>
+            ) : !hasData ? (
               <Alert severity="info" sx={{ mb: 2 }}>
-                Todavía no hay movimientos cargados para estos filtros. Así se vería el reporte una vez
-                que tengas datos.
+                Los filtros de este reporte no devolvieron movimientos. Probá ampliar el período o
+                sacar algún filtro y el reporte se va a poblar.
               </Alert>
             ) : null}
             <ReportView
               reportConfig={draft}
-              movimientos={filteredMovimientos}
+              movimientos={movimientosParaVista}
               presupuestos={presupuestos}
               displayCurrencies={displayCurrencies}
               cotizaciones={cotizaciones}

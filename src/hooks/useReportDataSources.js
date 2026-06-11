@@ -54,6 +54,9 @@ export function useReportDataSources(user, empresaId) {
   const [cotizaciones, setCotizaciones] = useState(null);
 
   const [filteredMovimientos, setFilteredMovimientos] = useState([]);
+  // Total de movimientos traídos antes de filtrar: distingue "empresa sin datos" (0)
+  // de "los filtros del reporte no devolvieron nada" (>0 pero filtrados a 0).
+  const [totalMovimientos, setTotalMovimientos] = useState(0);
   const [filters, setFilters] = useState({});
   const [availableOptions, setAvailableOptions] = useState(EMPTY_OPTIONS);
   const [displayCurrencies, setDisplayCurrencies] = useState(['ARS']);
@@ -220,6 +223,7 @@ export function useReportDataSources(user, empresaId) {
       setAvailableOptions(options);
       setDisplayCurrencies(deriveDisplayCurrencies(draft));
       setFilteredMovimientos(filtered);
+      setTotalMovimientos(movs.length);
     } catch (err) {
       console.error('useReportDataSources: error cargando datos del borrador', err);
       setError('No se pudieron cargar los datos para la previsualización.');
@@ -231,6 +235,7 @@ export function useReportDataSources(user, empresaId) {
   return {
     loadDataForDraft,
     filteredMovimientos,
+    totalMovimientos,
     presupuestos,
     proyectos,
     usuariosEmpresa,
