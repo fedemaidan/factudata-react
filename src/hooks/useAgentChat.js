@@ -12,6 +12,7 @@ const initialState = {
   confirmAction: null,
   activeSpecialist: null,
   reportDraft: null,
+  suggestions: [],
   error: null,
   hasLoadedHistory: false,
 };
@@ -39,6 +40,7 @@ function reducer(state, action) {
         confirmAction: action.payload.confirmAction,
         activeSpecialist: action.payload.activeSpecialist || null,
         reportDraft: resolveReportDraft(state, action.payload),
+        suggestions: Array.isArray(action.payload.suggestions) ? action.payload.suggestions : [],
       };
     case 'load:error':
       // Marcamos hasLoadedHistory: true aunque haya fallado para evitar reintentos
@@ -50,6 +52,8 @@ function reducer(state, action) {
         ...state,
         isSending: true,
         error: null,
+        // Los chips del turno anterior ya se consumieron al enviar; se limpian.
+        suggestions: [],
         messages: [...state.messages, action.payload.optimisticMessage],
       };
     case 'send:success':
@@ -62,6 +66,7 @@ function reducer(state, action) {
         confirmAction: action.payload.confirmAction,
         activeSpecialist: action.payload.activeSpecialist,
         reportDraft: resolveReportDraft(state, action.payload),
+        suggestions: Array.isArray(action.payload.suggestions) ? action.payload.suggestions : [],
         lastDebugTrace: action.payload.debugTrace || null,
       };
     case 'send:error':
@@ -154,6 +159,7 @@ export function useAgentChat() {
           confirmAction: data.confirmAction,
           activeSpecialist: data.activeSpecialist || null,
           reportDraft: data.reportDraft ?? null,
+          suggestions: Array.isArray(data.suggestions) ? data.suggestions : [],
           debugTrace: data.debugTrace || null,
         },
       });

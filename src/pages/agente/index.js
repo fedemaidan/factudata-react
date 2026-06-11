@@ -50,6 +50,7 @@ const AgentChatPage = () => {
     isSending,
     awaitingConfirm,
     reportDraft,
+    suggestions,
     error,
     hasLoadedHistory,
     loadHistory,
@@ -147,6 +148,15 @@ const AgentChatPage = () => {
     (prompt) => {
       if (isSending) return;
       sendMessage(prompt);
+    },
+    [isSending, sendMessage],
+  );
+
+  // Chip de sugerencia: se envía como si el usuario lo hubiera escrito.
+  const handleSuggestionClick = useCallback(
+    (chip) => {
+      if (isSending || !chip?.message) return;
+      sendMessage(chip.message);
     },
     [isSending, sendMessage],
   );
@@ -374,6 +384,53 @@ const AgentChatPage = () => {
                   variant="outlined"
                   onClick={cancelCurrent}
                 />
+              </Stack>
+            </Container>
+          </Box>
+        ) : null}
+
+        {suggestions.length > 0 && !awaitingConfirm && !isSending ? (
+          <Box
+            sx={{
+              px: { xs: 2, sm: 3 },
+              pt: 1,
+              backgroundColor: 'background.paper',
+            }}
+          >
+            <Container maxWidth="md" disableGutters>
+              <Stack
+                direction="row"
+                spacing={1}
+                useFlexGap
+                sx={{
+                  overflowX: 'auto',
+                  pb: 0.5,
+                  // Oculta la barra de scroll sin perder el desplazamiento táctil.
+                  '&::-webkit-scrollbar': { display: 'none' },
+                  scrollbarWidth: 'none',
+                }}
+              >
+                {suggestions.map((chip, i) => (
+                  <Chip
+                    key={`${chip.label}-${i}`}
+                    label={chip.label}
+                    onClick={() => handleSuggestionClick(chip)}
+                    variant="outlined"
+                    sx={{
+                      flexShrink: 0,
+                      height: 34,
+                      borderColor: (t) => `${t.palette.primary.main}55`,
+                      color: 'primary.main',
+                      fontWeight: 600,
+                      fontSize: '0.85rem',
+                      backgroundColor: (t) => `${t.palette.primary.main}0a`,
+                      '&:hover': {
+                        backgroundColor: (t) => `${t.palette.primary.main}1a`,
+                        borderColor: 'primary.main',
+                      },
+                    }}
+                  />
+                ))}
               </Stack>
             </Container>
           </Box>
