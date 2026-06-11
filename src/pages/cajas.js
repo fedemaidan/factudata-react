@@ -189,6 +189,20 @@ const descargarArchivoCsv = (fileName, csvContent) => {
   URL.revokeObjectURL(url);
 };
 
+// Tipo de cambio efectivamente utilizado en el movimiento.
+// Si se ingresó un dólar de referencia (manual o automático) usa ese valor;
+// si no, lo deriva de la equivalencia automática a USD blue.
+const getDolarReferenciaUtilizado = (mov) => {
+  const ref = Number(mov?.dolar_referencia) || 0;
+  if (ref > 0) return ref;
+  const usdBlue = Number(mov?.equivalencias?.total?.usd_blue) || 0;
+  const total = Number(mov?.total) || 0;
+  if ((mov?.moneda || 'ARS') === 'ARS' && usdBlue > 0 && total > 0) {
+    return Number((total / usdBlue).toFixed(2));
+  }
+  return null;
+};
+
 const getMovimientoCsvExportFields = () => [
   {
     key: 'id',
@@ -285,6 +299,23 @@ const getMovimientoCsvExportFields = () => [
     label: 'TC_Ejecutado',
     description: 'Tipo de cambio ejecutado',
     getValue: (mov) => mov.tc ?? 'N/A',
+  },
+  {
+    key: 'dolarReferenciaUtilizado',
+    label: 'Dolar_Referencia_Utilizado',
+    description: 'Tipo de cambio efectivamente utilizado (manual o automatico)',
+    getValue: (mov) => getDolarReferenciaUtilizado(mov) ?? 'N/A',
+  },
+  {
+    key: 'usdEquivalente',
+    label: 'USD_Equivalente',
+    description: 'Equivalente en USD: Total / Dolar Referencia Utilizado',
+    getValue: (mov) => {
+      if ((mov?.moneda || 'ARS') === 'USD') return Number(mov.total) || 0;
+      const tc = getDolarReferenciaUtilizado(mov);
+      const total = Number(mov?.total) || 0;
+      return tc > 0 && total > 0 ? Number((total / tc).toFixed(2)) : 'N/A';
+    },
   },
   {
     key: 'ratioUsdBlue',
@@ -945,6 +976,12 @@ const pendingScrollYRef = useRef(null);
 
 const csvExportFields = useMemo(() => getMovimientoCsvExportFields(), []);
 const csvDefaultOrder = useMemo(() => csvExportFields.map((field) => field.key), [csvExportFields]);
+// Columnas que arrancan destildadas por defecto (los 3 tipos de dólar de equivalencias)
+const CSV_UNCHECKED_BY_DEFAULT = ['usdBlue', 'usdOficial', 'usdMepMedio'];
+const csvDefaultSelected = useMemo(
+  () => csvDefaultOrder.filter((key) => !CSV_UNCHECKED_BY_DEFAULT.includes(key)),
+  [csvDefaultOrder]
+);
 
  // helper: metadatos de equivalencias (moneda objetivo y path en mov.equivalencias)
  const EQUIV_META = {
@@ -977,10 +1014,10 @@ const getMax = () => {
 
 useEffect(() => {
   if (csvConfigHydrated || csvDefaultOrder.length === 0) return;
-  setCsvSelectedFields(csvDefaultOrder);
+  setCsvSelectedFields(csvDefaultSelected);
   setCsvFieldOrder(csvDefaultOrder);
   setCsvConfigHydrated(true);
-}, [csvConfigHydrated, csvDefaultOrder]);
+}, [csvConfigHydrated, csvDefaultOrder, csvDefaultSelected]);
 
 
 useEffect(() => {
@@ -1976,12 +2013,12 @@ const getTime = (v) => {
 
   const handleOpenExportCsvDialog = useCallback(() => {
     if (!csvConfigHydrated) {
-      setCsvSelectedFields(csvDefaultOrder);
+      setCsvSelectedFields(csvDefaultSelected);
       setCsvFieldOrder(csvDefaultOrder);
       setCsvConfigHydrated(true);
     }
     setCsvDialogOpen(true);
-  }, [csvConfigHydrated, csvDefaultOrder]);
+  }, [csvConfigHydrated, csvDefaultOrder, csvDefaultSelected]);
 
   const handleToggleCsvField = useCallback((fieldKey) => {
     setCsvSelectedFields((prev) => (
@@ -2001,9 +2038,9 @@ const getTime = (v) => {
   }, []);
 
   const handleResetCsvConfig = useCallback(() => {
-    setCsvSelectedFields(csvDefaultOrder);
+    setCsvSelectedFields(csvDefaultSelected);
     setCsvFieldOrder(csvDefaultOrder);
-  }, [csvDefaultOrder]);
+  }, [csvDefaultOrder, csvDefaultSelected]);
 
   // ---- Exportadores migrados desde "Todos los movimientos" ----
   const fetchAllMovimientosFiltrados = useCallback(async () => {

@@ -107,7 +107,20 @@ export const attachAuthInterceptors = api => {
         try {
           await waitForAuthReady();
           const user = auth.currentUser || await waitForUser().catch(() => null);
-          if (!user) return Promise.reject(error);
+          if (!user) {
+            // 401 sin usuario de Firebase: no hay refresh posible, el token
+            // guardado está muerto. Borrarlo corta el loop (el request
+            // interceptor lo seguía mandando como fallback en cada llamada) y
+            // redirigimos al login para no dejar la pestaña zombie.
+            if (typeof window !== 'undefined') {
+              window.localStorage.removeItem('authToken');
+              window.localStorage.removeItem('MY_APP_STATE');
+              if (!window.location.pathname.startsWith('/auth')) {
+                window.location.href = '/auth/login';
+              }
+            }
+            return Promise.reject(error);
+          }
           // Reusa el refresh en vuelo si lo hay (coalescing global).
           const token = await getFreshToken(user, true);
           window.localStorage.setItem('authToken', token);

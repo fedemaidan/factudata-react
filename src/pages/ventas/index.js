@@ -27,6 +27,7 @@ import {
   TableBody,
   TableCell,
   TableHead,
+  TablePagination,
   TableRow,
   Tooltip,
   Typography,
@@ -80,6 +81,10 @@ function PageContent({ empresa }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(25);
+  const [total, setTotal] = useState(0);
+
   const [filtroTipo, setFiltroTipo] = useState('');
   const [filtroEntrega, setFiltroEntrega] = useState('');
   const [filtroCobro, setFiltroCobro] = useState('');
@@ -125,24 +130,27 @@ function PageContent({ empresa }) {
     setError('');
     try {
       const [data, cs] = await Promise.all([
-        ventaService.listar(empresaId, {
+        ventaService.listarPaginado(empresaId, {
           sucursal_id: sucursalId || undefined,
           tipo: verBorradores ? undefined : (filtroTipo || undefined),
           estado_entrega: verBorradores ? undefined : (filtroEntrega || undefined),
           estado_cobro: verBorradores ? undefined : (filtroCobro || undefined),
           cliente_id: filtroCliente || undefined,
           solo_borradores: verBorradores ? true : undefined,
+          limit: rowsPerPage,
+          skip: page * rowsPerPage,
         }),
         clienteService.getByEmpresa(empresaId).catch(() => []),
       ]);
-      setVentas(Array.isArray(data) ? data : []);
+      setVentas(data.items);
+      setTotal(Number(data.total) || 0);
       setClientes(Array.isArray(cs) ? cs : []);
     } catch (e) {
       setError(e?.response?.data?.error || e.message || 'Error al cargar');
     } finally {
       setLoading(false);
     }
-  }, [empresaId, sucursalId, filtroTipo, filtroEntrega, filtroCobro, filtroCliente, verBorradores]);
+  }, [empresaId, sucursalId, filtroTipo, filtroEntrega, filtroCobro, filtroCliente, verBorradores, page, rowsPerPage]);
 
   async function confirmarBorradorRow(e, v) {
     e.stopPropagation();
@@ -154,6 +162,11 @@ function PageContent({ empresa }) {
       setError(err?.response?.data?.error || err.message || 'Error al confirmar el borrador');
     }
   }
+
+  // Volver a la primera página cuando cambia cualquier filtro.
+  useEffect(() => {
+    setPage(0);
+  }, [sucursalId, filtroTipo, filtroEntrega, filtroCobro, filtroCliente, verBorradores]);
 
   useEffect(() => {
     cargar();
@@ -340,6 +353,17 @@ function PageContent({ empresa }) {
             </TableBody>
           </Table>
         )}
+        <TablePagination
+          component="div"
+          count={total}
+          page={page}
+          onPageChange={(_, p) => setPage(p)}
+          rowsPerPage={rowsPerPage}
+          onRowsPerPageChange={(e) => { setRowsPerPage(Number(e.target.value)); setPage(0); }}
+          rowsPerPageOptions={[10, 25, 50, 100]}
+          labelRowsPerPage="Filas por página"
+          labelDisplayedRows={({ from, to, count }) => `${from}–${to} de ${count}`}
+        />
       </Paper>
 
       <NuevaVentaDrawer

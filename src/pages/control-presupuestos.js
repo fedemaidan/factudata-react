@@ -1103,6 +1103,35 @@ const ControlPresupuestosPage = () => {
     );
   }, [resumen, moneda, tipoCambio, cacIndiceActual]);
 
+  // Presupuestos de egreso que NO se renderizan en los tabs de Categoría ni Proveedor:
+  //  - solo etapa (el tab de etapa está oculto)
+  //  - combinaciones de dimensiones (categoría+proveedor, categoría+etapa, proveedor+etapa)
+  //  - categoría única que no está en las categorías configuradas de la empresa
+  // El general se muestra arriba como "Presupuesto General", así que se excluye.
+  const presupuestosFueraDeTabs = useMemo(() => {
+    const items = obtenerTodosLosItemsEgresos();
+    const categoriasNombres = new Set(categorias.map((c) => c.name || c));
+    return items.filter((i) => {
+      if (itemEsGeneral(i)) return false;
+      const tieneCats = itemTieneCategorias(i);
+      const tieneProvs = itemTieneProveedores(i);
+      // Tab Categoría: solo-categorías (sin etapa ni proveedor).
+      // Multi-categoría siempre se renderiza como card combinada; single solo si la categoría está configurada.
+      if (tieneCats && !i.etapa && !tieneProvs) {
+        const cats = (i.clasificaciones || []).map((c) => c.categoria);
+        if (cats.length > 1) return false;
+        return !categoriasNombres.has(cats[0]);
+      }
+      // Tab Proveedor: solo-proveedores (sin categorías ni etapa), visible si algún nombre está agregado.
+      if (tieneProvs && !tieneCats && !i.etapa) {
+        const nombres = itemNombresProveedores(i);
+        return !nombres.some((n) => proveedoresAgregados.includes(n));
+      }
+      // Cualquier otra combinación no aparece en ningún tab.
+      return true;
+    });
+  }, [resumen, categorias, proveedoresAgregados]);
+
   // Calcular sumas por cada agrupación (son 3 formas de ver el MISMO presupuesto)
   // Convierte cada item a la moneda de visualización antes de sumar
   const calcularSumas = useMemo(() => {
@@ -2129,6 +2158,45 @@ const ControlPresupuestosPage = () => {
                     )}
                   </Box>
                 </Paper>
+
+                {/* Otros presupuestos: los que no aparecen en los tabs de Categoría ni Proveedor */}
+                {presupuestosFueraDeTabs.length > 0 && (
+                  <Paper sx={{ p: { xs: 1.5, md: 2 } }}>
+                    <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
+                      <ReceiptLongIcon color="action" sx={{ fontSize: { xs: 20, md: 24 } }} />
+                      <Typography variant="h6" sx={{ fontSize: { xs: '1rem', md: '1.25rem' } }}>Otros presupuestos</Typography>
+                      <Chip label={`${presupuestosFueraDeTabs.length}`} size="small" variant="outlined" />
+                    </Stack>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
+                      Presupuestos de esta obra que no aparecen en las pestañas de Categoría ni Proveedor
+                      (etapas, combinaciones de dimensiones o categorías no configuradas en la empresa).
+                    </Typography>
+                    <Stack spacing={1.5}>
+                      {presupuestosFueraDeTabs.map((item) => {
+                        const label = labelItem(item, 'Sin detalle');
+                        return (
+                          <PresupuestoItem
+                            key={item.id}
+                            label={label}
+                            presupuesto={item.monto}
+                            ejecutado={item.ejecutado || 0}
+                            formatMonto={formatMonto}
+                            historial={item.historial || []}
+                            moneda={item.moneda || 'ARS'}
+                            indexacion={item.indexacion || null}
+                            baseCalculo={item.base_calculo || 'total'}
+                            cotizacionSnapshot={item.cotizacion_snapshot || null}
+                            montoIngresado={item.monto_ingresado || item.monto}
+                            cacIndiceActual={getCacIndice(item.cac_tipo)}
+                            tipoCambioActual={tipoCambio}
+                            cacTipo={item.cac_tipo || null}
+                            onEditar={() => abrirDrawerEditar(item, label)}
+                          />
+                        );
+                      })}
+                    </Stack>
+                  </Paper>
+                )}
               </>
             )}
 

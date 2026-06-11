@@ -109,6 +109,10 @@ export const AuthProvider = (props) => {
   const authReadyRef = useRef(false);
   const initialized = useRef(false);
   const stateRef = useRef(initialState);
+  // true mientras la sesión en memoria viene de localStorage y Firebase todavía
+  // no la confirmó en esta pestaña. Si Firebase responde "sin sesión" estando en
+  // provisional, hay que limpiar y mandar al login (sesión fantasma).
+  const provisionalRef = useRef(false);
 
   useEffect(() => {
     stateRef.current = state;
@@ -120,25 +124,38 @@ export const AuthProvider = (props) => {
     }
 
     initialized.current = true;
-    if (typeof auth.authStateReady === 'function') {
-      await auth.authStateReady();
-    }
 
+    // 1) Restaurar sesión de localStorage ANTES de esperar a Firebase → UI optimista
+    //    inmediata. Es provisional: onAuthStateChanged la confirma o la descarta.
+    //    Si lo guardado no parsea o no tiene la forma mínima esperada, se borra
+    //    (un valor corrupto no debe sobrevivir y re-fallar en cada carga).
     const storageState = window.localStorage.getItem('MY_APP_STATE');
     if (storageState) {
       try {
         const savedState = JSON.parse(storageState);
-        if (savedState?.user) {
+        const u = savedState?.user;
+        const esValido = u && typeof u === 'object' && (u.id || u.user_id) && u.token;
+        if (esValido) {
+          provisionalRef.current = true;
           dispatch({
             type: HANDLERS.UPDATE_USER,
-            payload: { user: savedState.user, originalUser: savedState.originalUser || savedState.user },
+            payload: { user: u, originalUser: savedState.originalUser || u },
           });
+        } else {
+          console.warn('[Auth] MY_APP_STATE inválido (sin user/id/token), descartando');
+          window.localStorage.removeItem('MY_APP_STATE');
+          window.localStorage.removeItem('authToken');
         }
-      } catch (_) {}
+      } catch (_) {
+        console.warn('[Auth] MY_APP_STATE corrupto (no parsea), descartando');
+        window.localStorage.removeItem('MY_APP_STATE');
+        window.localStorage.removeItem('authToken');
+      }
     }
 
-    // Fallback: si Firebase no responde en 5s, desbloquear la app con lo que haya en localStorage.
-    // Sin esto, isLoading queda en true y SplashScreen (null) muestra pantalla en blanco indefinidamente.
+    // 2) Fallback: si Firebase no responde en 5s, desbloquear la app con lo que haya
+    //    en localStorage. Armado ANTES de cualquier espera a Firebase: si el SDK se
+    //    cuelga (red lenta, IndexedDB bloqueado), la app igual renderiza a los 5s.
     const authReadyTimeout = setTimeout(() => {
       if (!authReadyRef.current) {
         console.warn('[Auth] Timeout esperando onAuthStateChanged, desbloqueando con estado actual');
@@ -186,6 +203,7 @@ export const AuthProvider = (props) => {
             } else {
               dispatch({ type: HANDLERS.UPDATE_USER, payload: freshAdmin });
             }
+            provisionalRef.current = false; // sesión confirmada por Firebase + backend
             lastError = null;
             break;
           } catch (error) {
@@ -202,7 +220,13 @@ export const AuthProvider = (props) => {
           dispatch({ type: HANDLERS.INITIALIZE, payload: { user: null, originalUser: null, clearStorage: false } });
         }
       } else {
+        // Firebase dice "sin sesión". Si lo que tenemos en memoria vino de
+        // localStorage y nunca fue confirmado en esta pestaña (provisional),
+        // es una sesión fantasma (token revocado / logout en otro lado):
+        // limpiar storage y mandar al login. Solo ignoramos el evento null
+        // cuando la sesión ya fue confirmada por Firebase en esta pestaña.
         const shouldIgnoreNullEvent =
+          !provisionalRef.current &&
           stateRef.current.isAuthenticated &&
           (!!stateRef.current.user?.id || !!stateRef.current.user?.user_id);
         if (shouldIgnoreNullEvent) {
@@ -210,9 +234,10 @@ export const AuthProvider = (props) => {
           authReadyRef.current = true;
           return;
         }
+        provisionalRef.current = false;
         dispatch({
           type: HANDLERS.INITIALIZE,
-          payload: { user: null, originalUser: null, clearStorage: false },
+          payload: { user: null, originalUser: null, clearStorage: true },
         });
       }
       setAuthReady(true);

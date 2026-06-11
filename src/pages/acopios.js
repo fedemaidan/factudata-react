@@ -18,6 +18,11 @@ import {
   useMediaQuery,
   Fab,
   Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  FormControlLabel,
+  Checkbox,
   TextField,
   InputAdornment,
   IconButton,
@@ -38,6 +43,8 @@ import HomeIcon from '@mui/icons-material/Home';
 import InventoryIcon from '@mui/icons-material/Inventory';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import AcopioService from 'src/services/acopioService';
+import ventaService from 'src/services/ventaService';
+import DesacopioClienteDrawer from 'src/components/acopios/DesacopioClienteDrawer';
 import { getProyectosByEmpresa } from 'src/services/proyectosService';
 import { getEmpresaById } from 'src/services/empresaService';
 import { CircularProgress } from '@mui/material';
@@ -66,6 +73,14 @@ const AcopiosPage = () => {
   const [anchorEl, setAnchorEl] = useState(null);
   const [selectedAcopio, setSelectedAcopio] = useState(null);
   const openMenu = Boolean(anchorEl);
+
+  // Acopios de cliente (corralón): retiro contra el saldo + recarga de plata.
+  const [retiroAcopio, setRetiroAcopio] = useState(null);
+  const [recargaAcopio, setRecargaAcopio] = useState(null);
+  const [recargaMonto, setRecargaMonto] = useState('');
+  const [recargaCobrado, setRecargaCobrado] = useState(false);
+  const [recargaBusy, setRecargaBusy] = useState(false);
+  const [recargaError, setRecargaError] = useState('');
   const [descripcionDialogOpen, setDescripcionDialogOpen] = useState(false);
   const [descripcionEdit, setDescripcionEdit] = useState('');
   const [acopioEditando, setAcopioEditando] = useState(null);
@@ -454,6 +469,21 @@ const AcopiosPage = () => {
         </Table>
 
         <Menu anchorEl={anchorEl} open={openMenu} onClose={handleCloseMenu}>
+          {selectedAcopio?.contraparte_rol === 'cliente' && (
+            <MenuItem onClick={() => {
+              setRetiroAcopio(selectedAcopio);
+              handleCloseMenu();
+            }}>Registrar retiro</MenuItem>
+          )}
+          {selectedAcopio?.contraparte_rol === 'cliente' && (
+            <MenuItem onClick={() => {
+              setRecargaAcopio(selectedAcopio);
+              setRecargaMonto('');
+              setRecargaCobrado(false);
+              setRecargaError('');
+              handleCloseMenu();
+            }}>Recargar plata</MenuItem>
+          )}
           <MenuItem onClick={() => {
             router.push(`/movimientosAcopio?acopioId=${selectedAcopio?.id}`);
             handleCloseMenu();
@@ -468,6 +498,60 @@ const AcopiosPage = () => {
             handleCloseMenu();
           }}>Eliminar</MenuItem>
         </Menu>
+
+        {/* Retiro de acopio de cliente (corralón) */}
+        <DesacopioClienteDrawer
+          open={Boolean(retiroAcopio)}
+          onClose={() => setRetiroAcopio(null)}
+          empresaId={empresaId}
+          acopio={retiroAcopio}
+          onSaved={() => fetchAcopios()}
+        />
+
+        {/* Recarga de plata del acopio de cliente (precios congelados sin cambios) */}
+        <Dialog open={Boolean(recargaAcopio)} onClose={() => !recargaBusy && setRecargaAcopio(null)} fullWidth maxWidth="xs">
+          <DialogTitle>Recargar acopio</DialogTitle>
+          <DialogContent>
+            {recargaError && <Alert severity="error" sx={{ mb: 2 }}>{recargaError}</Alert>}
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              {recargaAcopio?.proveedor || 'Cliente'} — se agrega plata al saldo; los precios congelados no cambian.
+            </Typography>
+            <TextField
+              fullWidth size="small" type="number" label="Monto (ARS) *" autoFocus
+              value={recargaMonto} onChange={(e) => setRecargaMonto(e.target.value)}
+              inputProps={{ min: 0 }} sx={{ mb: 1 }}
+            />
+            <FormControlLabel
+              control={<Checkbox size="small" checked={recargaCobrado} onChange={(e) => setRecargaCobrado(e.target.checked)} />}
+              label="Pagado al momento (si no, queda a cobrar)"
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setRecargaAcopio(null)} disabled={recargaBusy}>Cancelar</Button>
+            <Button
+              variant="contained"
+              disabled={recargaBusy || !(Number(recargaMonto) > 0)}
+              onClick={async () => {
+                setRecargaBusy(true);
+                setRecargaError('');
+                try {
+                  await ventaService.recargarAcopio(empresaId, recargaAcopio.id || recargaAcopio._id, {
+                    monto: Number(recargaMonto),
+                    cobrado: recargaCobrado,
+                  });
+                  setRecargaAcopio(null);
+                  fetchAcopios();
+                } catch (e) {
+                  setRecargaError(e?.response?.data?.error || e.message || 'Error al recargar');
+                } finally {
+                  setRecargaBusy(false);
+                }
+              }}
+            >
+              {recargaBusy ? 'Recargando…' : 'Recargar'}
+            </Button>
+          </DialogActions>
+        </Dialog>
 
         {isMobile && (
           <Fab

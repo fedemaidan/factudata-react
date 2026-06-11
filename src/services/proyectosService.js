@@ -105,6 +105,12 @@ export const getProyectosByEmpresaId = async (empresaId, { forceRefresh = false 
       }
       return proyectos;
     } catch (err) {
+      // 401/403: relanzar en vez de devolver []. Si devolviéramos vacío, los
+      // callers (getProyectosByEmpresa / getProyectosFromUser) caen al fallback
+      // N+1 (un GET por proyecto) con el mismo token vencido — una falla de auth
+      // pasaría a costar 7+ requests en vez de 1. El interceptor ya intentó
+      // refrescar el token antes de llegar acá.
+      if ([401, 403].includes(err?.response?.status)) throw err;
       console.error('Error al obtener proyectos por empresa:', err);
       return [];
     } finally {
