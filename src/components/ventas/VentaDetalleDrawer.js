@@ -17,7 +17,8 @@ import {
   LinearProgress,
   TextField,
 } from '@mui/material';
-import { XMarkIcon } from '@heroicons/react/24/outline';
+import { XMarkIcon, ArrowTopRightOnSquareIcon } from '@heroicons/react/24/outline';
+import { useRouter } from 'next/router';
 import ventaService from 'src/services/ventaService';
 import { formatCurrencyWithCode } from 'src/utils/formatters';
 import CobroFormDrawer from 'src/components/clientes/CobroFormDrawer';
@@ -61,7 +62,14 @@ function Dimension({ titulo, tone, label, monto, total, moneda }) {
   );
 }
 
+function fmtSaldoAcopio(monto, moneda) {
+  const v = Number(monto) || 0;
+  const txt = formatCurrencyWithCode(Math.abs(v), moneda);
+  return v < 0 ? `-${txt} (en negativo)` : txt;
+}
+
 export default function VentaDetalleDrawer({ open, onClose, empresaId, ventaId, cajas = [], onChanged, onEdit }) {
+  const router = useRouter();
   const [venta, setVenta] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -246,26 +254,91 @@ export default function VentaDetalleDrawer({ open, onClose, empresaId, ventaId, 
                     <span className="text-[11px] text-neutral-500">Total</span>
                     <p className="text-sm font-semibold text-neutral-900">{formatCurrencyWithCode(venta.total || 0, venta.moneda)}</p>
                   </div>
-                  <div>
-                    <span className="text-[11px] text-neutral-500">Saldo a entregar</span>
-                    <p className="text-sm font-semibold text-neutral-900">{formatCurrencyWithCode(venta.saldo_a_entregar || 0, venta.moneda)}</p>
-                  </div>
+                  {venta.tipo === 'acopio' ? (
+                    <div>
+                      <span className="text-[11px] text-neutral-500">Saldo del acopio</span>
+                      <p className={`text-sm font-semibold ${(Number(venta.acopio?.saldo) || 0) < 0 ? 'text-error-dark' : 'text-neutral-900'}`}>
+                        {fmtSaldoAcopio(venta.acopio?.saldo, venta.moneda)}
+                      </p>
+                    </div>
+                  ) : (
+                    <div>
+                      <span className="text-[11px] text-neutral-500">Saldo a entregar</span>
+                      <p className="text-sm font-semibold text-neutral-900">{formatCurrencyWithCode(venta.saldo_a_entregar || 0, venta.moneda)}</p>
+                    </div>
+                  )}
                 </div>
                 {venta.notas && (
                   <p className="mt-2 border-t border-divider pt-2 text-xs text-neutral-600">{venta.notas}</p>
                 )}
               </div>
 
-              {/* Dimensiones */}
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <Dimension
-                  titulo="Entrega"
-                  tone={ENTREGA_TONE[venta.entrega?.estado] || 'default'}
-                  label={ENTREGA_LABEL[venta.entrega?.estado] || venta.entrega?.estado}
-                  monto={venta.entrega?.monto_entregado}
-                  total={venta.total}
-                  moneda={venta.moneda}
-                />
+              {/* Resumen del acopio (solo ventas de acopio) */}
+              {venta.tipo === 'acopio' && venta.acopio && (
+                <div className="rounded-xl border border-divider bg-white shadow-sm">
+                  <div className="flex items-center justify-between border-b border-divider px-3 py-2">
+                    <h3 className="text-sm font-semibold text-neutral-900">
+                      Acopio {venta.acopio.codigo ? `· ${venta.acopio.codigo}` : ''}
+                    </h3>
+                    <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] text-neutral-700">
+                      {venta.acopio.tipo === 'lista_precios' ? 'Por plata' : 'De materiales'}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 px-3 py-3">
+                    <div>
+                      <span className="text-[11px] text-neutral-500">Acopiado</span>
+                      <p className="text-sm font-semibold text-neutral-900">{formatCurrencyWithCode(venta.acopio.valor_acopio || 0, venta.moneda)}</p>
+                    </div>
+                    <div>
+                      <span className="text-[11px] text-neutral-500">Consumido</span>
+                      <p className="text-sm font-semibold text-neutral-900">{formatCurrencyWithCode(venta.acopio.valor_desacopio || 0, venta.moneda)}</p>
+                    </div>
+                    <div>
+                      <span className="text-[11px] text-neutral-500">Saldo</span>
+                      <p className={`text-sm font-semibold ${(Number(venta.acopio.saldo) || 0) < 0 ? 'text-error-dark' : 'text-success-dark'}`}>
+                        {fmtSaldoAcopio(venta.acopio.saldo, venta.moneda)}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between border-t border-divider px-3 py-2">
+                    <span className="text-[11px] text-neutral-500">
+                      Lista de precios congelada: {venta.acopio.items_lista || 0} ítems
+                    </span>
+                    <div className="flex items-center gap-2">
+                      {venta.acopio.url_comprobante && (
+                        <a
+                          href={venta.acopio.url_comprobante}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 rounded-lg border border-neutral-300 px-3 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-50"
+                        >
+                          Comprobante <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />
+                        </a>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => router.push(`/movimientosAcopio?acopioId=${venta.acopio.acopio_id}`)}
+                        className="inline-flex items-center gap-1 rounded-lg border border-primary-main px-3 py-1 text-xs font-semibold text-primary-dark hover:bg-primary-main/5"
+                      >
+                        Ver detalle <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Dimensiones — la entrega no aplica en acopios (es N/A) */}
+              <div className={`grid grid-cols-1 gap-2 ${venta.tipo === 'acopio' ? '' : 'sm:grid-cols-2'}`}>
+                {venta.tipo !== 'acopio' && (
+                  <Dimension
+                    titulo="Entrega"
+                    tone={ENTREGA_TONE[venta.entrega?.estado] || 'default'}
+                    label={ENTREGA_LABEL[venta.entrega?.estado] || venta.entrega?.estado}
+                    monto={venta.entrega?.monto_entregado}
+                    total={venta.total}
+                    moneda={venta.moneda}
+                  />
+                )}
                 <Dimension
                   titulo="Cobro"
                   tone={COBRO_TONE[venta.cobro?.estado] || 'default'}
