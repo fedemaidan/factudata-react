@@ -15,6 +15,16 @@ class BotService {
     }
   }
 
+  async detectarInconsistentes(minMinutes = 10) {
+    try {
+      const response = await api.get(`/bot-state/inconsistent-states`, { params: { minMinutes } });
+      return response.data;
+    } catch (error) {
+      console.error('Error al detectar estados inconsistentes:', error);
+      throw error;
+    }
+  }
+
   async resetearEstado(phone) {
     try {
       const response = await api.post(`/bot-state/reset-state`, { phone });

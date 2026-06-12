@@ -25,6 +25,7 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import SearchIcon from '@mui/icons-material/Search';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import BuildIcon from '@mui/icons-material/Build';
+import ReportProblemIcon from '@mui/icons-material/ReportProblem';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import BotService from 'src/services/botService';
 
@@ -41,6 +42,29 @@ const BotUsersPage = () => {
   // Estado para reinicio manual
   const [manualResetDialogOpen, setManualResetDialogOpen] = useState(false);
   const [manualPhoneNumber, setManualPhoneNumber] = useState('');
+
+  // Estado para detección de conversaciones colgadas
+  const [inconsistentes, setInconsistentes] = useState(null); // null = no se corrió aún
+  const [detectando, setDetectando] = useState(false);
+
+  const handleDetectarInconsistentes = async () => {
+    setDetectando(true);
+    try {
+      const data = await BotService.detectarInconsistentes(10);
+      setInconsistentes(data.users || []);
+      setAlert({
+        open: true,
+        message: data.count > 0
+          ? `Se detectaron ${data.count} conversaciones posiblemente colgadas`
+          : 'No se detectaron conversaciones colgadas',
+        severity: data.count > 0 ? 'warning' : 'success'
+      });
+    } catch (error) {
+      setAlert({ open: true, message: 'Error al detectar conversaciones colgadas', severity: 'error' });
+    } finally {
+      setDetectando(false);
+    }
+  };
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
@@ -75,6 +99,8 @@ const BotUsersPage = () => {
     try {
       await BotService.resetearEstado(userToReset.from);
       setAlert({ open: true, message: `Estado reiniciado para ${userToReset.from}`, severity: 'success' });
+      // Sacar de la lista de colgadas si estaba ahí
+      setInconsistentes((prev) => prev ? prev.filter((u) => u.from !== userToReset.from) : prev);
       fetchUsers(); // Recargar la lista
     } catch (error) {
       setAlert({ open: true, message: 'Error al reiniciar el estado', severity: 'error' });
@@ -116,6 +142,15 @@ const BotUsersPage = () => {
         <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={2} mb={2}>
           <Typography variant="h4">Usuarios del Bot (Estados Activos)</Typography>
           <Stack direction="row" spacing={2}>
+            <Button
+              variant="outlined"
+              color="warning"
+              startIcon={detectando ? <CircularProgress size={18} /> : <ReportProblemIcon />}
+              onClick={handleDetectarInconsistentes}
+              disabled={detectando}
+            >
+              Detectar colgadas
+            </Button>
             <Button variant="outlined" startIcon={<BuildIcon />} onClick={() => setManualResetDialogOpen(true)}>
               Reiniciar Manual
             </Button>
@@ -139,6 +174,75 @@ const BotUsersPage = () => {
           }}
           sx={{ mb: 3 }}
         />
+
+        {inconsistentes !== null && (
+          <Card sx={{ mb: 3, p: 2, border: '1px solid', borderColor: inconsistentes.length > 0 ? 'warning.main' : 'success.main' }}>
+            <Typography variant="h6" gutterBottom>
+              ⚠️ Conversaciones posiblemente colgadas ({inconsistentes.length})
+            </Typography>
+            <Typography variant="body2" color="text.secondary" mb={2}>
+              Usuarios con estado activo cuyo último mensaje es entrante y lleva más de 10 minutos sin respuesta del bot
+              (típico de envíos que fallaron por errores de Meta).
+            </Typography>
+            {inconsistentes.length > 0 && (
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Teléfono</TableCell>
+                    <TableCell>Último mensaje (entrante)</TableCell>
+                    <TableCell>Hace</TableCell>
+                    <TableCell>Estado activo</TableCell>
+                    <TableCell align="center">Acción</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {inconsistentes.map((u) => (
+                    <TableRow key={u.from}>
+                      <TableCell><Typography variant="subtitle2">{u.from}</Typography></TableCell>
+                      <TableCell>
+                        <Tooltip title={u.lastMessage?.message || ''}>
+                          <Typography variant="body2" sx={{ maxWidth: 250, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            [{u.lastMessage?.type}] {u.lastMessage?.message}
+                          </Typography>
+                        </Tooltip>
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          size="small"
+                          color={u.minutesSinceLastMessage > 60 ? 'error' : 'warning'}
+                          label={u.minutesSinceLastMessage > 90
+                            ? `${Math.round(u.minutesSinceLastMessage / 60)} h`
+                            : `${u.minutesSinceLastMessage} min`}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, maxWidth: 300 }}>
+                          {(u.stateKeys || []).slice(0, 4).map((k) => (
+                            <Chip key={k} label={k} size="small" variant="outlined" />
+                          ))}
+                          {(u.stateKeys || []).length > 4 && (
+                            <Chip label={`+${u.stateKeys.length - 4}`} size="small" />
+                          )}
+                        </Box>
+                      </TableCell>
+                      <TableCell align="center">
+                        <Button
+                          variant="outlined"
+                          color="error"
+                          size="small"
+                          startIcon={<RestartAltIcon />}
+                          onClick={() => handleResetClick(u)}
+                        >
+                          Reiniciar
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </Card>
+        )}
 
         {loading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
