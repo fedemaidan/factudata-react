@@ -61,6 +61,14 @@ const proyeccionService = {
     return response.data;
   },
 
+  // Serie mensual + tendencia de un producto (para el gráfico de evolución).
+  getHistoricoProducto: async (codigo) => {
+    const response = await axiosCelulandia.get(
+      `/proyeccion/producto/${encodeURIComponent(codigo)}/historico`
+    );
+    return response.data; // { success, data: { codigo, serie, tendencia } }
+  },
+
   ignorarArticulos: async ({ codigos }) => {
     const response = await axiosCelulandia.post("/proyeccion/ignorar", { codigos });
     return response?.data;

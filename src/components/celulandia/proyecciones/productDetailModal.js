@@ -31,6 +31,8 @@ import WarningIcon from "@mui/icons-material/Warning";
 import CalendarTodayIcon from "@mui/icons-material/CalendarToday";
 import { LineChart } from "@mui/x-charts/LineChart";
 import { formatDateDDMMYYYY } from "src/utils/handleDates";
+import GraficoEvolucionProducto from "src/components/celulandia/proyecciones/GraficoEvolucionProducto";
+import { useHistoricoProducto } from "src/hooks/celulandia/useHistoricoProducto";
 
 const MAX_EVENTS_PREVIEW = 10;
 
@@ -266,6 +268,15 @@ const ProductDetailModal = ({ open, onClose, producto }) => {
   const [tabIndex, setTabIndex] = useState(1);
   const [showAllEvents, setShowAllEvents] = useState(false);
 
+  // Evolución histórica (on-demand): solo se trae mientras el modal está abierto.
+  const codigoProducto = producto?.codigo || null;
+  const {
+    serie: historicoSerie,
+    tendencia: historicoTendencia,
+    isLoading: historicoLoading,
+    isError: historicoError,
+  } = useHistoricoProducto(codigoProducto, { enabled: open });
+
   useEffect(() => {
     if (!open) return;
     setTabIndex(1);
@@ -428,8 +439,18 @@ const ProductDetailModal = ({ open, onClose, producto }) => {
               <Tab label="Resumen" value={0} sx={{ display: "none" }} />
               <Tab label="Tabla completa" value={1} disabled={!hasDetalle} />
               <Tab label="Cálculo" value={2} disabled={!hasCalculo} />
+              <Tab label="Evolución" value={3} disabled={!codigoProducto} />
             </Tabs>
-            {tabIndex === 2 && hasCalculo ? (
+            {tabIndex === 3 ? (
+              <GraficoEvolucionProducto
+                serie={historicoSerie}
+                tendencia={historicoTendencia}
+                codigo={codigoProducto}
+                nombre={producto?.nombre}
+                loading={historicoLoading}
+                error={historicoError}
+              />
+            ) : tabIndex === 2 && hasCalculo ? (
               <TabCalculoContent producto={producto} calculo={calculo} formatDateDDMMYYYY={formatDateDDMMYYYY} theme={theme} />
             ) : tabIndex === 0 ? (
               <>

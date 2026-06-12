@@ -46,6 +46,7 @@ import {
   StockActualProductoCell,
   DiasHastaAgotarProductoCell,
   NotasProductoCell,
+  TendenciaProductoCell,
 } from "src/components/celulandia/proyecciones/cells";
 import { formatDateDDMMYYYY } from "src/utils/handleDates";
 import productoService from "src/services/celulandia/productoService";
@@ -383,6 +384,13 @@ const ProyeccionesV2Page = () => {
       },
       { key: "ventasPeriodo", label: "Ventas período", sortable: true },
       { key: "ventasProyectadas", label: "Ventas proyectadas (90 días)", sortable: true },
+      {
+        key: "tendencia.variacionPct",
+        label: "Variación",
+        sortable: true,
+        sx: { textAlign: "center", whiteSpace: "nowrap" },
+        render: (item) => <TendenciaProductoCell tendencia={item?.tendencia} />,
+      },
       {
         key: "diasHastaAgotarStock",
         label: "Días hasta agotar stock",
