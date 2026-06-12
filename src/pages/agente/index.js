@@ -40,6 +40,7 @@ const AgentChatPage = () => {
   const scrollRef = useRef(null);
   const fileInputRef = useRef(null);
   const consumedQueryRef = useRef(null);
+  const consumedEditRef = useRef(null);
   const [draft, setDraft] = useState('');
   const [attachedFiles, setAttachedFiles] = useState([]);
   const [confirmingReset, setConfirmingReset] = useState(false);
@@ -55,6 +56,7 @@ const AgentChatPage = () => {
     hasLoadedHistory,
     loadHistory,
     sendMessage,
+    startEditSession,
     reset,
     confirmCurrent,
     cancelCurrent,
@@ -81,8 +83,22 @@ const AgentChatPage = () => {
   const examplePrompts = useMemo(() => pickExamplePrompts(specialists), [specialists]);
 
   useEffect(() => {
+    if (!router.isReady) return;
+    // Con ?editReport el contexto lo siembra el effect de edición; no cargues el historial viejo.
+    if (router.query.editReport) return;
     if (!hasLoadedHistory) loadHistory();
-  }, [hasLoadedHistory, loadHistory]);
+  }, [router.isReady, router.query.editReport, hasLoadedHistory, loadHistory]);
+
+  // Arranque "editar reporte con agente": limpia el contexto y carga ese reporte en la preview.
+  useEffect(() => {
+    if (!router.isReady) return;
+    const editReport = router.query.editReport;
+    if (typeof editReport !== 'string' || !editReport) return;
+    if (consumedEditRef.current === editReport) return;
+    consumedEditRef.current = editReport;
+    startEditSession(editReport);
+    router.replace('/agente', undefined, { shallow: true });
+  }, [router, startEditSession]);
 
   useEffect(() => {
     const node = scrollRef.current;

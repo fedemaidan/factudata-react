@@ -96,6 +96,8 @@ export default function AgentReportPreview({ draft, user, onSave, onClose }) {
   );
   const movimientosParaVista = usandoEjemplo ? sampleMovimientos : filteredMovimientos;
   const canSave = blockCount > 0 && !!name.trim();
+  // Si el borrador edita un reporte existente, guardar lo sobrescribe (no crea una copia).
+  const isEditingExisting = !!draft?.source_report_id;
 
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: 'background.default' }}>
@@ -226,9 +228,11 @@ export default function AgentReportPreview({ draft, user, onSave, onClose }) {
         }}
       >
         <Typography variant="caption" color="text.secondary" sx={{ flex: 1, minWidth: 0 }}>
-          {blockCount > 0
-            ? `${blockCount} ${blockCount === 1 ? 'bloque' : 'bloques'} · seguí pidiéndole cambios al asistente`
-            : 'Sin bloques todavía'}
+          {blockCount === 0
+            ? 'Sin bloques todavía'
+            : isEditingExisting
+              ? `${blockCount} ${blockCount === 1 ? 'bloque' : 'bloques'} · guardar actualiza el reporte original`
+              : `${blockCount} ${blockCount === 1 ? 'bloque' : 'bloques'} · seguí pidiéndole cambios al asistente`}
         </Typography>
         <Tooltip title={canSave ? '' : 'Falta un nombre o bloques para guardar'}>
           <span>
@@ -240,7 +244,7 @@ export default function AgentReportPreview({ draft, user, onSave, onClose }) {
               onClick={() => onSave?.(name.trim())}
               sx={{ whiteSpace: 'nowrap', borderRadius: 2 }}
             >
-              Guardar reporte
+              {isEditingExisting ? 'Guardar cambios' : 'Guardar reporte'}
             </Button>
           </span>
         </Tooltip>

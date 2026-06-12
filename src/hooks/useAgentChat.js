@@ -76,6 +76,17 @@ function reducer(state, action) {
         error: action.payload,
         // Mantenemos el mensaje optimista del user; solo no se agrega el del assistant
       };
+    case 'editSession:start':
+      return { ...state, isLoadingHistory: true, error: null };
+    case 'editSession:success':
+      // Arranque "editar reporte con agente": reemplaza el contexto por el saludo + draft.
+      return {
+        ...initialState,
+        hasLoadedHistory: true,
+        messages: [action.payload.assistantMessage],
+        reportDraft: action.payload.reportDraft ?? null,
+        suggestions: Array.isArray(action.payload.suggestions) ? action.payload.suggestions : [],
+      };
     case 'reset':
       return { ...initialState, hasLoadedHistory: true };
     case 'error:dismiss':
@@ -171,6 +182,34 @@ export function useAgentChat() {
     }
   }, []);
 
+  // Arranca una sesión determinística de edición de un reporte existente: el backend limpia
+  // el contexto, carga el reporte como preview y devuelve el saludo fijo. Reemplaza el estado.
+  const startEditSession = useCallback(async (reportId) => {
+    if (!reportId || inFlightRef.current) return;
+    inFlightRef.current = true;
+    dispatch({ type: 'editSession:start' });
+    try {
+      const { data } = await api.post(`/agent/report/${reportId}/edit-session`);
+      dispatch({
+        type: 'editSession:success',
+        payload: {
+          assistantMessage: {
+            role: 'assistant',
+            content: data.replyText,
+            createdAt: new Date().toISOString(),
+            actions: Array.isArray(data.actions) ? data.actions : [],
+          },
+          reportDraft: data.reportDraft ?? null,
+          suggestions: Array.isArray(data.suggestions) ? data.suggestions : [],
+        },
+      });
+    } catch (err) {
+      dispatch({ type: 'load:error', payload: extractErrorMessage(err) });
+    } finally {
+      inFlightRef.current = false;
+    }
+  }, []);
+
   const reset = useCallback(async () => {
     try {
       await api.post('/agent/reset');
@@ -188,6 +227,7 @@ export function useAgentChat() {
     ...state,
     loadHistory,
     sendMessage,
+    startEditSession,
     reset,
     confirmCurrent,
     cancelCurrent,

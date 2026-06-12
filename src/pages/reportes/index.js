@@ -36,6 +36,7 @@ import MoreVertIcon from '@mui/icons-material/MoreVert';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import AssessmentIcon from '@mui/icons-material/Assessment';
 
 import { useAuthContext } from 'src/contexts/auth-context';
@@ -656,7 +657,15 @@ const ReportListPage = () => {
               if (rpt) router.push(`/reportes/${rpt._id}?edit=1`);
             }}>
               <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon>
-              <ListItemText>Editar</ListItemText>
+              <ListItemText>Editar manual</ListItemText>
+            </MenuItem>
+            <MenuItem onClick={() => {
+              const rpt = reports.find((r) => r._id === menuReportId);
+              handleMenuClose();
+              if (rpt) router.push(`/agente?editReport=${rpt._id}`);
+            }}>
+              <ListItemIcon><AutoAwesomeIcon fontSize="small" color="primary" /></ListItemIcon>
+              <ListItemText>Editar con agente</ListItemText>
             </MenuItem>
             <MenuItem onClick={handleDuplicate}>
               <ListItemIcon><ContentCopyIcon fontSize="small" /></ListItemIcon>
