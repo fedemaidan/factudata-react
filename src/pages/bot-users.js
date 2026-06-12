@@ -12,6 +12,7 @@ import {
   TableBody,
   TableCell,
   TableHead,
+  TablePagination,
   TableRow,
   Dialog,
   TextField,
@@ -31,6 +32,9 @@ import BotService from 'src/services/botService';
 
 const BotUsersPage = () => {
   const [users, setUsers] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(25);
   const [loading, setLoading] = useState(true);
   const [filtroTexto, setFiltroTexto] = useState("");
   const [alert, setAlert] = useState({ open: false, message: '', severity: 'info' });
@@ -69,17 +73,17 @@ const BotUsersPage = () => {
   const fetchUsers = useCallback(async () => {
     setLoading(true);
     try {
-      // Si hay texto en el filtro, lo usamos para buscar en el backend (opcional, o filtramos en front)
-      // Aquí asumimos que el backend filtra si le pasamos 'phone', pero también filtramos en front para mayor reactividad
-      const data = await BotService.listarUsuarios(filtroTexto);
-      setUsers(data);
+      // Filtro, orden y paginación se resuelven en el backend
+      const data = await BotService.listarUsuarios(filtroTexto, page, rowsPerPage);
+      setUsers(data.users || []);
+      setTotal(data.total || 0);
     } catch (error) {
       console.error('Error al obtener usuarios:', error);
       setAlert({ open: true, message: 'Error al obtener usuarios del bot', severity: 'error' });
     } finally {
       setLoading(false);
     }
-  }, [filtroTexto]);
+  }, [filtroTexto, page, rowsPerPage]);
 
   useEffect(() => {
     // Debounce simple para no llamar a la API en cada tecla si decidimos filtrar en backend
@@ -124,17 +128,17 @@ const BotUsersPage = () => {
     }
   };
 
-  // Filtrado y ordenamiento en frontend
-  // Ordenamos por _id descendente (ObjectId contiene timestamp, los más recientes primero)
-  const usersFiltrados = users
-    .filter(u => u.from?.toLowerCase().includes(filtroTexto.toLowerCase()))
-    .sort((a, b) => {
-      // Ordenar por _id descendente (más reciente primero)
-      if (a._id && b._id) {
-        return b._id.localeCompare(a._id);
-      }
-      return 0;
-    });
+  // Filtro, orden (_id desc = creación más reciente) y paginación vienen del backend
+  const usersFiltrados = users;
+
+  const formatUltimoUso = (fecha) => {
+    if (!fecha) return '—';
+    const d = new Date(fecha);
+    const diffMin = Math.round((Date.now() - d.getTime()) / 60000);
+    if (diffMin < 60) return `hace ${diffMin} min`;
+    if (diffMin < 60 * 24) return `hace ${Math.round(diffMin / 60)} h`;
+    return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
+  };
 
   return (
     <Box component="main" sx={{ flexGrow: 1, py: 8 }}>
@@ -163,7 +167,7 @@ const BotUsersPage = () => {
         <TextField
           placeholder="Buscar por número de teléfono"
           value={filtroTexto}
-          onChange={(e) => setFiltroTexto(e.target.value)}
+          onChange={(e) => { setFiltroTexto(e.target.value); setPage(0); }}
           fullWidth
           InputProps={{
             startAdornment: (
@@ -254,6 +258,7 @@ const BotUsersPage = () => {
               <TableHead>
                 <TableRow>
                   <TableCell sx={{ width: 180 }}>Teléfono (ID)</TableCell>
+                  <TableCell sx={{ width: 150 }}>Último uso</TableCell>
                   <TableCell>Datos de Estado</TableCell>
                   <TableCell align="center" sx={{ width: 130 }}>Acciones</TableCell>
                 </TableRow>
@@ -265,6 +270,13 @@ const BotUsersPage = () => {
                       <TableCell sx={{ width: 180 }}>
                         <Typography variant="subtitle2">{user.from}</Typography>
                       </TableCell>
+                      <TableCell sx={{ width: 150 }}>
+                        <Tooltip title={user.ultimoUso ? new Date(user.ultimoUso).toLocaleString('es-AR') : 'Sin mensajes registrados'}>
+                          <Typography variant="body2" color={user.ultimoUso ? 'text.primary' : 'text.disabled'}>
+                            {formatUltimoUso(user.ultimoUso)}
+                          </Typography>
+                        </Tooltip>
+                      </TableCell>
                       <TableCell sx={{ maxWidth: 0, overflow: 'hidden' }}>
                         {/* Mostramos algunas propiedades relevantes del estado */}
                         <Box sx={{ 
@@ -275,7 +287,7 @@ const BotUsersPage = () => {
                           overflowY: 'auto'
                         }}>
                           {Object.entries(user).map(([key, value]) => {
-                            if (key === '_id' || key === 'from') return null;
+                            if (['_id', 'from', 'ultimoUso'].includes(key)) return null;
                             // Convertir valor a string legible si es objeto
                             const displayValue = typeof value === 'object' ? JSON.stringify(value).slice(0, 30) + '...' : String(value).slice(0, 30);
                             return (
@@ -306,13 +318,24 @@ const BotUsersPage = () => {
                   ))
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={3} align="center">
+                    <TableCell colSpan={4} align="center">
                       No se encontraron usuarios activos.
                     </TableCell>
                   </TableRow>
                 )}
               </TableBody>
             </Table>
+            <TablePagination
+              component="div"
+              count={total}
+              page={page}
+              onPageChange={(e, newPage) => setPage(newPage)}
+              rowsPerPage={rowsPerPage}
+              onRowsPerPageChange={(e) => { setRowsPerPage(parseInt(e.target.value, 10)); setPage(0); }}
+              rowsPerPageOptions={[10, 25, 50, 100]}
+              labelRowsPerPage="Por página"
+              labelDisplayedRows={({ from, to, count }) => `${from}–${to} de ${count}`}
+            />
           </Card>
         )}
 
