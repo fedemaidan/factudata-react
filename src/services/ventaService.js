@@ -71,6 +71,19 @@ const ventaService = {
     return data;
   },
 
+  // Devolución de material a un acopio de cliente (inverso del retiro: re-acredita saldo).
+  async devolucionAcopio(empresaId, acopioId, payload) {
+    const { data } = await api.post(`/empresa/${empresaId}/ventas/acopio/${acopioId}/devolucion`, payload);
+    return data;
+  },
+
+  // Cierra un acopio de cliente resolviendo el saldo final.
+  // payload: { modo: 'cuenta_corriente'|'trasladar'|'resignar', acopio_destino_id? }
+  async cerrarAcopio(empresaId, acopioId, payload) {
+    const { data } = await api.post(`/empresa/${empresaId}/ventas/acopio/${acopioId}/cerrar`, payload);
+    return data;
+  },
+
   async registrarEntrega(empresaId, id, payload = {}) {
     const { data } = await api.post(`/empresa/${empresaId}/ventas/${id}/entregar`, payload);
     return data;

@@ -95,6 +95,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
   const [cuit, setCuit] = useState(empresa.cuit || "");
   const [domicilioFiscal, setDomicilioFiscal] = useState(empresa.domicilio_fiscal || "");
   const [contextoEmpresa, setContextoEmpresa] = useState(empresa.contexto_empresa || "");
+  const [instruccionesExtraccionCorralon, setInstruccionesExtraccionCorralon] = useState(empresa.instrucciones_extraccion_corralon || "");
   const [isRegenerandoSheets, setIsRegenerandoSheets] = useState(false);
   const [cuentaSuspendida, setCuentaSuspendida] = useState(empresa.cuenta_suspendida || false);
 
@@ -200,6 +201,8 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
     "GESTIONAR_MOVIMIENTO",
     "CREAR_INGRESO_CAJA_CHICA",
     "VER_MI_CAJA_CHICA",
+    "VER_RESERVAS_OBRA",
+    "GESTIONAR_RESERVAS_OBRA",
     "LISTAR_MOVIMIENTOS",
     "ADMIN_USUARIOS",
     "CREAR_ACOPIO",
@@ -383,6 +386,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
       cuenta_default_texto: cuentaDefaultTexto,
       cuenta_default_factura: cuentaDefaultFactura,
       contexto_empresa: contextoEmpresa,
+      instrucciones_extraccion_corralon: instruccionesExtraccionCorralon,
     };
 
     try {
@@ -623,6 +627,17 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
         rows={4}
         sx={{ mt: 2 }}
         helperText="Información general sobre la empresa que se incluirá como contexto en todas las interacciones del bot (ej: rubros, proveedores habituales, aclaraciones)."
+      />
+
+      <TextField
+        label="Instrucciones para leer comprobantes del corralón (texto libre)"
+        value={instruccionesExtraccionCorralon}
+        onChange={(e) => setInstruccionesExtraccionCorralon(e.target.value)}
+        fullWidth
+        multiline
+        rows={3}
+        sx={{ mt: 2 }}
+        helperText="Aclaraciones de cómo interpretar los remitos/cotizaciones de este corralón al leerlos por foto/PDF (ej: 'el hierro se dibuja con el símbolo Ø', 'los valores vienen multiplicados por 10'). Se aplica a todas las lecturas de comprobantes."
       />
 
       <TextField
