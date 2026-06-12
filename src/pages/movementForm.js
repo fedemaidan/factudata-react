@@ -830,13 +830,23 @@ const createdAtStr = (() => {
   };
 
 
+  // Cada handler setea AMBOS refs: si un submit anterior salió temprano (ej. validación),
+  // los refs quedan con el valor viejo y el click siguiente heredaría esa intención.
+  const handleSaveOnly = () => {
+    returnAfterSaveRef.current = false;
+    exportAfterSaveRef.current = false;
+    handleSubmitForm();
+  };
+
   const handleSaveAndReturn = () => {
     returnAfterSaveRef.current = true;
+    exportAfterSaveRef.current = false;
     handleSubmitForm();
   };
 
   // Guarda y, al crear, abre el diálogo de exportar PDF sin salir de la página.
   const handleSaveAndExport = () => {
+    returnAfterSaveRef.current = false;
     exportAfterSaveRef.current = true;
     handleSubmitForm();
   };
@@ -1695,7 +1705,7 @@ const createdAtStr = (() => {
               </button>
               <button
                 type="button"
-                onClick={isEditMode ? handleSubmitForm : handleSaveAndExport}
+                onClick={isEditMode ? handleSaveOnly : handleSaveAndExport}
                 disabled={isLoading}
                 className="inline-flex min-w-[5.5rem] items-center justify-center gap-1 rounded-lg border border-primary-main bg-white px-4 py-1.5 text-sm font-semibold text-primary-dark shadow-sm hover:bg-primary-lightest disabled:opacity-50"
               >
@@ -1949,12 +1959,16 @@ const createdAtStr = (() => {
 
         <ExportarPdfDialog
           open={exportPdfOpen}
-          onClose={() => {
-            setExportPdfOpen(false);
+          onExported={() => {
             if (returnAfterExportRef.current) {
               returnAfterExportRef.current = false;
               pushBack(router, lastPageUrl, '/');
             }
+          }}
+          onClose={() => {
+            setExportPdfOpen(false);
+            // Cierre manual (backdrop/Cerrar): cancelar el "volver tras exportar" pendiente.
+            returnAfterExportRef.current = false;
           }}
           empresaId={empresa?.id}
           empresaNombre={empresa?.nombre || ''}
