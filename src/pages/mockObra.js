@@ -45,6 +45,8 @@ import SummarizeIcon from '@mui/icons-material/Summarize';
 import TimelineIcon from '@mui/icons-material/Timeline';
 import PhotoLibraryIcon from '@mui/icons-material/PhotoLibrary';
 import ConstructionIcon from '@mui/icons-material/Construction';
+import CalculateIcon from '@mui/icons-material/Calculate';
+import SpeedIcon from '@mui/icons-material/Speed';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -610,6 +612,89 @@ const INCONVENIENTES_INIT = [
   { id: 'i2', fecha: '15/04/2026', rubro_id: 'r4', tipo: 'calidad', descripcion: 'Filtración en cumbrera sector norte, falta sellado.', fotos: ['filtracion_cumbrera.jpg'], estado: 'abierto', registrado_por: 'Jefe de obra' },
 ];
 
+// ─── Etapa 9/14: tabla salarial CCT, APU, cómputo métrico y partes diarios ──────
+const CCT_SALARIAL = {
+  convenio: 'UOCRA 76/75', vigencia: '04/2026',
+  cargas_sociales_pct: 1.1115,   // 111,15% (caso ABBE)
+  categorias: [
+    { codigo: 'of_esp',   nombre: 'Oficial especializado', valor_hora: 3850 },
+    { codigo: 'oficial',  nombre: 'Oficial',               valor_hora: 3300 },
+    { codigo: 'medio_of', nombre: 'Medio oficial',         valor_hora: 2950 },
+    { codigo: 'ayudante', nombre: 'Ayudante',              valor_hora: 2600 },
+  ],
+};
+const CCT_MAP = Object.fromEntries(CCT_SALARIAL.categorias.map(c => [c.codigo, c]));
+// Costo horario cargado = valor_hora × (1 + cargas sociales).
+const costoHoraCargado = (cat) => Math.round((CCT_MAP[cat]?.valor_hora ?? 0) * (1 + CCT_SALARIAL.cargas_sociales_pct));
+
+// APU por tarea (estructura ANALISIS DE PRECIOS). Rendimiento = HH por unidad por categoría.
+const APUS = [
+  {
+    id: 'apu1', rubro_id: 'r1', tarea: 'Demolición de mampostería', unidad: 'm³',
+    rendimiento: [{ categoria: 'oficial', hh: 0.8 }, { categoria: 'ayudante', hh: 1.6 }],
+    materiales: [{ desc: 'Herramienta menor y consumibles', cant: 1, unidad: 'gl', precio: 4200 }],
+    equipos_pct: 0.05, gg_pct: 0.15, beneficio_pct: 0.10, iva_pct: 0.21,
+  },
+  {
+    id: 'apu2', rubro_id: 'r5', tarea: 'Ladrillo común 0.30m', unidad: 'm²',
+    rendimiento: [{ categoria: 'oficial', hh: 1.2 }, { categoria: 'ayudante', hh: 1.2 }],
+    materiales: [
+      { desc: 'Ladrillo común',     cant: 65,   unidad: 'u',  precio: 95 },
+      { desc: 'Mortero de asiento', cant: 0.04, unidad: 'm³', precio: 92_000 },
+    ],
+    equipos_pct: 0.03, gg_pct: 0.15, beneficio_pct: 0.10, iva_pct: 0.21,
+  },
+];
+
+// Cómputo métrico por APU: mediciones largo×ancho×alto×rep → parcial → total.
+// Para m² se carga ancho = 1 (parcial = largo × alto).
+const COMPUTOS = {
+  apu1: [
+    { desc: 'Muros perimetrales PB', largo: 60, ancho: 0.30, alto: 3.2, rep: 1 },
+    { desc: 'Tabiques internos',     largo: 50, ancho: 0.15, alto: 3.0, rep: 1 },
+  ],
+  apu2: [
+    { desc: 'Muro perimetral PB', largo: 40, ancho: 1, alto: 3.2, rep: 1 },
+  ],
+};
+
+// Partes diarios (jornalizado): HH por categoría, por cuadrilla y rubro.
+const PARTES_DIARIOS_INIT = [
+  { id: 'pd1', fecha: '21/02/2026', contratista_id: 'ct3', rubro_id: 'r1', renglones: [{ categoria: 'oficial', hh: 24 }, { categoria: 'ayudante', hh: 48 }] },
+  { id: 'pd2', fecha: '28/02/2026', contratista_id: 'ct3', rubro_id: 'r1', renglones: [{ categoria: 'oficial', hh: 24 }, { categoria: 'ayudante', hh: 54 }] },
+  { id: 'pd3', fecha: '05/03/2026', contratista_id: 'ct3', rubro_id: 'r1', renglones: [{ categoria: 'oficial', hh: 20 }, { categoria: 'ayudante', hh: 40 }] },
+];
+
+// Desglose del precio unitario de un APU (MO + materiales + equipos + GG + beneficio + IVA).
+const apuPrecioUnitario = (apu) => {
+  const mo  = apu.rendimiento.reduce((s, r) => s + r.hh * costoHoraCargado(r.categoria), 0);
+  const mat = apu.materiales.reduce((s, m) => s + m.cant * m.precio, 0);
+  const eq  = (mo + mat) * apu.equipos_pct;
+  const subtotal = mo + mat + eq;
+  const neto = subtotal * (1 + apu.gg_pct + apu.beneficio_pct);
+  return { mo, mat, eq, subtotal, neto, total: Math.round(neto * (1 + apu.iva_pct)) };
+};
+// Precio unitario recalculado si el valor hora sube `aumentoPct` (paritarias / nuevo CCT).
+// Un aumento uniforme del valor hora escala sólo la mano de obra; el resto se recalcula encima.
+const apuPrecioConAumentoHora = (apu, aumentoPct) => {
+  const mo  = apu.rendimiento.reduce((s, r) => s + r.hh * costoHoraCargado(r.categoria), 0) * (1 + aumentoPct);
+  const mat = apu.materiales.reduce((s, m) => s + m.cant * m.precio, 0);
+  const eq  = (mo + mat) * apu.equipos_pct;
+  const neto = (mo + mat + eq) * (1 + apu.gg_pct + apu.beneficio_pct);
+  return Math.round(neto * (1 + apu.iva_pct));
+};
+const apuHHporUnidad   = (apu) => apu.rendimiento.reduce((s, r) => s + r.hh, 0);
+const computoParcial   = (m) => m.largo * m.ancho * m.alto * m.rep;
+const computoTotal     = (apuId) => (COMPUTOS[apuId] || []).reduce((s, m) => s + computoParcial(m), 0);
+const apusDeRubro      = (rubroId) => APUS.filter(a => a.rubro_id === rubroId);
+
+// Jornalizado: costo de un parte y agregados por rubro (HH y $).
+const jornalCostoParte = (parte) => parte.renglones.reduce((s, r) => s + r.hh * costoHoraCargado(r.categoria), 0);
+const jornalPorRubro   = (rubroId, partes) => partes.filter(p => p.rubro_id === rubroId).reduce((s, p) => s + jornalCostoParte(p), 0);
+const hhRealesPorRubro = (rubroId, partes) => partes.filter(p => p.rubro_id === rubroId).reduce((s, p) => s + p.renglones.reduce((a, r) => a + r.hh, 0), 0);
+// HH presupuestadas para el avance logrado = Σ (HH/unidad × cantidad computada × avance%).
+const hhPresupPorRubro = (rubroId, avancePct) => apusDeRubro(rubroId).reduce((s, a) => s + apuHHporUnidad(a) * computoTotal(a.id) * (avancePct / 100), 0);
+
 // ─── Helpers de datos ─────────────────────────────────────────────────────────
 
 const gastoRealPorRubro = (rubroId, gastos) =>
@@ -738,7 +823,7 @@ const avanceBarColor = (p) => p === 100 ? 'success' : p > 0 ? 'warning' : 'inher
 
 // ─── Tab: Ejecución ───────────────────────────────────────────────────────────
 
-function TabEjecucion({ rubros, certificados, gastos, certificacionesMO = [], ordenesPago = [], verMargen = true, onActualizarAvance }) {
+function TabEjecucion({ rubros, certificados, gastos, certificacionesMO = [], ordenesPago = [], partes = [], verMargen = true, onActualizarAvance }) {
   const [expandedR, setExpandedR]   = useState({});
   const [expandedSR, setExpandedSR] = useState({});
 
@@ -750,10 +835,12 @@ function TabEjecucion({ rubros, certificados, gastos, certificacionesMO = [], or
   const pctCertAprob        = (montoCertAprobado / totalPresupuestado) * 100;
   // Avance físico ponderado = Σ(avance físico del rubro × incidencia del rubro en el contrato).
   const avanceFisicoPond    = rubros.reduce((s, r) => s + r.avance * (r.monto / totalPresupuestado), 0);
-  // Gastado real = gastos de caja + pagos a contratistas ya liberados (eje outbound).
+  // Gastado real = gastos de caja + pagos a subcontratistas + partes de cuadrilla jornalizada.
   const totalPagadoMO       = ordenesPago.filter(o => o.estado === 'pagada').reduce((s, o) => s + o.bruto, 0);
-  const totalGastado        = gastos.reduce((s, g) => s + g.monto, 0) + totalPagadoMO;
-  const gastoImputado       = gastos.filter(g => g.imputaciones.length > 0).reduce((s, g) => s + g.monto, 0) + totalPagadoMO;
+  const totalJornal         = partes.reduce((s, p) => s + jornalCostoParte(p), 0);
+  const totalManoObra       = totalPagadoMO + totalJornal;
+  const totalGastado        = gastos.reduce((s, g) => s + g.monto, 0) + totalManoObra;
+  const gastoImputado       = gastos.filter(g => g.imputaciones.length > 0).reduce((s, g) => s + g.monto, 0) + totalManoObra;
   const margenEjecutado     = montoCertAprobado - gastoImputado;
   const certsPendientes     = certificados.filter(c => c.estado === 'enviado');
 
@@ -790,7 +877,7 @@ function TabEjecucion({ rubros, certificados, gastos, certificacionesMO = [], or
         <KpiCard label="Certificado aprobado" value={fmtM(montoCertAprobado)} sub={`${pctCertAprob.toFixed(1)}% del contrato${montoEnviado > 0 ? ` · +${fmtM(montoEnviado)} pend.` : ''}`} color="warning.main" tooltip="Avance económico formalizado y aprobado por el cliente. Lo enviado pero no aprobado se muestra aparte." />
         {verMargen && (
           <>
-            <KpiCard label="Gastado real" value={fmtM(totalGastado)} sub={totalPagadoMO > 0 ? `incl. ${fmtM(totalPagadoMO)} mano de obra · ${gastos.filter(g => g.imputaciones.length === 0).length} sin imputar` : `${gastos.filter(g => g.imputaciones.length === 0).length} gastos sin imputar`} tooltip="Gastos de caja + pagos a contratistas ya liberados (órdenes de pago pagadas). La imputación de gastos se hace en Caja; los pagos a contratistas se imputan solos al rubro certificado." />
+            <KpiCard label="Gastado real" value={fmtM(totalGastado)} sub={totalManoObra > 0 ? `incl. ${fmtM(totalManoObra)} mano de obra · ${gastos.filter(g => g.imputaciones.length === 0).length} sin imputar` : `${gastos.filter(g => g.imputaciones.length === 0).length} gastos sin imputar`} tooltip="Gastos de caja + pagos a subcontratistas (órdenes pagadas) + partes de cuadrilla jornalizada. Todo imputado al rubro." />
             <KpiCard
               label="Margen ejecutado"
               value={fmtM(Math.abs(margenEjecutado))}
@@ -825,8 +912,8 @@ function TabEjecucion({ rubros, certificados, gastos, certificacionesMO = [], or
               const certAprov   = certMontoAprobado(r.id, certificados);
               const certEnviado = certTotal - certAprov;   // certificado pendiente de aprobación
               const gastoDirecto = gastoRealPorRubro(r.id, gastos);
-              const moPagado     = pagadoMOPorRubro(r.id, ordenesPago, certificacionesMO);
-              const gastado      = gastoDirecto + moPagado;   // costo real = caja + pagos a contratistas
+              const moPagado     = pagadoMOPorRubro(r.id, ordenesPago, certificacionesMO) + jornalPorRubro(r.id, partes);
+              const gastado      = gastoDirecto + moPagado;   // costo real = caja + pagos a contratistas + jornales
               // Margen económico = certificado APROBADO (cobrable) − gastado real. No cuenta lo enviado.
               const margen      = certAprov > 0 ? certAprov - gastado : null;
               const hayEnviado  = certEnviado > 0;
@@ -1407,30 +1494,46 @@ function DialogInformeCertificado({ open, onClose, cert, onAprobar, onRechazar }
 
 // ─── Dialog: Simulador WhatsApp ───────────────────────────────────────────────
 
-const WA_STEPS = [
+const WA_STEPS_CERT = [
   { from: 'director', text: 'certifico el 80% de mampostería y tabiques, adjunto foto' },
   { from: 'director', img: true },
   { from: 'bot', text: '✅ Entendí el mensaje. Esto es lo que voy a registrar:' },
-  { from: 'bot', preview: true },
+  { from: 'bot', preview: 'cert' },
   { from: 'bot', text: 'Confirmás? Respondé *sí* para guardar como borrador o *enviar* para mandar al cliente.' },
 ];
+const WA_STEPS_AVANCE = [
+  { from: 'director', text: 'avancé las cubiertas metálicas, vamos por el 35%, mando foto' },
+  { from: 'director', img: true },
+  { from: 'bot', text: '✅ Registré el avance físico de obra:' },
+  { from: 'bot', preview: 'avance' },
+  { from: 'bot', text: 'Confirmás? Respondé *sí* para actualizar el avance del rubro.' },
+];
 
-function DialogWASimulator({ open, onClose, rubros, onGuardar }) {
+function DialogWASimulator({ open, onClose, rubros, onGuardar, onActualizarAvance }) {
   const [paso, setPaso] = useState(0);
+  const [modo, setModo] = useState('certificado');
 
-  const r5 = rubros.find(r => r.id === 'r5');
+  const steps    = modo === 'certificado' ? WA_STEPS_CERT : WA_STEPS_AVANCE;
+  const r5       = rubros.find(r => r.id === 'r5');
+  const r4       = rubros.find(r => r.id === 'r4');
   const montoEst = r5 ? r5.monto * 0.80 : 0;
+
+  const cambiarModo = (_, m) => { if (m) { setModo(m); setPaso(0); } };
 
   const handleConfirmar = () => {
     const hoyStr = hoy.toLocaleDateString('es-AR');
-    onGuardar({
-      periodo: `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}`,
-      fechaValorizacion: hoyStr, notas: 'Cargado desde WhatsApp.', adjuntos: ['foto_wa_mamposteria.jpg'], enviar: false,
-      renglones: [{
-        rubro_id: 'r5', rubro: r5?.nombre ?? 'Mampostería y Tabiques',
-        avance_acumulado_pct: 80, avance_periodo_pct: 80, monto_base: Math.round(montoEst),
-      }],
-    });
+    if (modo === 'certificado') {
+      onGuardar({
+        periodo: `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}`,
+        fechaValorizacion: hoyStr, notas: 'Cargado desde WhatsApp.', adjuntos: ['foto_wa_mamposteria.jpg'], enviar: false,
+        renglones: [{
+          rubro_id: 'r5', rubro: r5?.nombre ?? 'Mampostería y Tabiques',
+          avance_acumulado_pct: 80, avance_periodo_pct: 80, monto_base: Math.round(montoEst),
+        }],
+      });
+    } else {
+      onActualizarAvance('r4', 35, 'Avance cargado desde WhatsApp.', ['foto_wa_cubiertas.jpg']);
+    }
     setPaso(0); onClose();
   };
 
@@ -1440,8 +1543,12 @@ function DialogWASimulator({ open, onClose, rubros, onGuardar }) {
         <ForumIcon /> Bot Sorbydata · WhatsApp
       </DialogTitle>
       <DialogContent sx={{ bgcolor: '#ece5dd', p: 1.5 }}>
+        <ToggleButtonGroup value={modo} exclusive onChange={cambiarModo} size="small" fullWidth sx={{ bgcolor: 'white', mb: 1 }}>
+          <ToggleButton value="certificado">Certificar al cliente</ToggleButton>
+          <ToggleButton value="avance">Avance físico</ToggleButton>
+        </ToggleButtonGroup>
         <Stack spacing={1} mt={1}>
-          {WA_STEPS.slice(0, paso + 1).map((s, i) => (
+          {steps.slice(0, paso + 1).map((s, i) => (
             <Box key={i} display="flex" justifyContent={s.from === 'director' ? 'flex-end' : 'flex-start'}>
               <Paper elevation={1} sx={{
                 maxWidth: '80%', px: 1.5, py: 1, borderRadius: 2,
@@ -1450,12 +1557,20 @@ function DialogWASimulator({ open, onClose, rubros, onGuardar }) {
                 borderTopLeftRadius:  s.from === 'bot'      ? 0 : 2,
               }}>
                 {s.img && <Box sx={{ width: 140, height: 90, bgcolor: 'grey.300', borderRadius: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', mb: 0.5 }}><PhotoCameraIcon color="action" /></Box>}
-                {s.preview && r5 && (
+                {s.preview === 'cert' && r5 && (
                   <Box sx={{ bgcolor: '#f0f0f0', p: 1, borderRadius: 1, mb: 0.5, borderLeft: 3, borderLeftColor: '#128c7e' }}>
                     <Typography variant="caption" fontWeight={700} display="block">📋 Certificado de avance</Typography>
                     <Typography variant="caption" display="block">Rubro: {r5.nombre}</Typography>
                     <Typography variant="caption" display="block">Avance: 80%</Typography>
                     <Typography variant="caption" display="block" fontWeight={600}>Monto: {fmtM(montoEst)}</Typography>
+                  </Box>
+                )}
+                {s.preview === 'avance' && r4 && (
+                  <Box sx={{ bgcolor: '#f0f0f0', p: 1, borderRadius: 1, mb: 0.5, borderLeft: 3, borderLeftColor: '#128c7e' }}>
+                    <Typography variant="caption" fontWeight={700} display="block">📐 Avance físico</Typography>
+                    <Typography variant="caption" display="block">Rubro: {r4.nombre}</Typography>
+                    <Typography variant="caption" display="block">Avance: {r4.avance}% → 35%</Typography>
+                    <Typography variant="caption" display="block" color="text.secondary">No genera certificado</Typography>
                   </Box>
                 )}
                 {s.text && <Typography variant="body2" sx={{ fontSize: 13 }}>{s.text}</Typography>}
@@ -1464,11 +1579,11 @@ function DialogWASimulator({ open, onClose, rubros, onGuardar }) {
             </Box>
           ))}
 
-          {paso === WA_STEPS.length - 1 && (
+          {paso === steps.length - 1 && (
             <Stack direction="row" spacing={1} justifyContent="flex-end" mt={1}>
               <Paper elevation={1} sx={{ px: 1.5, py: 1, borderRadius: 2, bgcolor: '#dcf8c6', cursor: 'pointer' }} onClick={handleConfirmar}>
                 <Typography variant="body2" sx={{ fontSize: 13 }}>sí</Typography>
-                <Typography variant="caption" color="text.disabled" sx={{ fontSize: 10 }}>13/05/26 10:4{WA_STEPS.length}</Typography>
+                <Typography variant="caption" color="text.disabled" sx={{ fontSize: 10 }}>13/05/26 10:4{steps.length}</Typography>
               </Paper>
             </Stack>
           )}
@@ -1476,7 +1591,7 @@ function DialogWASimulator({ open, onClose, rubros, onGuardar }) {
       </DialogContent>
       <DialogActions sx={{ bgcolor: '#f0f0f0' }}>
         <Button onClick={() => { setPaso(0); onClose(); }}>Cerrar</Button>
-        {paso < WA_STEPS.length - 1 && (
+        {paso < steps.length - 1 && (
           <Button variant="contained" sx={{ bgcolor: '#128c7e', '&:hover': { bgcolor: '#075e54' } }} onClick={() => setPaso(p => p + 1)}>
             Siguiente mensaje
           </Button>
@@ -2537,6 +2652,277 @@ function TabReportes({ rubros, certificados, cuotas, inconvenientes, onNuevoInco
   );
 }
 
+// ─── Dialog: Registrar parte diario (jornalizado) ─────────────────────────────
+function DialogParteDiario({ open, onClose, contratistas, onGuardar }) {
+  const [ctId,    setCtId]    = useState('');
+  const [rubroId, setRubroId] = useState('');
+  const [hh,      setHh]      = useState({});
+
+  useEffect(() => { if (open) { setCtId(''); setRubroId(''); setHh({}); } }, [open]);
+
+  const contratista = contratistas.find(c => c.id === ctId);
+  const rubrosDisp  = contratista ? contratista.asignaciones.map(a => RUBROS_MAP[a.rubro_id]).filter(Boolean) : [];
+  const renglones   = CCT_SALARIAL.categorias.map(c => ({ categoria: c.codigo, hh: Number(hh[c.codigo]) || 0 })).filter(r => r.hh > 0);
+  const costo       = renglones.reduce((s, r) => s + r.hh * costoHoraCargado(r.categoria), 0);
+  const valido      = ctId && rubroId && renglones.length > 0;
+
+  const handleGuardar = () => { onGuardar({ contratista_id: ctId, rubro_id: rubroId, renglones }); onClose(); };
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle>Registrar parte diario</DialogTitle>
+      <DialogContent>
+        <Stack spacing={2} mt={1}>
+          <Alert severity="info" icon={<SpeedIcon />}>
+            Partes de cuadrilla <strong>jornalizada</strong>: las HH se valorizan con el CCT y el costo se imputa al rubro (entra a «Gastado real»).
+          </Alert>
+          <FormControl fullWidth size="small">
+            <InputLabel>Cuadrilla (jornalizada)</InputLabel>
+            <Select value={ctId} onChange={e => { setCtId(e.target.value); setRubroId(''); }} label="Cuadrilla (jornalizada)">
+              {contratistas.filter(c => c.tipo === 'jornalizado').map(c => <MenuItem key={c.id} value={c.id}>{c.nombre}</MenuItem>)}
+            </Select>
+          </FormControl>
+          {contratista && (
+            <FormControl fullWidth size="small">
+              <InputLabel>Rubro</InputLabel>
+              <Select value={rubroId} onChange={e => setRubroId(e.target.value)} label="Rubro">
+                {rubrosDisp.map(r => <MenuItem key={r.id} value={r.id}>{r.num}. {r.nombre}</MenuItem>)}
+              </Select>
+            </FormControl>
+          )}
+          <Typography variant="caption" color="text.secondary">Horas-hombre por categoría</Typography>
+          {CCT_SALARIAL.categorias.map(c => (
+            <Stack key={c.codigo} direction="row" alignItems="center" spacing={1}>
+              <Typography variant="body2" sx={{ flex: 1 }}>{c.nombre}</Typography>
+              <Typography variant="caption" color="text.disabled">{fmt(costoHoraCargado(c.codigo))}/h</Typography>
+              <TextField size="small" type="number" value={hh[c.codigo] ?? ''} onChange={e => setHh(p => ({ ...p, [c.codigo]: e.target.value }))} sx={{ width: 90 }} inputProps={{ min: 0 }} label="HH" />
+            </Stack>
+          ))}
+          {costo > 0 && (
+            <Alert severity="success" icon={<PaymentsIcon />}>Costo del parte: <strong>{fmt(costo)}</strong> ({renglones.reduce((s, r) => s + r.hh, 0)} HH)</Alert>
+          )}
+        </Stack>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Cancelar</Button>
+        <Button variant="contained" onClick={handleGuardar} disabled={!valido} startIcon={<EditNoteIcon />}>Guardar parte</Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+// ─── Dialog: Actualizar tabla salarial CCT (redeterminación masiva de APU) ─────
+function DialogActualizarCCT({ open, onClose, onAplicar }) {
+  const [aumento, setAumento] = useState('');
+  useEffect(() => { if (open) setAumento(''); }, [open]);
+
+  const f = (Number(aumento) || 0) / 100;
+  const filas = APUS.map(a => {
+    const base  = apuPrecioUnitario(a).total;
+    const nuevo = apuPrecioConAumentoHora(a, f);
+    const cant  = computoTotal(a.id);
+    return { a, base, nuevo, cant, delta: (nuevo - base) * cant };
+  });
+  const deltaTotal = filas.reduce((s, r) => s + r.delta, 0);
+  const valido = f > 0;
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle>Actualizar tabla salarial (paritarias)</DialogTitle>
+      <DialogContent>
+        <Stack spacing={2} mt={1}>
+          <Alert severity="info" icon={<CalculateIcon />}>
+            Un aumento del valor hora recalcula el <strong>precio unitario de todos los APU</strong>. El delta sobre lo ya computado se puede volcar como <strong>anexo de redeterminación</strong>.
+          </Alert>
+          <TextField label="% de aumento del valor hora" size="small" type="number" value={aumento} onChange={e => setAumento(e.target.value)} inputProps={{ min: 0 }} placeholder="ej. 15" />
+          {valido && (
+            <TableContainer component={Paper} variant="outlined">
+              <Table size="small">
+                <TableHead><TableRow sx={{ bgcolor: 'neutral.50' }}>
+                  <TableCell>APU</TableCell><TableCell align="right">P. unit. base</TableCell><TableCell align="right">Nuevo</TableCell><TableCell align="right">Δ tarea</TableCell>
+                </TableRow></TableHead>
+                <TableBody>
+                  {filas.map(({ a, base, nuevo, delta }) => (
+                    <TableRow key={a.id}>
+                      <TableCell><Typography variant="caption">{RUBROS_MAP[a.rubro_id]?.num}. {a.tarea}</Typography></TableCell>
+                      <TableCell align="right"><Typography variant="caption">{fmt(base)}</Typography></TableCell>
+                      <TableCell align="right"><Typography variant="caption" fontWeight={600}>{fmt(nuevo)}</Typography></TableCell>
+                      <TableCell align="right"><Typography variant="caption" color="warning.main">+{fmtM(delta)}</Typography></TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+          {valido && (
+            <Alert severity="warning">Delta total a redeterminar: <strong>{fmt(Math.round(deltaTotal))}</strong> — se generará un anexo de adición por ese monto.</Alert>
+          )}
+        </Stack>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Cancelar</Button>
+        <Button variant="contained" startIcon={<CalculateIcon />} disabled={!valido} onClick={() => onAplicar({ aumentoPct: Number(aumento), delta: Math.round(deltaTotal) })}>
+          Aplicar y generar anexo
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+// ─── Tab: APU y rendimiento (Etapa 9 + 14) ────────────────────────────────────
+function TabApuRendimiento({ rubros, partes, onNuevoParte, onGenerarAnexoCCT }) {
+  const [dlgCCT, setDlgCCT] = useState(false);
+  const [apuSel, setApuSel] = useState(APUS[0].id);
+  const apu      = APUS.find(a => a.id === apuSel);
+  const desg     = apuPrecioUnitario(apu);
+  const cant     = computoTotal(apu.id);
+  const hhUnidad = apuHHporUnidad(apu);
+  const rubroApu = RUBROS_MAP[apu.rubro_id];
+
+  const rubrosConApu = rubros.filter(r => apusDeRubro(r.id).length > 0);
+
+  return (
+    <Box>
+      <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
+        <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap flex={1}>
+          <KpiCard label="Convenio" value={CCT_SALARIAL.convenio} sub={`vigencia ${CCT_SALARIAL.vigencia}`} />
+          <KpiCard label="Cargas sociales" value={`${(CCT_SALARIAL.cargas_sociales_pct * 100).toFixed(2)}%`} sub="sobre el valor hora" />
+          <KpiCard label="APU cargados" value={APUS.length} sub="análisis de precios" />
+          <KpiCard label="Partes diarios" value={partes.length} sub="cuadrilla jornalizada" />
+        </Stack>
+        <Stack direction="row" spacing={1} ml={2} flexShrink={0}>
+          <Button variant="outlined" startIcon={<CalculateIcon />} onClick={() => setDlgCCT(true)}>Actualizar CCT</Button>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={onNuevoParte}>Registrar parte</Button>
+        </Stack>
+      </Stack>
+
+      <Typography variant="subtitle2" fontWeight={600} mb={1}>Tabla salarial CCT</Typography>
+      <TableContainer component={Paper} variant="outlined" sx={{ mb: 3 }}>
+        <Table size="small">
+          <TableHead><TableRow sx={{ bgcolor: 'neutral.50' }}>
+            <TableCell>Categoría</TableCell><TableCell align="right">Valor hora</TableCell><TableCell align="right">+ cargas</TableCell><TableCell align="right">Costo horario cargado</TableCell>
+          </TableRow></TableHead>
+          <TableBody>
+            {CCT_SALARIAL.categorias.map(c => (
+              <TableRow key={c.codigo} hover>
+                <TableCell><Typography variant="body2" fontWeight={500}>{c.nombre}</Typography></TableCell>
+                <TableCell align="right">{fmt(c.valor_hora)}</TableCell>
+                <TableCell align="right"><Typography variant="caption" color="text.disabled">×{(1 + CCT_SALARIAL.cargas_sociales_pct).toFixed(4)}</Typography></TableCell>
+                <TableCell align="right"><Typography variant="body2" fontWeight={600}>{fmt(costoHoraCargado(c.codigo))}</Typography></TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </TableContainer>
+
+      <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
+        <Typography variant="subtitle2" fontWeight={600}>Análisis de precio unitario (APU)</Typography>
+        <FormControl size="small" sx={{ minWidth: 260 }}>
+          <InputLabel>Tarea</InputLabel>
+          <Select value={apuSel} onChange={e => setApuSel(e.target.value)} label="Tarea">
+            {APUS.map(a => <MenuItem key={a.id} value={a.id}>{RUBROS_MAP[a.rubro_id]?.num}. {a.tarea}</MenuItem>)}
+          </Select>
+        </FormControl>
+      </Stack>
+      <Paper variant="outlined" sx={{ p: 2, mb: 3 }}>
+        <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap mb={2}>
+          <KpiCard label="Precio unitario" value={`${fmt(desg.total)} /${apu.unidad}`} sub={`incl. IVA ${Math.round(apu.iva_pct * 100)}%`} color="primary.main" />
+          <KpiCard label="Rendimiento" value={`${(Math.round(hhUnidad * 100) / 100)} HH/${apu.unidad}`} sub="mano de obra por unidad" />
+          <KpiCard label="Cómputo total" value={`${cant.toFixed(2)} ${apu.unidad}`} sub={`rubro ${rubroApu?.num}. ${rubroApu?.nombre}`} />
+          <KpiCard label="Costo de la tarea" value={fmtM(Math.round(desg.total * cant))} sub="precio unitario × cómputo" color="warning.main" />
+        </Stack>
+        <Stack direction="row" spacing={3} flexWrap="wrap" useFlexGap>
+          <Box sx={{ flex: 1, minWidth: 280 }}>
+            <Typography variant="caption" color="text.secondary">Desglose por {apu.unidad}</Typography>
+            <Table size="small">
+              <TableBody>
+                <TableRow><TableCell>Mano de obra</TableCell><TableCell align="right">{fmt(Math.round(desg.mo))}</TableCell></TableRow>
+                <TableRow><TableCell>Materiales</TableCell><TableCell align="right">{fmt(Math.round(desg.mat))}</TableCell></TableRow>
+                <TableRow><TableCell>Equipos ({Math.round(apu.equipos_pct * 100)}%)</TableCell><TableCell align="right">{fmt(Math.round(desg.eq))}</TableCell></TableRow>
+                <TableRow><TableCell>G.G. + beneficio ({Math.round((apu.gg_pct + apu.beneficio_pct) * 100)}%)</TableCell><TableCell align="right">{fmt(Math.round(desg.neto - desg.subtotal))}</TableCell></TableRow>
+                <TableRow><TableCell>IVA ({Math.round(apu.iva_pct * 100)}%)</TableCell><TableCell align="right">{fmt(Math.round(desg.total - desg.neto))}</TableCell></TableRow>
+                <TableRow sx={{ bgcolor: 'neutral.100' }}><TableCell><strong>Precio unitario</strong></TableCell><TableCell align="right"><strong>{fmt(desg.total)}</strong></TableCell></TableRow>
+              </TableBody>
+            </Table>
+          </Box>
+          <Box sx={{ flex: 1, minWidth: 280 }}>
+            <Typography variant="caption" color="text.secondary">Cómputo métrico</Typography>
+            <Table size="small">
+              <TableHead><TableRow><TableCell>Medición</TableCell><TableCell align="center">L×A×H×n</TableCell><TableCell align="right">Parcial</TableCell></TableRow></TableHead>
+              <TableBody>
+                {(COMPUTOS[apu.id] || []).map((m, i) => (
+                  <TableRow key={i}>
+                    <TableCell><Typography variant="caption">{m.desc}</Typography></TableCell>
+                    <TableCell align="center"><Typography variant="caption" color="text.disabled">{m.largo}×{m.ancho}×{m.alto}×{m.rep}</Typography></TableCell>
+                    <TableCell align="right">{computoParcial(m).toFixed(2)}</TableCell>
+                  </TableRow>
+                ))}
+                <TableRow sx={{ bgcolor: 'neutral.100' }}><TableCell colSpan={2}><strong>Total {apu.unidad}</strong></TableCell><TableCell align="right"><strong>{cant.toFixed(2)}</strong></TableCell></TableRow>
+              </TableBody>
+            </Table>
+          </Box>
+        </Stack>
+      </Paper>
+
+      <Typography variant="subtitle2" fontWeight={600} mb={1}>Rendimiento de mano de obra (HH reales vs. presupuestadas)</Typography>
+      <TableContainer component={Paper} variant="outlined" sx={{ mb: 3 }}>
+        <Table size="small">
+          <TableHead><TableRow sx={{ bgcolor: 'neutral.50' }}>
+            <TableCell>Rubro</TableCell><TableCell align="center">Avance físico</TableCell><TableCell align="right">HH presup.</TableCell><TableCell align="right">HH reales</TableCell><TableCell align="right">$ jornal</TableCell><TableCell align="center">Rendimiento</TableCell>
+          </TableRow></TableHead>
+          <TableBody>
+            {rubrosConApu.map(r => {
+              const hhPresup = hhPresupPorRubro(r.id, r.avance);
+              const hhReal   = hhRealesPorRubro(r.id, partes);
+              const costoJ   = jornalPorRubro(r.id, partes);
+              const ratio    = hhPresup > 0 ? hhReal / hhPresup : null;
+              return (
+                <TableRow key={r.id} hover>
+                  <TableCell><Typography variant="body2" fontWeight={500}>{r.num}. {r.nombre}</Typography></TableCell>
+                  <TableCell align="center"><Chip size="small" label={`${r.avance}%`} color={avanceColor(r.avance)} /></TableCell>
+                  <TableCell align="right">{hhPresup > 0 ? `${Math.round(hhPresup)} HH` : <Typography variant="caption" color="text.disabled">sin ejecución</Typography>}</TableCell>
+                  <TableCell align="right">{hhReal > 0 ? `${hhReal} HH` : '—'}</TableCell>
+                  <TableCell align="right">{costoJ > 0 ? fmt(costoJ) : '—'}</TableCell>
+                  <TableCell align="center">
+                    {ratio !== null && hhReal > 0
+                      ? <Chip size="small" label={`${ratio.toFixed(2)} · ${ratio > 1 ? '+' : ''}${Math.round((ratio - 1) * 100)}% HH`} color={ratio <= 1 ? 'success' : ratio <= 1.1 ? 'warning' : 'error'} />
+                      : <Typography variant="caption" color="text.disabled">—</Typography>}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </TableContainer>
+      <Alert severity="info" sx={{ mb: 3 }} icon={<SpeedIcon />}>
+        Rendimiento = HH reales (partes diarios) ÷ HH presupuestadas (APU × cómputo × avance). Mayor a 1 = sobrecosto de mano de obra. Compara la cuadrilla jornalizada contra lo que el presupuesto preveía.
+      </Alert>
+
+      <Typography variant="subtitle2" fontWeight={600} mb={1}>Partes diarios</Typography>
+      <TableContainer component={Paper} variant="outlined">
+        <Table size="small">
+          <TableHead><TableRow sx={{ bgcolor: 'neutral.50' }}>
+            <TableCell>Fecha</TableCell><TableCell>Cuadrilla</TableCell><TableCell>Rubro</TableCell><TableCell>HH</TableCell><TableCell align="right">Costo</TableCell>
+          </TableRow></TableHead>
+          <TableBody>
+            {[...partes].reverse().map(p => (
+              <TableRow key={p.id} hover>
+                <TableCell>{p.fecha}</TableCell>
+                <TableCell>{CONTRATISTAS_MAP[p.contratista_id]?.nombre}</TableCell>
+                <TableCell>{RUBROS_MAP[p.rubro_id]?.num}. {RUBROS_MAP[p.rubro_id]?.nombre}</TableCell>
+                <TableCell><Typography variant="caption">{p.renglones.map(r => `${r.hh} ${CCT_MAP[r.categoria]?.nombre.split(' ')[0]}`).join(' · ')}</Typography></TableCell>
+                <TableCell align="right"><Typography variant="body2" fontWeight={600}>{fmt(jornalCostoParte(p))}</Typography></TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </TableContainer>
+
+      <DialogActualizarCCT open={dlgCCT} onClose={() => setDlgCCT(false)} onAplicar={(p) => { onGenerarAnexoCCT(p); setDlgCCT(false); }} />
+    </Box>
+  );
+}
+
 // ─── Config de tabs por rol ───────────────────────────────────────────────────
 
 // Etapa 8: los tabs se DERIVAN de las capacidades del rol, no de listas cableadas.
@@ -2548,6 +2934,7 @@ const TABS_CONFIG = [
   { key: 'manoobra',   label: 'Mano de obra',  cap: 'mano_obra' },
   { key: 'anexos',     label: 'Anexos',        cap: 'anexos' },
   { key: 'cronograma', label: 'Cronograma',    cap: 'cronograma' },
+  { key: 'apu',        label: 'APU y rendimiento', cap: 'apu' },
   { key: 'caja',       label: 'Flujo de caja', cap: 'caja' },
   { key: 'reportes',   label: 'Reportes',      cap: 'reportes' },
 ];
@@ -2558,11 +2945,11 @@ const ROLES_CAPS = {
   admin: {
     ejecucion: ['ver'], plan_cobro: ['ver', 'registrar_cobro'], certificados: ['ver', 'cargar', 'aprobar'],
     mano_obra: ['ver', 'certificar', 'aprobar_pago'], anexos: ['ver', 'cargar'], cronograma: ['ver', 'editar'],
-    caja: ['ver'], reportes: ['ver', 'emitir_conforme'], ejecucion_margen: ['ver'],
+    apu: ['ver'], caja: ['ver'], reportes: ['ver', 'emitir_conforme'], ejecucion_margen: ['ver'],
   },
   director: {
     ejecucion: ['ver'], certificados: ['ver', 'cargar'], mano_obra: ['ver', 'certificar'],
-    anexos: ['ver', 'cargar'], cronograma: ['ver', 'editar'], reportes: ['ver', 'emitir_conforme'],
+    anexos: ['ver', 'cargar'], cronograma: ['ver', 'editar'], apu: ['ver'], reportes: ['ver', 'emitir_conforme'],
     ejecucion_margen: ['ver'],   // sacarle esta capacidad le oculta margen/gastado real
   },
   comercial: {
@@ -2570,9 +2957,9 @@ const ROLES_CAPS = {
     caja: ['ver'], reportes: ['ver'],
   },
   jefe: {
-    // Jefe de obra: carga avance y certifica, pero NO ve costo/margen (sin ejecucion_margen).
+    // Jefe de obra: carga avance, certifica y carga partes; NO ve costo/margen (sin ejecucion_margen).
     ejecucion: ['ver'], certificados: ['ver', 'cargar'], mano_obra: ['ver', 'certificar'],
-    cronograma: ['ver'], reportes: ['ver'],
+    cronograma: ['ver'], apu: ['ver'], reportes: ['ver'],
   },
 };
 
@@ -2599,6 +2986,8 @@ function MockObraPage() {
   const [certsMO,      setCertsMO]      = useState(CERTIFICACIONES_MO_INIT);
   const [ordenesPago,  setOrdenesPago]  = useState(ORDENES_PAGO_INIT);
   const [inconvenientes, setInconvenientes] = useState(INCONVENIENTES_INIT);
+  const [partes,       setPartes]       = useState(PARTES_DIARIOS_INIT);
+  const [dlgParte,     setDlgParte]     = useState(false);
   const [dlgCert,      setDlgCert]      = useState(false);
   const [dlgAnexo,     setDlgAnexo]     = useState(false);
   const [dlgWA,        setDlgWA]        = useState(false);
@@ -2787,6 +3176,18 @@ function MockObraPage() {
     setRetencionLiberada(true);
   };
 
+  const handleNuevoParte = ({ contratista_id, rubro_id, renglones }) => {
+    setPartes(p => [...p, {
+      id: `pd${p.length + 1}`, fecha: hoy.toLocaleDateString('es-AR'),
+      contratista_id, rubro_id, renglones,
+    }]);
+  };
+
+  // Actualización masiva del CCT → genera un anexo de adición por el delta redeterminado.
+  const handleGenerarAnexoCCT = ({ aumentoPct, delta }) => {
+    handleGuardarAnexo({ tipo: 'adicion', motivo: `Redeterminación por actualización salarial CCT +${aumentoPct}%`, monto: delta, accionCuota: 'ignorar' });
+  };
+
   return (
     <>
       {/* Header */}
@@ -2837,22 +3238,24 @@ function MockObraPage() {
 
       {/* Contenido */}
       <Container maxWidth="xl" sx={{ py: 3 }}>
-        {activeKey === 'ejecucion'  && <TabEjecucion rubros={rubros} certificados={certificados} gastos={gastos} certificacionesMO={certsMO} ordenesPago={ordenesPago} verMargen={verMargen} onActualizarAvance={setAvanceRubro} />}
+        {activeKey === 'ejecucion'  && <TabEjecucion rubros={rubros} certificados={certificados} gastos={gastos} certificacionesMO={certsMO} ordenesPago={ordenesPago} partes={partes} verMargen={verMargen} onActualizarAvance={setAvanceRubro} />}
         {activeKey === 'cobro'      && <TabPlanCobro cuotas={cuotas} rubros={rubros} certificados={certificados} onAgregarCuota={() => {}} onCobrar={handleCobrarCuota} retencionLiberada={retencionLiberada} />}
         {activeKey === 'certs'      && <TabCertificados certificados={certificados} rubros={rubros} onNuevoCert={() => setDlgCert(true)} onEnviar={handleEnviarCert} onAprobar={handleAprobarCert} onRechazar={handleRechazarCert} onWA={() => setDlgWA(true)} readOnly={rol === 'comercial'} />}
         {activeKey === 'manoobra'   && <TabManoObra contratistas={contratistas} certificacionesMO={certsMO} ordenesPago={ordenesPago} rubros={rubros} certificados={certificados} onNuevaCert={() => setDlgCertMO(true)} onAprobarCert={handleAprobarCertMO} onPagarOrden={handlePagarOrden} />}
         {activeKey === 'anexos'     && <TabAnexos anexos={anexos} onNuevoAnexo={() => setDlgAnexo(true)} />}
         {activeKey === 'cronograma' && <TabCronograma rubros={rubros} />}
+        {activeKey === 'apu'        && <TabApuRendimiento rubros={rubros} partes={partes} onNuevoParte={() => setDlgParte(true)} onGenerarAnexoCCT={handleGenerarAnexoCCT} />}
         {activeKey === 'caja'       && <TabFlujoCaja rubros={rubros} certificados={certificados} cuotas={cuotas} />}
         {activeKey === 'reportes'   && <TabReportes rubros={rubros} certificados={certificados} cuotas={cuotas} inconvenientes={inconvenientes} onNuevoInconveniente={() => setDlgInconv(true)} onResolverInconveniente={handleResolverInconveniente} onCompletarObra={handleCompletarObra} onEmitirConforme={handleEmitirConforme} ppFinalizado={ppFinalizado} retencionLiberada={retencionLiberada} />}
       </Container>
 
       <DialogNuevoCertificado open={dlgCert} onClose={handleCerrarCert} rubros={rubros} cuotas={cuotas} certificados={certificados} onGuardar={handleGuardarCert} prefill={certPrefill} />
       <DialogNuevoAnexo open={dlgAnexo} onClose={() => setDlgAnexo(false)} onGuardar={handleGuardarAnexo} />
-      <DialogWASimulator open={dlgWA} onClose={() => setDlgWA(false)} rubros={rubros} onGuardar={handleGuardarCert} />
+      <DialogWASimulator open={dlgWA} onClose={() => setDlgWA(false)} rubros={rubros} onGuardar={handleGuardarCert} onActualizarAvance={handleActualizarAvance} />
       <DialogActualizarAvance open={!!avanceRubro} rubro={avanceRubro} onClose={() => setAvanceRubro(null)} onGuardar={handleActualizarAvance} onCertificar={handleCertificarDesdeAvance} />
       <DialogNuevaCertificacionMO open={dlgCertMO} onClose={() => setDlgCertMO(false)} contratistas={contratistas} certificacionesMO={certsMO} onGuardar={handleNuevaCertMO} />
       <DialogInconveniente open={dlgInconv} onClose={() => setDlgInconv(false)} rubros={rubros} onGuardar={handleNuevoInconveniente} />
+      <DialogParteDiario open={dlgParte} onClose={() => setDlgParte(false)} contratistas={contratistas} onGuardar={handleNuevoParte} />
     </>
   );
 }
