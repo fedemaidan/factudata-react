@@ -14,14 +14,12 @@ import {
   Divider,
   Drawer,
   FormControl,
-  FormControlLabel,
   IconButton,
   InputLabel,
   LinearProgress,
   MenuItem,
   Select,
   Stack,
-  Switch,
   Tab,
   Table,
   TableBody,
@@ -93,7 +91,7 @@ function TabDatos({ proveedor, empresaId, categoriasEmpresa, estadoDefaultEmpres
 
   const [form, setForm] = useState({
     nombre: '', razon_social: '', cuit: '', direccion: '',
-    tipo: 'materiales', tiene_cuenta_corriente: true, alias: [], categorias: [],
+    tipo: 'materiales', alias: [], categorias: [],
     estado_inicial: null,
   });
   const [aliasInput, setAliasInput] = useState('');
@@ -111,7 +109,6 @@ function TabDatos({ proveedor, empresaId, categoriasEmpresa, estadoDefaultEmpres
       cuit: proveedor.cuit || '',
       direccion: proveedor.direccion || '',
       tipo: proveedor.tipo || 'materiales',
-      tiene_cuenta_corriente: proveedor.tiene_cuenta_corriente !== false,
       alias: proveedor.alias || [],
       categorias: proveedor.categorias || [],
       estado_inicial: proveedor.estado_inicial ?? null,
@@ -129,7 +126,6 @@ function TabDatos({ proveedor, empresaId, categoriasEmpresa, estadoDefaultEmpres
         cuit: form.cuit.trim(),
         direccion: form.direccion.trim(),
         tipo: form.tipo,
-        tiene_cuenta_corriente: form.tiene_cuenta_corriente,
         alias: form.alias,
         categorias: form.categorias,
         estado_inicial: form.estado_inicial,
@@ -213,16 +209,6 @@ function TabDatos({ proveedor, empresaId, categoriasEmpresa, estadoDefaultEmpres
             <MenuItem value="Pagado">Siempre Pagado</MenuItem>
           </Select>
         </FormControl>
-
-        <FormControlLabel
-          control={
-            <Switch
-              checked={form.tiene_cuenta_corriente}
-              onChange={e => setForm(f => ({ ...f, tiene_cuenta_corriente: e.target.checked }))}
-            />
-          }
-          label="Gestionar cuenta corriente"
-        />
 
         {/* Alias */}
         <Box>
@@ -482,7 +468,7 @@ function FilaPago({ row, onAnular, movimientosPorId = {} }) {
             </Typography>
           )}
         </TableCell>
-        <TableCell sx={{ whiteSpace: 'nowrap', color: 'text.disabled', fontSize: '0.75rem' }}>
+        <TableCell sx={{ whiteSpace: 'nowrap', color: 'text.disabled', fontSize: '0.75rem', display: { xs: 'none', lg: 'table-cell' } }}>
           {formatCreadoEn(getCreadoMs(pago))}
         </TableCell>
         <TableCell sx={{ width: 32, p: 0.5 }}>
@@ -704,7 +690,7 @@ function FilaMovimiento({ row }) {
           </Typography>
         )}
       </TableCell>
-      <TableCell sx={{ whiteSpace: 'nowrap', color: 'text.disabled', fontSize: '0.75rem' }}>
+      <TableCell sx={{ whiteSpace: 'nowrap', color: 'text.disabled', fontSize: '0.75rem', display: { xs: 'none', lg: 'table-cell' } }}>
         {formatCreadoEn(getCreadoMs(m))}
       </TableCell>
       <TableCell sx={{ width: 32 }} />
@@ -980,7 +966,7 @@ function TabCuentaCorriente({
                 <TableCell align="right">Debe</TableCell>
                 <TableCell align="right">Haber</TableCell>
                 <TableCell align="right">Saldo</TableCell>
-                <TableCell sortDirection={sortBy === 'creadoEn' ? 'asc' : false}>
+                <TableCell sortDirection={sortBy === 'creadoEn' ? 'asc' : false} sx={{ display: { xs: 'none', lg: 'table-cell' } }}>
                   <Tooltip title="Cuándo se cargó en el sistema">
                     <TableSortLabel
                       active={sortBy === 'creadoEn'}
@@ -1389,8 +1375,8 @@ function ProveedorDrawer({ open, onClose, proveedorId, proveedorNombreHint, empr
       }
     : {
         '& .MuiDrawer-paper': {
-          width: 'min(880px, 95vw)',
-          maxWidth: '95vw',
+          width: 'min(1250px, 96vw)',
+          maxWidth: '96vw',
           display: 'flex',
           flexDirection: 'column',
         },

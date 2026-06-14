@@ -24,6 +24,7 @@ import {
   TableBody,
   TableCell,
   TableHead,
+  TablePagination,
   TableRow,
   Tabs,
   TextField,
@@ -94,6 +95,10 @@ function ProveedoresContent({ empresa, refreshKey }) {
   const [seleccionados, setSeleccionados] = useState(() => new Set());
   const [ajusteDialogOpen, setAjusteDialogOpen] = useState(false);
   const [filtroTipo, setFiltroTipo] = useState('todos'); // 'todos' | 'materiales' | 'mano_de_obra'
+
+  // Paginación de la lista (client-side) para no renderizar cientos de filas a la vez.
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(25);
 
   // CSV
   const csvInputRef = useRef(null);
@@ -194,6 +199,18 @@ function ProveedoresContent({ empresa, refreshKey }) {
     }
     return arr;
   }, [filtrados, tab, resumenMap]);
+
+  // Volver a la primera página cuando cambian los filtros/orden, para no quedar
+  // en una página vacía (ej. estabas en la pág 5 y el filtro deja 10 resultados).
+  useEffect(() => {
+    setPage(0);
+  }, [busqueda, filtroTipo, tab]);
+
+  // Subconjunto visible según la página actual.
+  const paginados = useMemo(
+    () => ordenados.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage),
+    [ordenados, page, rowsPerPage],
+  );
 
   // ── Contadores por tab ─────────────────────────────────────────────────────
   const counts = useMemo(() => {
@@ -525,7 +542,7 @@ function ProveedoresContent({ empresa, refreshKey }) {
               </TableRow>
             </TableHead>
             <TableBody>
-              {ordenados.map((prov) => {
+              {paginados.map((prov) => {
                 const id = prov._id || prov.id;
                 const r = resumenMap[id];
                 return (
@@ -615,6 +632,19 @@ function ProveedoresContent({ empresa, refreshKey }) {
               })}
             </TableBody>
           </Table>
+        )}
+        {ordenados.length > 0 && (
+          <TablePagination
+            component="div"
+            count={ordenados.length}
+            page={page}
+            onPageChange={(e, newPage) => setPage(newPage)}
+            rowsPerPage={rowsPerPage}
+            onRowsPerPageChange={(e) => { setRowsPerPage(parseInt(e.target.value, 10)); setPage(0); }}
+            rowsPerPageOptions={[25, 50, 100]}
+            labelRowsPerPage="Por página:"
+            labelDisplayedRows={({ from, to, count }) => `${from}–${to} de ${count}`}
+          />
         )}
       </Paper>
 
