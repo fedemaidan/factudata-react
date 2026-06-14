@@ -775,6 +775,11 @@ const createdAtStr = (() => {
     [empresa]
   );
 
+  // Si la empresa tiene el proyecto como obligatorio, no ofrecemos "Sin asignar"
+  // en la pantalla de selección: dejaría guardar sin proyecto y la validación
+  // de submit lo rechazaría sin un campo donde corregirlo (queda trabado).
+  const proyectoEsObligatorio = requiredFieldNames.includes('proyecto');
+
   const getValidationLabel = (fieldName) => FIELD_LABELS[fieldName] || fieldName;
 
   const validateMovementForm = (values) => {
@@ -1797,7 +1802,11 @@ const createdAtStr = (() => {
           <div className="flex flex-1 flex-col items-center justify-center px-4 py-8">
             <div className="w-full max-w-md rounded-xl border border-divider bg-white p-6 shadow-sm">
               <h2 className="text-center text-lg font-semibold text-neutral-900">¿A qué proyecto asignar este movimiento?</h2>
-              <p className="mt-2 text-center text-sm text-neutral-600">Podés elegir un proyecto o dejarlo sin asignar.</p>
+              <p className="mt-2 text-center text-sm text-neutral-600">
+                {proyectoEsObligatorio
+                  ? 'Elegí un proyecto para continuar.'
+                  : 'Podés elegir un proyecto o dejarlo sin asignar.'}
+              </p>
               <div className="mt-5 flex max-h-64 flex-col gap-2 overflow-y-auto">
                 {(proyectos || []).map((p) => (
                   <button
@@ -1813,15 +1822,17 @@ const createdAtStr = (() => {
                   <p className="px-1 text-xs text-neutral-500">No hay proyectos cargados en la empresa.</p>
                 )}
               </div>
-              <div className="mt-4 border-t border-divider pt-4">
-                <button
-                  type="button"
-                  onClick={() => setProyectoManual({ id: null, nombre: null })}
-                  className="w-full rounded-lg border border-dashed border-neutral-400 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
-                >
-                  Sin asignar proyecto
-                </button>
-              </div>
+              {!proyectoEsObligatorio && (
+                <div className="mt-4 border-t border-divider pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setProyectoManual({ id: null, nombre: null })}
+                    className="w-full rounded-lg border border-dashed border-neutral-400 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+                  >
+                    Sin asignar proyecto
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         ) : modoIngreso === null && !isEditMode ? (
