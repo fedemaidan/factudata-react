@@ -7,7 +7,7 @@ import { Logo } from 'src/components/logo';
 // A diferencia del DashboardLayout, no monta el guard ni el sidebar, así que no redirige
 // a /auth/login ni dispara llamadas autenticadas al backend.
 export const Layout = (props) => {
-  const { children, title } = props;
+  const { children, title, rightSlot } = props;
 
   return (
     <Box component="main" sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
@@ -31,9 +31,9 @@ export const Layout = (props) => {
               <Typography variant="subtitle1" fontWeight={700}>Sorbydata</Typography>
               <Chip size="small" label="demo" color="warning" variant="outlined" />
             </Stack>
-            {title && (
-              <Typography variant="caption" color="text.secondary" noWrap>{title}</Typography>
-            )}
+            {rightSlot
+              ? rightSlot
+              : title && <Typography variant="caption" color="text.secondary" noWrap>{title}</Typography>}
           </Stack>
         </Container>
       </Box>
@@ -45,4 +45,5 @@ export const Layout = (props) => {
 Layout.propTypes = {
   children: PropTypes.node,
   title: PropTypes.string,
+  rightSlot: PropTypes.node,
 };

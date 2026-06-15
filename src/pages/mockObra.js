@@ -47,6 +47,8 @@ import PhotoLibraryIcon from '@mui/icons-material/PhotoLibrary';
 import ConstructionIcon from '@mui/icons-material/Construction';
 import CalculateIcon from '@mui/icons-material/Calculate';
 import SpeedIcon from '@mui/icons-material/Speed';
+import DashboardIcon from '@mui/icons-material/Dashboard';
+import FactCheckIcon from '@mui/icons-material/FactCheck';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -107,6 +109,34 @@ const CONTRATO = {
   anticipo_pct: 0.20,                    // anticipo (20%)
   amortiza_anticipo: true,               // cada certificado amortiza una fracción del anticipo
 };
+
+// ─── Perfil de obra (T-21): prende/apaga las mecánicas financieras por nivel ─────
+// Cuatro niveles, del más simple al más complejo. Cada uno setea el contrato; la UI
+// muestra/oculta CAC, retención y anticipo según corresponda (no es un binario).
+const PERFILES_OBRA = {
+  reforma: {
+    label: 'Obra chica / reforma', short: 'Chica / reforma',
+    desc: 'Precio cerrado en pesos. Sin CAC, sin fondo de reparo y sin anticipo. Lo más simple: certificás un monto y listo.',
+    contrato: { unidad_cuenta: 'ARS', politica_redeterminacion: 'firme', retencion_pct: 0, anticipo_pct: 0, amortiza_anticipo: false },
+  },
+  vivienda: {
+    label: 'Casa / vivienda', short: 'Casa / vivienda',
+    desc: 'Precio cerrado en pesos, pero con anticipo (se cobra al inicio y se amortiza en cada certificado). Sin CAC ni fondo de reparo.',
+    contrato: { unidad_cuenta: 'ARS', politica_redeterminacion: 'firme', retencion_pct: 0, anticipo_pct: 0.10, amortiza_anticipo: true },
+  },
+  privada: {
+    label: 'Obra privada / desarrollo', short: 'Privada / desarrollo',
+    desc: 'Redeterminación por CAC (los montos se ajustan en el tiempo) + anticipo amortizable. Sin fondo de reparo. Típico de desarrolladoras.',
+    contrato: { unidad_cuenta: 'CAC', politica_redeterminacion: 'continua', retencion_pct: 0, anticipo_pct: 0.15, amortiza_anticipo: true },
+  },
+  publica: {
+    label: 'Obra grande / pública', short: 'Grande / pública',
+    desc: 'El esquema completo: CAC + fondo de reparo (retención que se libera en la recepción) + anticipo amortizable. Certificación formal por rubro.',
+    contrato: { unidad_cuenta: 'CAC', politica_redeterminacion: 'continua', retencion_pct: 0.05, anticipo_pct: 0.20, amortiza_anticipo: true },
+  },
+};
+// Aplica el preset mutando CONTRATO (las helpers puras leen CONTRATO en cada render).
+const aplicarPerfil = (p) => Object.assign(CONTRATO, (PERFILES_OBRA[p] || PERFILES_OBRA.publica).contrato);
 
 // Serie del índice CAC (base mar-2026 = 100). Valor por mes.
 const SERIE_CAC = {
@@ -1082,7 +1112,7 @@ function TabEjecucion({ rubros, certificados, gastos, certificacionesMO = [], or
 
 // ─── Tab: Plan de Cobro ────────────────────────────────────────────────────────
 
-function TabPlanCobro({ cuotas, rubros, certificados, onAgregarCuota, onCobrar, retencionLiberada }) {
+function TabPlanCobro({ cuotas, rubros, certificados, onAgregarCuota, onCobrar, retencionLiberada, fin = {} }) {
   // Deducciones (#2): sólo las cuotas tipo certificado descuentan retención + amortización del bruto liberado.
   const desgQ = (q) => q.tipo === 'certificado'
     ? desgloseCobro(q.monto_liberado)
@@ -1098,11 +1128,11 @@ function TabPlanCobro({ cuotas, rubros, certificados, onAgregarCuota, onCobrar, 
   return (
     <Box>
       <Stack direction="row" spacing={2} flexWrap="wrap" mb={3} useFlexGap>
-        <KpiCard label="Cobrado (neto)" value={fmtM(totalCobrado)} sub={`${((totalCobrado / PROYECTO.total) * 100).toFixed(1)}% del contrato`} color="success.main" />
-        <KpiCard label="Liberado por cobrar (neto)" value={fmtM(porCobrarNeto)} sub="certificado aprobado, neto de deducciones" color="warning.main" tooltip={`Neto = bruto − retención (${Math.round(CONTRATO.retencion_pct * 100)}%) − amortización del anticipo (${Math.round(CONTRATO.anticipo_pct * 100)}%).`} />
-        <KpiCard label={retencionLiberada ? 'Fondo de reparo liberado' : 'Fondo de reparo retenido'} value={fmtM(fondoReparo)} sub={retencionLiberada ? 'liberado en recepción definitiva ✓' : `retención ${Math.round(CONTRATO.retencion_pct * 100)}% · se libera en recepción definitiva`} color={retencionLiberada ? 'success.main' : 'text.primary'} tooltip="Retención acumulada que se libera recién en la recepción definitiva de la obra (evento liberacion_retenciones)." />
-        <KpiCard label="Anticipo amortizado" value={fmtM(amortizado)} sub={`de ${fmtM(Math.round(PROYECTO.total * CONTRATO.anticipo_pct))} de anticipo`} tooltip="El anticipo se cobró una vez al inicio; cada certificado lo amortiza. No se cuenta dos veces." />
-        <KpiCard label="Próxima cuota" value={proximaCuota ? fmtM(desgQ(proximaCuota).neto) : '—'} sub={proximaCuota ? `neto · de ${fmtM(proximaCuota.monto)} total` : 'Sin cuotas disponibles'} color="warning.main" />
+        <KpiCard label={fin.deduc ? 'Cobrado (neto)' : 'Cobrado'} value={fmtM(totalCobrado)} sub={`${((totalCobrado / PROYECTO.total) * 100).toFixed(1)}% del contrato`} color="success.main" />
+        <KpiCard label={fin.deduc ? 'Liberado por cobrar (neto)' : 'Liberado por cobrar'} value={fmtM(porCobrarNeto)} sub={fin.deduc ? 'certificado aprobado, neto de deducciones' : 'certificado aprobado'} color="warning.main" tooltip={fin.deduc ? `Neto = bruto${fin.retencion ? ` − retención (${Math.round(CONTRATO.retencion_pct * 100)}%)` : ''}${fin.anticipo ? ` − amortización del anticipo (${Math.round(CONTRATO.anticipo_pct * 100)}%)` : ''}.` : undefined} />
+        {fin.retencion && <KpiCard label={retencionLiberada ? 'Fondo de reparo liberado' : 'Fondo de reparo retenido'} value={fmtM(fondoReparo)} sub={retencionLiberada ? 'liberado en recepción definitiva ✓' : `retención ${Math.round(CONTRATO.retencion_pct * 100)}% · se libera en recepción definitiva`} color={retencionLiberada ? 'success.main' : 'text.primary'} tooltip="Retención acumulada que se libera recién en la recepción definitiva de la obra (evento liberacion_retenciones)." />}
+        {fin.anticipo && <KpiCard label="Anticipo amortizado" value={fmtM(amortizado)} sub={`de ${fmtM(Math.round(PROYECTO.total * CONTRATO.anticipo_pct))} de anticipo`} tooltip="El anticipo se cobró una vez al inicio; cada certificado lo amortiza. No se cuenta dos veces." />}
+        <KpiCard label="Próxima cuota" value={proximaCuota ? fmtM(desgQ(proximaCuota).neto) : '—'} sub={proximaCuota ? (fin.deduc ? `neto · de ${fmtM(proximaCuota.monto)} total` : `de ${fmtM(proximaCuota.monto)} total`) : 'Sin cuotas disponibles'} color="warning.main" />
       </Stack>
 
       <Stack spacing={2}>
@@ -1143,19 +1173,19 @@ function TabPlanCobro({ cuotas, rubros, certificados, onAgregarCuota, onCobrar, 
                     {/* Barra de liberado */}
                     <Stack spacing={0.5}>
                       <Stack direction="row" justifyContent="space-between">
-                        <Typography variant="caption" color="text.secondary">Liberado bruto (cert. aprobado)</Typography>
+                        <Typography variant="caption" color="text.secondary">{fin.deduc ? 'Liberado bruto (cert. aprobado)' : 'Liberado (cert. aprobado)'}</Typography>
                         <Typography variant="caption" fontWeight={600}>{fmtM(q.monto_liberado)} de {fmtM(q.monto)}</Typography>
                       </Stack>
                       <LinearProgress variant="determinate" value={pctLib} color="warning" sx={{ height: 8, borderRadius: 4, bgcolor: 'neutral.100' }} />
                     </Stack>
-                    {/* Desglose de deducciones (#2) */}
-                    {q.monto_liberado > 0 && (() => {
+                    {/* Desglose de deducciones (#2) — sólo las que aplican según el perfil */}
+                    {fin.deduc && q.monto_liberado > 0 && (() => {
                       const d = desgQ(q);
                       return (
                         <Stack spacing={0.25} mt={1} sx={{ bgcolor: 'neutral.50', borderRadius: 1, p: 1 }}>
                           <Stack direction="row" justifyContent="space-between"><Typography variant="caption" color="text.secondary">Bruto liberado</Typography><Typography variant="caption">{fmt(d.bruto)}</Typography></Stack>
-                          <Stack direction="row" justifyContent="space-between"><Typography variant="caption" color="text.secondary">− Retención ({Math.round(CONTRATO.retencion_pct * 100)}%)</Typography><Typography variant="caption" color="error.main">−{fmt(d.retencion)}</Typography></Stack>
-                          <Stack direction="row" justifyContent="space-between"><Typography variant="caption" color="text.secondary">− Amortización anticipo ({Math.round(CONTRATO.anticipo_pct * 100)}%)</Typography><Typography variant="caption" color="error.main">−{fmt(d.amortizacion)}</Typography></Stack>
+                          {fin.retencion && <Stack direction="row" justifyContent="space-between"><Typography variant="caption" color="text.secondary">− Retención ({Math.round(CONTRATO.retencion_pct * 100)}%)</Typography><Typography variant="caption" color="error.main">−{fmt(d.retencion)}</Typography></Stack>}
+                          {fin.anticipo && <Stack direction="row" justifyContent="space-between"><Typography variant="caption" color="text.secondary">− Amortización anticipo ({Math.round(CONTRATO.anticipo_pct * 100)}%)</Typography><Typography variant="caption" color="error.main">−{fmt(d.amortizacion)}</Typography></Stack>}
                           <Divider sx={{ my: 0.25 }} />
                           <Stack direction="row" justifyContent="space-between"><Typography variant="caption" fontWeight={700}>Neto a cobrar</Typography><Typography variant="caption" fontWeight={700} color="warning.main">{fmt(d.neto)}</Typography></Stack>
                         </Stack>
@@ -1182,7 +1212,7 @@ function TabPlanCobro({ cuotas, rubros, certificados, onAgregarCuota, onCobrar, 
                   <Box>
                     <Typography variant="h6" fontWeight={700}>{fmt(q.monto)}</Typography>
                     {q.tipo === 'certificado' && q.monto_liberado > 0 && q.monto_cobrado === 0 && (
-                      <Typography variant="caption" color="warning.main">Disponible para cobrar (neto): {fmtM(desgQ(q).neto)}</Typography>
+                      <Typography variant="caption" color="warning.main">Disponible para cobrar{fin.deduc ? ' (neto)' : ''}: {fmtM(desgQ(q).neto)}</Typography>
                     )}
                     {q.estado === 'cobrado' && q.fecha_cobro && (
                       <Typography variant="caption" color="success.main">Cobrado el {q.fecha_cobro}</Typography>
@@ -1219,7 +1249,7 @@ function TabPlanCobro({ cuotas, rubros, certificados, onAgregarCuota, onCobrar, 
 
 const ADJUNTOS_MOCK = ['foto_avance_1.jpg', 'foto_avance_2.jpg', 'medicion_parcial.pdf'];
 
-function DialogNuevoCertificado({ open, onClose, rubros, cuotas, certificados, onGuardar, prefill }) {
+function DialogNuevoCertificado({ open, onClose, rubros, cuotas, certificados, onGuardar, prefill, fin = {} }) {
   const [step,      setStep]      = useState(0);
   const [renglones, setRenglones] = useState([{ rubroId: '', avance: '' }]);
   const [notas,     setNotas]     = useState('');
@@ -1280,7 +1310,7 @@ function DialogNuevoCertificado({ open, onClose, rubros, cuotas, certificados, o
         {step === 0 && (
           <Stack spacing={2}>
             <Typography variant="caption" color="text.secondary">
-              Un certificado es un período con uno o varios renglones (una línea por rubro). Valorización {hoyStr} · coef CAC ×{coefHoy.toFixed(3)}.
+              Un certificado es un período con uno o varios renglones (una línea por rubro). Valorización {hoyStr}{fin.redet ? ` · coef CAC ×${coefHoy.toFixed(3)}` : ''}.
             </Typography>
             {renglonesCalc.map((rl, i) => (
               <Paper key={i} variant="outlined" sx={{ p: 1.5 }}>
@@ -1312,7 +1342,7 @@ function DialogNuevoCertificado({ open, onClose, rubros, cuotas, certificados, o
                 </Stack>
                 {rl.rubro && rl.avanceNum > 0 && (
                   <Typography variant="caption" color="text.secondary" mt={0.5} display="block">
-                    Período +{rl.periodoPct}% (cert. previo {rl.certPrev}%) · base {fmtM(rl.montoBase)} · ARS {fmt(rl.montoArs)}
+                    Período +{rl.periodoPct}% (cert. previo {rl.certPrev}%){fin.redet ? ` · base ${fmtM(rl.montoBase)} · ARS ${fmt(rl.montoArs)}` : ` · ${fmt(rl.montoArs)}`}
                   </Typography>
                 )}
               </Paper>
@@ -1321,7 +1351,7 @@ function DialogNuevoCertificado({ open, onClose, rubros, cuotas, certificados, o
             <TextField label="Descripción del avance" size="small" multiline rows={2} value={notas} onChange={e => setNotas(e.target.value)} placeholder="Qué trabajo se completó..." />
             {valida.length > 0 && (
               <Alert severity="info" icon={<VerifiedIcon />}>
-                Total del certificado: <strong>{fmt(totalArs)}</strong> ({CONTRATO.unidad_cuenta}, base {fmtM(totalBase)}). Al aprobarse se congela el coeficiente y se libera la parte proporcional de las cuotas vinculadas (neto de retención {Math.round(CONTRATO.retencion_pct * 100)}% y amortización {Math.round(CONTRATO.anticipo_pct * 100)}%).
+                Total del certificado: <strong>{fmt(totalArs)}</strong>{fin.redet ? ` (${CONTRATO.unidad_cuenta}, base ${fmtM(totalBase)})` : ''}. Al aprobarse{fin.redet ? ' se congela el coeficiente y' : ''} se libera la parte proporcional de las cuotas vinculadas{fin.deduc ? ` (neto de ${[fin.retencion && `retención ${Math.round(CONTRATO.retencion_pct * 100)}%`, fin.anticipo && `amortización ${Math.round(CONTRATO.anticipo_pct * 100)}%`].filter(Boolean).join(' y ')})` : ''}.
               </Alert>
             )}
           </Stack>
@@ -1360,7 +1390,7 @@ function DialogNuevoCertificado({ open, onClose, rubros, cuotas, certificados, o
                 {valida.map((r, i) => (
                   <Typography key={i} variant="body2" color="text.secondary">{r.rubro.nombre} — {r.avanceNum}% acum. (+{r.periodoPct}%) · {fmt(r.montoArs)}</Typography>
                 ))}
-                <Typography variant="body2" fontWeight={700} mt={0.5}>Total: {fmt(totalArs)} ({CONTRATO.unidad_cuenta})</Typography>
+                <Typography variant="body2" fontWeight={700} mt={0.5}>Total: {fmt(totalArs)}{fin.redet ? ` (${CONTRATO.unidad_cuenta})` : ''}</Typography>
                 {adjuntos.length > 0 && <Typography variant="caption" color="text.secondary">{adjuntos.length} adjunto{adjuntos.length > 1 ? 's' : ''}</Typography>}
               </CardContent>
             </Card>
@@ -1388,7 +1418,7 @@ function DialogNuevoCertificado({ open, onClose, rubros, cuotas, certificados, o
 
 // ─── Dialog: Informe del Certificado (vista del cliente) ──────────────────────
 
-function DialogInformeCertificado({ open, onClose, cert, onAprobar, onRechazar }) {
+function DialogInformeCertificado({ open, onClose, cert, onAprobar, onRechazar, fin = {}, puedeAprobar }) {
   if (!cert) return null;
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
@@ -1420,8 +1450,8 @@ function DialogInformeCertificado({ open, onClose, cert, onAprobar, onRechazar }
                   <TableCell>Rubro</TableCell>
                   <TableCell align="center">Avance acum.</TableCell>
                   <TableCell align="center">Del período</TableCell>
-                  <TableCell align="right">Base</TableCell>
-                  <TableCell align="center">Coef.</TableCell>
+                  {fin.redet && <TableCell align="right">Base</TableCell>}
+                  {fin.redet && <TableCell align="center">Coef.</TableCell>}
                   <TableCell align="right">Monto ARS</TableCell>
                 </TableRow>
               </TableHead>
@@ -1433,14 +1463,14 @@ function DialogInformeCertificado({ open, onClose, cert, onAprobar, onRechazar }
                       <TableCell><Typography variant="body2" fontWeight={600}>{ren.rubro}</Typography></TableCell>
                       <TableCell align="center"><Chip size="small" label={`${ren.avance_acumulado_pct}%`} color={ren.avance_acumulado_pct === 100 ? 'success' : 'warning'} /></TableCell>
                       <TableCell align="center"><Typography variant="caption" color="text.secondary">+{ren.avance_periodo_pct}%</Typography></TableCell>
-                      <TableCell align="right"><Typography variant="caption" color="text.secondary">{fmtM(ren.monto_base)}</Typography></TableCell>
-                      <TableCell align="center"><Typography variant="caption" color={coef !== 1 ? 'warning.main' : 'text.secondary'}>×{coef.toFixed(3)}</Typography></TableCell>
+                      {fin.redet && <TableCell align="right"><Typography variant="caption" color="text.secondary">{fmtM(ren.monto_base)}</Typography></TableCell>}
+                      {fin.redet && <TableCell align="center"><Typography variant="caption" color={coef !== 1 ? 'warning.main' : 'text.secondary'}>×{coef.toFixed(3)}</Typography></TableCell>}
                       <TableCell align="right"><Typography variant="body2" fontWeight={700}>{fmt(renglonArs(cert, ren))}</Typography></TableCell>
                     </TableRow>
                   );
                 })}
                 <TableRow>
-                  <TableCell colSpan={5} align="right"><Typography variant="body2" fontWeight={700}>Total {CONTRATO.unidad_cuenta}</Typography></TableCell>
+                  <TableCell colSpan={fin.redet ? 5 : 3} align="right"><Typography variant="body2" fontWeight={700}>Total{fin.redet ? ` ${CONTRATO.unidad_cuenta}` : ''}</Typography></TableCell>
                   <TableCell align="right"><Typography variant="body2" fontWeight={700}>{fmt(certTotalArs(cert))}</Typography></TableCell>
                 </TableRow>
               </TableBody>
@@ -1481,7 +1511,7 @@ function DialogInformeCertificado({ open, onClose, cert, onAprobar, onRechazar }
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>Cerrar</Button>
-        {cert.estado === 'enviado' && (
+        {cert.estado === 'enviado' && puedeAprobar && (
           <>
             <Button color="error" startIcon={<ThumbDownIcon />} onClick={() => { onRechazar(cert.id); onClose(); }}>Rechazar (simular)</Button>
             <Button variant="contained" color="success" startIcon={<ThumbUpIcon />} onClick={() => { onAprobar(cert.id); onClose(); }}>Aprobar (simular)</Button>
@@ -1603,8 +1633,9 @@ function DialogWASimulator({ open, onClose, rubros, onGuardar, onActualizarAvanc
 
 // ─── Tab: Certificados ────────────────────────────────────────────────────────
 
-function TabCertificados({ certificados, rubros, onNuevoCert, onEnviar, onAprobar, onRechazar, onWA, readOnly }) {
+function TabCertificados({ certificados, rubros, onNuevoCert, onEnviar, onAprobar, onRechazar, onWA, readOnly, fin = {}, puedeAprobar }) {
   const [certInforme, setCertInforme] = useState(null);
+  const verAcciones = !readOnly || puedeAprobar;   // comercial (solo ver) no ve acciones
   const totalCert   = certificados.reduce((s, c) => s + certTotalArs(c), 0);
   const aprobados   = certificados.filter(c => c.estado === 'aprobado').length;
   const pendientes  = certificados.filter(c => c.estado === 'enviado').length;
@@ -1615,7 +1646,9 @@ function TabCertificados({ certificados, rubros, onNuevoCert, onEnviar, onAproba
         <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap flex={1}>
           <KpiCard label="Emitidos" value={certificados.length} sub={`${aprobados} aprobados · ${pendientes} en revisión`} />
           <KpiCard label="Total certificado" value={fmtM(totalCert)} sub="aprobados + enviados" color="warning.main" />
-          <KpiCard label="Unidad de cuenta" value={CONTRATO.unidad_cuenta} sub={`redeterminación ${CONTRATO.politica_redeterminacion}`} tooltip={`Los montos se valorizan en ${UNIDAD_LABEL[CONTRATO.unidad_cuenta]} (base ${CONTRATO.fecha_base}). El coeficiente se congela al aprobar cada certificado.`} />
+          {fin.redet
+            ? <KpiCard label="Unidad de cuenta" value={CONTRATO.unidad_cuenta} sub={`redeterminación ${CONTRATO.politica_redeterminacion}`} tooltip={`Los montos se valorizan en ${UNIDAD_LABEL[CONTRATO.unidad_cuenta]} (base ${CONTRATO.fecha_base}). El coeficiente se congela al aprobar cada certificado.`} />
+            : <KpiCard label="Unidad de cuenta" value="ARS" sub="precio firme · sin redeterminación" />}
         </Stack>
         {!readOnly && (
           <Stack direction="row" spacing={1} ml={2} flexShrink={0}>
@@ -1636,7 +1669,7 @@ function TabCertificados({ certificados, rubros, onNuevoCert, onEnviar, onAproba
               <TableCell align="right">Monto ARS</TableCell>
               <TableCell align="center">Estado</TableCell>
               <TableCell>Enviado</TableCell>
-              {!readOnly && <TableCell align="center">Acciones</TableCell>}
+              {verAcciones && <TableCell align="center">Acciones</TableCell>}
             </TableRow>
           </TableHead>
           <TableBody>
@@ -1666,7 +1699,7 @@ function TabCertificados({ certificados, rubros, onNuevoCert, onEnviar, onAproba
                   </TableCell>
                   <TableCell align="right">
                     <Typography variant="body2" fontWeight={600}>{fmt(totalArs)}</Typography>
-                    {redeterm && <Typography variant="caption" color="text.disabled">base {fmtM(totalBase)} · CAC</Typography>}
+                    {redeterm && fin.redet && <Typography variant="caption" color="text.disabled">base {fmtM(totalBase)} · CAC</Typography>}
                   </TableCell>
                   <TableCell align="center"><Chip size="small" label={est.label} color={est.color} icon={est.icon} /></TableCell>
                   <TableCell>
@@ -1676,17 +1709,17 @@ function TabCertificados({ certificados, rubros, onNuevoCert, onEnviar, onAproba
                         </Typography>
                       : <Typography variant="caption" color="text.disabled">—</Typography>}
                   </TableCell>
-                  {!readOnly && (
+                  {verAcciones && (
                     <TableCell align="center">
                       <Stack direction="row" spacing={0.5} justifyContent="center">
                         <Tooltip title="Ver informe"><IconButton size="small" onClick={() => setCertInforme(c)}><PictureAsPdfIcon fontSize="small" /></IconButton></Tooltip>
-                        {c.estado === 'borrador' && (
+                        {c.estado === 'borrador' && !readOnly && (
                           <Tooltip title="Enviar al cliente"><IconButton size="small" color="primary" onClick={() => onEnviar(c.id)}><SendIcon fontSize="small" /></IconButton></Tooltip>
                         )}
-                        {c.estado === 'enviado' && (
+                        {c.estado === 'enviado' && puedeAprobar && (
                           <Tooltip title="Marcar aprobado (simular cliente)"><IconButton size="small" color="success" onClick={() => onAprobar(c.id)}><ThumbUpIcon fontSize="small" /></IconButton></Tooltip>
                         )}
-                        {c.estado === 'enviado' && (
+                        {c.estado === 'enviado' && puedeAprobar && (
                           <Tooltip title="Marcar rechazado (simular cliente)"><IconButton size="small" color="error" onClick={() => onRechazar(c.id)}><ThumbDownIcon fontSize="small" /></IconButton></Tooltip>
                         )}
                       </Stack>
@@ -1700,7 +1733,7 @@ function TabCertificados({ certificados, rubros, onNuevoCert, onEnviar, onAproba
       </TableContainer>
 
       <DialogInformeCertificado
-        open={!!certInforme} cert={certInforme}
+        open={!!certInforme} cert={certInforme} fin={fin} puedeAprobar={puedeAprobar}
         onClose={() => setCertInforme(null)}
         onAprobar={(id) => { onAprobar(id); setCertInforme(null); }}
         onRechazar={(id) => { onRechazar(id); setCertInforme(null); }}
@@ -2266,11 +2299,20 @@ function DialogNuevaCertificacionMO({ open, onClose, contratistas, certificacion
 }
 
 // ─── Tab: Mano de obra (contratistas + certificación + órdenes de pago) ─────────
-function TabManoObra({ contratistas, certificacionesMO, ordenesPago, rubros, certificados, onNuevaCert, onAprobarCert, onPagarOrden }) {
+function TabManoObra({ contratistas, certificacionesMO, ordenesPago, rubros, certificados, partes = [], onNuevaCert, onAprobarCert, onPagarOrden }) {
   const totalCertMO   = certificacionesMO.filter(c => c.estado !== 'borrador').reduce((s, c) => s + c.renglones.reduce((a, r) => a + r.monto_periodo, 0), 0);
   const ordPendientes = ordenesPago.filter(o => o.estado === 'pendiente');
   const netoPendiente = ordPendientes.reduce((s, o) => s + o.neto, 0);
   const netoPagado    = ordenesPago.filter(o => o.estado === 'pagada').reduce((s, o) => s + o.neto, 0);
+
+  // Jueves de pagos unificado (T-07): subcontratistas (órdenes) + jornalizados (partes de la semana).
+  const jornalPorCt   = {};
+  partes.forEach(p => { jornalPorCt[p.contratista_id] = (jornalPorCt[p.contratista_id] || 0) + jornalCostoParte(p); });
+  const jornalLines   = Object.entries(jornalPorCt);
+  const jornalTotal   = jornalLines.reduce((s, [, c]) => s + c, 0);
+  const hhDeCt        = (ctId) => partes.filter(p => p.contratista_id === ctId).reduce((s, p) => s + p.renglones.reduce((a, r) => a + r.hh, 0), 0);
+  const totalSemana   = netoPendiente + jornalTotal;
+  const haySemana     = ordPendientes.length > 0 || jornalLines.length > 0;
 
   // Margen de MO por contratista = certificado al cliente (aprobado) − certificado al contratista, sobre sus rubros.
   const margenContratista = (ct) => ct.asignaciones.reduce((s, a) => {
@@ -2281,14 +2323,19 @@ function TabManoObra({ contratistas, certificacionesMO, ordenesPago, rubros, cer
 
   return (
     <Box>
-      {/* Pagos de la semana — la rutina del jueves */}
-      {ordPendientes.length > 0 && (
+      {/* Pagos de la semana (T-07) — subcontratistas + jornalizados, la rutina del jueves */}
+      {haySemana && (
         <Alert severity="warning" icon={<PaymentsIcon />} sx={{ mb: 2 }}
-          action={<Typography variant="caption" fontWeight={700} sx={{ alignSelf: 'center', mr: 1 }}>{fmtM(netoPendiente)} a pagar</Typography>}>
-          <strong>Pagos de la semana — {ordPendientes.length} orden{ordPendientes.length > 1 ? 'es' : ''} pendiente{ordPendientes.length > 1 ? 's' : ''}</strong>
+          action={<Typography variant="caption" fontWeight={700} sx={{ alignSelf: 'center', mr: 1 }}>{fmtM(totalSemana)} a pagar</Typography>}>
+          <strong>Pagos de la semana — {ordPendientes.length} subcontrato{ordPendientes.length === 1 ? '' : 's'} + {jornalLines.length} cuadrilla{jornalLines.length === 1 ? '' : 's'} jornalizada{jornalLines.length === 1 ? '' : 's'}</strong>
           {ordPendientes.map(o => (
             <Typography key={o.id} variant="caption" display="block" mt={0.25}>
-              {o.numero} — {CONTRATISTAS_MAP[o.contratista_id]?.nombre} — neto {fmt(o.neto)}
+              Subcontrato · {o.numero} — {CONTRATISTAS_MAP[o.contratista_id]?.nombre} — neto {fmt(o.neto)}
+            </Typography>
+          ))}
+          {jornalLines.map(([ctId, costo]) => (
+            <Typography key={ctId} variant="caption" display="block" mt={0.25}>
+              Jornales · {CONTRATISTAS_MAP[ctId]?.nombre} — {hhDeCt(ctId)} HH — {fmt(costo)}
             </Typography>
           ))}
         </Alert>
@@ -2482,8 +2529,10 @@ function DialogInconveniente({ open, onClose, rubros, onGuardar }) {
 }
 
 // ─── Tab: Reportes (ejecutivo / interno / conforme de obra) ─────────────────────
-function TabReportes({ rubros, certificados, cuotas, inconvenientes, onNuevoInconveniente, onResolverInconveniente, onCompletarObra, onEmitirConforme, ppFinalizado, retencionLiberada }) {
+function TabReportes({ rubros, certificados, cuotas, inconvenientes, onNuevoInconveniente, onResolverInconveniente, onCompletarObra, onEmitirConforme, ppFinalizado, retencionLiberada, fin = {} }) {
   const [vista, setVista] = useState('ejecutivo');
+  const [conformeChecks, setConformeChecks] = useState({ fotos: false, docs: false, firma: false });
+  const toggleCheck = (k) => setConformeChecks(p => ({ ...p, [k]: !p[k] }));
 
   const totalPresup      = PROYECTO.total;
   const avanceFisicoPond = rubros.reduce((s, r) => s + r.avance * (r.monto / totalPresup), 0);
@@ -2594,38 +2643,103 @@ function TabReportes({ rubros, certificados, cuotas, inconvenientes, onNuevoInco
         <Box>
           <Stack direction="row" spacing={2} flexWrap="wrap" mb={3} useFlexGap>
             <KpiCard label="Avance físico ponderado" value={`${avanceFisicoPond.toFixed(1)}%`} sub={completo ? 'obra terminada' : 'falta para el 100%'} color={completo ? 'success.main' : 'warning.main'} />
-            <KpiCard label="Fondo de reparo" value={fmtM(fondoReparo)} sub={retencionLiberada ? 'liberado ✓' : 'se libera con el conforme'} color={retencionLiberada ? 'success.main' : 'text.primary'} tooltip="La retención acumulada se libera recién al emitir el conforme de obra (evento liberacion_retenciones)." />
+            {fin.retencion && <KpiCard label="Fondo de reparo" value={fmtM(fondoReparo)} sub={retencionLiberada ? 'liberado ✓' : 'se libera con el conforme'} color={retencionLiberada ? 'success.main' : 'text.primary'} tooltip="La retención acumulada se libera recién al emitir el conforme de obra (evento liberacion_retenciones)." />}
             <KpiCard label="Inconvenientes abiertos" value={inconvenientes.filter(i => i.estado === 'abierto').length} sub="deberían resolverse antes del cierre" color={inconvenientes.some(i => i.estado === 'abierto') ? 'error.main' : 'success.main'} />
           </Stack>
-          <Paper variant="outlined" sx={{ p: 3, textAlign: 'center' }}>
-            <AssignmentTurnedInIcon sx={{ fontSize: 40, color: (completo || ppFinalizado) ? 'success.main' : 'text.disabled', mb: 1 }} />
-            <Typography variant="h6" fontWeight={700}>Conforme de obra / acta de recepción</Typography>
-            {ppFinalizado ? (
-              <>
-                <Typography variant="body2" color="success.main" mt={1} mb={2}>
-                  Conforme emitido · PP <strong>Finalizado</strong> · fondo de reparo liberado.
-                </Typography>
-                <Chip color="success" icon={<CheckCircleIcon />} label="Obra recepcionada" />
-              </>
-            ) : (
-              <>
-                <Typography variant="body2" color="text.secondary" mt={1} mb={2}>
-                  {completo
-                    ? 'La obra alcanzó el 100% físico. Al emitir el conforme se libera el fondo de reparo y el PP pasa a Finalizado.'
-                    : `Se habilita al 100% de avance físico ponderado (hoy ${avanceFisicoPond.toFixed(1)}%). Reúne el dossier de fotos + checklist + firma, libera el fondo de reparo y cierra el ciclo de vida del PP.`}
-                </Typography>
-                <Stack direction="row" spacing={1} justifyContent="center" flexWrap="wrap" useFlexGap>
+          {ppFinalizado ? (
+            <Paper variant="outlined" sx={{ p: 3, textAlign: 'center' }}>
+              <AssignmentTurnedInIcon sx={{ fontSize: 40, color: 'success.main', mb: 1 }} />
+              <Typography variant="h6" fontWeight={700}>Conforme de obra / acta de recepción</Typography>
+              <Typography variant="body2" color="success.main" mt={1} mb={2}>
+                Conforme emitido · PP <strong>Finalizado</strong>{fin.retencion ? ' · fondo de reparo liberado.' : '.'}
+              </Typography>
+              <Chip color="success" icon={<CheckCircleIcon />} label="Obra recepcionada" />
+            </Paper>
+          ) : (() => {
+            const inconvAbiertos = inconvenientes.filter(i => i.estado === 'abierto').length;
+            const certsPend = certificados.filter(c => c.estado === 'enviado').length;
+            const autoItems = [
+              { label: 'Avance físico al 100%', ok: completo },
+              { label: 'Inconvenientes resueltos', ok: inconvAbiertos === 0 },
+              { label: 'Certificados sin pendientes de aprobación', ok: certsPend === 0 },
+            ];
+            const manualItems = [
+              { k: 'fotos', label: 'Dossier de fotos de cierre cargado' },
+              { k: 'docs',  label: 'Documentación final entregada al comitente' },
+              { k: 'firma', label: 'Conformidad firmada por el comitente' },
+            ];
+            const manualOk = manualItems.every(i => conformeChecks[i.k]);
+            return (
+              <Stack spacing={2}>
+                {/* Acta preview */}
+                <Paper variant="outlined" sx={{ p: 2.5 }}>
+                  <Stack direction="row" alignItems="center" spacing={1} mb={1}>
+                    <AssignmentTurnedInIcon color={completo ? 'success' : 'disabled'} />
+                    <Typography variant="subtitle1" fontWeight={700}>Acta de recepción — {PROYECTO.nombre}</Typography>
+                  </Stack>
+                  <Typography variant="body2" color="text.secondary">{PROYECTO.cliente} · {PROYECTO.direccion}</Typography>
+                  <Stack direction="row" spacing={3} flexWrap="wrap" useFlexGap mt={1.5}>
+                    <Box><Typography variant="caption" color="text.secondary">Avance físico</Typography><Typography variant="body2" fontWeight={600}>{avanceFisicoPond.toFixed(1)}%</Typography></Box>
+                    <Box><Typography variant="caption" color="text.secondary">Certificado aprobado</Typography><Typography variant="body2" fontWeight={600}>{fmtM(montoCertAprob)}</Typography></Box>
+                    <Box><Typography variant="caption" color="text.secondary">Cobrado</Typography><Typography variant="body2" fontWeight={600}>{fmtM(cobrado)}</Typography></Box>
+                    {fin.retencion && <Box><Typography variant="caption" color="text.secondary">Fondo de reparo a liberar</Typography><Typography variant="body2" fontWeight={600}>{fmtM(fondoReparo)}</Typography></Box>}
+                    <Box><Typography variant="caption" color="text.secondary">Fotos de obra</Typography><Typography variant="body2" fontWeight={600}>{galeria.length}</Typography></Box>
+                  </Stack>
+                </Paper>
+
+                {/* Checklist de cierre */}
+                <Paper variant="outlined" sx={{ p: 2.5 }}>
+                  <Typography variant="subtitle2" fontWeight={600} mb={1}>Checklist de cierre</Typography>
+                  <Stack spacing={0.5}>
+                    {autoItems.map((it, i) => (
+                      <Stack key={i} direction="row" alignItems="center" spacing={1}>
+                        {it.ok ? <CheckCircleIcon color="success" fontSize="small" /> : <ReportProblemIcon color="warning" fontSize="small" />}
+                        <Typography variant="body2" color={it.ok ? 'text.primary' : 'text.secondary'}>{it.label}</Typography>
+                        {!it.ok && <Typography variant="caption" color="warning.main">pendiente</Typography>}
+                      </Stack>
+                    ))}
+                    {manualItems.map(it => (
+                      <FormControlLabel key={it.k} sx={{ ml: -1 }}
+                        control={<Checkbox size="small" checked={!!conformeChecks[it.k]} onChange={() => toggleCheck(it.k)} />}
+                        label={<Typography variant="body2">{it.label}</Typography>} />
+                    ))}
+                  </Stack>
+                </Paper>
+
+                {/* Antes / después */}
+                <Paper variant="outlined" sx={{ p: 2.5 }}>
+                  <Typography variant="subtitle2" fontWeight={600} mb={1}>Dossier antes / después</Typography>
+                  {galeria.length === 0
+                    ? <Typography variant="caption" color="text.secondary">No hay fotos cargadas todavía.</Typography>
+                    : (
+                      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 1 }}>
+                        {galeria.slice(0, 6).map((g, i) => (
+                          <Paper key={i} variant="outlined" sx={{ overflow: 'hidden' }}>
+                            <Box sx={{ height: 70, bgcolor: 'neutral.100', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><PhotoCameraIcon sx={{ color: 'text.disabled' }} /></Box>
+                            <Typography variant="caption" display="block" noWrap sx={{ px: 0.5, py: 0.25 }}>{g.origen}</Typography>
+                          </Paper>
+                        ))}
+                      </Box>
+                    )}
+                </Paper>
+
+                {/* Acciones */}
+                <Stack direction="row" spacing={1} justifyContent="flex-end" flexWrap="wrap" useFlexGap>
                   {!completo && onCompletarObra && (
                     <Button variant="outlined" onClick={onCompletarObra}>Marcar obra al 100% (demo)</Button>
                   )}
-                  <Button variant="contained" color="success" startIcon={<AssignmentTurnedInIcon />} disabled={!completo}
+                  <Button variant="outlined" startIcon={<PictureAsPdfIcon />} color="error"
+                    onClick={() => alert('Acta de recepción generada (PDF) con el dossier de fotos y el checklist.')}>
+                    Descargar acta (PDF)
+                  </Button>
+                  <Button variant="contained" color="success" startIcon={<AssignmentTurnedInIcon />} disabled={!(completo && manualOk)}
                     onClick={onEmitirConforme}>
-                    {completo ? 'Emitir conforme de obra' : 'Bloqueado hasta el 100% físico'}
+                    {!completo ? 'Falta llegar al 100% físico' : !manualOk ? 'Completá el checklist' : 'Emitir conforme de obra'}
                   </Button>
                 </Stack>
-              </>
-            )}
-          </Paper>
+              </Stack>
+            );
+          })()}
         </Box>
       )}
 
@@ -2923,11 +3037,128 @@ function TabApuRendimiento({ rubros, partes, onNuevoParte, onGenerarAnexoCCT }) 
   );
 }
 
+// ─── Tab: Resumen por obra (tablero: snapshot + qué necesita atención) ─────────
+// A diferencia de Ejecución (grilla operativa por rubro), el Resumen sintetiza lo que
+// vive en otras pestañas: alertas accionables, el snapshot financiero y la curva S.
+function TabResumen({ rubros, certificados, cuotas, gastos, certificacionesMO = [], ordenesPago = [], partes = [], inconvenientes = [], verMargen = true }) {
+  const total            = PROYECTO.total;
+  const avanceFisicoPond = rubros.reduce((s, r) => s + r.avance * (r.monto / total), 0);
+  const certAprob        = certificados.filter(c => c.estado === 'aprobado').reduce((s, c) => s + certTotalArs(c), 0);
+  const cobrado          = cuotas.reduce((s, q) => s + q.monto_cobrado, 0);
+  const moTotal          = ordenesPago.filter(o => o.estado === 'pagada').reduce((s, o) => s + o.bruto, 0) + partes.reduce((s, p) => s + jornalCostoParte(p), 0);
+  const gastadoTotal     = gastos.reduce((s, g) => s + g.monto, 0) + moTotal;
+  const gastoImputado    = gastos.filter(g => g.imputaciones.length > 0).reduce((s, g) => s + g.monto, 0) + moTotal;
+  const margenTotal      = certAprob - gastoImputado;
+
+  // Alertas: lo que necesita atención hoy (síntesis de lo que vive en otros tabs).
+  const desgQ         = (q) => q.tipo === 'certificado' ? desgloseCobro(q.monto_liberado) : { neto: q.monto_liberado };
+  const certsPend     = certificados.filter(c => c.estado === 'enviado');
+  const montoCertPend = certsPend.reduce((s, c) => s + certTotalArs(c), 0);
+  const diasMax       = certsPend.reduce((m, c) => Math.max(m, diasDesde(c.fecha_envio) || 0), 0);
+  const porCobrar     = cuotas.reduce((s, q) => s + Math.max(desgQ(q).neto - q.monto_cobrado, 0), 0);
+  const pagoSemana    = ordenesPago.filter(o => o.estado === 'pendiente').reduce((s, o) => s + o.neto, 0) + partes.reduce((s, p) => s + jornalCostoParte(p), 0);
+  const incAbiertos   = inconvenientes.filter(i => i.estado === 'abierto').length;
+  const rubrosNeg     = verMargen ? rubros.filter(r => {
+    const cert = certMontoAprobado(r.id, certificados);
+    const gas  = gastoRealPorRubro(r.id, gastos) + pagadoMOPorRubro(r.id, ordenesPago, certificacionesMO) + jornalPorRubro(r.id, partes);
+    return cert > 0 && (cert - gas) < 0;
+  }) : [];
+
+  const alertas = [];
+  if (certsPend.length) alertas.push({ icon: <AccessTimeIcon color="warning" />, label: `${certsPend.length} certificado${certsPend.length > 1 ? 's' : ''} esperando aprobación del cliente`, sub: `hace hasta ${diasMax} días · destraba la cobranza`, value: fmtM(montoCertPend), color: 'warning.main' });
+  if (porCobrar > 0)    alertas.push({ icon: <HourglassEmptyIcon color="warning" />, label: 'Liberado por cobrar', sub: 'certificado aprobado, todavía sin cobrar', value: fmtM(porCobrar), color: 'warning.main' });
+  if (pagoSemana > 0)   alertas.push({ icon: <PaymentsIcon color="warning" />, label: 'Pagos de la semana (jueves)', sub: 'subcontratistas + jornales a desembolsar', value: fmtM(pagoSemana), color: 'warning.main' });
+  if (incAbiertos > 0)  alertas.push({ icon: <ReportProblemIcon color="error" />, label: `${incAbiertos} inconveniente${incAbiertos > 1 ? 's' : ''} abierto${incAbiertos > 1 ? 's' : ''}`, sub: 'resolver antes del cierre de obra', value: null, color: 'error.main' });
+  if (rubrosNeg.length) alertas.push({ icon: <TrendingDownIcon color="error" />, label: `${rubrosNeg.length} rubro${rubrosNeg.length > 1 ? 's' : ''} con margen negativo`, sub: `rubros ${rubrosNeg.slice(0, 3).map(r => r.num).join(', ')}${rubrosNeg.length > 3 ? '…' : ''}`, value: null, color: 'error.main' });
+
+  // Curva S (snapshot temporal): plan vs. certificado vs. cobrado, acumulado por mes.
+  const labels = Array.from({ length: TOTAL_MESES }, (_, i) => mesAFecha(i + 1));
+  const planMensual = Array.from({ length: TOTAL_MESES }, (_, i) => { const mes = i + 1; return Math.round(rubros.reduce((s, r) => s + r.monto * (r.dist_mensual[mes] || 0), 0) / 1e6); });
+  const planAcum = planMensual.reduce((acc, v, i) => { acc.push((i > 0 ? acc[i - 1] : 0) + v); return acc; }, []);
+  const acumByMes = (items, fechaFn, montoFn) => {
+    const pm = Array(TOTAL_MESES).fill(0);
+    items.forEach(it => { const m = fechaToMes(fechaFn(it)); if (m) pm[m - 1] += montoFn(it); });
+    return pm.reduce((acc, v, i) => { acc.push(Math.round(((i > 0 ? acc[i - 1] * 1e6 : 0) + v) / 1e6)); return acc; }, []);
+  };
+  const certAcum = acumByMes(certificados.filter(c => c.estado === 'aprobado'), c => c.fecha_aprobacion ?? c.fecha, c => certTotalArs(c));
+  const cobradoAcum = acumByMes(cuotas.filter(q => q.monto_cobrado > 0), q => q.fecha_cobro ?? q.fecha, q => q.monto_cobrado);
+
+  return (
+    <Box>
+      {/* Snapshot financiero */}
+      <Stack direction="row" spacing={2} flexWrap="wrap" mb={3} useFlexGap>
+        <KpiCard label="Presupuesto total" value={fmtM(total)} sub="contrato" />
+        <KpiCard label="Avance físico" value={`${avanceFisicoPond.toFixed(1)}%`} sub="ponderado por incidencia" />
+        <KpiCard label="Certificado al cliente" value={fmtM(certAprob)} sub={`${((certAprob / total) * 100).toFixed(1)}% · aprobado`} color="warning.main" />
+        <KpiCard label="Cobrado" value={fmtM(cobrado)} sub={`${((cobrado / total) * 100).toFixed(1)}% del contrato`} color="success.main" />
+        {verMargen && <KpiCard label="Gastado real" value={fmtM(gastadoTotal)} sub="caja + mano de obra" />}
+        {verMargen && <KpiCard label="Margen" value={`${margenTotal >= 0 ? '+' : ''}${fmtM(margenTotal)}`} sub="certificado − gastado" color={margenTotal >= 0 ? 'success.main' : 'error.main'} />}
+      </Stack>
+
+      <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} mb={3} useFlexGap>
+        {/* Qué necesita atención (síntesis cross-tab — el diferenciador del tablero) */}
+        <Paper variant="outlined" sx={{ p: 2, flex: 1.2, minWidth: 300 }}>
+          <Stack direction="row" alignItems="center" spacing={1} mb={1}>
+            <DashboardIcon fontSize="small" color="action" />
+            <Typography variant="subtitle2" fontWeight={600}>Qué necesita atención</Typography>
+          </Stack>
+          {alertas.length === 0 ? (
+            <Stack direction="row" alignItems="center" spacing={1} py={2}>
+              <CheckCircleIcon color="success" /><Typography variant="body2" color="text.secondary">Todo en orden — sin pendientes.</Typography>
+            </Stack>
+          ) : (
+            <Stack divider={<Divider flexItem />}>
+              {alertas.map((a, i) => (
+                <Stack key={i} direction="row" alignItems="center" spacing={1.5} py={1}>
+                  {a.icon}
+                  <Box flex={1}>
+                    <Typography variant="body2" fontWeight={500}>{a.label}</Typography>
+                    <Typography variant="caption" color="text.secondary">{a.sub}</Typography>
+                  </Box>
+                  {a.value && <Typography variant="body2" fontWeight={700} color={a.color}>{a.value}</Typography>}
+                </Stack>
+              ))}
+            </Stack>
+          )}
+        </Paper>
+
+        {/* Circuito de plata */}
+        <Paper variant="outlined" sx={{ p: 2, flex: 1, minWidth: 260 }}>
+          <Typography variant="subtitle2" fontWeight={600} mb={1}>Circuito de plata ($M)</Typography>
+          <BarChart
+            series={[{ data: verMargen ? [Math.round(certAprob / 1e6), Math.round(cobrado / 1e6), Math.round(gastadoTotal / 1e6)] : [Math.round(certAprob / 1e6), Math.round(cobrado / 1e6)], label: '$M', color: '#90caf9' }]}
+            xAxis={[{ data: verMargen ? ['Certificado', 'Cobrado', 'Gastado'] : ['Certificado', 'Cobrado'], scaleType: 'band' }]}
+            height={200}
+            margin={{ top: 10, bottom: 30, left: 48, right: 10 }}
+          />
+        </Paper>
+      </Stack>
+
+      {/* Curva S */}
+      <Paper variant="outlined" sx={{ p: 2 }}>
+        <Typography variant="subtitle2" fontWeight={600} mb={0.5}>Curva S — plan vs. certificado vs. cobrado ($M)</Typography>
+        <Typography variant="caption" color="text.secondary" display="block" mb={1}>Acumulado mensual. Azul = plan · Naranja = certificado · Verde = cobrado.</Typography>
+        <LineChart
+          series={[
+            { data: planAcum, label: 'Plan', color: '#1976d2' },
+            { data: certAcum, label: 'Certificado', color: '#f57c00' },
+            { data: cobradoAcum, label: 'Cobrado', color: '#388e3c' },
+          ]}
+          xAxis={[{ data: labels, scaleType: 'band' }]}
+          height={240}
+          margin={{ top: 10, bottom: 30, left: 52, right: 10 }}
+        />
+      </Paper>
+    </Box>
+  );
+}
+
 // ─── Config de tabs por rol ───────────────────────────────────────────────────
 
 // Etapa 8: los tabs se DERIVAN de las capacidades del rol, no de listas cableadas.
 // Cada tab requiere la capacidad 'ver' de su módulo.
 const TABS_CONFIG = [
+  { key: 'resumen',    label: 'Resumen',       cap: 'resumen' },
   { key: 'ejecucion',  label: 'Ejecución',     cap: 'ejecucion' },
   { key: 'cobro',      label: 'Plan de cobro', cap: 'plan_cobro' },
   { key: 'certs',      label: 'Certificados',  cap: 'certificados' },
@@ -2943,17 +3174,17 @@ const TABS_CONFIG = [
 // es el toggle que decide si el rol ve la columna de costo/margen (dato sensible).
 const ROLES_CAPS = {
   admin: {
-    ejecucion: ['ver'], plan_cobro: ['ver', 'registrar_cobro'], certificados: ['ver', 'cargar', 'aprobar'],
+    resumen: ['ver'], ejecucion: ['ver'], plan_cobro: ['ver', 'registrar_cobro'], certificados: ['ver', 'cargar', 'aprobar'],
     mano_obra: ['ver', 'certificar', 'aprobar_pago'], anexos: ['ver', 'cargar'], cronograma: ['ver', 'editar'],
     apu: ['ver'], caja: ['ver'], reportes: ['ver', 'emitir_conforme'], ejecucion_margen: ['ver'],
   },
   director: {
-    ejecucion: ['ver'], certificados: ['ver', 'cargar'], mano_obra: ['ver', 'certificar'],
+    resumen: ['ver'], ejecucion: ['ver'], certificados: ['ver', 'cargar'], mano_obra: ['ver', 'certificar'],
     anexos: ['ver', 'cargar'], cronograma: ['ver', 'editar'], apu: ['ver'], reportes: ['ver', 'emitir_conforme'],
     ejecucion_margen: ['ver'],   // sacarle esta capacidad le oculta margen/gastado real
   },
   comercial: {
-    plan_cobro: ['ver', 'registrar_cobro'], certificados: ['ver'], mano_obra: ['ver', 'aprobar_pago'],
+    resumen: ['ver'], plan_cobro: ['ver', 'registrar_cobro'], certificados: ['ver'], mano_obra: ['ver', 'aprobar_pago'],
     caja: ['ver'], reportes: ['ver'],
   },
   jefe: {
@@ -2966,11 +3197,72 @@ const ROLES_CAPS = {
 const can = (rol, cap, accion = 'ver') => (ROLES_CAPS[rol]?.[cap] || []).includes(accion);
 
 const ROL_INFO = {
-  director:  { label: 'Director de obra', icon: <EngineeringIcon fontSize="small" /> },
-  jefe:      { label: 'Jefe de obra',     icon: <ConstructionIcon fontSize="small" /> },
-  comercial: { label: 'Comercial',        icon: <BusinessIcon fontSize="small" /> },
-  admin:     { label: 'Administrativo',   icon: <ManageAccountsIcon fontSize="small" /> },
+  director:  { label: 'Director de obra', icon: <EngineeringIcon fontSize="small" />, desc: 'Crea y envía certificados, certifica a los contratistas y carga anexos. Ve la ejecución y el margen por rubro. No aprueba certificados (eso lo hace administración).' },
+  jefe:      { label: 'Jefe de obra',     icon: <ConstructionIcon fontSize="small" />, desc: 'Carga el avance físico y los partes de cuadrilla desde la obra (web o WhatsApp). No ve costos ni margen — sólo el avance.' },
+  comercial: { label: 'Comercial',        icon: <BusinessIcon fontSize="small" />, desc: 'Gestiona el plan de cobro y registra los cobros. Ve los certificados aprobados pero no los modifica. No ve el costo de mano de obra.' },
+  admin:     { label: 'Administrativo',   icon: <ManageAccountsIcon fontSize="small" />, desc: 'Ve todo, incluido el costo y el margen. Aprueba los certificados del cliente y las órdenes de pago a contratistas.' },
 };
+
+// Resume en una línea qué mecánicas prende cada perfil (para el diálogo de bienvenida).
+const perfilResumen = (k) => {
+  const c = PERFILES_OBRA[k].contrato;
+  const chips = [];
+  chips.push(c.politica_redeterminacion === 'firme' ? 'ARS firme' : 'CAC');
+  if (c.anticipo_pct > 0) chips.push(`anticipo ${Math.round(c.anticipo_pct * 100)}%`);
+  if (c.retencion_pct > 0) chips.push(`fondo de reparo ${Math.round(c.retencion_pct * 100)}%`);
+  if (c.anticipo_pct === 0 && c.retencion_pct === 0) chips.push('sin deducciones');
+  return chips;
+};
+
+// ─── Dialog: bienvenida / configuración del demo ──────────────────────────────
+function DialogBienvenida({ open, rol, perfil, onRol, onPerfil, onEntrar }) {
+  return (
+    <Dialog open={open} maxWidth="sm" fullWidth>
+      <DialogTitle>Demo · Control de Obra</DialogTitle>
+      <DialogContent>
+        <Stack spacing={2.5} mt={1}>
+          <Typography variant="body2" color="text.secondary">
+            Elegí cómo querés explorar el demo. Cada elección cambia lo que ves; podés cambiarla cuando quieras desde la barra superior.
+          </Typography>
+
+          <Box>
+            <Typography variant="subtitle2" gutterBottom>¿Con qué rol querés entrar?</Typography>
+            <Typography variant="caption" color="text.secondary" display="block" mb={0.75}>Define qué pestañas ves y qué podés hacer.</Typography>
+            <ToggleButtonGroup value={rol} exclusive onChange={(_, v) => v && onRol(v)} size="small" fullWidth orientation="vertical">
+              {Object.entries(ROL_INFO).map(([k, v]) => (
+                <ToggleButton key={k} value={k} sx={{ justifyContent: 'flex-start', gap: 1, py: 0.8 }}>
+                  {v.icon}<span>{v.label}</span>
+                </ToggleButton>
+              ))}
+            </ToggleButtonGroup>
+            <Box sx={{ bgcolor: 'neutral.50', borderRadius: 1, p: 1, mt: 1 }}>
+              <Typography variant="caption" color="text.secondary">{ROL_INFO[rol].desc}</Typography>
+            </Box>
+          </Box>
+
+          <Box>
+            <Typography variant="subtitle2" gutterBottom>¿Qué tipo de obra?</Typography>
+            <Typography variant="caption" color="text.secondary" display="block" mb={0.75}>Define qué mecánicas financieras se prenden (CAC, fondo de reparo, anticipo).</Typography>
+            <ToggleButtonGroup value={perfil} exclusive onChange={(_, v) => v && onPerfil(v)} size="small" fullWidth sx={{ flexWrap: 'wrap' }}>
+              {Object.keys(PERFILES_OBRA).map((k) => (
+                <ToggleButton key={k} value={k} sx={{ py: 0.7, fontSize: 11.5, flex: '1 1 45%' }}>{PERFILES_OBRA[k].short}</ToggleButton>
+              ))}
+            </ToggleButtonGroup>
+            <Box sx={{ bgcolor: 'neutral.50', borderRadius: 1, p: 1, mt: 1 }}>
+              <Typography variant="caption" color="text.secondary" display="block">{PERFILES_OBRA[perfil].desc}</Typography>
+              <Stack direction="row" spacing={0.5} mt={0.75} flexWrap="wrap" useFlexGap>
+                {perfilResumen(perfil).map((c, i) => <Chip key={i} size="small" variant="outlined" label={c} sx={{ fontSize: 11 }} />)}
+              </Stack>
+            </Box>
+          </Box>
+        </Stack>
+      </DialogContent>
+      <DialogActions>
+        <Button variant="contained" fullWidth onClick={onEntrar} startIcon={<ArrowForwardIcon />}>Entrar al demo</Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
 
 // ─── Página principal ──────────────────────────────────────────────────────────
 
@@ -2997,16 +3289,25 @@ function MockObraPage() {
   const [certPrefill,  setCertPrefill]  = useState(null);   // puente avance → certificado
   const [ppFinalizado, setPpFinalizado] = useState(false);  // ciclo de vida del PP
   const [retencionLiberada, setRetencionLiberada] = useState(false);
+  const [perfil,       setPerfil]       = useState('publica');      // T-21: perfil de obra
+  const [onboarded,    setOnboarded]    = useState(false);          // modal de bienvenida
+
+  // Mantiene CONTRATO en sintonía con el perfil en cada render (las helpers lo leen al vuelo).
+  aplicarPerfil(perfil);
+  // Flags por característica financiera (qué mostrar según el perfil).
+  const fin = {
+    redet:     CONTRATO.politica_redeterminacion !== 'firme',  // CAC / USD
+    retencion: CONTRATO.retencion_pct > 0,                     // fondo de reparo
+    anticipo:  CONTRATO.anticipo_pct > 0,                      // anticipo amortizable
+  };
+  fin.deduc = fin.retencion || fin.anticipo;
 
   const visibleTabs = TABS_CONFIG.filter(t => can(rol, t.cap, 'ver'));
   const activeKey   = visibleTabs[tab]?.key;
   const verMargen   = can(rol, 'ejecucion_margen', 'ver');
 
-  const handleRolChange = (_, nuevoRol) => {
-    if (!nuevoRol) return;
-    setRol(nuevoRol);
-    setTab(0);
-  };
+  const handleRolSet    = (v) => { if (v) { setRol(v); setTab(0); } };
+  const handlePerfilSet = (v) => { if (v) setPerfil(v); };
 
   // Crear cert (período con renglones) como borrador. coef/monto_ars quedan en null hasta aprobar.
   const handleGuardarCert = ({ periodo, fechaValorizacion, renglones, notas, adjuntos, enviar }) => {
@@ -3188,8 +3489,27 @@ function MockObraPage() {
     handleGuardarAnexo({ tipo: 'adicion', motivo: `Redeterminación por actualización salarial CCT +${aumentoPct}%`, monto: delta, accionCuota: 'ignorar' });
   };
 
+  // Selectores de contexto del demo (rol + tipo de obra), montados en la barra superior "Sorbydata · demo".
+  const configSlot = onboarded ? (
+    <Stack direction="row" spacing={1} alignItems="center" flexShrink={0}>
+      <FormControl variant="standard" size="small" sx={{ minWidth: 120 }}>
+        <Select value={rol} onChange={(e) => handleRolSet(e.target.value)} disableUnderline
+          renderValue={(v) => <Stack direction="row" alignItems="center" spacing={0.5}>{ROL_INFO[v].icon}<Typography variant="caption">{ROL_INFO[v].label}</Typography></Stack>}>
+          {Object.entries(ROL_INFO).map(([k, v]) => <MenuItem key={k} value={k}><Stack direction="row" alignItems="center" spacing={1}>{v.icon}<span>{v.label}</span></Stack></MenuItem>)}
+        </Select>
+      </FormControl>
+      <Divider orientation="vertical" flexItem sx={{ my: 0.5 }} />
+      <FormControl variant="standard" size="small" sx={{ minWidth: 140 }}>
+        <Select value={perfil} onChange={(e) => handlePerfilSet(e.target.value)} disableUnderline
+          renderValue={(v) => <Typography variant="caption">{PERFILES_OBRA[v].short}</Typography>}>
+          {Object.keys(PERFILES_OBRA).map((k) => <MenuItem key={k} value={k}>{PERFILES_OBRA[k].label}</MenuItem>)}
+        </Select>
+      </FormControl>
+    </Stack>
+  ) : null;
+
   return (
-    <>
+    <PublicLayout title="Mock — Control de Obra" rightSlot={configSlot}>
       {/* Header */}
       <Box sx={{ bgcolor: 'primary.darkest', color: 'white', px: 3, py: 2.5 }}>
         <Container maxWidth="xl">
@@ -3206,19 +3526,11 @@ function MockObraPage() {
                 {PROYECTO.cliente} · {PROYECTO.direccion}
               </Typography>
             </Box>
-            <Stack alignItems="flex-end" spacing={1}>
+            <Stack alignItems="flex-end" spacing={0.5}>
               <Typography variant="h4" fontWeight={700}>{fmt(PROYECTO.total)}</Typography>
               <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>
                 {PROYECTO.duracion} · {mesAFecha(1)} — {mesAFecha(10)}
               </Typography>
-              {/* Selector de rol */}
-              <ToggleButtonGroup value={rol} exclusive onChange={handleRolChange} size="small" sx={{ bgcolor: 'rgba(255,255,255,0.1)', borderRadius: 1 }}>
-                {Object.entries(ROL_INFO).map(([k, v]) => (
-                  <ToggleButton key={k} value={k} sx={{ color: 'rgba(255,255,255,0.7)', borderColor: 'rgba(255,255,255,0.2)', '&.Mui-selected': { bgcolor: 'rgba(255,255,255,0.25)', color: 'white' }, px: 1.5, py: 0.5, fontSize: 11 }}>
-                    <Stack direction="row" alignItems="center" spacing={0.5}>{v.icon}<span>{v.label}</span></Stack>
-                  </ToggleButton>
-                ))}
-              </ToggleButtonGroup>
             </Stack>
           </Stack>
         </Container>
@@ -3227,7 +3539,7 @@ function MockObraPage() {
       {/* Tabs */}
       <Box sx={{ borderBottom: 1, borderColor: 'divider', bgcolor: 'background.paper' }}>
         <Container maxWidth="xl">
-          <Tabs value={tab} onChange={(_, v) => setTab(v)}>
+          <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" scrollButtons="auto">
             {visibleTabs.map((t, i) => {
               const count = t.key === 'cobro' ? cuotas.length : t.key === 'certs' ? certificados.length : t.key === 'manoobra' ? certsMO.length : t.key === 'anexos' ? anexos.length : null;
               return <Tab key={t.key} label={count !== null ? `${t.label} (${count})` : t.label} />;
@@ -3238,32 +3550,30 @@ function MockObraPage() {
 
       {/* Contenido */}
       <Container maxWidth="xl" sx={{ py: 3 }}>
+        {activeKey === 'resumen'    && <TabResumen rubros={rubros} certificados={certificados} cuotas={cuotas} gastos={gastos} certificacionesMO={certsMO} ordenesPago={ordenesPago} partes={partes} inconvenientes={inconvenientes} verMargen={verMargen} />}
         {activeKey === 'ejecucion'  && <TabEjecucion rubros={rubros} certificados={certificados} gastos={gastos} certificacionesMO={certsMO} ordenesPago={ordenesPago} partes={partes} verMargen={verMargen} onActualizarAvance={setAvanceRubro} />}
-        {activeKey === 'cobro'      && <TabPlanCobro cuotas={cuotas} rubros={rubros} certificados={certificados} onAgregarCuota={() => {}} onCobrar={handleCobrarCuota} retencionLiberada={retencionLiberada} />}
-        {activeKey === 'certs'      && <TabCertificados certificados={certificados} rubros={rubros} onNuevoCert={() => setDlgCert(true)} onEnviar={handleEnviarCert} onAprobar={handleAprobarCert} onRechazar={handleRechazarCert} onWA={() => setDlgWA(true)} readOnly={rol === 'comercial'} />}
-        {activeKey === 'manoobra'   && <TabManoObra contratistas={contratistas} certificacionesMO={certsMO} ordenesPago={ordenesPago} rubros={rubros} certificados={certificados} onNuevaCert={() => setDlgCertMO(true)} onAprobarCert={handleAprobarCertMO} onPagarOrden={handlePagarOrden} />}
+        {activeKey === 'cobro'      && <TabPlanCobro cuotas={cuotas} rubros={rubros} certificados={certificados} onAgregarCuota={() => {}} onCobrar={handleCobrarCuota} retencionLiberada={retencionLiberada} fin={fin} />}
+        {activeKey === 'certs'      && <TabCertificados certificados={certificados} rubros={rubros} onNuevoCert={() => setDlgCert(true)} onEnviar={handleEnviarCert} onAprobar={handleAprobarCert} onRechazar={handleRechazarCert} onWA={() => setDlgWA(true)} readOnly={!can(rol, 'certificados', 'cargar')} puedeAprobar={can(rol, 'certificados', 'aprobar')} fin={fin} />}
+        {activeKey === 'manoobra'   && <TabManoObra contratistas={contratistas} certificacionesMO={certsMO} ordenesPago={ordenesPago} rubros={rubros} certificados={certificados} partes={partes} onNuevaCert={() => setDlgCertMO(true)} onAprobarCert={handleAprobarCertMO} onPagarOrden={handlePagarOrden} />}
         {activeKey === 'anexos'     && <TabAnexos anexos={anexos} onNuevoAnexo={() => setDlgAnexo(true)} />}
         {activeKey === 'cronograma' && <TabCronograma rubros={rubros} />}
         {activeKey === 'apu'        && <TabApuRendimiento rubros={rubros} partes={partes} onNuevoParte={() => setDlgParte(true)} onGenerarAnexoCCT={handleGenerarAnexoCCT} />}
         {activeKey === 'caja'       && <TabFlujoCaja rubros={rubros} certificados={certificados} cuotas={cuotas} />}
-        {activeKey === 'reportes'   && <TabReportes rubros={rubros} certificados={certificados} cuotas={cuotas} inconvenientes={inconvenientes} onNuevoInconveniente={() => setDlgInconv(true)} onResolverInconveniente={handleResolverInconveniente} onCompletarObra={handleCompletarObra} onEmitirConforme={handleEmitirConforme} ppFinalizado={ppFinalizado} retencionLiberada={retencionLiberada} />}
+        {activeKey === 'reportes'   && <TabReportes rubros={rubros} certificados={certificados} cuotas={cuotas} inconvenientes={inconvenientes} onNuevoInconveniente={() => setDlgInconv(true)} onResolverInconveniente={handleResolverInconveniente} onCompletarObra={handleCompletarObra} onEmitirConforme={handleEmitirConforme} ppFinalizado={ppFinalizado} retencionLiberada={retencionLiberada} fin={fin} />}
       </Container>
 
-      <DialogNuevoCertificado open={dlgCert} onClose={handleCerrarCert} rubros={rubros} cuotas={cuotas} certificados={certificados} onGuardar={handleGuardarCert} prefill={certPrefill} />
+      <DialogNuevoCertificado open={dlgCert} onClose={handleCerrarCert} rubros={rubros} cuotas={cuotas} certificados={certificados} onGuardar={handleGuardarCert} prefill={certPrefill} fin={fin} />
       <DialogNuevoAnexo open={dlgAnexo} onClose={() => setDlgAnexo(false)} onGuardar={handleGuardarAnexo} />
       <DialogWASimulator open={dlgWA} onClose={() => setDlgWA(false)} rubros={rubros} onGuardar={handleGuardarCert} onActualizarAvance={handleActualizarAvance} />
       <DialogActualizarAvance open={!!avanceRubro} rubro={avanceRubro} onClose={() => setAvanceRubro(null)} onGuardar={handleActualizarAvance} onCertificar={handleCertificarDesdeAvance} />
       <DialogNuevaCertificacionMO open={dlgCertMO} onClose={() => setDlgCertMO(false)} contratistas={contratistas} certificacionesMO={certsMO} onGuardar={handleNuevaCertMO} />
       <DialogInconveniente open={dlgInconv} onClose={() => setDlgInconv(false)} rubros={rubros} onGuardar={handleNuevoInconveniente} />
       <DialogParteDiario open={dlgParte} onClose={() => setDlgParte(false)} contratistas={contratistas} onGuardar={handleNuevoParte} />
-    </>
+      <DialogBienvenida open={!onboarded} rol={rol} perfil={perfil} onRol={handleRolSet} onPerfil={handlePerfilSet} onEntrar={() => setOnboarded(true)} />
+    </PublicLayout>
   );
 }
 
 export default function Page() {
-  return (
-    <PublicLayout title="Mock — Control de Obra">
-      <MockObraPage />
-    </PublicLayout>
-  );
+  return <MockObraPage />;
 }

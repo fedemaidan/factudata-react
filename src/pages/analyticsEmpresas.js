@@ -567,10 +567,24 @@ const AnalyticsEmpresasPage = () => {
                   movimientosEnPeriodo: metricas.movimientosEnPeriodo,
                   totalMovimientos: metricas.totalMovimientos,
                   totalAcopios: metricas.totalAcopios,
+                  acopiosEnPeriodo: metricas.acopiosEnPeriodo || 0,
                   remitosEnPeriodo: metricas.remitosEnPeriodo,
                   insightsEnPeriodo: metricas.insightsEnPeriodo || 0,
                   movimientosPorOrigen: metricas.movimientosPorOrigen || { whatsapp: 0, web: 0, otro: 0 },
                   ultimoUso: metricas.ultimoUso,
+                  // Comparativas temporales (Bloque 2)
+                  movsSemana1: metricas.movsSemana1 || 0,
+                  movsSemana2: metricas.movsSemana2 || 0,
+                  movsSemana3: metricas.movsSemana3 || 0,
+                  movsSemana4: metricas.movsSemana4 || 0,
+                  movsMesAnterior: metricas.movsMesAnterior || 0,
+                  // Otros módulos (Bloque 3)
+                  notasPedidoPeriodo: metricas.notasPedidoPeriodo || 0,
+                  presupuestosPeriodo: metricas.presupuestosPeriodo || 0,
+                  presupuestosTotal: metricas.presupuestosTotal || 0,
+                  // Seguimiento individual (Bloque 4)
+                  usuarioPrincipal: metricas.usuarioPrincipal || null,
+                  ultimoLogin: metricas.ultimoLogin || null,
                   metricasCargadas: true,
                 };
               }
@@ -782,11 +796,25 @@ const AnalyticsEmpresasPage = () => {
       'Movs. Histórico': emp.totalMovimientos || 0,
       'Movs. WhatsApp': emp.movimientosPorOrigen?.whatsapp || 0,
       'Movs. Web': emp.movimientosPorOrigen?.web || 0,
+      // Comparativas temporales (Bloque 2)
+      'Movs. Semana -1': emp.movsSemana1 || 0,
+      'Movs. Semana -2': emp.movsSemana2 || 0,
+      'Movs. Semana -3': emp.movsSemana3 || 0,
+      'Movs. Semana -4': emp.movsSemana4 || 0,
+      'Movs. Mismo Período Mes Anterior': emp.movsMesAnterior || 0,
+      // Otros módulos (Bloque 3)
       'Remitos Periodo': emp.remitosEnPeriodo || 0,
+      'Acopios Periodo': emp.acopiosEnPeriodo || 0,
       'Acopios Totales': emp.totalAcopios || 0,
+      'Notas de Pedido Periodo': emp.notasPedidoPeriodo || 0,
+      'Presupuestos Periodo': emp.presupuestosPeriodo || 0,
+      'Presupuestos Total': emp.presupuestosTotal || 0,
       'Insights Periodo': emp.insightsEnPeriodo || 0,
+      // Seguimiento individual (Bloque 4)
+      'Usuario Principal': emp.usuarioPrincipal || '-',
       'Cliente Desde': emp.esCliente ? (emp.fechaRegistroCliente ? new Date(emp.fechaRegistroCliente).toLocaleDateString('es-AR') : '') : '-',
-      'Último Uso': emp.ultimoUso ? new Date(emp.ultimoUso).toLocaleDateString('es-AR') : '-'
+      'Último Uso': emp.ultimoUso ? new Date(emp.ultimoUso).toLocaleDateString('es-AR') : '-',
+      'Fecha Último Login': emp.ultimoLogin ? new Date(emp.ultimoLogin).toLocaleDateString('es-AR') : '-'
     }));
   };
 
