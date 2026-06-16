@@ -29,6 +29,13 @@ function formatMesLabel(item) {
   return `${MESES_CORTOS[mesNum - 1] || "?"}${anio ? ` ${anio}` : ""}`;
 }
 
+// Fecha de cierre → "2 mar" (día + mes corto, en UTC para no correr el día).
+function formatFechaCorta(fecha) {
+  const d = fecha instanceof Date ? fecha : new Date(fecha);
+  if (Number.isNaN(d.getTime())) return "—";
+  return `${d.getUTCDate()} ${MESES_CORTOS[d.getUTCMonth()] || "?"}`;
+}
+
 function formatNum(value, decimals = 0) {
   const n = Number(value);
   if (!Number.isFinite(n)) return "—";
@@ -128,20 +135,29 @@ function ChartPanel({ title, caption, data, xLabels, color, area, decimals, suff
  * @param {boolean} loading
  * @param {boolean} error
  */
-export default function GraficoEvolucionProducto({ serie, tendencia, codigo, nombre, loading, error }) {
+export default function GraficoEvolucionProducto({ serie, serieStock, tendencia, codigo, nombre, loading, error }) {
   const theme = useTheme();
   const safeSerie = Array.isArray(serie) ? serie : [];
+  const safeSerieStock = Array.isArray(serieStock) ? serieStock : [];
 
   const ventasColor = theme.palette.primary.main;
   const stockColor = theme.palette.mode === "dark" ? theme.palette.grey[500] : theme.palette.grey[400];
 
-  const { xLabels, ventasData, stockData } = useMemo(() => {
+  // Ventas = tasa mensual (se reparte por mes). Stock = foto puntual: un punto por
+  // cada fecha de cierre (fechaFin), no se reparte por mes.
+  const { xLabels, ventasData } = useMemo(() => {
     return {
       xLabels: safeSerie.map(formatMesLabel),
       ventasData: safeSerie.map((m) => (Number.isFinite(Number(m?.ventasDiarias)) ? Number(m.ventasDiarias) : 0)),
-      stockData: safeSerie.map((m) => (Number.isFinite(Number(m?.stockInicial)) ? Number(m.stockInicial) : 0)),
     };
   }, [safeSerie]);
+
+  const { stockLabels, stockData } = useMemo(() => {
+    return {
+      stockLabels: safeSerieStock.map((p) => formatFechaCorta(p?.fecha)),
+      stockData: safeSerieStock.map((p) => (Number.isFinite(Number(p?.stock)) ? Number(p.stock) : 0)),
+    };
+  }, [safeSerieStock]);
 
   if (loading) {
     return (
@@ -209,17 +225,19 @@ export default function GraficoEvolucionProducto({ serie, tendencia, codigo, nom
           suffix=" por día"
           theme={theme}
         />
-        <ChartPanel
-          title="Stock disponible"
-          caption="unidades en depósito"
-          data={stockData}
-          xLabels={xLabels}
-          color={stockColor}
-          area
-          decimals={0}
-          suffix=" u"
-          theme={theme}
-        />
+        {stockData.length > 0 ? (
+          <ChartPanel
+            title="Stock disponible"
+            caption="unidades medidas en cada fecha de cierre"
+            data={stockData}
+            xLabels={stockLabels}
+            color={stockColor}
+            area
+            decimals={0}
+            suffix=" u"
+            theme={theme}
+          />
+        ) : null}
       </Stack>
 
       {/* Tarjeta de tendencia: el "qué significa" en criollo */}

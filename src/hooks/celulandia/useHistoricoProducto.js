@@ -23,10 +23,13 @@ export const useHistoricoProducto = (codigo, { enabled = true } = {}) => {
 
   const data = query.data?.data ?? null;
   const serie = useMemo(() => (Array.isArray(data?.serie) ? data.serie : []), [data]);
+  // Stock como foto puntual por fecha de cierre (no mensual). Ver GraficoEvolucionProducto.
+  const serieStock = useMemo(() => (Array.isArray(data?.serieStock) ? data.serieStock : []), [data]);
   const tendencia = data?.tendencia ?? null;
 
   return {
     serie,
+    serieStock,
     tendencia,
     isLoading: query.isLoading && query.isFetching,
     isFetching: query.isFetching,

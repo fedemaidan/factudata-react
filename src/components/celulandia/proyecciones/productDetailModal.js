@@ -338,6 +338,7 @@ const ProductDetailModal = ({ open, onClose, producto, usarPonderado = false }) 
   const codigoProducto = producto?.codigo || null;
   const {
     serie: historicoSerie,
+    serieStock: historicoSerieStock,
     tendencia: historicoTendencia,
     isLoading: historicoLoading,
     isError: historicoError,
@@ -522,6 +523,7 @@ const ProductDetailModal = ({ open, onClose, producto, usarPonderado = false }) 
               <>
                 <GraficoEvolucionProducto
                   serie={historicoSerie}
+                  serieStock={historicoSerieStock}
                   tendencia={historicoTendencia}
                   codigo={codigoProducto}
                   nombre={producto?.nombre}
