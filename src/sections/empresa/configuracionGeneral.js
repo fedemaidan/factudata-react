@@ -234,6 +234,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
     "VER_CONTROL_PAGOS",
     "VER_CUENTA_CORRIENTE_PROVEEDORES",
     "GESTIONAR_PROVEEDORES",
+    "REPORTE_MANUAL",
   ];
 
   const dhnAcciones = [
