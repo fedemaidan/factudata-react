@@ -29,7 +29,10 @@ import {
   Tooltip,
   Menu,
   MenuItem,
-  Chip
+  Chip,
+  RadioGroup,
+  Radio,
+  FormLabel,
 } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import AddIcon from '@mui/icons-material/Add';
@@ -76,11 +79,18 @@ const AcopiosPage = () => {
 
   // Acopios de cliente (corralón): retiro contra el saldo + recarga de plata.
   const [retiroAcopio, setRetiroAcopio] = useState(null);
+  const [devolucionAcopio, setDevolucionAcopio] = useState(null);
   const [recargaAcopio, setRecargaAcopio] = useState(null);
   const [recargaMonto, setRecargaMonto] = useState('');
   const [recargaCobrado, setRecargaCobrado] = useState(false);
   const [recargaBusy, setRecargaBusy] = useState(false);
   const [recargaError, setRecargaError] = useState('');
+  // Cierre de acopio de cliente: resuelve el saldo final (CC / trasladar / resignar).
+  const [cierreAcopio, setCierreAcopio] = useState(null);
+  const [cierreModo, setCierreModo] = useState('cuenta_corriente');
+  const [cierreDestino, setCierreDestino] = useState('');
+  const [cierreBusy, setCierreBusy] = useState(false);
+  const [cierreError, setCierreError] = useState('');
   const [descripcionDialogOpen, setDescripcionDialogOpen] = useState(false);
   const [descripcionEdit, setDescripcionEdit] = useState('');
   const [acopioEditando, setAcopioEditando] = useState(null);
@@ -477,12 +487,27 @@ const AcopiosPage = () => {
           )}
           {selectedAcopio?.contraparte_rol === 'cliente' && (
             <MenuItem onClick={() => {
+              setDevolucionAcopio(selectedAcopio);
+              handleCloseMenu();
+            }}>Registrar devolución</MenuItem>
+          )}
+          {selectedAcopio?.contraparte_rol === 'cliente' && (
+            <MenuItem onClick={() => {
               setRecargaAcopio(selectedAcopio);
               setRecargaMonto('');
               setRecargaCobrado(false);
               setRecargaError('');
               handleCloseMenu();
             }}>Recargar plata</MenuItem>
+          )}
+          {selectedAcopio?.contraparte_rol === 'cliente' && (
+            <MenuItem onClick={() => {
+              setCierreAcopio(selectedAcopio);
+              setCierreModo('cuenta_corriente');
+              setCierreDestino('');
+              setCierreError('');
+              handleCloseMenu();
+            }}>Cerrar acopio</MenuItem>
           )}
           <MenuItem onClick={() => {
             router.push(`/movimientosAcopio?acopioId=${selectedAcopio?.id}`);
@@ -505,6 +530,16 @@ const AcopiosPage = () => {
           onClose={() => setRetiroAcopio(null)}
           empresaId={empresaId}
           acopio={retiroAcopio}
+          onSaved={() => fetchAcopios()}
+        />
+
+        {/* Devolución de material al acopio de cliente (inverso del retiro) */}
+        <DesacopioClienteDrawer
+          open={Boolean(devolucionAcopio)}
+          onClose={() => setDevolucionAcopio(null)}
+          empresaId={empresaId}
+          acopio={devolucionAcopio}
+          modo="devolucion"
           onSaved={() => fetchAcopios()}
         />
 
@@ -552,6 +587,83 @@ const AcopiosPage = () => {
             </Button>
           </DialogActions>
         </Dialog>
+
+        {/* Cierre de acopio de cliente: resuelve el saldo final */}
+        {(() => {
+          if (!cierreAcopio) return null;
+          const saldo = Number(cierreAcopio.valor_acopio || 0) - Number(cierreAcopio.valor_desacopio || 0);
+          const otros = acopios.filter((a) =>
+            (a.contraparte_rol === 'cliente')
+            && (a.id || a._id) !== (cierreAcopio.id || cierreAcopio._id)
+            && a.activo !== false
+            && (a.proveedor || '') === (cierreAcopio.proveedor || ''));
+          const fmtMoney = (n) => `$${Number(n || 0).toLocaleString('es-AR')}`;
+          return (
+            <Dialog open onClose={() => !cierreBusy && setCierreAcopio(null)} fullWidth maxWidth="xs">
+              <DialogTitle>Cerrar acopio</DialogTitle>
+              <DialogContent>
+                {cierreError && <Alert severity="error" sx={{ mb: 2 }}>{cierreError}</Alert>}
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                  {cierreAcopio.proveedor || 'Cliente'} — saldo final{' '}
+                  <strong style={{ color: saldo < 0 ? '#d32f2f' : 'inherit' }}>
+                    {saldo < 0 ? `-${fmtMoney(Math.abs(saldo))}` : fmtMoney(saldo)}
+                  </strong>
+                  {saldo > 0 ? ' (a favor del cliente)' : saldo < 0 ? ' (el cliente retiró de más)' : ''}.
+                </Typography>
+                <FormControl sx={{ mt: 1 }}>
+                  <FormLabel sx={{ fontSize: 13 }}>¿Qué hago con el saldo?</FormLabel>
+                  <RadioGroup value={cierreModo} onChange={(e) => setCierreModo(e.target.value)}>
+                    <FormControlLabel value="cuenta_corriente" control={<Radio size="small" />}
+                      label={saldo < 0 ? 'A cuenta corriente (queda como deuda)' : 'A cuenta corriente (saldo a favor)'} />
+                    <FormControlLabel value="trasladar" control={<Radio size="small" />} label="Trasladar a otro acopio del cliente" />
+                    <FormControlLabel value="resignar" control={<Radio size="small" />} label="Resignar (condonar / dar por perdido)" />
+                  </RadioGroup>
+                </FormControl>
+                {cierreModo === 'trasladar' && (
+                  otros.length ? (
+                    <FormControl fullWidth size="small" sx={{ mt: 1 }}>
+                      <InputLabel>Acopio destino</InputLabel>
+                      <Select label="Acopio destino" value={cierreDestino} onChange={(e) => setCierreDestino(e.target.value)}>
+                        {otros.map((a) => (
+                          <MenuItem key={a.id || a._id} value={a.id || a._id}>
+                            {a.codigo ? `[${a.codigo}] ` : ''}{a.descripcion || 'Acopio'} — saldo {fmtMoney(Number(a.valor_acopio || 0) - Number(a.valor_desacopio || 0))}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  ) : (
+                    <Alert severity="warning" sx={{ mt: 1 }}>El cliente no tiene otro acopio activo para trasladarle el saldo.</Alert>
+                  )
+                )}
+              </DialogContent>
+              <DialogActions>
+                <Button onClick={() => setCierreAcopio(null)} disabled={cierreBusy}>Cancelar</Button>
+                <Button
+                  variant="contained"
+                  disabled={cierreBusy || (cierreModo === 'trasladar' && !cierreDestino)}
+                  onClick={async () => {
+                    setCierreBusy(true);
+                    setCierreError('');
+                    try {
+                      await ventaService.cerrarAcopio(empresaId, cierreAcopio.id || cierreAcopio._id, {
+                        modo: cierreModo,
+                        acopio_destino_id: cierreModo === 'trasladar' ? cierreDestino : null,
+                      });
+                      setCierreAcopio(null);
+                      fetchAcopios();
+                    } catch (e) {
+                      setCierreError(e?.response?.data?.error || e.message || 'Error al cerrar');
+                    } finally {
+                      setCierreBusy(false);
+                    }
+                  }}
+                >
+                  {cierreBusy ? 'Cerrando…' : 'Cerrar acopio'}
+                </Button>
+              </DialogActions>
+            </Dialog>
+          );
+        })()}
 
         {isMobile && (
           <Fab

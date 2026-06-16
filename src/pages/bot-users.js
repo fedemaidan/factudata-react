@@ -12,6 +12,7 @@ import {
   TableBody,
   TableCell,
   TableHead,
+  TablePagination,
   TableRow,
   Dialog,
   TextField,
@@ -25,11 +26,15 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import SearchIcon from '@mui/icons-material/Search';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import BuildIcon from '@mui/icons-material/Build';
+import ReportProblemIcon from '@mui/icons-material/ReportProblem';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import BotService from 'src/services/botService';
 
 const BotUsersPage = () => {
   const [users, setUsers] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(25);
   const [loading, setLoading] = useState(true);
   const [filtroTexto, setFiltroTexto] = useState("");
   const [alert, setAlert] = useState({ open: false, message: '', severity: 'info' });
@@ -42,20 +47,43 @@ const BotUsersPage = () => {
   const [manualResetDialogOpen, setManualResetDialogOpen] = useState(false);
   const [manualPhoneNumber, setManualPhoneNumber] = useState('');
 
+  // Estado para detección de conversaciones colgadas
+  const [inconsistentes, setInconsistentes] = useState(null); // null = no se corrió aún
+  const [detectando, setDetectando] = useState(false);
+
+  const handleDetectarInconsistentes = async () => {
+    setDetectando(true);
+    try {
+      const data = await BotService.detectarInconsistentes(10);
+      setInconsistentes(data.users || []);
+      setAlert({
+        open: true,
+        message: data.count > 0
+          ? `Se detectaron ${data.count} conversaciones posiblemente colgadas`
+          : 'No se detectaron conversaciones colgadas',
+        severity: data.count > 0 ? 'warning' : 'success'
+      });
+    } catch (error) {
+      setAlert({ open: true, message: 'Error al detectar conversaciones colgadas', severity: 'error' });
+    } finally {
+      setDetectando(false);
+    }
+  };
+
   const fetchUsers = useCallback(async () => {
     setLoading(true);
     try {
-      // Si hay texto en el filtro, lo usamos para buscar en el backend (opcional, o filtramos en front)
-      // Aquí asumimos que el backend filtra si le pasamos 'phone', pero también filtramos en front para mayor reactividad
-      const data = await BotService.listarUsuarios(filtroTexto);
-      setUsers(data);
+      // Filtro, orden y paginación se resuelven en el backend
+      const data = await BotService.listarUsuarios(filtroTexto, page, rowsPerPage);
+      setUsers(data.users || []);
+      setTotal(data.total || 0);
     } catch (error) {
       console.error('Error al obtener usuarios:', error);
       setAlert({ open: true, message: 'Error al obtener usuarios del bot', severity: 'error' });
     } finally {
       setLoading(false);
     }
-  }, [filtroTexto]);
+  }, [filtroTexto, page, rowsPerPage]);
 
   useEffect(() => {
     // Debounce simple para no llamar a la API en cada tecla si decidimos filtrar en backend
@@ -75,6 +103,8 @@ const BotUsersPage = () => {
     try {
       await BotService.resetearEstado(userToReset.from);
       setAlert({ open: true, message: `Estado reiniciado para ${userToReset.from}`, severity: 'success' });
+      // Sacar de la lista de colgadas si estaba ahí
+      setInconsistentes((prev) => prev ? prev.filter((u) => u.from !== userToReset.from) : prev);
       fetchUsers(); // Recargar la lista
     } catch (error) {
       setAlert({ open: true, message: 'Error al reiniciar el estado', severity: 'error' });
@@ -98,17 +128,17 @@ const BotUsersPage = () => {
     }
   };
 
-  // Filtrado y ordenamiento en frontend
-  // Ordenamos por _id descendente (ObjectId contiene timestamp, los más recientes primero)
-  const usersFiltrados = users
-    .filter(u => u.from?.toLowerCase().includes(filtroTexto.toLowerCase()))
-    .sort((a, b) => {
-      // Ordenar por _id descendente (más reciente primero)
-      if (a._id && b._id) {
-        return b._id.localeCompare(a._id);
-      }
-      return 0;
-    });
+  // Filtro, orden (_id desc = creación más reciente) y paginación vienen del backend
+  const usersFiltrados = users;
+
+  const formatUltimoUso = (fecha) => {
+    if (!fecha) return '—';
+    const d = new Date(fecha);
+    const diffMin = Math.round((Date.now() - d.getTime()) / 60000);
+    if (diffMin < 60) return `hace ${diffMin} min`;
+    if (diffMin < 60 * 24) return `hace ${Math.round(diffMin / 60)} h`;
+    return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
+  };
 
   return (
     <Box component="main" sx={{ flexGrow: 1, py: 8 }}>
@@ -116,6 +146,15 @@ const BotUsersPage = () => {
         <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={2} mb={2}>
           <Typography variant="h4">Usuarios del Bot (Estados Activos)</Typography>
           <Stack direction="row" spacing={2}>
+            <Button
+              variant="outlined"
+              color="warning"
+              startIcon={detectando ? <CircularProgress size={18} /> : <ReportProblemIcon />}
+              onClick={handleDetectarInconsistentes}
+              disabled={detectando}
+            >
+              Detectar colgadas
+            </Button>
             <Button variant="outlined" startIcon={<BuildIcon />} onClick={() => setManualResetDialogOpen(true)}>
               Reiniciar Manual
             </Button>
@@ -128,7 +167,7 @@ const BotUsersPage = () => {
         <TextField
           placeholder="Buscar por número de teléfono"
           value={filtroTexto}
-          onChange={(e) => setFiltroTexto(e.target.value)}
+          onChange={(e) => { setFiltroTexto(e.target.value); setPage(0); }}
           fullWidth
           InputProps={{
             startAdornment: (
@@ -140,6 +179,75 @@ const BotUsersPage = () => {
           sx={{ mb: 3 }}
         />
 
+        {inconsistentes !== null && (
+          <Card sx={{ mb: 3, p: 2, border: '1px solid', borderColor: inconsistentes.length > 0 ? 'warning.main' : 'success.main' }}>
+            <Typography variant="h6" gutterBottom>
+              ⚠️ Conversaciones posiblemente colgadas ({inconsistentes.length})
+            </Typography>
+            <Typography variant="body2" color="text.secondary" mb={2}>
+              Usuarios con estado activo cuyo último mensaje es entrante y lleva más de 10 minutos sin respuesta del bot
+              (típico de envíos que fallaron por errores de Meta).
+            </Typography>
+            {inconsistentes.length > 0 && (
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Teléfono</TableCell>
+                    <TableCell>Último mensaje (entrante)</TableCell>
+                    <TableCell>Hace</TableCell>
+                    <TableCell>Estado activo</TableCell>
+                    <TableCell align="center">Acción</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {inconsistentes.map((u) => (
+                    <TableRow key={u.from}>
+                      <TableCell><Typography variant="subtitle2">{u.from}</Typography></TableCell>
+                      <TableCell>
+                        <Tooltip title={u.lastMessage?.message || ''}>
+                          <Typography variant="body2" sx={{ maxWidth: 250, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            [{u.lastMessage?.type}] {u.lastMessage?.message}
+                          </Typography>
+                        </Tooltip>
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          size="small"
+                          color={u.minutesSinceLastMessage > 60 ? 'error' : 'warning'}
+                          label={u.minutesSinceLastMessage > 90
+                            ? `${Math.round(u.minutesSinceLastMessage / 60)} h`
+                            : `${u.minutesSinceLastMessage} min`}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, maxWidth: 300 }}>
+                          {(u.stateKeys || []).slice(0, 4).map((k) => (
+                            <Chip key={k} label={k} size="small" variant="outlined" />
+                          ))}
+                          {(u.stateKeys || []).length > 4 && (
+                            <Chip label={`+${u.stateKeys.length - 4}`} size="small" />
+                          )}
+                        </Box>
+                      </TableCell>
+                      <TableCell align="center">
+                        <Button
+                          variant="outlined"
+                          color="error"
+                          size="small"
+                          startIcon={<RestartAltIcon />}
+                          onClick={() => handleResetClick(u)}
+                        >
+                          Reiniciar
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </Card>
+        )}
+
         {loading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
             <CircularProgress />
@@ -150,6 +258,7 @@ const BotUsersPage = () => {
               <TableHead>
                 <TableRow>
                   <TableCell sx={{ width: 180 }}>Teléfono (ID)</TableCell>
+                  <TableCell sx={{ width: 150 }}>Último uso</TableCell>
                   <TableCell>Datos de Estado</TableCell>
                   <TableCell align="center" sx={{ width: 130 }}>Acciones</TableCell>
                 </TableRow>
@@ -161,6 +270,13 @@ const BotUsersPage = () => {
                       <TableCell sx={{ width: 180 }}>
                         <Typography variant="subtitle2">{user.from}</Typography>
                       </TableCell>
+                      <TableCell sx={{ width: 150 }}>
+                        <Tooltip title={user.ultimoUso ? new Date(user.ultimoUso).toLocaleString('es-AR') : 'Sin mensajes registrados'}>
+                          <Typography variant="body2" color={user.ultimoUso ? 'text.primary' : 'text.disabled'}>
+                            {formatUltimoUso(user.ultimoUso)}
+                          </Typography>
+                        </Tooltip>
+                      </TableCell>
                       <TableCell sx={{ maxWidth: 0, overflow: 'hidden' }}>
                         {/* Mostramos algunas propiedades relevantes del estado */}
                         <Box sx={{ 
@@ -171,7 +287,7 @@ const BotUsersPage = () => {
                           overflowY: 'auto'
                         }}>
                           {Object.entries(user).map(([key, value]) => {
-                            if (key === '_id' || key === 'from') return null;
+                            if (['_id', 'from', 'ultimoUso'].includes(key)) return null;
                             // Convertir valor a string legible si es objeto
                             const displayValue = typeof value === 'object' ? JSON.stringify(value).slice(0, 30) + '...' : String(value).slice(0, 30);
                             return (
@@ -202,13 +318,24 @@ const BotUsersPage = () => {
                   ))
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={3} align="center">
+                    <TableCell colSpan={4} align="center">
                       No se encontraron usuarios activos.
                     </TableCell>
                   </TableRow>
                 )}
               </TableBody>
             </Table>
+            <TablePagination
+              component="div"
+              count={total}
+              page={page}
+              onPageChange={(e, newPage) => setPage(newPage)}
+              rowsPerPage={rowsPerPage}
+              onRowsPerPageChange={(e) => { setRowsPerPage(parseInt(e.target.value, 10)); setPage(0); }}
+              rowsPerPageOptions={[10, 25, 50, 100]}
+              labelRowsPerPage="Por página"
+              labelDisplayedRows={({ from, to, count }) => `${from}–${to} de ${count}`}
+            />
           </Card>
         )}
 

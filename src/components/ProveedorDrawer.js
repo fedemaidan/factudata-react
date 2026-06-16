@@ -14,14 +14,12 @@ import {
   Divider,
   Drawer,
   FormControl,
-  FormControlLabel,
   IconButton,
   InputLabel,
   LinearProgress,
   MenuItem,
   Select,
   Stack,
-  Switch,
   Tab,
   Table,
   TableBody,
@@ -45,6 +43,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import DescriptionIcon from '@mui/icons-material/Description';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import PaymentsIcon from '@mui/icons-material/Payments';
 import PointOfSaleIcon from '@mui/icons-material/PointOfSale';
 import { useRouter } from 'next/router';
@@ -92,7 +91,7 @@ function TabDatos({ proveedor, empresaId, categoriasEmpresa, estadoDefaultEmpres
 
   const [form, setForm] = useState({
     nombre: '', razon_social: '', cuit: '', direccion: '',
-    tipo: 'materiales', tiene_cuenta_corriente: true, alias: [], categorias: [],
+    tipo: 'materiales', alias: [], categorias: [],
     estado_inicial: null,
   });
   const [aliasInput, setAliasInput] = useState('');
@@ -110,7 +109,6 @@ function TabDatos({ proveedor, empresaId, categoriasEmpresa, estadoDefaultEmpres
       cuit: proveedor.cuit || '',
       direccion: proveedor.direccion || '',
       tipo: proveedor.tipo || 'materiales',
-      tiene_cuenta_corriente: proveedor.tiene_cuenta_corriente !== false,
       alias: proveedor.alias || [],
       categorias: proveedor.categorias || [],
       estado_inicial: proveedor.estado_inicial ?? null,
@@ -128,7 +126,6 @@ function TabDatos({ proveedor, empresaId, categoriasEmpresa, estadoDefaultEmpres
         cuit: form.cuit.trim(),
         direccion: form.direccion.trim(),
         tipo: form.tipo,
-        tiene_cuenta_corriente: form.tiene_cuenta_corriente,
         alias: form.alias,
         categorias: form.categorias,
         estado_inicial: form.estado_inicial,
@@ -212,16 +209,6 @@ function TabDatos({ proveedor, empresaId, categoriasEmpresa, estadoDefaultEmpres
             <MenuItem value="Pagado">Siempre Pagado</MenuItem>
           </Select>
         </FormControl>
-
-        <FormControlLabel
-          control={
-            <Switch
-              checked={form.tiene_cuenta_corriente}
-              onChange={e => setForm(f => ({ ...f, tiene_cuenta_corriente: e.target.checked }))}
-            />
-          }
-          label="Gestionar cuenta corriente"
-        />
 
         {/* Alias */}
         <Box>
@@ -382,7 +369,15 @@ function FilaPago({ row, onAnular, movimientosPorId = {} }) {
   const anulado = pago.estado === 'anulado';
   const tieneImputaciones = (pago.imputaciones || []).length > 0;
   const tieneComprobantes = (pago.comprobantes || []).length > 0;
-  const expandible = tieneImputaciones || tieneComprobantes;
+  const tieneRetenciones = (pago.retenciones || []).length > 0;
+  const expandible = tieneImputaciones || tieneComprobantes || tieneRetenciones;
+
+  // Desglose del pago: efectivo transferido vs retenido. El total (monto_bruto)
+  // es lo que cancela deuda; el efectivo es lo que realmente salió al proveedor.
+  const totalRetenciones = (pago.retenciones || []).reduce((s, r) => s + (Number(r.monto) || 0), 0);
+  const pagoEfectivo = pago.monto_neto_proveedor != null
+    ? Number(pago.monto_neto_proveedor)
+    : (Number(pago.monto_bruto) || 0) - totalRetenciones;
 
   const obrasImputadas = useMemo(() => {
     const set = new Set();
@@ -430,6 +425,11 @@ function FilaPago({ row, onAnular, movimientosPorId = {} }) {
                 <AttachmentIcon fontSize="small" sx={{ color: 'text.secondary' }} />
               </Tooltip>
             )}
+            {tieneRetenciones && (
+              <Tooltip title={`Efectivo ${formatCurrencyWithCode(pagoEfectivo)} + retención ${formatCurrencyWithCode(totalRetenciones)}`}>
+                <Chip size="small" variant="outlined" color="warning" label="c/ retención" />
+              </Tooltip>
+            )}
           </Stack>
         </TableCell>
         <TableCell sx={{ maxWidth: 140 }}>
@@ -447,10 +447,11 @@ function FilaPago({ row, onAnular, movimientosPorId = {} }) {
             </Tooltip>
           )}
         </TableCell>
-        <TableCell align="right" />
+        {/* Debe = pago (cancela deuda); Haber = factura. Ver nota en el encabezado. */}
         <TableCell align="right" sx={{ color: anulado ? 'text.disabled' : 'success.main', fontWeight: 600 }}>
           {formatCurrencyWithCode(pago.monto_bruto)}
         </TableCell>
+        <TableCell align="right" />
         <TableCell
           align="right"
           sx={{
@@ -467,7 +468,7 @@ function FilaPago({ row, onAnular, movimientosPorId = {} }) {
             </Typography>
           )}
         </TableCell>
-        <TableCell sx={{ whiteSpace: 'nowrap', color: 'text.disabled', fontSize: '0.75rem' }}>
+        <TableCell sx={{ whiteSpace: 'nowrap', color: 'text.disabled', fontSize: '0.75rem', display: { xs: 'none', lg: 'table-cell' } }}>
           {formatCreadoEn(getCreadoMs(pago))}
         </TableCell>
         <TableCell sx={{ width: 32, p: 0.5 }}>
@@ -535,16 +536,39 @@ function FilaPago({ row, onAnular, movimientosPorId = {} }) {
                     </Table>
                   </Box>
                 )}
-                {(pago.retenciones || []).length > 0 && (
+                {tieneRetenciones && (
                   <Box sx={{ mb: tieneComprobantes ? 1.5 : 0 }}>
                     <Typography variant="caption" fontWeight={700} color="text.secondary" display="block" sx={{ mb: 0.5 }}>
-                      RETENCIONES
+                      DESGLOSE DEL PAGO
                     </Typography>
-                    {pago.retenciones.map((r, idx) => (
-                      <Typography key={idx} variant="body2">
-                        · {r.descripcion || 'Retención'}{r.porcentaje ? ` (${r.porcentaje}%)` : ''}: {formatCurrencyWithCode(r.monto)}
-                      </Typography>
-                    ))}
+                    <Table size="small" sx={{ '& td, & th': { borderBottom: 'none', py: 0.25, px: 1 } }}>
+                      <TableBody>
+                        <TableRow>
+                          <TableCell><Typography variant="body2">Pago efectivo / transferencia</Typography></TableCell>
+                          <TableCell align="right" sx={{ whiteSpace: 'nowrap', fontWeight: 600 }}>
+                            {formatCurrencyWithCode(pagoEfectivo)}
+                          </TableCell>
+                        </TableRow>
+                        {pago.retenciones.map((r, idx) => (
+                          <TableRow key={idx}>
+                            <TableCell>
+                              <Typography variant="body2" color="text.secondary">
+                                {r.descripcion || 'Retención'}{r.porcentaje ? ` (${r.porcentaje}%)` : ''}
+                              </Typography>
+                            </TableCell>
+                            <TableCell align="right" sx={{ whiteSpace: 'nowrap', color: 'text.secondary' }}>
+                              {formatCurrencyWithCode(r.monto)}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                        <TableRow>
+                          <TableCell><Typography variant="body2" fontWeight={700}>Total cancelado</Typography></TableCell>
+                          <TableCell align="right" sx={{ whiteSpace: 'nowrap', fontWeight: 700 }}>
+                            {formatCurrencyWithCode(pago.monto_bruto)}
+                          </TableCell>
+                        </TableRow>
+                      </TableBody>
+                    </Table>
                   </Box>
                 )}
                 {tieneComprobantes && (
@@ -621,9 +645,8 @@ function FilaMovimiento({ row }) {
           {m.proyecto_nombre || m.proyectoNombre || '—'}
         </Typography>
       </TableCell>
-      <TableCell align="right" sx={{ color: 'error.main', fontWeight: 500 }}>
-        {formatCurrencyWithCode(m.total, m.moneda)}
-      </TableCell>
+      {/* Debe = pago/cancelación (acá: indicador de imputación de la factura);
+          Haber = factura (genera deuda). Ver nota en el encabezado. */}
       <TableCell align="right">
         {(() => {
           const haber = Number(m.monto_pagado) || 0;
@@ -648,6 +671,9 @@ function FilaMovimiento({ row }) {
           );
         })()}
       </TableCell>
+      <TableCell align="right" sx={{ color: 'error.main', fontWeight: 500 }}>
+        {formatCurrencyWithCode(m.total, m.moneda)}
+      </TableCell>
       <TableCell
         align="right"
         sx={{
@@ -664,7 +690,7 @@ function FilaMovimiento({ row }) {
           </Typography>
         )}
       </TableCell>
-      <TableCell sx={{ whiteSpace: 'nowrap', color: 'text.disabled', fontSize: '0.75rem' }}>
+      <TableCell sx={{ whiteSpace: 'nowrap', color: 'text.disabled', fontSize: '0.75rem', display: { xs: 'none', lg: 'table-cell' } }}>
         {formatCreadoEn(getCreadoMs(m))}
       </TableCell>
       <TableCell sx={{ width: 32 }} />
@@ -682,11 +708,13 @@ function TabCuentaCorriente({
   onCargarMovimiento,
   onImputarSaldoFavor,
   imputarSaldoFavorLoading = false,
+  onExportarExcel,
+  exportandoExcel = false,
 }) {
   // Orden seleccionado por el usuario.
   //  - 'fecha'    → ordena por día calendario (fecha_factura/fecha_pago), desempate por createdAt
   //  - 'creadoEn' → ordena puramente por timestamp de carga (createdAt)
-  // Siempre descendente: lo más reciente arriba.
+  // Siempre ascendente: lo más viejo arriba (planilla tradicional de CC).
   const [sortBy, setSortBy] = useState('fecha');
   // ── Lookup de movimientos por id (para mostrar fecha+detalle en imputaciones) ──
   const movimientosPorId = useMemo(() => {
@@ -748,12 +776,16 @@ function TabCuentaCorriente({
     // Orden cronológico ascendente, según el criterio elegido por el usuario.
     //  - 'fecha':    día calendario primero, createdAt como desempate
     //  - 'creadoEn': directamente por createdAt
+    // Dentro del mismo día, la deuda/factura va antes que el pago, para que el
+    // saldo no muestre un "a favor" falso por haber cargado el pago primero.
+    const rankTipo = (it) => (it.tipo === 'pago' ? 1 : 0);
     items.sort((a, b) => {
       if (sortBy === 'creadoEn') {
         if (a.creadoEn !== b.creadoEn) return a.creadoEn - b.creadoEn;
         return a.dia - b.dia;
       }
       if (a.dia !== b.dia) return a.dia - b.dia;
+      if (rankTipo(a) !== rankTipo(b)) return rankTipo(a) - rankTipo(b);
       return a.creadoEn - b.creadoEn;
     });
 
@@ -763,8 +795,9 @@ function TabCuentaCorriente({
       return { ...it, _saldo: saldo };
     });
 
-    // Mostrar lo más nuevo arriba (el saldo de cada fila sigue siendo el acumulado hasta esa fecha)
-    return withSaldo.reverse();
+    // Cuenta corriente tradicional: más viejo arriba, más nuevo abajo, con el
+    // saldo acumulándose hacia abajo (como una planilla).
+    return withSaldo;
   }, [movimientos, pagos, sortBy]);
 
   const totales = useMemo(() => {
@@ -866,6 +899,17 @@ function TabCuentaCorriente({
         >
           Registrar pago
         </Button>
+        {onExportarExcel && (
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<FileDownloadIcon fontSize="small" />}
+            onClick={onExportarExcel}
+            disabled={exportandoExcel || (movimientos.length === 0 && pagos.length === 0)}
+          >
+            {exportandoExcel ? 'Exportando…' : 'Exportar Excel'}
+          </Button>
+        )}
       </Stack>
 
       {presupuesto && (
@@ -901,10 +945,10 @@ function TabCuentaCorriente({
             <TableHead>
               <TableRow sx={{ bgcolor: 'background.neutral' }}>
                 <TableCell sx={{ width: 28 }} />
-                <TableCell sortDirection={sortBy === 'fecha' ? 'desc' : false}>
+                <TableCell sortDirection={sortBy === 'fecha' ? 'asc' : false}>
                   <TableSortLabel
                     active={sortBy === 'fecha'}
-                    direction="desc"
+                    direction="asc"
                     onClick={() => setSortBy('fecha')}
                     hideSortIcon={sortBy !== 'fecha'}
                   >
@@ -914,14 +958,19 @@ function TabCuentaCorriente({
                 <TableCell>Código</TableCell>
                 <TableCell>Detalle</TableCell>
                 <TableCell>Obra</TableCell>
+                {/* Convención de CC de proveedores (a pedido del cliente):
+                    Debe = pagos/cancelaciones, Haber = facturas/deuda.
+                    El saldo interno se calcula con el signo contrario
+                    (debe=factura, haber=pago → saldo = facturas - pagos, +deuda);
+                    acá solo se invierte la PRESENTACIÓN de las columnas. */}
                 <TableCell align="right">Debe</TableCell>
                 <TableCell align="right">Haber</TableCell>
                 <TableCell align="right">Saldo</TableCell>
-                <TableCell sortDirection={sortBy === 'creadoEn' ? 'desc' : false}>
+                <TableCell sortDirection={sortBy === 'creadoEn' ? 'asc' : false} sx={{ display: { xs: 'none', lg: 'table-cell' } }}>
                   <Tooltip title="Cuándo se cargó en el sistema">
                     <TableSortLabel
                       active={sortBy === 'creadoEn'}
-                      direction="desc"
+                      direction="asc"
                       onClick={() => setSortBy('creadoEn')}
                       hideSortIcon={sortBy !== 'creadoEn'}
                     >
@@ -1197,6 +1246,7 @@ function ProveedorDrawer({ open, onClose, proveedorId, proveedorNombreHint, empr
   // Imputar saldo a favor (reparte monto_sin_imputar entre facturas pendientes)
   const [imputarSaldoFavorLoading, setImputarSaldoFavorLoading] = useState(false);
   const [imputarSaldoFavorMsg, setImputarSaldoFavorMsg] = useState(null);
+  const [exportandoExcel, setExportandoExcel] = useState(false);
 
   // Proyectos de la empresa (para resolver nombre desde proyecto_id en la tab Presupuestos)
   const [proyectos, setProyectos] = useState([]);
@@ -1251,6 +1301,19 @@ function ProveedorDrawer({ open, onClose, proveedorId, proveedorNombreHint, empr
       setImputarSaldoFavorLoading(false);
     }
   }, [proveedorId, empresaId, fetchData, onUpdate]);
+
+  const handleExportarExcel = useCallback(async () => {
+    if (!proveedorId || !empresaId) return;
+    setExportandoExcel(true);
+    try {
+      await proveedorService.exportarCuentaCorriente(empresaId, proveedorId, data?.proveedor?.nombre);
+    } catch (err) {
+      console.error('Error exportando cuenta corriente:', err);
+      setError('No se pudo exportar la cuenta corriente.');
+    } finally {
+      setExportandoExcel(false);
+    }
+  }, [proveedorId, empresaId, data?.proveedor?.nombre]);
 
   useEffect(() => {
     if (open) {
@@ -1312,8 +1375,8 @@ function ProveedorDrawer({ open, onClose, proveedorId, proveedorNombreHint, empr
       }
     : {
         '& .MuiDrawer-paper': {
-          width: 'min(880px, 95vw)',
-          maxWidth: '95vw',
+          width: 'min(1250px, 96vw)',
+          maxWidth: '96vw',
           display: 'flex',
           flexDirection: 'column',
         },
@@ -1434,6 +1497,8 @@ function ProveedorDrawer({ open, onClose, proveedorId, proveedorNombreHint, empr
               } : undefined}
               onImputarSaldoFavor={handleImputarSaldoFavor}
               imputarSaldoFavorLoading={imputarSaldoFavorLoading}
+              onExportarExcel={handleExportarExcel}
+              exportandoExcel={exportandoExcel}
             />
           </>
         )}

@@ -17,8 +17,11 @@ import { formatCurrencyWithCode } from 'src/utils/formatters';
 
 const lineaLibre = () => ({ nombre: '', cantidad: '', precio_unitario: '' });
 
-export default function DesacopioClienteDrawer({ open, onClose, empresaId, acopio, onSaved }) {
+export default function DesacopioClienteDrawer({ open, onClose, empresaId, acopio, onSaved, modo = 'retiro' }) {
   const acopioId = acopio?.id || acopio?._id || acopio?.acopio_id;
+  const esDev = modo === 'devolucion';
+  const titulo = esDev ? 'Registrar devolución al acopio' : 'Registrar retiro de acopio';
+  const verbo = esDev ? 'Devolución' : 'Retiro';
 
   const [info, setInfo] = useState(null); // { saldo, valor_acopio, valor_desacopio, lista_precios, cliente }
   const [loading, setLoading] = useState(false);
@@ -71,7 +74,8 @@ export default function DesacopioClienteDrawer({ open, onClose, empresaId, acopi
   }, [matsFinales]);
 
   const saldoActual = Number(info?.saldo) || 0;
-  const saldoNuevo = Math.round((saldoActual - totalRetiro) * 100) / 100;
+  // Retiro consume saldo; devolución lo re-acredita.
+  const saldoNuevo = Math.round((saldoActual + (esDev ? totalRetiro : -totalRetiro)) * 100) / 100;
   const totalLineas = matsFinales.deLista.length + matsFinales.fueraLista.length;
 
   // Extras incompletos (con nombre y cantidad pero sin precio) — bloquean el submit.
@@ -83,17 +87,19 @@ export default function DesacopioClienteDrawer({ open, onClose, empresaId, acopi
     if (extrasSinPrecio) { setError('Los materiales fuera de la lista necesitan precio (queda congelado en el acopio).'); return; }
     setSaving(true);
     try {
-      await ventaService.desacopioCliente(empresaId, acopioId, {
+      const payload = {
         materiales: [
           ...matsFinales.deLista.map((m) => ({ codigo: m.codigo, nombre: m.nombre, cantidad: m.cantidad })),
           ...matsFinales.fueraLista,
         ],
         observacion: observacion || null,
-      });
+      };
+      if (esDev) await ventaService.devolucionAcopio(empresaId, acopioId, payload);
+      else await ventaService.desacopioCliente(empresaId, acopioId, payload);
       onSaved?.();
       onClose?.();
     } catch (e) {
-      setError(e?.response?.data?.error || e.message || 'Error al registrar el retiro.');
+      setError(e?.response?.data?.error || e.message || `Error al registrar la ${esDev ? 'devolución' : 'retiro'}.`);
     } finally {
       setSaving(false);
     }
@@ -105,7 +111,7 @@ export default function DesacopioClienteDrawer({ open, onClose, empresaId, acopi
         <header className="shrink-0 border-b border-divider bg-white px-4 py-3">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-base font-bold tracking-tight text-neutral-900">Registrar retiro de acopio</h2>
+              <h2 className="text-base font-bold tracking-tight text-neutral-900">{titulo}</h2>
               {info && (
                 <p className="mt-0.5 text-xs text-neutral-500">
                   {info.cliente || 'Cliente'} · saldo {formatCurrencyWithCode(saldoActual)}
@@ -194,11 +200,11 @@ export default function DesacopioClienteDrawer({ open, onClose, empresaId, acopi
 
                 {/* Resumen de saldo */}
                 <div className="rounded-xl border border-divider bg-white px-3 py-2 text-right text-[11px] text-neutral-500 shadow-sm">
-                  Retiro: <b>{formatCurrencyWithCode(totalRetiro)}</b> · Saldo: {formatCurrencyWithCode(saldoActual)} →{' '}
+                  {verbo}: <b>{formatCurrencyWithCode(totalRetiro)}</b> · Saldo: {formatCurrencyWithCode(saldoActual)} →{' '}
                   <b className={saldoNuevo < -0.005 ? 'text-error-dark' : 'text-neutral-900'}>
                     {formatCurrencyWithCode(saldoNuevo)}
                   </b>
-                  {saldoNuevo < -0.005 && (
+                  {!esDev && saldoNuevo < -0.005 && (
                     <span className="block text-error-dark">⚠️ El acopio queda en negativo: el cliente pasa a deber la diferencia.</span>
                   )}
                 </div>
@@ -218,7 +224,7 @@ export default function DesacopioClienteDrawer({ open, onClose, empresaId, acopi
               className="rounded-lg border border-neutral-300 bg-white px-4 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50 disabled:opacity-50">Cancelar</button>
             <button type="button" onClick={submit} disabled={saving || loading || !totalLineas}
               className="rounded-lg bg-primary-main px-4 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-primary-dark disabled:opacity-50">
-              {saving ? 'Registrando…' : 'Registrar retiro'}
+              {saving ? 'Registrando…' : `Registrar ${esDev ? 'devolución' : 'retiro'}`}
             </button>
           </div>
         </footer>

@@ -58,6 +58,7 @@ export function useExportarPdf({
     return loadImageAsDataUrl(logo.url);
   };
 
+  // Devuelve true si la descarga se disparó; false si falló (el error ya se reportó via onError).
   const exportar = async (plantilla, opts) => {
     setGenerating(true);
     try {
@@ -73,9 +74,11 @@ export function useExportarPdf({
       }
       const logoDataUrl = await resolverLogo(logoId, logos);
       await renderPlantillaToPdf({ Component, data, logoDataUrl, empresaNombre, fileName });
+      return true;
     } catch (err) {
       console.error('useExportarPdf exportar', err);
       if (onError) onError('No se pudo generar el PDF. Intentá de nuevo.');
+      return false;
     } finally {
       setGenerating(false);
     }

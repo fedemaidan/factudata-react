@@ -679,6 +679,66 @@ function findLinkedBudgetVsActualBlock(metricBlock, reportConfig) {
   return layout.find((b) => b?.type === 'budget_vs_actual') || null;
 }
 
+function getBudgetVsActualCategorySet(block, presupuestos, extraContext = {}) {
+  const agruparPor = block?.agrupar_por || 'categoria';
+  const presupuestosConCampo = block?.presupuestos_con_campo || (agruparPor === 'categoria' ? 'categoria' : null);
+  if (agruparPor !== 'categoria' || presupuestosConCampo !== 'categoria' || block?.incluir_sin_presupuesto === true) {
+    return null;
+  }
+
+  const runtimeProjectIds = new Set((extraContext?.filters?.proyectos || []).map((id) => String(id)));
+  const runtimeCategorySet = toNormalizedSet(extraContext?.filters?.categorias || []);
+  let presFiltered = Array.isArray(presupuestos) ? [...presupuestos] : [];
+
+  if (block?.mostrar_tipo && block.mostrar_tipo !== 'ambos') {
+    presFiltered = presFiltered.filter((p) => p.tipo === block.mostrar_tipo);
+  }
+
+  presFiltered = presFiltered.filter((p) => !!(p.clasificaciones?.length || p.rubro));
+
+  if (runtimeProjectIds.size > 0) {
+    presFiltered = presFiltered.filter((p) => runtimeProjectIds.has(getPresupuestoProjectInfo(p).id));
+  }
+
+  if (runtimeCategorySet.size > 0) {
+    presFiltered = presFiltered.filter((p) =>
+      getPresupuestoCategorias(p).some((cat) =>
+        runtimeCategorySet.has(normalizeCategoryFilterValue(cat))
+      )
+    );
+  }
+
+  if (block?.excluir?.presupuestos?.length > 0) {
+    const exSet = new Set(block.excluir.presupuestos.map((n) => String(n || '').toLowerCase()));
+    presFiltered = presFiltered.filter((p) => {
+      const nombre = (p.nombre || p.rubro || '').toLowerCase();
+      return !exSet.has(nombre);
+    });
+  }
+
+  const categorySet = new Set();
+  for (const p of presFiltered) {
+    for (const cat of getPresupuestoCategorias(p)) {
+      categorySet.add(normalizeCategoryFilterValue(cat));
+    }
+  }
+
+  const excludedCategories = toNormalizedSet(block?.excluir?.categorias || []);
+  for (const cat of excludedCategories) {
+    categorySet.delete(cat);
+  }
+
+  return categorySet;
+}
+
+function shouldMetricUseLinkedBudgetExecuted(metrica, linkedBudgetBlock) {
+  if (!linkedBudgetBlock) return false;
+  const metricType = metrica?.filtro_tipo || linkedBudgetBlock.mostrar_tipo || 'egreso';
+  return metrica?.operacion === 'sum'
+    && (metrica?.campo || 'total') === 'total'
+    && metricType === linkedBudgetBlock.mostrar_tipo;
+}
+
 // ─── Agrupación ───
 
 const GROUP_KEYS = {
@@ -770,17 +830,46 @@ function groupMovimientosByUsuario(movimientos, extraContext = {}) {
  * Procesa un bloque metric_cards
  * @returns {Array<{ id, titulo, valor, formato, color }>}
  */
-export function processMetricCards(block, movimientos, _presupuestos, currencies, _cotizaciones, extraContext = {}) {
+export function processMetricCards(block, movimientos, presupuestos, currencies, _cotizaciones, extraContext = {}) {
   const metricas = block.metricas || [];
   const linkedBudgetBlock = findLinkedBudgetVsActualBlock(block, extraContext?.reportConfig);
+  const linkedBudgetCategories = linkedBudgetBlock
+    ? getBudgetVsActualCategorySet(linkedBudgetBlock, presupuestos, extraContext)
+    : null;
 
   return metricas.map((metrica) => {
     let data = movimientos;
+    const useLinkedBudgetExecuted = shouldMetricUseLinkedBudgetExecuted(metrica, linkedBudgetBlock);
+
+    if (useLinkedBudgetExecuted) {
+      const budgetData = processBudgetVsActual(
+        linkedBudgetBlock,
+        movimientos,
+        presupuestos,
+        currencies,
+        _cotizaciones,
+        extraContext,
+      );
+      const value = Number(budgetData?.totals?.ejecutado || 0);
+      return {
+        id: metrica.id,
+        titulo: metrica.titulo,
+        valor: value,
+        valores: { [currencies[0]]: value },
+        display_currency: metrica.display_currency || null,
+        formato: metrica.formato || 'currency',
+        color: metrica.color || 'default',
+        _movimientos: budgetData.rows?.flatMap((row) => row._movimientos || []) || [],
+      };
+    }
 
     // Si esta metrica está asociada al bloque Presupuesto vs Ejecución,
     // hereda sus filtros/exclusiones para que no sume categorías ocultas.
     if (linkedBudgetBlock) {
       data = applyBlockFilters(data, linkedBudgetBlock);
+      if (linkedBudgetCategories) {
+        data = data.filter((m) => linkedBudgetCategories.has(normalizeCategoryFilterValue(m.categoria)));
+      }
       if (!metrica.filtro_tipo && linkedBudgetBlock.mostrar_tipo && linkedBudgetBlock.mostrar_tipo !== 'ambos') {
         data = data.filter((m) => m.type === linkedBudgetBlock.mostrar_tipo);
       }
@@ -1034,9 +1123,11 @@ export function processBudgetVsActual(block, movimientos, presupuestos, currenci
   if (block.mostrar_tipo && block.mostrar_tipo !== 'ambos') {
     presFiltered = presFiltered.filter((p) => p.tipo === block.mostrar_tipo);
   }
-  // Filtrar presupuestos que tengan el campo seleccionado cargado
-  if (block.presupuestos_con_campo) {
-    const campoReq = block.presupuestos_con_campo; // 'categoria' | 'etapa' | 'proveedor'
+  // Filtrar presupuestos que tengan el campo seleccionado cargado.
+  // Para categoría, evitamos que presupuestos sin clasificación caigan en "Sin categoría".
+  const presupuestosConCampo = block.presupuestos_con_campo || (agruparPor === 'categoria' ? 'categoria' : null);
+  if (presupuestosConCampo) {
+    const campoReq = presupuestosConCampo; // 'categoria' | 'etapa' | 'proveedor'
     presFiltered = presFiltered.filter((p) => {
       if (campoReq === 'categoria') return !!(p.clasificaciones?.length || p.rubro);
       if (campoReq === 'etapa') return !!p.etapa;
@@ -1100,12 +1191,14 @@ export function processBudgetVsActual(block, movimientos, presupuestos, currenci
   const presMap = new Map();
   for (const p of presFiltered) {
     const monto = getPresupuestoAmount(p, displayCurrency, cotizaciones);
+    const ejecutado = convertPresupuestoValue(p, Number(p.ejecutado || 0), displayCurrency, cotizaciones);
     for (const nombre of getPresKeys(p)) {
       const key = String(nombre).toLowerCase();
       if (!presMap.has(key)) {
-        presMap.set(key, { nombre, presupuestado: 0 });
+        presMap.set(key, { nombre, presupuestado: 0, ejecutado: 0 });
       }
       presMap.get(key).presupuestado += monto;
+      presMap.get(key).ejecutado += ejecutado;
     }
   }
 
@@ -1123,13 +1216,13 @@ export function processBudgetVsActual(block, movimientos, presupuestos, currenci
 
   const rows = [];
   for (const key of allKeys) {
-    const presData = presMap.get(key) || { nombre: key, presupuestado: 0 };
+    const presData = presMap.get(key) || { nombre: key, presupuestado: 0, ejecutado: 0 };
 
     const movs = movGrouped.get(
       [...movGrouped.keys()].find((k) => k.toLowerCase() === key),
     ) || [];
 
-    const ejecutado = sum(movs.map((m) => Math.abs(getAmount(m, displayCurrency, 'total'))));
+    const ejecutado = presData.ejecutado;
     const presupuestado = presData.presupuestado;
     const disponible = presupuestado - ejecutado;
     const porcentaje = presupuestado > 0 ? ejecutado / presupuestado : 0;
@@ -1203,6 +1296,7 @@ export function processCategoryBudgetMatrix(block, movimientos, presupuestos, cu
   const additionalRows = new Map();
   const projectAccum = new Map();
   const projectTiposCreacion = new Map(); // Guardar tipos de creación por proyecto
+  const projectHasIndexedBudget = new Map();
 
   for (const p of list) {
     if (runtimeProjectIds.size > 0) {
@@ -1229,6 +1323,11 @@ export function processCategoryBudgetMatrix(block, movimientos, presupuestos, cu
       projectTiposCreacion.set(proyectoId, []);
     }
 
+    const useNominalArs = shouldShowNominalArsForPresupuesto(p, displayCurrency);
+    if (useNominalArs) {
+      projectHasIndexedBudget.set(proyectoId, true);
+    }
+
     // Agregar tipo_creacion (persistido o inferido para presupuestos legacy)
     const tipoCreacion = p.tipo_creacion || inferTipoCreacionFromPresupuesto(p);
     if (tipoCreacion) {
@@ -1240,20 +1339,29 @@ export function processCategoryBudgetMatrix(block, movimientos, presupuestos, cu
 
     const acc = projectAccum.get(proyectoId) || {
       inicial: 0,
+      inicialHoy: 0,
       totalPresupuesto: 0,
+      totalPresupuestoHoy: 0,
       recibido: 0,
+      recibidoHoy: 0,
       saldo: 0,
+      saldoHoy: 0,
     };
 
     const adicionales = Array.isArray(p.adicionales) ? p.adicionales : [];
     let totalAdicionales = 0;
+    let totalAdicionalesHoy = 0;
 
     for (const adic of adicionales) {
       const montoAdicBase = Number(adic?.monto ?? adic?.valor ?? 0);
       if (!Number.isFinite(montoAdicBase)) continue;
 
-      const montoAdic = convertPresupuestoValue(p, montoAdicBase, displayCurrency, cotizaciones);
+      const montoAdicHoy = convertPresupuestoValue(p, montoAdicBase, displayCurrency, cotizaciones);
+      const montoAdic = useNominalArs
+        ? getAdicionalNominalArs(adic, p, cotizaciones)
+        : montoAdicHoy;
       totalAdicionales += montoAdic;
+      totalAdicionalesHoy += montoAdicHoy;
 
       const label = (adic?.concepto || adic?.motivo || 'Adicional').trim() || 'Adicional';
       const adicKey = normalizeText(label);
@@ -1263,22 +1371,31 @@ export function processCategoryBudgetMatrix(block, movimientos, presupuestos, cu
         label,
         type: 'additional',
         values: {},
+        todayValues: {},
       };
 
       row.values[proyectoId] = (row.values[proyectoId] || 0) + montoAdic;
+      if (useNominalArs) {
+        row.todayValues[proyectoId] = (row.todayValues[proyectoId] || 0) + montoAdicHoy;
+      }
       additionalRows.set(adicKey, row);
     }
 
-    const montoTotal = getPresupuestoAmount(p, displayCurrency, cotizaciones);
-    const montoInicial = asumirMontoIncluyeAdicionales ? montoTotal - totalAdicionales : montoTotal;
-    const recibido = convertPresupuestoValue(p, Number(p.ejecutado || 0), displayCurrency, cotizaciones);
+    const montoTotalHoy = getPresupuestoAmount(p, displayCurrency, cotizaciones);
+    const montoInicialHoy = asumirMontoIncluyeAdicionales ? montoTotalHoy - totalAdicionalesHoy : montoTotalHoy;
+    const montoInicial = useNominalArs
+      ? getPresupuestoNominalArs(p, cotizaciones)
+      : montoInicialHoy;
+    const recibidoHoy = convertPresupuestoValue(p, Number(p.ejecutado || 0), displayCurrency, cotizaciones);
     const totalPresupuesto = montoInicial + totalAdicionales;
-    const saldo = totalPresupuesto - recibido;
+    const totalPresupuestoHoy = montoInicialHoy + totalAdicionalesHoy;
 
     acc.inicial += montoInicial;
+    acc.inicialHoy += montoInicialHoy;
     acc.totalPresupuesto += totalPresupuesto;
-    acc.recibido += recibido;
-    acc.saldo += saldo;
+    acc.totalPresupuestoHoy += totalPresupuestoHoy;
+    acc.recibidoHoy += recibidoHoy;
+    acc.saldoHoy += totalPresupuestoHoy - recibidoHoy;
 
     projectAccum.set(proyectoId, acc);
   }
@@ -1305,50 +1422,11 @@ export function processCategoryBudgetMatrix(block, movimientos, presupuestos, cu
     tiposCreacion: projectTiposCreacion.get(col.id) || [],
   }));
 
-  const initialRow = {
-    key: 'presupuesto_inicial',
-    label: block.label_presupuesto_inicial || 'Presupuesto inicial',
-    type: 'initial',
-    values: {},
-  };
-  const totalRow = {
-    key: 'total_presupuesto',
-    label: block.label_total_presupuesto || 'Total presupuesto',
-    type: 'summary',
-    values: {},
-  };
-  const recibidoRow = {
-    key: 'recibido',
-    label: block.label_recibido || 'Recibido',
-    type: 'summary',
-    values: {},
-  };
-  const saldoRow = {
-    key: 'saldo',
-    label: block.label_saldo || 'Saldo',
-    type: 'summary',
-    values: {},
-  };
-
-  for (const col of projectColumns) {
-    const acc = projectAccum.get(col.id) || { inicial: 0, totalPresupuesto: 0, recibido: 0, saldo: 0 };
-    initialRow.values[col.id] = acc.inicial;
-    totalRow.values[col.id] = acc.totalPresupuesto;
-    recibidoRow.values[col.id] = acc.recibido;
-    saldoRow.values[col.id] = acc.saldo;
-  }
-
-  const rows = [
-    initialRow,
-    ...[...additionalRows.values()],
-    totalRow,
-    recibidoRow,
-    saldoRow,
-  ];
-
   const movimientosRecibidoByProject = {};
+  const recibidoNominalByProject = {};
   for (const col of projectColumns) {
     movimientosRecibidoByProject[col.id] = [];
+    recibidoNominalByProject[col.id] = 0;
   }
 
   if (movs.length > 0 && projectColumns.length > 0) {
@@ -1375,9 +1453,76 @@ export function processCategoryBudgetMatrix(block, movimientos, presupuestos, cu
 
       if (targetProjectId) {
         movimientosRecibidoByProject[targetProjectId].push(m);
+        recibidoNominalByProject[targetProjectId] += Math.abs(getAmount(m, displayCurrency, 'total'));
       }
     }
   }
+
+  const initialRow = {
+    key: 'presupuesto_inicial',
+    label: block.label_presupuesto_inicial || 'Presupuesto inicial',
+    type: 'initial',
+    values: {},
+    todayValues: {},
+  };
+  const totalRow = {
+    key: 'total_presupuesto',
+    label: block.label_total_presupuesto || 'Total presupuesto',
+    type: 'summary',
+    values: {},
+    todayValues: {},
+  };
+  const recibidoRow = {
+    key: 'recibido',
+    label: block.label_recibido || 'Recibido',
+    type: 'summary',
+    values: {},
+    todayValues: {},
+  };
+  const saldoRow = {
+    key: 'saldo',
+    label: block.label_saldo || 'Saldo',
+    type: 'summary',
+    values: {},
+    todayValues: {},
+  };
+
+  for (const col of projectColumns) {
+    const acc = projectAccum.get(col.id) || {
+      inicial: 0,
+      inicialHoy: 0,
+      totalPresupuesto: 0,
+      totalPresupuestoHoy: 0,
+      recibido: 0,
+      recibidoHoy: 0,
+      saldo: 0,
+      saldoHoy: 0,
+    };
+    const hasIndexedBudget = projectHasIndexedBudget.get(col.id) === true;
+    const hasMovimientoRecibido = movimientosRecibidoByProject[col.id]?.length > 0;
+    const recibido = hasMovimientoRecibido ? recibidoNominalByProject[col.id] : acc.recibidoHoy;
+    const saldo = acc.totalPresupuesto - recibido;
+
+    initialRow.values[col.id] = acc.inicial;
+    totalRow.values[col.id] = acc.totalPresupuesto;
+    recibidoRow.values[col.id] = recibido;
+    saldoRow.values[col.id] = saldo;
+
+    if (hasIndexedBudget) {
+      initialRow.todayValues[col.id] = acc.inicialHoy;
+      totalRow.todayValues[col.id] = acc.totalPresupuestoHoy;
+      recibidoRow.todayValues[col.id] = acc.recibidoHoy;
+      saldoRow.todayValues[col.id] = acc.totalPresupuestoHoy - acc.recibidoHoy;
+    }
+  }
+
+  const rows = [
+    initialRow,
+    ...[...additionalRows.values()],
+    totalRow,
+    recibidoRow,
+    saldoRow,
+  ];
 
   recibidoRow._movimientos_by_project = movimientosRecibidoByProject;
 
@@ -1449,6 +1594,13 @@ function getAdicionalNominalArs(adicional, presupuesto, cotizaciones) {
     return usd > 0 ? Math.abs(monto * usd) : 0;
   }
   return Math.abs(monto);
+}
+
+function shouldShowNominalArsForPresupuesto(presupuesto, displayCurrency) {
+  if (displayCurrency !== 'ARS') return false;
+  const storage = String(presupuesto?.moneda_almacenamiento || presupuesto?.moneda || 'ARS').toUpperCase();
+  const indexacion = String(presupuesto?.indexacion || '').toUpperCase();
+  return storage === 'CAC' || storage === 'USD' || indexacion === 'CAC' || indexacion === 'USD';
 }
 
 function getPresupuestoNominalCac(presupuesto, subtotalNeto, cotizaciones) {
