@@ -814,8 +814,6 @@ const ProyeccionesV2Page = () => {
           <>
             {proyeccionIdsEnPagina.length > 1 && proyeccionMayoritaria ? (
               <>
-                {`Proyección mayoritaria: ${proyeccionMayoritaria.id} (${proyeccionMayoritaria.porcentaje}%)`}
-                {" · "}
               </>
             ) : null}
             {`Proyección: ${formatDateDDMMYYYY(proyeccionMeta?.fechaInicio)} → ${formatDateDDMMYYYY(
@@ -854,9 +852,9 @@ const ProyeccionesV2Page = () => {
             )}
           </>
         ) : proyeccionMayoritaria ? (
-          `Proyección mayoritaria: ${proyeccionMayoritaria.id}`
+          ``
         ) : (
-          `Esta lista incluye ${proyeccionIdsEnPagina.length} proyecciones distintas.`
+          ``
         )}
         </Typography>
 
