@@ -20,6 +20,9 @@ import {
   DialogContent,
   DialogActions,
   Alert,
+  Switch,
+  FormControlLabel,
+  Tooltip,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import { Block as BlockIcon } from "@mui/icons-material";
@@ -51,6 +54,7 @@ import {
 import { formatDateDDMMYYYY } from "src/utils/handleDates";
 import productoService from "src/services/celulandia/productoService";
 import ProductDetailModal from "src/components/celulandia/proyecciones/productDetailModal";
+import { aplicarVistaPonderada } from "src/utils/celulandia/proyeccionView";
 import { Box } from "@mui/system";
 const INITIAL_SORT_OPTIONS = {
   sortField: "createdAt",
@@ -82,6 +86,14 @@ const ProyeccionesV2Page = () => {
   const [busquedaTexto, setBusquedaTexto] = useState("");
   const debouncedBusqueda = useDebouncedValue(busquedaTexto, 500);
   const [selectedTagId, setSelectedTagId] = useState("");
+  // Toggle lineal ↔ ponderado. Por defecto ON: muestra las proyecciones con la
+  // tendencia (promedio ponderado) aplicada. Apagado = como funciona hoy (lineal).
+  const [usarPonderado, setUsarPonderado] = useState(true);
+  // Item "de vista": superpone los valores ponderados cuando el toggle está activo.
+  const getProjView = useCallback(
+    (item) => aplicarVistaPonderada(item, usarPonderado),
+    [usarPonderado]
+  );
 
   const [isNotaDialogOpen, setIsNotaDialogOpen] = useState(false);
   const [notaProducto, setNotaProducto] = useState(null);
@@ -115,6 +127,7 @@ const ProyeccionesV2Page = () => {
     text: debouncedBusqueda,
     tagId: selectedTagId,
     lotesPendientesPorCodigo,
+    usarPonderado,
   });
 
   const { data: tags = [], isLoading: isLoadingTags } = useQuery({
@@ -383,7 +396,12 @@ const ProyeccionesV2Page = () => {
         render: (item) => <StockActualProductoCell item={item} />,
       },
       { key: "ventasPeriodo", label: "Ventas período", sortable: true },
-      { key: "ventasProyectadas", label: "Ventas proyectadas (90 días)", sortable: true },
+      {
+        key: "ventasProyectadas",
+        label: "Ventas proyectadas (90 días)",
+        sortable: true,
+        render: (item) => Number(getProjView(item).ventasProyectadas ?? 0).toLocaleString(),
+      },
       {
         key: "tendencia.variacionPct",
         label: "Variación",
@@ -395,14 +413,14 @@ const ProyeccionesV2Page = () => {
         key: "diasHastaAgotarStock",
         label: "Días hasta agotar stock",
         sortable: false,
-        render: (item) => <DiasHastaAgotarProductoCell item={item} />,
+        render: (item) => <DiasHastaAgotarProductoCell item={getProjView(item)} />,
       },
       {
         key: "stockProyectado",
         label: "Stock proyectado (90 días)",
         sortable: true,
         render: (item) => {
-          const total = item.stockProyectado ?? 0;
+          const total = getProjView(item).stockProyectado ?? 0;
           const lotes = lotesPendientesPorCodigo.get(item.codigo) ?? [];
 
           return <PedidoArriboChip total={total} lotes={lotes} />;
@@ -412,18 +430,19 @@ const ProyeccionesV2Page = () => {
         key: "fechaAgotamientoStock",
         label: "Fecha agotamiento (Stock 0)",
         sortable: true,
-        render: (item) => formatDateDDMMYYYY(item.fechaAgotamientoStock),
+        render: (item) => formatDateDDMMYYYY(getProjView(item).fechaAgotamientoStock),
       },
       {
         key: "cantidadCompraSugerida",
         label: "Cant. a comprar (100 días)",
         sortable: true,
+        render: (item) => Number(getProjView(item).cantidadCompraSugerida ?? 0).toLocaleString(),
       },
       {
         key: "fechaCompraSugerida",
         label: "Fecha compra sugerida",
         sortable: true,
-        render: (item) => formatDateDDMMYYYY(item.fechaCompraSugerida),
+        render: (item) => formatDateDDMMYYYY(getProjView(item).fechaCompraSugerida),
       },
       {
         key: "fechaIngreso",
@@ -438,7 +457,7 @@ const ProyeccionesV2Page = () => {
         render: (item) => formatDateDDMMYYYY(item.fechaCero),
       },
     ],
-    [lotesPendientesPorCodigo, handleOpenNotaDialog, handleOpenEditarNotaDialog, handleOpenDeleteNotaDialog, handleOpenDetailModal]
+    [lotesPendientesPorCodigo, handleOpenNotaDialog, handleOpenEditarNotaDialog, handleOpenDeleteNotaDialog, handleOpenDetailModal, getProjView]
   );
 
   const {
@@ -856,6 +875,35 @@ const ProyeccionesV2Page = () => {
             : "Ningún producto seleccionado"}
         </Typography>
 
+        {/* Toggle lineal ↔ ponderado: cambia los valores de compra/stock proyectado de la tabla */}
+        <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 1.5 }} useFlexGap flexWrap="wrap">
+          <FormControlLabel
+            sx={{ mr: 0 }}
+            control={
+              <Switch
+                checked={usarPonderado}
+                onChange={(event) => {
+                  setUsarPonderado(event.target.checked);
+                  setPage(0);
+                }}
+                color="primary"
+              />
+            }
+            label={
+              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                Aplicar tendencia
+              </Typography>
+            }
+          />
+          <Tooltip title="Con la tendencia aplicada, la compra sugerida, el stock proyectado y el agotamiento se calculan con el promedio ponderado de los meses anteriores (más peso a los recientes). Apagado: cálculo lineal del último período, como funciona hoy.">
+            <Typography variant="caption" color="text.secondary" sx={{ cursor: "help" }}>
+              {usarPonderado
+                ? "Compra y stock proyectado según la tendencia de los últimos meses."
+                : "Compra y stock proyectado con el cálculo lineal del último período (como antes)."}
+            </Typography>
+          </Tooltip>
+        </Stack>
+
         <Box sx={{ position: "relative" }}>
           <TableSelectComponent
             data={productos}
@@ -1061,6 +1109,7 @@ const ProyeccionesV2Page = () => {
           open={detailModalOpen}
           onClose={handleCloseDetailModal}
           producto={detailModalProduct}
+          usarPonderado={usarPonderado}
         />
       </Container>
       </DashboardLayout>

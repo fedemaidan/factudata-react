@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import productoService from "src/services/celulandia/productoService";
 import { formatDateDDMMYYYY } from "src/utils/handleDates";
+import { aplicarVistaPonderada, ponderadoSortField } from "src/utils/celulandia/proyeccionView";
 import * as XLSX from "xlsx";
 import dayjs from "dayjs";
 
@@ -13,16 +14,19 @@ export const useProductos = ({
   text = "",
   tagId = "",
   lotesPendientesPorCodigo = null,
+  usarPonderado = false,
 } = {}) => {
   const queryClient = useQueryClient();
   const [isExporting, setIsExporting] = useState(false);
+  // Cuando el toggle está activo, se ordena por el valor ponderado.
+  const effectiveSortField = ponderadoSortField(sortField, usarPonderado);
   const query = useQuery({
-    queryKey: ["productos", sortField, sortDirection, page, pageSize, text, tagId],
+    queryKey: ["productos", effectiveSortField, sortDirection, page, pageSize, text, tagId, usarPonderado],
     queryFn: () =>
       productoService.getAll({
         page: page + 1,
         pageSize,
-        sortField,
+        sortField: effectiveSortField,
         sortDirection,
         text,
         tagId,
@@ -119,13 +123,16 @@ export const useProductos = ({
 
       const response = await productoService.getAll({
         all: true,
-        sortField,
+        sortField: effectiveSortField,
         sortDirection,
         text,
         tagId,
       });
 
-      const allProductos = Array.isArray(response?.data) ? response.data : [];
+      // El Excel refleja el modo activo (lineal o ponderado), igual que la tabla.
+      const allProductos = (Array.isArray(response?.data) ? response.data : []).map((item) =>
+        aplicarVistaPonderada(item, usarPonderado)
+      );
 
       if (!Array.isArray(allProductos) || allProductos.length === 0) {
         alert("No hay datos para exportar");
@@ -252,7 +259,7 @@ export const useProductos = ({
     } finally {
       setIsExporting(false);
     }
-  }, [sortField, sortDirection, text, tagId, lotesPendientesPorCodigo]);
+  }, [effectiveSortField, sortDirection, text, tagId, lotesPendientesPorCodigo, usarPonderado]);
 
   return {
     ...query,
