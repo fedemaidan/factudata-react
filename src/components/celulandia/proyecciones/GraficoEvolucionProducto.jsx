@@ -59,10 +59,67 @@ function fraseVariacion(clasificacion, variacionPct) {
 }
 
 /**
+ * Un gráfico (una sola variable). Lo usamos dos veces — ventas/día y stock — en vez de
+ * un único gráfico de doble eje, porque mezclar dos escalas distintas en el mismo eje Y
+ * confunde. Comparten el eje X (los meses) para que se lean alineados.
+ */
+function ChartPanel({ title, caption, data, xLabels, color, area, decimals, suffix, theme }) {
+  const seriesId = area ? "stock" : "ventas";
+  return (
+    <Box
+      sx={{
+        borderRadius: 2,
+        border: `1px solid ${theme.palette.divider}`,
+        boxShadow: 1,
+        overflow: "hidden",
+        backgroundColor: theme.palette.background.paper,
+      }}
+    >
+      <Stack direction="row" spacing={1} alignItems="center" sx={{ px: 2, pt: 1.5 }} useFlexGap flexWrap="wrap">
+        <Box sx={{ width: 10, height: 10, borderRadius: "3px", bgcolor: color, flexShrink: 0 }} />
+        <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+          {title}
+        </Typography>
+        {caption ? (
+          <Typography variant="caption" color="text.secondary">
+            {caption}
+          </Typography>
+        ) : null}
+      </Stack>
+      <LineChart
+        height={210}
+        margin={{ left: 56, right: 24, top: 14, bottom: 28 }}
+        xAxis={[{ scaleType: "point", data: xLabels }]}
+        yAxis={[{ min: 0 }]}
+        series={[
+          {
+            id: seriesId,
+            data,
+            area: Boolean(area),
+            showMark: !area,
+            curve: "monotoneX",
+            color,
+            valueFormatter: (v) => (v == null ? "—" : `${formatNum(v, decimals)}${suffix}`),
+          },
+        ]}
+        slotProps={{ legend: { hidden: true } }}
+        sx={{
+          px: 1.5,
+          [`& .MuiLineElement-series-${seriesId}`]: { strokeWidth: area ? 1.5 : 3, opacity: area ? 0.6 : 1 },
+          ...(area
+            ? { [`& .MuiAreaElement-series-${seriesId}`]: { fill: alpha(color, 0.16) } }
+            : { [`& .MuiMarkElement-series-${seriesId}`]: { fill: color, stroke: theme.palette.background.paper } }),
+        }}
+      />
+    </Box>
+  );
+}
+
+/**
  * Gráfico de evolución mensual de un producto. PRESENTACIONAL: recibe la serie y la
- * tendencia ya calculadas por el backend (no fetchea). Muestra ventas/día (línea, métrica
- * principal) sobre el stock disponible (área de fondo) + una tarjeta de "tendencia" en
- * lenguaje no técnico. Mock de referencia: docs/grafico-evolucion-producto.svg.
+ * tendencia ya calculadas por el backend (no fetchea). Muestra DOS gráficos separados —
+ * ventas/día y stock disponible, cada uno con su propia escala — + una tarjeta de
+ * "tendencia" en lenguaje no técnico. Mock de referencia: docs/grafico-evolucion-producto.svg.
  *
  * @param {Array}  serie      [{ mes, anio, mesNum, ventasDiarias, ventasPeriodo, diasConStock, stockInicial }]
  * @param {object} tendencia  { ventasDiariasPonderada, variacionPct, clasificacion, mesesConDato }
@@ -140,59 +197,30 @@ export default function GraficoEvolucionProducto({ serie, tendencia, codigo, nom
         </Typography>
       </Box>
 
-      {/* Gráfico: stock (área de fondo) + ventas/día (línea protagonista) */}
-      <Box
-        sx={{
-          borderRadius: 2,
-          border: `1px solid ${theme.palette.divider}`,
-          boxShadow: 1,
-          overflow: "hidden",
-          backgroundColor: theme.palette.background.paper,
-        }}
-      >
-        <LineChart
-          height={340}
-          margin={{ left: 56, right: 60, top: 24, bottom: 28 }}
-          xAxis={[{ scaleType: "point", data: xLabels }]}
-          yAxis={[
-            { id: "ventas", min: 0 },
-            { id: "stock", min: 0 },
-          ]}
-          leftAxis="ventas"
-          rightAxis="stock"
-          series={[
-            {
-              id: "stock",
-              label: "Stock disponible",
-              data: stockData,
-              yAxisKey: "stock",
-              area: true,
-              showMark: false,
-              curve: "monotoneX",
-              color: stockColor,
-              valueFormatter: (v) => (v == null ? "—" : `${formatNum(v)} u`),
-            },
-            {
-              id: "ventas",
-              label: "Ventas por día",
-              data: ventasData,
-              yAxisKey: "ventas",
-              showMark: true,
-              curve: "monotoneX",
-              color: ventasColor,
-              valueFormatter: (v) => (v == null ? "—" : `${formatNum(v, 1)} por día`),
-            },
-          ]}
-          sx={{
-            px: 1.5,
-            // Línea de ventas marcada; stock como sombra suave de fondo.
-            "& .MuiLineElement-series-ventas": { strokeWidth: 3 },
-            "& .MuiLineElement-series-stock": { strokeWidth: 1.5, opacity: 0.5 },
-            "& .MuiAreaElement-series-stock": { fill: alpha(stockColor, 0.16) },
-            "& .MuiMarkElement-series-ventas": { fill: ventasColor, stroke: theme.palette.background.paper },
-          }}
+      {/* Dos gráficos separados: cada variable con su propia escala (no doble eje Y). */}
+      <Stack spacing={1.5}>
+        <ChartPanel
+          title="Ventas por día"
+          caption="unidades vendidas por día"
+          data={ventasData}
+          xLabels={xLabels}
+          color={ventasColor}
+          decimals={1}
+          suffix=" por día"
+          theme={theme}
         />
-      </Box>
+        <ChartPanel
+          title="Stock disponible"
+          caption="unidades en depósito"
+          data={stockData}
+          xLabels={xLabels}
+          color={stockColor}
+          area
+          decimals={0}
+          suffix=" u"
+          theme={theme}
+        />
+      </Stack>
 
       {/* Tarjeta de tendencia: el "qué significa" en criollo */}
       <Card
