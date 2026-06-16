@@ -34,10 +34,13 @@ export const QUICK_ACTIONS_CATALOG = [
     id: 'crear_reporte',
     specialist: 'reportes',
     label: 'Crear un reporte',
-    description: 'Guardá una búsqueda como reporte',
-    prefill: 'Quiero un reporte de ',
+    description: 'Te hago las preguntas y lo armamos juntos',
+    prefill: 'Quiero crear un reporte',
+    // autosend: al tocarlo se envía solo, sin que el usuario tenga que escribir.
+    // El agente recibe el saludo de onboarding (preguntas + invitación a subir Excel/PDF).
+    autosend: true,
     icon: AssessmentRoundedIcon,
-    tone: 'success',
+    tone: 'primary',
   },
   {
     id: 'crear_presupuesto_profesional',

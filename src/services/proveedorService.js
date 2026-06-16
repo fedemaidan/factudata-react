@@ -118,6 +118,36 @@ const proveedorService = {
   },
 
   /**
+   * Descarga la cuenta corriente del proveedor como archivo Excel (xlsx).
+   * Intercala facturas y pagos con saldo acumulado, en orden cronológico.
+   * @param {string} empresaId
+   * @param {string} proveedorId
+   * @param {string} [nombreProveedor] - para el nombre del archivo descargado
+   * @param {string} [proyectoId]
+   */
+  async exportarCuentaCorriente(empresaId, proveedorId, nombreProveedor, proyectoId) {
+    const qs = new URLSearchParams();
+    if (proyectoId) qs.set('proyectoId', proyectoId);
+    const params = qs.toString() ? `?${qs.toString()}` : '';
+    const response = await api.get(
+      `/empresa/${empresaId}/proveedores/${proveedorId}/cuenta-corriente/export${params}`,
+      { responseType: 'blob' },
+    );
+    const blob = new Blob([response.data], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    const safeNombre = (nombreProveedor || 'proveedor').replace(/[^\w\-]+/g, '_');
+    link.download = `CC_${safeNombre}.xlsx`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  },
+
+  /**
    * Cierra el saldo de uno o varios proveedores generando un PagoProveedor
    * de "Ajuste inicial" por cada uno que imputa todo el pendiente.
    * @param {string} empresaId

@@ -136,6 +136,11 @@ async function buildDefaultGroups({ user, empresa, permisosUsuario }) {
   if (esAdmin && permisosUsuario.includes("VER_MI_CAJA_CHICA")) {
     finanzasItems.push({ title: "Todas las cajas chicas", path: "/perfilesEmpresa", icon: icon(AttachMoneyIcon) });
   }
+  if (permisosUsuario.includes("VER_RESERVAS_OBRA") && !esCorralon) {
+    // Reserva de Obra: reserva interna de fondos por obra (≠ caja chica personal).
+    // Visible solo con la acción VER_RESERVAS_OBRA configurada en la empresa.
+    finanzasItems.push({ title: "Reservas por obra", path: "/reservasObra", icon: icon(AccountBalanceWallet) });
+  }
   if (permisosUsuario.includes("VER_CONTROL_PAGOS")) {
     finanzasItems.push({ title: "Control de pagos", path: "/control-pagos", icon: icon(LocalAtm) });
   }

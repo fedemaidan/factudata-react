@@ -12,6 +12,14 @@ const COLOR_MAP = {
   info: 'info.main',
 };
 
+// Sin decimales en las tarjetas: los KPI se leen más rápido (las tablas conservan decimales).
+const CARD_FORMAT_OPTS = { maximumFractionDigits: 0 };
+
+// El valor escala con el ancho de la tarjeta (cqi = % del container), con piso y techo en rem,
+// para que el número completo quede en UNA línea sin importar cuán angosta sea la tarjeta.
+const VALUE_FONT_SIZE = 'clamp(0.9rem, 11cqi, 1.4rem)';
+const SECONDARY_FONT_SIZE = 'clamp(0.8rem, 8cqi, 1rem)';
+
 const MetricCardsBlock = ({ data, displayCurrency, displayCurrencies, onDrillDown }) => {
   if (!data || data.length === 0) return null;
 
@@ -39,6 +47,9 @@ const MetricCardsBlock = ({ data, displayCurrency, displayCurrencies, onDrillDow
               cursor: metric._movimientos?.length > 0 ? 'pointer' : 'default',
               transition: 'box-shadow 0.2s',
               '&:hover': metric._movimientos?.length > 0 ? { boxShadow: 4 } : {},
+              // Container query: el valor se dimensiona al ancho de la tarjeta (no del viewport),
+              // así el número completo entra en una sola línea tanto en el reporte como en la preview angosta.
+              containerType: 'inline-size',
             }}
             onClick={() => handleClick(metric)}
           >
@@ -52,36 +63,40 @@ const MetricCardsBlock = ({ data, displayCurrency, displayCurrencies, onDrillDow
                 {metric.titulo}
               </Typography>
               {!renderSingleValue && metric.valores ? (
-                <Box sx={{ mt: 1 }}>
+                <Box sx={{ mt: 1, minWidth: 0 }}>
                   {displayCurrencies.map((cur) => (
-                    <Box key={cur} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <Box key={cur} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}>
                       <Typography
-                        variant={cur === displayCurrencies[0] ? 'h5' : 'body1'}
                         sx={{
                           fontWeight: cur === displayCurrencies[0] ? 700 : 600,
                           color: COLOR_MAP[metric.color] || COLOR_MAP.default,
+                          fontSize: cur === displayCurrencies[0] ? VALUE_FONT_SIZE : SECONDARY_FONT_SIZE,
+                          lineHeight: 1.15,
+                          whiteSpace: 'nowrap',
                         }}
                       >
-                        {formatValue(metric.valores[cur], metric.formato, cur)}
+                        {formatValue(metric.valores[cur], metric.formato, cur, CARD_FORMAT_OPTS)}
                       </Typography>
                     </Box>
                   ))}
                 </Box>
               ) : (
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mt: 1, minWidth: 0 }}>
                   <Typography
-                    variant="h5"
                     sx={{
                       fontWeight: 700,
                       color: COLOR_MAP[metric.color] || COLOR_MAP.default,
+                      fontSize: VALUE_FONT_SIZE,
+                      lineHeight: 1.15,
+                      whiteSpace: 'nowrap',
                     }}
                   >
-                    {formatValue(metric.valor, metric.formato, metricCurrency)}
+                    {formatValue(metric.valor, metric.formato, metricCurrency, CARD_FORMAT_OPTS)}
                   </Typography>
                   {metric.formato === 'currency' && metric.valor !== 0 && (
                     metric.valor > 0
-                      ? <TrendingUpIcon fontSize="small" color="success" />
-                      : <TrendingDownIcon fontSize="small" color="error" />
+                      ? <TrendingUpIcon fontSize="small" color="success" sx={{ flexShrink: 0 }} />
+                      : <TrendingDownIcon fontSize="small" color="error" sx={{ flexShrink: 0 }} />
                   )}
                 </Box>
               )}

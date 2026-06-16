@@ -29,6 +29,7 @@ import { getSheetConfigsByEmpresa, syncSheetConfig } from 'src/services/sheetCon
 import movimientosService from 'src/services/movimientosService';
 import profileService from 'src/services/profileService';
 import proveedorService from 'src/services/proveedorService';
+import reservaObraService from 'src/services/reservaObraService';
 import {
   exportMovimientosToExcel,
   exportMovimientosToCSV,
@@ -44,7 +45,8 @@ import { useBreadcrumbs } from 'src/contexts/breadcrumbs-context';
 import { getEmpresaDetailsFromUser, updateEmpresaDetails } from 'src/services/empresaService';
 import HomeIcon from '@mui/icons-material/Home';
 import FolderIcon from '@mui/icons-material/Folder';
-import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet'; 
+import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
+import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import { getProyectosByEmpresa } from 'src/services/proyectosService';
 import { formatTimestamp } from 'src/utils/formatters';
 import { parseQueryParamList, FILTER_ARRAY_KEYS, FILTER_DATE_KEYS } from 'src/utils/parseData';
@@ -465,6 +467,7 @@ const buildCajaDashboardParams = ({ filters, caja, page, limit, includeOptions =
   if (fechaPagoHasta) params.fechaPagoHasta = fechaPagoHasta;
 
   if (filters?.facturaCliente) params.facturaCliente = filters.facturaCliente;
+  if (filters?.reservaId) params.reserva = filters.reservaId;
 
   if (caja?.moneda) params.cajaMoneda = caja.moneda;
   if (caja?.medio_pago) params.cajaMedioPago = caja.medio_pago;
@@ -818,6 +821,24 @@ const CajasPage = () => {
     return `${selectedProjects.length} proyectos seleccionados`;
   }, [activeProject, projectScopeMode, selectedProjects.length]);
   const canUseProjectActions = Boolean(activeProject?.id);
+
+  // Reserva de Obra del proyecto activo (solo con un proyecto seleccionado).
+  // Alimenta el desglose Reservado/Disponible y la columna "Reserva" de la tabla.
+  const [reservaProyecto, setReservaProyecto] = useState(null);
+  useEffect(() => {
+    if (!empresa?.id || !activeProjectId) {
+      setReservaProyecto(null);
+      return undefined;
+    }
+    let cancelado = false;
+    reservaObraService.obtenerPorProyecto(empresa.id, activeProjectId)
+      .then((data) => { if (!cancelado) setReservaProyecto(data); })
+      .catch((error) => {
+        console.error('[Cajas] Error cargando reserva del proyecto:', error);
+        if (!cancelado) setReservaProyecto(null);
+      });
+    return () => { cancelado = true; };
+  }, [empresa?.id, activeProjectId]);
 
   useEffect(() => {
     const r = routerRef.current;
@@ -1263,6 +1284,51 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
   const movimientosFiltrados = useMemo(() => flattenDashboardItems(dashboardItems), [dashboardItems]);
   const activeSortField = getColumnKeyForSortField(filters?.ordenarPor);
   const activeSortDirection = getSortDirectionForFilters(filters);
+
+  // ── Reserva de Obra del proyecto activo ──
+  const reservaActiva = reservaProyecto?.reservas?.[0] || null;
+  // "Solo la ven quienes son parte de la reserva" (+ admin / VER_RESERVAS_OBRA).
+  const puedeVerReserva = useMemo(() => {
+    if (!reservaActiva) return false;
+    const accionesEmpresa = user?.empresa?.acciones || user?.empresaData?.acciones || [];
+    const permisosOcultos = user?.permisosOcultos || [];
+    const tienePermiso = (a) => accionesEmpresa.includes(a) && !permisosOcultos.includes(a);
+    if (user?.admin || tienePermiso('VER_RESERVAS_OBRA')) return true;
+    const userId = user?.id || user?.user_id || user?.uid || null;
+    const userPhone = user?.phone || user?.telefono || null;
+    return (reservaActiva.participantes || []).some(
+      (p) => (userId && p.user_id === userId) || (userPhone && p.user_phone === userPhone),
+    );
+  }, [reservaActiva, user]);
+  const hasReserva = !!reservaActiva && puedeVerReserva;
+  // Cuántas cards de saldo mostrarán el desglose de reserva (ocupan 2 columnas c/u).
+  const cardsConReserva = useMemo(() => {
+    if (!hasReserva) return 0;
+    return cajasVirtuales.filter((c) => {
+      const mon = c.moneda || 'ARS';
+      const esBase = !c.medio_pago && !c.type && (!c.equivalencia || c.equivalencia === 'none');
+      const reservadoMon = reservaProyecto?.reservado?.[mon] || 0;
+      return esBase && (mon === 'ARS' || reservadoMon !== 0);
+    }).length;
+  }, [hasReserva, cajasVirtuales, reservaProyecto]);
+  const reservaFiltroActivo = !!filters?.reservaId;
+  const toggleFiltroReserva = useCallback(() => {
+    const id = reservaActiva?._id || reservaActiva?.id;
+    if (!id) return;
+    setFilters((f) => ({ ...f, reservaId: f?.reservaId === id ? undefined : id }));
+    setPage(0);
+  }, [reservaActiva, setFilters]);
+  const irADetalleReserva = useCallback(() => {
+    const id = reservaActiva?._id || reservaActiva?.id;
+    if (id) router.push(`/reservaObra?id=${id}`);
+  }, [reservaActiva, router]);
+  // Limpiar un filtro de reserva que quedó colgado si la reserva ya no se ve
+  // (se cambió de proyecto o el usuario no participa).
+  useEffect(() => {
+    if (!hasReserva && filters?.reservaId) {
+      setFilters((f) => ({ ...f, reservaId: undefined }));
+    }
+  }, [hasReserva, filters?.reservaId, setFilters]);
 
   const handleSortByColumn = useCallback((columnKey) => {
     const sortField = getSortFieldForColumn(columnKey);
@@ -2462,6 +2528,7 @@ const getTime = (v) => {
     if (filters.facturaCliente) add(filters.facturaCliente === 'cliente' ? 'Factura: Cliente' : 'Factura: Propia', () => setFilters((f) => ({ ...f, facturaCliente: '' })));
     if (filters.montoMin) add(`Monto min: ${filters.montoMin}`, () => setFilters((f) => ({ ...f, montoMin: '' })));
     if (filters.montoMax) add(`Monto max: ${filters.montoMax}`, () => setFilters((f) => ({ ...f, montoMax: '' })));
+    if (filters.reservaId) add('Reserva de obra', () => setFilters((f) => ({ ...f, reservaId: undefined })));
     return chips;
   }, [filters, setFilters]);
 
@@ -2612,7 +2679,7 @@ useEffect(() => {
                         display: 'grid',
                         gridTemplateColumns: {
                           xs: `repeat(${Math.max(cajasVirtuales.length, 1)}, minmax(250px, 1fr))`,
-                          lg: `repeat(${Math.max(cajasVirtuales.length, 1)}, minmax(0, 1fr))`,
+                          lg: `repeat(${Math.max(cajasVirtuales.length + cardsConReserva, 1)}, minmax(0, 1fr))`,
                         },
                         gap: 1,
                         overflowX: { xs: 'auto', lg: 'visible' },
@@ -2627,12 +2694,20 @@ useEffect(() => {
                         const totalColor = totalCaja < 0
                           ? (selected ? '#FFCDD2' : '#E53935')
                           : (selected ? 'inherit' : tone.color);
+                        // Desglose de Reserva de Obra: solo en la caja base (sin medio/tipo/equivalencia)
+                        // de una moneda con reserva, y solo si el usuario puede verla.
+                        const cajaReservaMoneda = caja.moneda || 'ARS';
+                        const esCajaBase = !caja.medio_pago && !caja.type && (!caja.equivalencia || caja.equivalencia === 'none');
+                        const reservadoCard = reservaProyecto?.reservado?.[cajaReservaMoneda] || 0;
+                        const mostrarReservaEnCard = hasReserva && esCajaBase
+                          && (cajaReservaMoneda === 'ARS' || reservadoCard !== 0);
                         return (
                           <Box
                             key={`${caja.nombre}-${index}`}
                             sx={{
                               position: 'relative',
                               minWidth: 0,
+                              gridColumn: { lg: mostrarReservaEnCard ? 'span 2' : 'auto' },
                             }}
                           >
                             <Button
@@ -2708,8 +2783,53 @@ useEffect(() => {
                                   )}
                                 </Stack>
                                 <Typography variant="caption" color={selected ? 'inherit' : 'text.secondary'} sx={{ opacity: 0.9 }}>
-                                  Saldo actual
+                                  {mostrarReservaEnCard ? 'Saldo total caja' : 'Saldo actual'}
                                 </Typography>
+
+                                {mostrarReservaEnCard && (
+                                  <Box
+                                    onClick={(e) => { e.stopPropagation(); toggleFiltroReserva(); }}
+                                    sx={{ mt: 0.75, pt: 1.25, borderTop: '1px solid', borderColor: selected ? 'rgba(255,255,255,0.28)' : 'rgba(0,0,0,0.10)', cursor: 'pointer', width: '100%' }}
+                                  >
+                                    <Box
+                                      sx={{
+                                        display: 'grid',
+                                        gridTemplateColumns: '1fr 1px 1fr',
+                                        gap: 1.5,
+                                        alignItems: 'center',
+                                        mb: 1.25,
+                                      }}
+                                    >
+                                      <Box sx={{ minWidth: 0 }}>
+                                        <Stack direction="row" spacing={0.5} alignItems="center" sx={{ flexWrap: 'wrap', mb: 0.25 }}>
+                                          <Typography variant="caption" color="inherit" sx={{ opacity: 0.82 }}>Reservado</Typography>
+                                          <Chip label="Reserva interna" size="small" sx={{ height: 16, fontSize: '0.55rem', bgcolor: selected ? 'rgba(255,255,255,0.2)' : 'rgba(99,91,255,0.10)', color: 'inherit' }} />
+                                        </Stack>
+                                        <Typography variant="h6" color="inherit" sx={{ fontWeight: 800, lineHeight: 1.15 }}>{formatByCurrency(cajaReservaMoneda, reservadoCard)}</Typography>
+                                      </Box>
+                                      <Box sx={{ width: '1px', height: 36, bgcolor: selected ? 'rgba(255,255,255,0.22)' : 'rgba(0,0,0,0.12)' }} />
+                                      <Box sx={{ minWidth: 0 }}>
+                                        <Typography variant="caption" color="inherit" sx={{ opacity: 0.82, display: 'block', mb: 0.25 }}>Disponible en Caja General</Typography>
+                                        <Typography variant="h6" color={selected ? 'inherit' : (totalCaja - reservadoCard < 0 ? 'error.main' : 'inherit')} sx={{ fontWeight: 800, lineHeight: 1.15 }}>{formatByCurrency(cajaReservaMoneda, totalCaja - reservadoCard)}</Typography>
+                                      </Box>
+                                    </Box>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, py: 0.75, px: 1, borderRadius: 1.5, bgcolor: reservaFiltroActivo ? (selected ? 'rgba(255,255,255,0.22)' : 'rgba(99,91,255,0.14)') : (selected ? 'rgba(255,255,255,0.12)' : 'rgba(99,91,255,0.06)') }}>
+                                      <LockOutlinedIcon sx={{ fontSize: 14, opacity: 0.85 }} />
+                                      <Typography variant="caption" color="inherit" sx={{ opacity: 0.92, lineHeight: 1.25, flex: 1 }}>
+                                        {reservaFiltroActivo
+                                          ? 'Mostrando solo egresos de la reserva — tocá para quitar'
+                                          : 'Reserva interna del proyecto. Tocá para ver sus egresos.'}
+                                      </Typography>
+                                      <Box
+                                        component="span"
+                                        onClick={(e) => { e.stopPropagation(); irADetalleReserva(); }}
+                                        sx={{ fontSize: '0.68rem', fontWeight: 700, textDecoration: 'underline', whiteSpace: 'nowrap', opacity: 0.95 }}
+                                      >
+                                        Ver egresos
+                                      </Box>
+                                    </Box>
+                                  </Box>
+                                )}
                               </Stack>
                             </Button>
                             <IconButton

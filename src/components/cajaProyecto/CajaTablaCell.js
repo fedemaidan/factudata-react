@@ -8,6 +8,7 @@ import {
   IconButton,
   Tooltip,
   Badge,
+  Chip,
 } from '@mui/material';
 import ImageIcon from '@mui/icons-material/Image';
 import CommentIcon from '@mui/icons-material/Comment';
@@ -131,10 +132,18 @@ const CajaTablaCell = ({ colKey, mov, amountColor, ctx, isProrrateo = false }) =
             {empresa?.comprobante_info?.subcategoria && mov.subcategoria && (
               <Typography variant="caption" color="text.secondary">/ {mov.subcategoria}</Typography>
             )}
+            {mov.reserva_id && (
+              <Chip label="Reserva" color="warning" size="small" variant="outlined" sx={{ height: 18, fontSize: '0.6rem' }} />
+            )}
           </Stack>
         ) : (
           <Stack spacing={0.25}>
-            <Typography variant="body2" sx={{ fontWeight: 700 }}>{mov.categoria || '—'}</Typography>
+            <Stack direction="row" spacing={0.5} alignItems="center" flexWrap="wrap">
+              <Typography variant="body2" sx={{ fontWeight: 700 }}>{mov.categoria || '—'}</Typography>
+              {mov.reserva_id && (
+                <Chip label="Reserva" color="warning" size="small" variant="outlined" sx={{ height: 18, fontSize: '0.6rem' }} />
+              )}
+            </Stack>
             {mov.subcategoria && (
               <Typography variant="caption" color="text.secondary">{mov.subcategoria}</Typography>
             )}

@@ -48,6 +48,7 @@ import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import { useAuthContext } from 'src/contexts/auth-context';
 import { useAlert } from 'src/contexts/alert-context';
 import proveedorService from 'src/services/proveedorService';
+import reservaObraService from 'src/services/reservaObraService';
 import { useBreadcrumbs } from 'src/contexts/breadcrumbs-context';
 import { dateToTimestamp, formatCurrency, formatTimestamp } from 'src/utils/formatters';
 import { buildCompletarPagoUpdateFields, puedeCompletarPagoEgreso } from 'src/utils/movimientoPagoCompleto';
@@ -228,7 +229,7 @@ const MovementFormPage = () => {
   const { showAlert: showGlobalAlert } = useAlert();
   const { setBreadcrumbs } = useBreadcrumbs();
   const router = useRouter();
-  const { movimientoId, proyectoId, proyectoName, proveedorNombre, lastPageUrl, lastPageName, showStockPopup } = router.query;
+  const { movimientoId, proyectoId, proyectoName, proveedorNombre, lastPageUrl, lastPageName, showStockPopup, reservaId } = router.query;
   const isEditMode = Boolean(movimientoId);
 
   const [isInitialLoading, setIsInitialLoading] = useState(true);
@@ -283,6 +284,37 @@ const MovementFormPage = () => {
   // En edit mode, priorizar datos del movimiento sobre query params; luego fallback a selección manual.
   const effectiveProyectoId = (isEditMode && movimiento?.proyecto_id) || proyectoId || proyectoManual?.id || null;
   const effectiveProyectoName = (isEditMode && movimiento?.proyecto) || proyectoName || proyectoManual?.nombre || null;
+
+  // Reserva de Obra del proyecto: habilita marcar el egreso como gasto de la reserva.
+  const [reservaProyecto, setReservaProyecto] = useState(null);
+  useEffect(() => {
+    if (!empresa?.id || !effectiveProyectoId) {
+      setReservaProyecto(null);
+      return undefined;
+    }
+    let cancelado = false;
+    reservaObraService.obtenerPorProyecto(empresa.id, effectiveProyectoId)
+      .then((data) => {
+        if (!cancelado) setReservaProyecto(data?.reservas?.length ? data.reservas[0] : null);
+      })
+      .catch((error) => {
+        console.error('[MovementForm] Error cargando reserva del proyecto:', error);
+        if (!cancelado) setReservaProyecto(null);
+      });
+    return () => { cancelado = true; };
+  }, [empresa?.id, effectiveProyectoId]);
+
+  // Si se llega con ?reservaId (ej. desde "Registrar gasto" de una reserva),
+  // marcar el egreso como gasto de esa reserva una vez cargada.
+  useEffect(() => {
+    if (isEditMode || !reservaId || !reservaProyecto) return;
+    const rid = reservaProyecto._id || reservaProyecto.id;
+    if (rid && !formik.values.reserva_id) {
+      formik.setFieldValue('reserva_id', rid);
+      if (formik.values.type !== 'egreso') formik.setFieldValue('type', 'egreso');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reservaId, reservaProyecto, isEditMode]);
 
   // Setear breadcrumbs
   useEffect(() => {
@@ -743,6 +775,11 @@ const createdAtStr = (() => {
     [empresa]
   );
 
+  // Si la empresa tiene el proyecto como obligatorio, no ofrecemos "Sin asignar"
+  // en la pantalla de selección: dejaría guardar sin proyecto y la validación
+  // de submit lo rechazaría sin un campo donde corregirlo (queda trabado).
+  const proyectoEsObligatorio = requiredFieldNames.includes('proyecto');
+
   const getValidationLabel = (fieldName) => FIELD_LABELS[fieldName] || fieldName;
 
   const validateMovementForm = (values) => {
@@ -798,13 +835,23 @@ const createdAtStr = (() => {
   };
 
 
+  // Cada handler setea AMBOS refs: si un submit anterior salió temprano (ej. validación),
+  // los refs quedan con el valor viejo y el click siguiente heredaría esa intención.
+  const handleSaveOnly = () => {
+    returnAfterSaveRef.current = false;
+    exportAfterSaveRef.current = false;
+    handleSubmitForm();
+  };
+
   const handleSaveAndReturn = () => {
     returnAfterSaveRef.current = true;
+    exportAfterSaveRef.current = false;
     handleSubmitForm();
   };
 
   // Guarda y, al crear, abre el diálogo de exportar PDF sin salir de la página.
   const handleSaveAndExport = () => {
+    returnAfterSaveRef.current = false;
     exportAfterSaveRef.current = true;
     handleSubmitForm();
   };
@@ -825,6 +872,7 @@ const createdAtStr = (() => {
       url_imagen: null,
       tags_extra: [],
       caja_chica: false,
+      reserva_id: null,
       medio_pago: '',
       observacion: '',
       detalle: '',
@@ -1482,6 +1530,9 @@ const createdAtStr = (() => {
                 {formik.values.caja_chica && (
                   <span className="rounded-full bg-info-main/15 px-2 py-0.5 text-[11px] font-medium text-info-dark">Caja chica</span>
                 )}
+                {formik.values.reserva_id && (
+                  <span className="rounded-full bg-warning-main/15 px-2 py-0.5 text-[11px] font-medium text-warning-dark">Reserva de Obra</span>
+                )}
                 {isEditMode && movimiento?.origen && (
                   <span
                     className="inline-flex items-center gap-0.5 rounded-full border border-neutral-200 px-2 py-0.5 text-[11px] capitalize text-neutral-700"
@@ -1659,7 +1710,7 @@ const createdAtStr = (() => {
               </button>
               <button
                 type="button"
-                onClick={isEditMode ? handleSubmitForm : handleSaveAndExport}
+                onClick={isEditMode ? handleSaveOnly : handleSaveAndExport}
                 disabled={isLoading}
                 className="inline-flex min-w-[5.5rem] items-center justify-center gap-1 rounded-lg border border-primary-main bg-white px-4 py-1.5 text-sm font-semibold text-primary-dark shadow-sm hover:bg-primary-lightest disabled:opacity-50"
               >
@@ -1751,7 +1802,11 @@ const createdAtStr = (() => {
           <div className="flex flex-1 flex-col items-center justify-center px-4 py-8">
             <div className="w-full max-w-md rounded-xl border border-divider bg-white p-6 shadow-sm">
               <h2 className="text-center text-lg font-semibold text-neutral-900">¿A qué proyecto asignar este movimiento?</h2>
-              <p className="mt-2 text-center text-sm text-neutral-600">Podés elegir un proyecto o dejarlo sin asignar.</p>
+              <p className="mt-2 text-center text-sm text-neutral-600">
+                {proyectoEsObligatorio
+                  ? 'Elegí un proyecto para continuar.'
+                  : 'Podés elegir un proyecto o dejarlo sin asignar.'}
+              </p>
               <div className="mt-5 flex max-h-64 flex-col gap-2 overflow-y-auto">
                 {(proyectos || []).map((p) => (
                   <button
@@ -1767,15 +1822,17 @@ const createdAtStr = (() => {
                   <p className="px-1 text-xs text-neutral-500">No hay proyectos cargados en la empresa.</p>
                 )}
               </div>
-              <div className="mt-4 border-t border-divider pt-4">
-                <button
-                  type="button"
-                  onClick={() => setProyectoManual({ id: null, nombre: null })}
-                  className="w-full rounded-lg border border-dashed border-neutral-400 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
-                >
-                  Sin asignar proyecto
-                </button>
-              </div>
+              {!proyectoEsObligatorio && (
+                <div className="mt-4 border-t border-divider pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setProyectoManual({ id: null, nombre: null })}
+                    className="w-full rounded-lg border border-dashed border-neutral-400 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+                  >
+                    Sin asignar proyecto
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         ) : modoIngreso === null && !isEditMode ? (
@@ -1829,6 +1886,24 @@ const createdAtStr = (() => {
                   </StitchBlock>
                   <StitchBlock step={2} title="Clasificación">
                     <MovementFields {...sharedFieldProps} block="classification" />
+                    {reservaProyecto && formik.values.type === 'egreso' && (
+                      <div className="mt-2 rounded-lg border border-warning-main/40 bg-warning-main/5 px-2.5 py-2">
+                        <label className="flex cursor-pointer items-center justify-between gap-2">
+                          <span className="min-w-0">
+                            <span className="block text-xs font-medium text-neutral-800">Gasto de Reserva de Obra</span>
+                            <span className="block text-[11px] text-neutral-500">
+                              Consume la reserva interna de {reservaProyecto.proyecto_nombre || 'la obra'} (es un egreso real de la obra)
+                            </span>
+                          </span>
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 shrink-0 accent-warning-main"
+                            checked={!!formik.values.reserva_id}
+                            onChange={(e) => formik.setFieldValue('reserva_id', e.target.checked ? (reservaProyecto._id || reservaProyecto.id) : null)}
+                          />
+                        </label>
+                      </div>
+                    )}
                   </StitchBlock>
                   <StitchBlock step={3} title="Detalles financieros e impuestos">
                     <MovementFields {...sharedFieldProps} block="financial" />
@@ -1895,12 +1970,16 @@ const createdAtStr = (() => {
 
         <ExportarPdfDialog
           open={exportPdfOpen}
-          onClose={() => {
-            setExportPdfOpen(false);
+          onExported={() => {
             if (returnAfterExportRef.current) {
               returnAfterExportRef.current = false;
               pushBack(router, lastPageUrl, '/');
             }
+          }}
+          onClose={() => {
+            setExportPdfOpen(false);
+            // Cierre manual (backdrop/Cerrar): cancelar el "volver tras exportar" pendiente.
+            returnAfterExportRef.current = false;
           }}
           empresaId={empresa?.id}
           empresaNombre={empresa?.nombre || ''}

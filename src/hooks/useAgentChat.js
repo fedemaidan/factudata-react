@@ -11,9 +11,19 @@ const initialState = {
   awaitingConfirm: false,
   confirmAction: null,
   activeSpecialist: null,
+  reportDraft: null,
+  suggestions: [],
   error: null,
   hasLoadedHistory: false,
 };
+
+// El specialist de reportes no persiste activeSpecialist (queda null), así que el draft
+// se mantiene mientras llegue uno nuevo y se limpia solo si el turno fue claramente de
+// OTRO specialist (activeSpecialist no nulo y distinto de 'reportes').
+function resolveReportDraft(state, payload) {
+  if (payload.activeSpecialist && payload.activeSpecialist !== 'reportes') return null;
+  return payload.reportDraft ?? state.reportDraft;
+}
 
 function reducer(state, action) {
   switch (action.type) {
@@ -29,6 +39,8 @@ function reducer(state, action) {
         awaitingConfirm: action.payload.awaitingConfirm,
         confirmAction: action.payload.confirmAction,
         activeSpecialist: action.payload.activeSpecialist || null,
+        reportDraft: resolveReportDraft(state, action.payload),
+        suggestions: Array.isArray(action.payload.suggestions) ? action.payload.suggestions : [],
       };
     case 'load:error':
       // Marcamos hasLoadedHistory: true aunque haya fallado para evitar reintentos
@@ -40,6 +52,8 @@ function reducer(state, action) {
         ...state,
         isSending: true,
         error: null,
+        // Los chips del turno anterior ya se consumieron al enviar; se limpian.
+        suggestions: [],
         messages: [...state.messages, action.payload.optimisticMessage],
       };
     case 'send:success':
@@ -51,6 +65,8 @@ function reducer(state, action) {
         awaitingConfirm: action.payload.awaitingConfirm,
         confirmAction: action.payload.confirmAction,
         activeSpecialist: action.payload.activeSpecialist,
+        reportDraft: resolveReportDraft(state, action.payload),
+        suggestions: Array.isArray(action.payload.suggestions) ? action.payload.suggestions : [],
         lastDebugTrace: action.payload.debugTrace || null,
       };
     case 'send:error':
@@ -59,6 +75,17 @@ function reducer(state, action) {
         isSending: false,
         error: action.payload,
         // Mantenemos el mensaje optimista del user; solo no se agrega el del assistant
+      };
+    case 'editSession:start':
+      return { ...state, isLoadingHistory: true, error: null };
+    case 'editSession:success':
+      // Arranque "editar reporte con agente": reemplaza el contexto por el saludo + draft.
+      return {
+        ...initialState,
+        hasLoadedHistory: true,
+        messages: [action.payload.assistantMessage],
+        reportDraft: action.payload.reportDraft ?? null,
+        suggestions: Array.isArray(action.payload.suggestions) ? action.payload.suggestions : [],
       };
     case 'reset':
       return { ...initialState, hasLoadedHistory: true };
@@ -111,8 +138,9 @@ export function useAgentChat() {
     inFlightRef.current = true;
     const optimisticMessage = {
       role: 'user',
-      content: trimmed || '📎 Comprobante adjunto',
+      content: trimmed || '📎 Archivo adjunto',
       createdAt: new Date().toISOString(),
+      ...(fileList.length ? { attachments: fileList.map((f) => ({ filename: f.name })) } : {}),
     };
     dispatch({ type: 'send:start', payload: { optimisticMessage } });
     try {
@@ -142,11 +170,41 @@ export function useAgentChat() {
           awaitingConfirm: data.awaitingConfirm,
           confirmAction: data.confirmAction,
           activeSpecialist: data.activeSpecialist || null,
+          reportDraft: data.reportDraft ?? null,
+          suggestions: Array.isArray(data.suggestions) ? data.suggestions : [],
           debugTrace: data.debugTrace || null,
         },
       });
     } catch (err) {
       dispatch({ type: 'send:error', payload: extractErrorMessage(err) });
+    } finally {
+      inFlightRef.current = false;
+    }
+  }, []);
+
+  // Arranca una sesión determinística de edición de un reporte existente: el backend limpia
+  // el contexto, carga el reporte como preview y devuelve el saludo fijo. Reemplaza el estado.
+  const startEditSession = useCallback(async (reportId) => {
+    if (!reportId || inFlightRef.current) return;
+    inFlightRef.current = true;
+    dispatch({ type: 'editSession:start' });
+    try {
+      const { data } = await api.post(`/agent/report/${reportId}/edit-session`);
+      dispatch({
+        type: 'editSession:success',
+        payload: {
+          assistantMessage: {
+            role: 'assistant',
+            content: data.replyText,
+            createdAt: new Date().toISOString(),
+            actions: Array.isArray(data.actions) ? data.actions : [],
+          },
+          reportDraft: data.reportDraft ?? null,
+          suggestions: Array.isArray(data.suggestions) ? data.suggestions : [],
+        },
+      });
+    } catch (err) {
+      dispatch({ type: 'load:error', payload: extractErrorMessage(err) });
     } finally {
       inFlightRef.current = false;
     }
@@ -169,6 +227,7 @@ export function useAgentChat() {
     ...state,
     loadHistory,
     sendMessage,
+    startEditSession,
     reset,
     confirmCurrent,
     cancelCurrent,

@@ -30,6 +30,7 @@ import { useExportarPdf } from './useExportarPdf';
 export default function ExportarPdfDialog({
   open,
   onClose,
+  onExported,
   empresaId,
   empresaNombre = '',
   documentType,
@@ -49,9 +50,14 @@ export default function ExportarPdfDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
+  // Solo cerramos (y notificamos onExported) si la descarga se disparó; si falló,
+  // el diálogo queda abierto para que el usuario vea el error y pueda reintentar.
   const handleExportar = async (plantilla) => {
-    await exportar(plantilla);
-    onClose?.();
+    const ok = await exportar(plantilla);
+    if (ok) {
+      onExported?.();
+      onClose?.();
+    }
   };
 
   return (

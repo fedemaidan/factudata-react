@@ -122,6 +122,7 @@ export const UsuariosDetails = ({ empresa }) => {
     tipo_validacion_remito: '',
     default_caja_chica: null,
     notificacion_nota_pedido: null,
+    notificacion_logistica: null,
     modo_estado_carga_bot: '',
     proyectos: []
   });
@@ -354,7 +355,9 @@ export const UsuariosDetails = ({ empresa }) => {
       proyectos: editingUsuario ? editingUsuario.proyectosData.map(proj => proj?.id) : [],
       tipo_validacion_remito: editingUsuario ? editingUsuario.tipo_validacion_remito : "",
       default_caja_chica: editingUsuario ? editingUsuario.default_caja_chica : null,
+      gasto_reserva_default: editingUsuario ? editingUsuario.gasto_reserva_default : null,
       notificacion_nota_pedido: editingUsuario ? editingUsuario.notificacion_nota_pedido : false,
+      notificacion_logistica: editingUsuario ? !!editingUsuario.notificacion_logistica : false,
       modo_estado_carga_bot: editingUsuario ? (editingUsuario.modo_estado_carga_bot || '') : '',
       carga_borrador_default: editingUsuario ? !!editingUsuario.carga_borrador_default : false,
     },
@@ -420,7 +423,9 @@ export const UsuariosDetails = ({ empresa }) => {
             proyectosData: values.proyectos.map(projId => proyectos.find(p => p.id === projId)),
             tipo_validacion_remito: values.tipo_validacion_remito ?? "",
             default_caja_chica: values.default_caja_chica,
+            gasto_reserva_default: values.gasto_reserva_default,
             notificacion_nota_pedido: values.notificacion_nota_pedido || false,
+            notificacion_logistica: !!values.notificacion_logistica,
             modo_estado_carga_bot: values.modo_estado_carga_bot || null,
             carga_borrador_default: !!values.carga_borrador_default,
           };
@@ -479,6 +484,7 @@ export const UsuariosDetails = ({ empresa }) => {
       tipo_validacion_remito: usuario.tipo_validacion_remito ?? "",
       default_caja_chica: usuario.default_caja_chica ?? null,
       notificacion_nota_pedido: usuario.notificacion_nota_pedido || false,
+      notificacion_logistica: !!usuario.notificacion_logistica,
       modo_estado_carga_bot: usuario.modo_estado_carga_bot ?? "",
       carga_borrador_default: !!usuario.carga_borrador_default,
     });
@@ -662,6 +668,7 @@ export const UsuariosDetails = ({ empresa }) => {
       tipo_validacion_remito: '',
       default_caja_chica: null,
       notificacion_nota_pedido: null,
+      notificacion_logistica: null,
       modo_estado_carga_bot: '',
       proyectos: []
     });
@@ -688,6 +695,9 @@ export const UsuariosDetails = ({ empresa }) => {
       }
       if (bulkConfig.notificacion_nota_pedido !== null) {
         updates.notificacion_nota_pedido = bulkConfig.notificacion_nota_pedido;
+      }
+      if (bulkConfig.notificacion_logistica !== null) {
+        updates.notificacion_logistica = bulkConfig.notificacion_logistica;
       }
       if (bulkConfig.modo_estado_carga_bot !== '') {
         updates.modo_estado_carga_bot = bulkConfig.modo_estado_carga_bot;
@@ -1348,13 +1358,16 @@ export const UsuariosDetails = ({ empresa }) => {
                             )}
                           </Stack>
                         )}
-                        {(usuario.default_caja_chica || usuario.notificacion_nota_pedido) && (
+                        {(usuario.default_caja_chica || usuario.notificacion_nota_pedido || usuario.notificacion_logistica) && (
                           <Box sx={{ mt: 0.5 }}>
                             {usuario.default_caja_chica && (
                               <Chip label={isMobile ? '💰' : 'Caja chica'} size="small" sx={{ fontSize: '0.65rem', height: 18 }} />
                             )}
                             {usuario.notificacion_nota_pedido && (
                               <Chip label={isMobile ? '🔔' : 'Notif. NP'} size="small" sx={{ fontSize: '0.65rem', height: 18, ml: 0.5 }} color="info" />
+                            )}
+                            {usuario.notificacion_logistica && (
+                              <Chip label={isMobile ? '🚚' : 'Logística'} size="small" sx={{ fontSize: '0.65rem', height: 18, ml: 0.5 }} color="success" />
                             )}
                           </Box>
                         )}
@@ -1591,6 +1604,19 @@ export const UsuariosDetails = ({ empresa }) => {
               </Select>
             </FormControl>
             <FormControl fullWidth margin="dense">
+              <InputLabel id="gasto-reserva-default-label">Gasto de reserva por defecto</InputLabel>
+              <Select
+                labelId="gasto-reserva-default-label"
+                name="gasto_reserva_default"
+                value={formik.values.gasto_reserva_default}
+                onChange={formik.handleChange}
+              >
+                <MenuItem value={true}>Sí</MenuItem>
+                <MenuItem value={false}>No</MenuItem>
+                <MenuItem value={null}>Ninguno</MenuItem>
+              </Select>
+            </FormControl>
+            <FormControl fullWidth margin="dense">
               <InputLabel id="default-caja-chica-label">Notificación Nota Pedido</InputLabel>
               <Select
                 labelId="default-caja-chica-label"
@@ -1601,6 +1627,19 @@ export const UsuariosDetails = ({ empresa }) => {
                 <MenuItem value={true}>Sí</MenuItem>
                 <MenuItem value={false}>No</MenuItem>
                 <MenuItem value={null}>Ninguno</MenuItem>
+              </Select>
+            </FormControl>
+            <FormControl fullWidth margin="dense">
+              <InputLabel id="notificacion-logistica-label">Notificación de logística (corralón)</InputLabel>
+              <Select
+                labelId="notificacion-logistica-label"
+                label="Notificación de logística (corralón)"
+                name="notificacion_logistica"
+                value={!!formik.values.notificacion_logistica}
+                onChange={(e) => formik.setFieldValue('notificacion_logistica', e.target.value === true || e.target.value === 'true')}
+              >
+                <MenuItem value={false}>No</MenuItem>
+                <MenuItem value={true}>Sí — recibe cada venta/retiro/devolución a despachar</MenuItem>
               </Select>
             </FormControl>
             <FormControl fullWidth margin="dense">
@@ -1842,6 +1881,19 @@ Probá ahora, te espero acá 👇`}
                 value={bulkConfig.notificacion_nota_pedido}
                 onChange={handleBulkConfigChange('notificacion_nota_pedido')}
                 label="Notificación Nota Pedido"
+              >
+                <MenuItem value={null}>-- No cambiar --</MenuItem>
+                <MenuItem value={true}>Sí</MenuItem>
+                <MenuItem value={false}>No</MenuItem>
+              </Select>
+            </FormControl>
+
+            <FormControl fullWidth margin="dense">
+              <InputLabel>Notificación de logística (corralón)</InputLabel>
+              <Select
+                value={bulkConfig.notificacion_logistica}
+                onChange={handleBulkConfigChange('notificacion_logistica')}
+                label="Notificación de logística (corralón)"
               >
                 <MenuItem value={null}>-- No cambiar --</MenuItem>
                 <MenuItem value={true}>Sí</MenuItem>

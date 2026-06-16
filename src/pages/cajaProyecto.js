@@ -49,6 +49,7 @@ import SortIcon from '@mui/icons-material/Sort';
 import OrdenarColumnasDialog from 'src/components/OrdenarColumnasDialog';
 import { getCajaColumnasConfig, applyColumnOrder, getHeaderLabel, getHeaderCellSx } from 'src/components/cajaProyecto/cajaColumnasConfig';
 import CajaTablaCell from 'src/components/cajaProyecto/CajaTablaCell';
+import reservaObraService from 'src/services/reservaObraService';
 import ProyectoConfigDrawer from 'src/components/cajaProyecto/ProyectoConfigDrawer';
 import ExportCsvDialog, { moveItem } from 'src/components/cajaProyecto/ExportCsvDialog';
 import SettingsIcon from '@mui/icons-material/Settings';
@@ -344,12 +345,18 @@ const getMovimientoCsvExportFields = () => [
 ];
 
 
-const TotalesFiltrados = ({ t, fmt, moneda, showUsdBlue = false, usdBlue = null, chips = [], onOpenFilters, isMobile = false, showDetails = false, onToggleDetails, baseCalculo = 'total' }) => {
+const TotalesFiltrados = ({ t, fmt, moneda, showUsdBlue = false, usdBlue = null, chips = [], onOpenFilters, isMobile = false, showDetails = false, onToggleDetails, baseCalculo = 'total', reserva = null, onVerReserva }) => {
   const up = (moneda || '').toUpperCase();
   const ingreso = t[up]?.ingreso ?? 0;
   const egreso  = t[up]?.egreso  ?? 0;
   const neto    = ingreso - egreso;
   const totalPeriodo = ingreso + egreso;
+
+  // Reserva de Obra: desglose del saldo (Disponible = Saldo total - Reservado).
+  // La reserva NO es un egreso: es una separación interna del dinero de la obra.
+  const reservado = reserva?.reservado?.[up] ?? 0;
+  const tieneReserva = !!reserva && (reserva.reservas?.length || 0) > 0;
+  const disponible = neto - reservado;
 
   return (
     <Stack spacing={1.25} sx={{ mb: 2 }}>
@@ -420,6 +427,38 @@ const TotalesFiltrados = ({ t, fmt, moneda, showUsdBlue = false, usdBlue = null,
               - {fmt(up, egreso)}
             </Typography>
           </Stack>
+        )}
+
+        {/* Desglose de Reserva de Obra dentro de la tarjeta principal (Ticket 1).
+            La reserva es una separación interna: no es un egreso. */}
+        {tieneReserva && (
+          <Box sx={{ mt: 1.5, pt: 1.25, borderTop: '1px dashed', borderColor: 'divider' }}>
+            <Stack direction="row" spacing={2.5} flexWrap="wrap" alignItems="baseline">
+              <Box>
+                <Typography variant="caption" color="text.secondary">Saldo total caja</Typography>
+                <Typography variant="body2" sx={{ fontWeight: 700 }}>{fmt(up, neto)}</Typography>
+              </Box>
+              <Box>
+                <Typography variant="caption" color="text.secondary">Reservado en Reserva de Obra</Typography>
+                <Typography variant="body2" sx={{ fontWeight: 700, color: reservado >= 0 ? 'warning.main' : 'error.main' }}>
+                  {fmt(up, reservado)}
+                </Typography>
+              </Box>
+              {disponible >= 0 && (
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Disponible en Caja General</Typography>
+                  <Typography variant="body2" sx={{ fontWeight: 700, color: 'success.main' }}>
+                    {fmt(up, disponible)}
+                  </Typography>
+                </Box>
+              )}
+              {onVerReserva && (
+                <Button size="small" variant="text" onClick={onVerReserva} sx={{ ml: 'auto' }}>
+                  Ver Reserva
+                </Button>
+              )}
+            </Stack>
+          </Box>
         )}
 
       </Box>
@@ -880,6 +919,36 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
     cajaSeleccionada,
   });
 
+  // Reserva de Obra del proyecto (reserva interna de fondos; ≠ caja chica personal).
+  // Alimenta el desglose Total/Reservado/Disponible y la columna "Reserva".
+  const [reservaProyecto, setReservaProyecto] = useState(null);
+  useEffect(() => {
+    if (!empresa?.id || !proyectoId) return;
+    let cancelado = false;
+    reservaObraService.obtenerPorProyecto(empresa.id, proyectoId)
+      .then((data) => { if (!cancelado) setReservaProyecto(data); })
+      .catch((err) => {
+        console.error('Error cargando reserva del proyecto:', err);
+        if (!cancelado) setReservaProyecto(null);
+      });
+    return () => { cancelado = true; };
+  }, [empresa?.id, proyectoId]);
+  const reservaActiva = reservaProyecto?.reservas?.[0] || null;
+  // "Solo la ven quienes son parte de la reserva" (+ admin / VER_RESERVAS_OBRA).
+  const puedeVerReserva = useMemo(() => {
+    if (!reservaActiva) return false;
+    const accionesEmpresa = user?.empresa?.acciones || user?.empresaData?.acciones || [];
+    const permisosOcultos = user?.permisosOcultos || [];
+    const tienePermiso = (a) => accionesEmpresa.includes(a) && !permisosOcultos.includes(a);
+    if (user?.admin || tienePermiso('VER_RESERVAS_OBRA')) return true;
+    const userId = user?.id || user?.user_id || user?.uid || null;
+    const userPhone = user?.phone || user?.telefono || null;
+    return (reservaActiva.participantes || []).some(
+      (p) => (userId && p.user_id === userId) || (userPhone && p.user_phone === userPhone),
+    );
+  }, [reservaActiva, user]);
+  const hasReserva = !!reservaActiva && puedeVerReserva;
+
   useEffect(() => {
     logCajaDebug('Contexto inicial usuario/router', {
       proyectoId,
@@ -892,8 +961,8 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
   }, [authUserUid, proyectoId, router.asPath, router.query, user?.id, user?.uid]);
 
   const columnasConfig = useMemo(
-    () => getCajaColumnasConfig(visibleCols, compactCols, empresa, options),
-    [visibleCols, compactCols, empresa, options]
+    () => getCajaColumnasConfig(visibleCols, compactCols, empresa, { ...options, hasReserva }),
+    [visibleCols, compactCols, empresa, options, hasReserva]
   );
   const columnasFiltradas = useMemo(
     () => applyColumnOrder(columnasConfig, columnasOrden),
@@ -2361,6 +2430,8 @@ useEffect(() => {
                   showDetails={showTotalsDetails}
                   onToggleDetails={() => setShowTotalsDetails((s) => !s)}
                   baseCalculo={activeCaja?.baseCalculo || 'total'}
+                  reserva={reservaProyecto}
+                  onVerReserva={hasReserva ? () => router.push(`/reservaObra?id=${reservaProyecto.reservas[0]._id || reservaProyecto.reservas[0].id}`) : undefined}
                 />
 
               </Stack>
