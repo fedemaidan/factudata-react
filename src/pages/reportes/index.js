@@ -383,6 +383,9 @@ const ReportListPage = () => {
   const router = useRouter();
   const { user } = useAuthContext();
   const [empresaId, setEmpresaId] = useState(null);
+  // Permiso de empresa: con REPORTE_MANUAL se habilita la creación/edición manual.
+  // Sin el permiso, crear y editar se hacen siempre con el agente (default IA).
+  const [tieneReporteManual, setTieneReporteManual] = useState(false);
 
   // ─── Data state ───
   const [reports, setReports] = useState([]);
@@ -405,6 +408,7 @@ const ReportListPage = () => {
       try {
         const empresa = await getEmpresaDetailsFromUser(user);
         setEmpresaId(empresa?.id || null);
+        setTieneReporteManual(Array.isArray(empresa?.acciones) && empresa.acciones.includes('REPORTE_MANUAL'));
       } catch (err) {
         console.error('Error obteniendo empresa:', err);
       }
@@ -547,8 +551,12 @@ const ReportListPage = () => {
             </Typography>
             <Button
               variant="contained"
-              startIcon={<AddIcon />}
-              onClick={() => setCreateDialogOpen(true)}
+              startIcon={tieneReporteManual ? <AddIcon /> : <AutoAwesomeIcon />}
+              onClick={() =>
+                tieneReporteManual
+                  ? setCreateDialogOpen(true)
+                  : router.push('/agente?newReport=1')
+              }
             >
               Nuevo Reporte
             </Button>
@@ -651,22 +659,26 @@ const ReportListPage = () => {
 
           {/* Menú contextual */}
           <Menu anchorEl={menuAnchor} open={Boolean(menuAnchor)} onClose={handleMenuClose}>
-            <MenuItem onClick={() => {
-              const rpt = reports.find((r) => r._id === menuReportId);
-              handleMenuClose();
-              if (rpt) router.push(`/reportes/${rpt._id}?edit=1`);
-            }}>
-              <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon>
-              <ListItemText>Editar manual</ListItemText>
-            </MenuItem>
+            {/* Editar con el agente: opción por default. Sin permiso manual es la única
+                opción de edición, así que la mostramos como "Editar" a secas. */}
             <MenuItem onClick={() => {
               const rpt = reports.find((r) => r._id === menuReportId);
               handleMenuClose();
               if (rpt) router.push(`/agente?editReport=${rpt._id}`);
             }}>
               <ListItemIcon><AutoAwesomeIcon fontSize="small" color="primary" /></ListItemIcon>
-              <ListItemText>Editar con agente</ListItemText>
+              <ListItemText>{tieneReporteManual ? 'Editar con agente' : 'Editar'}</ListItemText>
             </MenuItem>
+            {tieneReporteManual && (
+              <MenuItem onClick={() => {
+                const rpt = reports.find((r) => r._id === menuReportId);
+                handleMenuClose();
+                if (rpt) router.push(`/reportes/${rpt._id}?edit=1`);
+              }}>
+                <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon>
+                <ListItemText>Editar manual</ListItemText>
+              </MenuItem>
+            )}
             <MenuItem onClick={handleDuplicate}>
               <ListItemIcon><ContentCopyIcon fontSize="small" /></ListItemIcon>
               <ListItemText>Duplicar</ListItemText>

@@ -41,6 +41,7 @@ const AgentChatPage = () => {
   const fileInputRef = useRef(null);
   const consumedQueryRef = useRef(null);
   const consumedEditRef = useRef(null);
+  const consumedNewRef = useRef(false);
   const [draft, setDraft] = useState('');
   const [attachedFiles, setAttachedFiles] = useState([]);
   const [confirmingReset, setConfirmingReset] = useState(false);
@@ -84,10 +85,12 @@ const AgentChatPage = () => {
 
   useEffect(() => {
     if (!router.isReady) return;
-    // Con ?editReport el contexto lo siembra el effect de edición; no cargues el historial viejo.
-    if (router.query.editReport) return;
+    // Con ?editReport / ?newReport el contexto lo siembra su propio effect; no cargues el
+    // historial viejo (ni siquiera tras el router.replace: los refs marcan que ya arrancamos).
+    if (router.query.editReport || router.query.newReport) return;
+    if (consumedEditRef.current || consumedNewRef.current) return;
     if (!hasLoadedHistory) loadHistory();
-  }, [router.isReady, router.query.editReport, hasLoadedHistory, loadHistory]);
+  }, [router.isReady, router.query.editReport, router.query.newReport, hasLoadedHistory, loadHistory]);
 
   // Arranque "editar reporte con agente": limpia el contexto y carga ese reporte en la preview.
   useEffect(() => {
@@ -99,6 +102,19 @@ const AgentChatPage = () => {
     startEditSession(editReport);
     router.replace('/agente', undefined, { shallow: true });
   }, [router, startEditSession]);
+
+  // Arranque "nuevo reporte con agente": limpia el chat y dispara el onboarding.
+  useEffect(() => {
+    if (!router.isReady) return;
+    if (!router.query.newReport) return;
+    if (consumedNewRef.current) return;
+    consumedNewRef.current = true;
+    (async () => {
+      await reset();
+      sendMessage('Quiero crear un reporte');
+    })();
+    router.replace('/agente', undefined, { shallow: true });
+  }, [router, reset, sendMessage]);
 
   useEffect(() => {
     const node = scrollRef.current;
