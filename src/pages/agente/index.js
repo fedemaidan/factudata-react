@@ -7,11 +7,13 @@ import {
   Chip,
   CircularProgress,
   Container,
+  Dialog,
   IconButton,
   Stack,
   TextField,
   Tooltip,
   Typography,
+  useMediaQuery,
   useTheme,
 } from '@mui/material';
 import RestartAltRoundedIcon from '@mui/icons-material/RestartAltRounded';
@@ -22,8 +24,10 @@ import EditRoundedIcon from '@mui/icons-material/EditRounded';
 import CheckCircleRoundedIcon from '@mui/icons-material/CheckCircleRounded';
 import CancelRoundedIcon from '@mui/icons-material/CancelRounded';
 import TerminalRoundedIcon from '@mui/icons-material/TerminalRounded';
+import InsightsRoundedIcon from '@mui/icons-material/InsightsRounded';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { AgentMessage, AgentTypingIndicator } from 'src/components/agent/AgentMessage';
+import AgentReportPreview from 'src/components/agent/AgentReportPreview';
 import { useAgentChat, useAgentDebugTrace } from 'src/hooks/useAgentChat';
 import { useAgenteSpecialists } from 'src/hooks/useAgenteSpecialists';
 import { pickQuickActions, pickExamplePrompts } from 'src/components/agent/agentQuickActions';
@@ -36,6 +40,8 @@ const AgentChatPage = () => {
   const scrollRef = useRef(null);
   const fileInputRef = useRef(null);
   const consumedQueryRef = useRef(null);
+  const consumedEditRef = useRef(null);
+  const consumedNewRef = useRef(false);
   const [draft, setDraft] = useState('');
   const [attachedFiles, setAttachedFiles] = useState([]);
   const [confirmingReset, setConfirmingReset] = useState(false);
@@ -45,25 +51,70 @@ const AgentChatPage = () => {
     isLoadingHistory,
     isSending,
     awaitingConfirm,
+    reportDraft,
+    suggestions,
     error,
     hasLoadedHistory,
     loadHistory,
     sendMessage,
+    startEditSession,
     reset,
     confirmCurrent,
     cancelCurrent,
     dismissError,
   } = useAgentChat();
   const { enabled: debugVisible, toggle: toggleDebugVisible } = useAgentDebugTrace();
-  const { originalUser } = useAuthContext();
+  const { user, originalUser } = useAuthContext();
   const isAdmin = !!originalUser?.admin;
+  const isDesktop = useMediaQuery((t) => t.breakpoints.up('md'));
+  const [mobilePreviewOpen, setMobilePreviewOpen] = useState(false);
+
+  // reportDraft solo lo emite el agente de reportes; el hook ya lo limpia si el turno
+  // pasó a otro specialist, así que basta con su presencia para mostrar la preview.
+  const showPreview = !!reportDraft;
+  const handleSaveReport = useCallback(
+    (nombre) => {
+      setMobilePreviewOpen(false);
+      sendMessage(`Guardá este reporte con el nombre "${nombre}".`);
+    },
+    [sendMessage],
+  );
   const { specialists } = useAgenteSpecialists();
   const quickActions = useMemo(() => pickQuickActions(specialists), [specialists]);
   const examplePrompts = useMemo(() => pickExamplePrompts(specialists), [specialists]);
 
   useEffect(() => {
+    if (!router.isReady) return;
+    // Con ?editReport / ?newReport el contexto lo siembra su propio effect; no cargues el
+    // historial viejo (ni siquiera tras el router.replace: los refs marcan que ya arrancamos).
+    if (router.query.editReport || router.query.newReport) return;
+    if (consumedEditRef.current || consumedNewRef.current) return;
     if (!hasLoadedHistory) loadHistory();
-  }, [hasLoadedHistory, loadHistory]);
+  }, [router.isReady, router.query.editReport, router.query.newReport, hasLoadedHistory, loadHistory]);
+
+  // Arranque "editar reporte con agente": limpia el contexto y carga ese reporte en la preview.
+  useEffect(() => {
+    if (!router.isReady) return;
+    const editReport = router.query.editReport;
+    if (typeof editReport !== 'string' || !editReport) return;
+    if (consumedEditRef.current === editReport) return;
+    consumedEditRef.current = editReport;
+    startEditSession(editReport);
+    router.replace('/agente', undefined, { shallow: true });
+  }, [router, startEditSession]);
+
+  // Arranque "nuevo reporte con agente": limpia el chat y dispara el onboarding.
+  useEffect(() => {
+    if (!router.isReady) return;
+    if (!router.query.newReport) return;
+    if (consumedNewRef.current) return;
+    consumedNewRef.current = true;
+    (async () => {
+      await reset();
+      sendMessage('Quiero crear un reporte');
+    })();
+    router.replace('/agente', undefined, { shallow: true });
+  }, [router, reset, sendMessage]);
 
   useEffect(() => {
     const node = scrollRef.current;
@@ -82,8 +133,11 @@ const AgentChatPage = () => {
     router.replace('/agente', undefined, { shallow: true });
   }, [router, hasLoadedHistory, sendMessage]);
 
-  const canAttach = !!specialists?.corralon;
-  const ATTACH_ACCEPT = 'image/*,application/pdf';
+  const canAttach = !!specialists?.corralon || !!specialists?.reportes;
+  // reportes acepta Excel/CSV como referencia de formato; corralón solo foto/PDF.
+  const ATTACH_ACCEPT = specialists?.reportes
+    ? 'image/*,application/pdf,.xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv'
+    : 'image/*,application/pdf';
   const MAX_ATTACHMENTS = 10;
 
   const handleSend = useCallback(() => {
@@ -133,19 +187,38 @@ const AgentChatPage = () => {
     [isSending, sendMessage],
   );
 
-  const handleQuickAction = useCallback((prefill) => {
-    setDraft(prefill);
-    requestAnimationFrame(() => {
-      const el = inputRef.current;
-      if (!el) return;
-      el.focus();
-      try {
-        el.setSelectionRange(prefill.length, prefill.length);
-      } catch (_) {
-        /* noop */
+  // Chip de sugerencia: se envía como si el usuario lo hubiera escrito.
+  const handleSuggestionClick = useCallback(
+    (chip) => {
+      if (isSending || !chip?.message) return;
+      sendMessage(chip.message);
+    },
+    [isSending, sendMessage],
+  );
+
+  const handleQuickAction = useCallback(
+    (action) => {
+      const prefill = typeof action === 'string' ? action : action?.prefill || '';
+      // autosend: la acción se envía sola (onboarding proactivo); el agente responde
+      // sin que el usuario tenga que escribir.
+      if (action && typeof action === 'object' && action.autosend) {
+        if (!isSending) sendMessage(prefill);
+        return;
       }
-    });
-  }, []);
+      setDraft(prefill);
+      requestAnimationFrame(() => {
+        const el = inputRef.current;
+        if (!el) return;
+        el.focus();
+        try {
+          el.setSelectionRange(prefill.length, prefill.length);
+        } catch (_) {
+          /* noop */
+        }
+      });
+    },
+    [isSending, sendMessage],
+  );
 
   // Despacho de acciones declarativas que vienen en el message del asistente
   // (open_report → navega; suggest_create_report → manda mensaje al chat).
@@ -257,14 +330,18 @@ const AgentChatPage = () => {
       <Head>
         <title>Asistente Sorby (Beta)</title>
       </Head>
+      <Box sx={{ display: 'flex', height: 'calc(100dvh - 64px)', overflow: 'hidden' }}>
       <Box
         component="main"
         sx={{
           flex: 1,
+          minWidth: 0,
           display: 'flex',
           flexDirection: 'column',
-          height: 'calc(100dvh - 64px)',
+          height: '100%',
           backgroundColor: 'background.default',
+          borderRight: showPreview && isDesktop ? 1 : 0,
+          borderColor: 'divider',
         }}
       >
         {error ? (
@@ -313,6 +390,7 @@ const AgentChatPage = () => {
                     debugTrace={m.debugTrace}
                     debugVisible={debugVisible}
                     actions={m.actions}
+                    attachments={m.attachments}
                     onAction={handleMessageAction}
                   />
                 ))}
@@ -352,6 +430,53 @@ const AgentChatPage = () => {
                   variant="outlined"
                   onClick={cancelCurrent}
                 />
+              </Stack>
+            </Container>
+          </Box>
+        ) : null}
+
+        {suggestions.length > 0 && !awaitingConfirm && !isSending ? (
+          <Box
+            sx={{
+              px: { xs: 2, sm: 3 },
+              pt: 1,
+              backgroundColor: 'background.paper',
+            }}
+          >
+            <Container maxWidth="md" disableGutters>
+              <Stack
+                direction="row"
+                spacing={1}
+                useFlexGap
+                sx={{
+                  overflowX: 'auto',
+                  pb: 0.5,
+                  // Oculta la barra de scroll sin perder el desplazamiento táctil.
+                  '&::-webkit-scrollbar': { display: 'none' },
+                  scrollbarWidth: 'none',
+                }}
+              >
+                {suggestions.map((chip, i) => (
+                  <Chip
+                    key={`${chip.label}-${i}`}
+                    label={chip.label}
+                    onClick={() => handleSuggestionClick(chip)}
+                    variant="outlined"
+                    sx={{
+                      flexShrink: 0,
+                      height: 34,
+                      borderColor: (t) => `${t.palette.primary.main}55`,
+                      color: 'primary.main',
+                      fontWeight: 600,
+                      fontSize: '0.85rem',
+                      backgroundColor: (t) => `${t.palette.primary.main}0a`,
+                      '&:hover': {
+                        backgroundColor: (t) => `${t.palette.primary.main}1a`,
+                        borderColor: 'primary.main',
+                      },
+                    }}
+                  />
+                ))}
               </Stack>
             </Container>
           </Box>
@@ -407,7 +532,7 @@ const AgentChatPage = () => {
               }}
             >
               {canAttach ? (
-                <Tooltip title="Adjuntar remito o comprobante (foto/PDF)">
+                <Tooltip title={'Adjuntar archivo'}>
                   <span>
                     <IconButton
                       onClick={() => fileInputRef.current?.click()}
@@ -474,6 +599,50 @@ const AgentChatPage = () => {
           </Container>
         </Box>
       </Box>
+
+        {showPreview && isDesktop ? (
+          <Box sx={{ width: { md: '48%', lg: '54%' }, height: '100%', flexShrink: 0 }}>
+            <AgentReportPreview draft={reportDraft} user={user} onSave={handleSaveReport} />
+          </Box>
+        ) : null}
+      </Box>
+
+      {showPreview && !isDesktop ? (
+        <>
+          <Tooltip title="Ver previsualización del reporte">
+            <IconButton
+              onClick={() => setMobilePreviewOpen(true)}
+              sx={{
+                position: 'fixed',
+                bottom: 88,
+                right: 16,
+                zIndex: 1200,
+                width: 52,
+                height: 52,
+                color: 'primary.contrastText',
+                background: (t) => `linear-gradient(135deg, ${t.palette.primary.main} 0%, ${t.palette.primary.dark} 100%)`,
+                boxShadow: (t) => `0 8px 24px -8px ${t.palette.primary.main}99`,
+                '&:hover': { filter: 'brightness(1.05)' },
+              }}
+              aria-label="Ver previsualización"
+            >
+              <InsightsRoundedIcon />
+            </IconButton>
+          </Tooltip>
+          <Dialog
+            fullScreen
+            open={mobilePreviewOpen}
+            onClose={() => setMobilePreviewOpen(false)}
+          >
+            <AgentReportPreview
+              draft={reportDraft}
+              user={user}
+              onSave={handleSaveReport}
+              onClose={() => setMobilePreviewOpen(false)}
+            />
+          </Dialog>
+        </>
+      ) : null}
     </DashboardLayout>
   );
 };
@@ -561,7 +730,7 @@ function EmptyState({ onQuickAction, onPromptClick, disabled, quickActions, exam
                 title={action.label}
                 description={action.description}
                 disabled={disabled}
-                onClick={() => onQuickAction(action.prefill)}
+                onClick={() => onQuickAction(action)}
               />
             ))}
           </Box>

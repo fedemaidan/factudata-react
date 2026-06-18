@@ -2691,16 +2691,18 @@ export function buildDefaultFilters(filtrosSchema) {
 /**
  * Formatea un valor según su formato
  */
-export function formatValue(value, formato, displayCurrency = 'ARS') {
+export function formatValue(value, formato, displayCurrency = 'ARS', options = {}) {
   if (value == null || isNaN(value)) return '-';
 
   switch (formato) {
     case 'currency': {
       const prefix = displayCurrency === 'ARS' ? '$' : displayCurrency === 'USD' ? 'U$D ' : '';
       const suffix = displayCurrency === 'CAC' ? ' CAC' : '';
+      const maxFrac = options.maximumFractionDigits != null ? options.maximumFractionDigits : 2;
+      const minFrac = options.minimumFractionDigits != null ? options.minimumFractionDigits : maxFrac;
       return `${prefix}${Number(value).toLocaleString('es-AR', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
+        minimumFractionDigits: minFrac,
+        maximumFractionDigits: maxFrac,
       })}${suffix}`;
     }
     case 'percentage':
