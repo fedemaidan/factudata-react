@@ -29,6 +29,7 @@ const BLOCK_TYPE_LABELS = {
   income_budget_control: 'Control de Ingresos CAC',
   chart: 'Gráfico',
   grouped_detail: 'Detalle por Grupo',
+  category_subcategory_accordion: 'Categorias y Subcategorias',
   balance_between_partners: 'Balance entre Socios',
 };
 
@@ -187,7 +188,13 @@ const ReportEditor = ({
 
   // Layout / Bloques
   const addBlock = (block) => {
-    setConfig((prev) => ({ ...prev, layout: [...prev.layout, block] }));
+    setConfig((prev) => ({
+      ...prev,
+      datasets: block.type === 'budget_vs_actual'
+        ? { ...(prev.datasets || {}), presupuestos: true }
+        : prev.datasets,
+      layout: [...prev.layout, block],
+    }));
   };
 
   const updateBlock = (idx, block) => {
@@ -261,10 +268,10 @@ const ReportEditor = ({
         detail = 'Agrupado por ' + (block.agrupar_por || '?') + ' - ' + (block.columnas?.length || 0) + ' col';
         break;
       case 'movements_table':
-        detail = (block.columnas_visibles?.length || 7) + ' col - ' + (block.page_size || 25) + '/pag';
+        detail = (block.columnas_visibles?.length || 7) + ' col - ' + (block.page_size || 25) + '/pag' + (block.resumen_desplegable ? ' · desplegable' : '');
         break;
       case 'budget_vs_actual':
-        detail = 'Tipo: ' + (block.mostrar_tipo || 'egreso') + ' · Por: ' + (block.agrupar_por || 'categoria');
+        detail = 'Tipo: ' + (block.mostrar_tipo || 'egreso') + ' · Por: ' + (block.agrupar_por || 'categoria') + (block.mostrar_desglose_presupuestos ? ' · con desglose' : '');
         break;
       case 'monthly_budget_control':
         detail = 'Mensual · ' + (block.categorias_control?.length || 3) + ' categorias · % avance';
@@ -280,6 +287,9 @@ const ReportEditor = ({
         break;
       case 'grouped_detail':
         detail = 'Por ' + (block.agrupar_por || 'etapa') + ' · ' + (block.chips_style === 'chip' ? 'Chips' : 'Mini-cards') + ' · ' + (block.columnas_visibles?.length || 7) + ' col';
+        break;
+      case 'category_subcategory_accordion':
+        detail = (block.desglose_subcategorias === false ? 'Categorias con drilldown' : 'Accordion categoria -> subcategoria') + ' · ' + (block.campo_monto || 'total');
         break;
       case 'balance_between_partners':
         detail = 'Movimientos por telefono · reparto equitativo · resumen de deudas';

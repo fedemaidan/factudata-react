@@ -10,6 +10,7 @@ import GroupedDetailBlock from './blocks/GroupedDetailBlock';
 import CategoryBudgetMatrixBlock from './blocks/CategoryBudgetMatrixBlock';
 import IncomeBudgetControlBlock from './blocks/IncomeBudgetControlBlock';
 import BalanceBetweenPartnersBlock from './blocks/BalanceBetweenPartnersBlock';
+import CategorySubcategoryAccordionBlock from './blocks/CategorySubcategoryAccordionBlock';
 import DrillDownDialog from './DrillDownDialog';
 import { executeReport, filterMovimientos } from 'src/tools/reportEngine';
 
@@ -24,6 +25,7 @@ const BLOCK_COMPONENTS = {
   grouped_detail: GroupedDetailBlock,
   balance_between_partners: BalanceBetweenPartnersBlock,
   income_budget_control: IncomeBudgetControlBlock,
+  category_subcategory_accordion: CategorySubcategoryAccordionBlock,
 };
 
 /**
