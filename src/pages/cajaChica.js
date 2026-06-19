@@ -21,8 +21,9 @@ import profileService from 'src/services/profileService';
 import cajaChicaService from 'src/services/cajaChica/cajaChicaService';
 import TransferenciaModal from 'src/components/cajaChica/TransferenciaModal';
 import MovimientoCajaChicaModal from 'src/components/cajaChica/MovimientoCajaChicaModal';
+import ProrrateoDialog from 'src/components/ProrrateoDialog';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
-import { getProyectosByEmpresa } from 'src/services/proyectosService';
+import { getProyectosByEmpresaId } from 'src/services/proyectosService';
 import proveedorService from 'src/services/proveedorService';
 import { formatTimestamp } from 'src/utils/formatters';
 
@@ -63,6 +64,10 @@ const CajaChicaPage = () => {
   const [proyectosEmpresa, setProyectosEmpresa] = useState([]);
   const [categoriasEmpresa, setCategoriasEmpresa] = useState([]);
   const [proveedoresEmpresa, setProveedoresEmpresa] = useState([]);
+
+  // Estados para prorrateo desde caja chica
+  const [prorrateoOpen, setProrrateoOpen] = useState(false);
+  const [prorrateoDatosBase, setProrrateoDatosBase] = useState(null);
 
 
   const [deletingElement, setDeletingElement] = useState(null);
@@ -139,7 +144,7 @@ const CajaChicaPage = () => {
       const empresa = await getEmpresaDetailsFromUser(user);
       if (empresa) {
         const [pys, provNombres] = await Promise.all([
-          getProyectosByEmpresa(empresa),
+          getProyectosByEmpresaId(empresa.id),
           proveedorService.getNombres(empresa.id),
         ]);
         setProyectosEmpresa(pys);
@@ -186,6 +191,23 @@ const CajaChicaPage = () => {
     } finally {
       setIsMovLoading(false);
     }
+  };
+
+  // Abre el diálogo de prorrateo con la identidad del dueño de la caja chica inyectada,
+  // igual que handleCreateMovimiento. Los N egresos generados llevan caja_chica: true, por lo que
+  // descuentan el saldo de caja chica del usuario y quedan registrados contra cada obra.
+  const handleProrratearMovimiento = (datos) => {
+    const targetUser = userById || user;
+    setProrrateoDatosBase({
+      ...datos,
+      caja_chica: true,
+      origen: 'web',
+      moneda,
+      user_phone: targetUser.phone || targetUser.telefono,
+      empresa_id: user.empresa?.id || user.empresaData?.id || user.empresa_id,
+    });
+    setMovModalOpen(false);
+    setProrrateoOpen(true);
   };
 
   const handleCreateTransfer = async (transferData) => {
@@ -553,12 +575,27 @@ const CajaChicaPage = () => {
           open={movModalOpen}
           onClose={handleCloseMovModal}
           onSubmit={handleCreateMovimiento}
+          onProrratear={handleProrratearMovimiento}
           proyectos={proyectosEmpresa}
           categorias={categoriasEmpresa}
           proveedores={proveedoresEmpresa}
           usuarioDestino={userById || user}
           isLoading={isMovLoading}
           tipoInicial={movModalTipo}
+        />
+
+        <ProrrateoDialog
+          open={prorrateoOpen}
+          datosBase={prorrateoDatosBase || {}}
+          proyectos={proyectosEmpresa}
+          onClose={(success) => {
+            setProrrateoOpen(false);
+            setProrrateoDatosBase(null);
+            if (success) {
+              setAlert({ open: true, message: 'Prorrateo registrado: se descontó de la caja chica y se cargó en cada obra.', severity: 'success' });
+              fetchMovimientos();
+            }
+          }}
         />
 
         <Snackbar open={alert.open} autoHideDuration={6000} onClose={handleCloseAlert}>
