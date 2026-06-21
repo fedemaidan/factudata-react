@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { memo, useState, useEffect, useRef } from 'react';
 import { Avatar, Box, Button, Chip, Stack, Typography, alpha, useTheme } from '@mui/material';
 import AutoAwesomeRoundedIcon from '@mui/icons-material/AutoAwesomeRounded';
 import AttachFileRoundedIcon from '@mui/icons-material/AttachFileRounded';
@@ -183,7 +183,7 @@ export function UserAvatar({ size = 32 }) {
   );
 }
 
-export function AgentMessage({
+function AgentMessageBase({
   role,
   content,
   createdAt,
@@ -444,3 +444,9 @@ export function AgentTypingIndicator() {
     </Box>
   );
 }
+
+// memo: cada mensaje parsea markdown (ReactMarkdown). Sin memo, tipear en el chat
+// re-renderiza y re-parsea TODOS los mensajes en cada tecla → arrastre. Las props por
+// mensaje son estables (onAction es useCallback en la página), así que el memo evita
+// el trabajo redundante.
+export const AgentMessage = memo(AgentMessageBase);

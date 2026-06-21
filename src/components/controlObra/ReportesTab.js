@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Alert, Box, Button, Card, CardContent, Checkbox, Chip, Dialog, DialogActions,
-  DialogContent, DialogTitle, FormControlLabel, Stack, TextField, Typography,
+  Alert, Box, Button, Card, CardContent, Checkbox, Chip, FormControlLabel,
+  MenuItem, Stack, TextField, Typography,
 } from '@mui/material';
+import FormDrawer from 'src/components/controlObra/FormDrawer';
 import ControlObraService from 'src/services/controlObra/controlObraService';
 
 const GRAV = { baja: 'default', media: 'warning', alta: 'error' };
@@ -11,6 +12,7 @@ const GRAV = { baja: 'default', media: 'warning', alta: 'error' };
 export default function ReportesTab({ obra, empresaId }) {
   const qc = useQueryClient();
   const [nuevo, setNuevo] = useState('');
+  const [gravedad, setGravedad] = useState('media');
   const [conformeOpen, setConformeOpen] = useState(false);
 
   const incQ = useQuery({
@@ -21,8 +23,8 @@ export default function ReportesTab({ obra, empresaId }) {
   const refresh = () => qc.invalidateQueries({ queryKey: ['control-obra'] });
 
   const crear = useMutation({
-    mutationFn: () => ControlObraService.crearInconveniente(obra._id, { empresa_id: empresaId, titulo: nuevo }),
-    onSuccess: () => { setNuevo(''); refresh(); },
+    mutationFn: () => ControlObraService.crearInconveniente(obra._id, { empresa_id: empresaId, titulo: nuevo, gravedad }),
+    onSuccess: () => { setNuevo(''); setGravedad('media'); refresh(); },
   });
   const resolver = useMutation({ mutationFn: (id) => ControlObraService.resolverInconveniente(id, empresaId, 'Resuelto'), onSuccess: refresh });
 
@@ -32,7 +34,7 @@ export default function ReportesTab({ obra, empresaId }) {
     <Stack spacing={2}>
       <Card>
         <CardContent>
-          <Typography variant="overline">Conforme de obra</Typography>
+          <Typography variant="subtitle1" fontWeight={600}>Conforme de obra</Typography>
           {conformeEmitido ? (
             <Alert severity="success" sx={{ mt: 1 }}>Conforme emitido. Obra finalizada{obra.retencion_liberada ? ' · fondo de reparo liberado' : ''}.</Alert>
           ) : (
@@ -51,9 +53,14 @@ export default function ReportesTab({ obra, empresaId }) {
 
       <Card>
         <CardContent>
-          <Typography variant="overline">Inconvenientes</Typography>
+          <Typography variant="subtitle1" fontWeight={600}>Inconvenientes</Typography>
           <Stack direction="row" spacing={1} my={1}>
             <TextField size="small" fullWidth placeholder="Nuevo inconveniente…" value={nuevo} onChange={(e) => setNuevo(e.target.value)} />
+            <TextField select size="small" label="Gravedad" value={gravedad} onChange={(e) => setGravedad(e.target.value)} sx={{ width: 120 }}>
+              <MenuItem value="baja">Baja</MenuItem>
+              <MenuItem value="media">Media</MenuItem>
+              <MenuItem value="alta">Alta</MenuItem>
+            </TextField>
             <Button variant="outlined" disabled={!nuevo || crear.isPending} onClick={() => crear.mutate()}>Agregar</Button>
           </Stack>
           <Stack spacing={1}>
@@ -85,19 +92,22 @@ function ConformeDialog({ open, onClose, obra, empresaId, onDone }) {
     onError: (e) => setError(e?.response?.data?.error?.message || e.message),
   });
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
-      <DialogTitle>Emitir conforme</DialogTitle>
-      <DialogContent>
-        <Typography variant="body2" color="text.secondary" mb={1}>Confirmá el checklist de cierre:</Typography>
+    <FormDrawer
+      open={open} onClose={onClose} title="Emitir conforme"
+      actions={(
+        <>
+          <Button onClick={onClose}>Cancelar</Button>
+          <Button variant="contained" disabled={emitir.isPending} onClick={() => { setError(null); emitir.mutate(); }}>Emitir</Button>
+        </>
+      )}
+    >
+      <Typography variant="body2" color="text.secondary" mb={1}>Confirmá el checklist de cierre:</Typography>
+      <Stack>
         {['fotos', 'docs', 'firma'].map((k) => (
           <FormControlLabel key={k} control={<Checkbox checked={chk[k]} onChange={(e) => setChk((c) => ({ ...c, [k]: e.target.checked }))} />} label={k === 'fotos' ? 'Fotos finales' : k === 'docs' ? 'Documentación' : 'Firma del cliente'} />
         ))}
-        {error && <Typography color="error" variant="body2" mt={1}>{error}</Typography>}
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose}>Cancelar</Button>
-        <Button variant="contained" disabled={emitir.isPending} onClick={() => { setError(null); emitir.mutate(); }}>Emitir</Button>
-      </DialogActions>
-    </Dialog>
+      </Stack>
+      {error && <Typography color="error" variant="body2" mt={1}>{error}</Typography>}
+    </FormDrawer>
   );
 }

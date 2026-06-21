@@ -11,8 +11,7 @@ import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import ControlObraService from 'src/services/controlObra/controlObraService';
 import CarteraNav from 'src/components/controlObra/CarteraNav';
 import NuevaObraDialog from 'src/components/controlObra/NuevaObraDialog';
-
-const fmt = (n) => (Number(n) || 0).toLocaleString('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 });
+import { KpiCard, fmt } from 'src/components/controlObra/ui';
 
 function MisObrasPage() {
   const { user } = useAuthContext();
@@ -46,11 +45,11 @@ function MisObrasPage() {
         <CarteraNav />
 
         {/* KPIs de cartera */}
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} mb={2}>
-          <Kpi label="Obras activas" value={obras.filter((o) => o.estado === 'activa').length} />
-          <Kpi label="Contrato total" value={fmt(totalContrato)} />
-          <Kpi label="Cobrado" value={fmt(totalCobrado)} color="success.main" />
-          <Kpi label="Pendiente de cobro" value={fmt(totalPendiente)} color="warning.main" />
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} mb={2} useFlexGap flexWrap="wrap">
+          <KpiCard label="Obras activas" value={obras.filter((o) => o.estado === 'activa').length} sub="en ejecución" />
+          <KpiCard label="Contrato total" value={fmt(totalContrato)} sub="suma de obras" />
+          <KpiCard label="Cobrado" value={fmt(totalCobrado)} color="success.main" sub="ingresado" />
+          <KpiCard label="Pendiente de cobro" value={fmt(totalPendiente)} color="warning.main" sub="por cobrar" />
         </Stack>
 
         <Card>
@@ -66,6 +65,7 @@ function MisObrasPage() {
                   <TableCell align="right">Avance</TableCell>
                   <TableCell align="right">Cobrado</TableCell>
                   <TableCell align="right">Pendiente</TableCell>
+                  <TableCell align="right">Margen</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -87,10 +87,16 @@ function MisObrasPage() {
                     </TableCell>
                     <TableCell align="right">{fmt(o.cobrado)}</TableCell>
                     <TableCell align="right">{fmt(o.pendiente)}</TableCell>
+                    <TableCell align="right">
+                      <Stack direction="row" spacing={0.75} alignItems="center" justifyContent="flex-end">
+                        <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: (o.margen ?? 0) >= 0 ? 'success.main' : 'error.main' }} />
+                        <span style={{ color: (o.margen ?? 0) >= 0 ? undefined : '#d32f2f' }}>{fmt(o.margen)}</span>
+                      </Stack>
+                    </TableCell>
                   </TableRow>
                 ))}
                 {!carteraQ.isLoading && obras.length === 0 && (
-                  <TableRow><TableCell colSpan={6}><Typography variant="body2" color="text.secondary">Sin obras todavía. Creá la primera.</Typography></TableCell></TableRow>
+                  <TableRow><TableCell colSpan={7}><Typography variant="body2" color="text.secondary">Sin obras todavía. Creá la primera.</Typography></TableCell></TableRow>
                 )}
               </TableBody>
             </Table>
@@ -105,17 +111,6 @@ function MisObrasPage() {
         onCreated={(id) => { setNuevaObra(false); router.push(`/control-obra/${id}`); }}
       />
     </DashboardLayout>
-  );
-}
-
-function Kpi({ label, value, color }) {
-  return (
-    <Card sx={{ flex: 1 }}>
-      <CardContent>
-        <Typography variant="caption" color="text.secondary">{label}</Typography>
-        <Typography variant="h6" sx={{ color }}>{value}</Typography>
-      </CardContent>
-    </Card>
   );
 }
 

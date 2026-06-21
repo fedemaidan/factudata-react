@@ -4,6 +4,7 @@ import DashboardIcon from "@mui/icons-material/Dashboard";
 import PeopleIcon from "@mui/icons-material/People";
 import StoreIcon from "@mui/icons-material/Store";
 import NoteAltIcon from "@mui/icons-material/NoteAlt";
+import EngineeringIcon from "@mui/icons-material/Engineering";
 import AttachMoneyIcon from "@mui/icons-material/AttachMoney";
 import SettingsIcon from "@mui/icons-material/Settings";
 import { AccountBalanceWallet, Checklist, LocalAtm } from "@mui/icons-material";
@@ -83,13 +84,13 @@ function buildCorralonGroups({ user, empresa, permisosUsuario, esAdmin }) {
   configItems.push({ title: "Sucursales", path: "/sucursales", icon: icon(StoreIcon) });
   configItems.push({ title: "Mi cuenta", path: "/account", icon: icon(PeopleIcon) });
   if (user?.admin) {
-    configItems.push({ title: "Configurar " + empresa.nombre, path: `empresa?empresaId=${empId}`, icon: icon(SettingsIcon) });
+    configItems.push({ title: "Configurar " + empresa.nombre, path: `/empresa?empresaId=${empId}`, icon: icon(SettingsIcon) });
   }
   if (permisosUsuario.includes("ADMIN_USUARIOS")) {
     configItems.push({ title: "Administración", path: `/configuracionBasica/?empresaId=${empId}`, icon: icon(SettingsIcon) });
   }
   if (permisosUsuario.includes("VER_UNIDADES")) {
-    configItems.push({ title: "Unidades", path: `unidadesTable?empresaId=${empId}`, icon: icon(SettingsIcon) });
+    configItems.push({ title: "Unidades", path: `/unidadesTable?empresaId=${empId}`, icon: icon(SettingsIcon) });
   }
   groups.push({ id: "configuracion", label: "Configuración", items: configItems });
 
@@ -149,7 +150,7 @@ async function buildDefaultGroups({ user, empresa, permisosUsuario }) {
   }
   if (permisosUsuario.includes("VER_PLANES_COBRO") && !esCorralon) {
     // Plan de cobros (PlanCobroModel) es para constructoras. En corralón no aplica.
-    finanzasItems.push({ title: "Plan de cobros", path: "cobros", icon: icon(AttachMoneyIcon) });
+    finanzasItems.push({ title: "Plan de cobros", path: "/cobros", icon: icon(AttachMoneyIcon) });
   }
   if (esAdmin && !esCorralon) {
     // Control de presupuestos / presupuestos profesionales son de obra (constructora).
@@ -157,6 +158,7 @@ async function buildDefaultGroups({ user, empresa, permisosUsuario }) {
     if (permisosUsuario.includes("VER_PRESUPUESTOS_PROFESIONALES")) {
       finanzasItems.push({ title: "Presupuestos profesionales", path: "/presupuestosProfesionales", icon: icon(NoteAltIcon) });
     }
+    finanzasItems.push({ title: "Control de Obra", path: "/control-obra", icon: icon(EngineeringIcon) });
   }
   if (finanzasItems.length > 0) groups.push({ id: "finanzas", label: "Finanzas", items: finanzasItems });
 
@@ -202,7 +204,7 @@ async function buildDefaultGroups({ user, empresa, permisosUsuario }) {
         label: "Obras",
         items: proys.map((proy) => ({
           title: proy.nombre,
-          path: `cajas?proyectoId=${proy.id}`,
+          path: `/cajas?proyectoId=${proy.id}`,
           icon: (
             <SvgIcon fontSize="small" sx={{ color: proy.activo ? "success.main" : "text.disabled" }}>
               <StoreIcon />
@@ -234,14 +236,14 @@ async function buildDefaultGroups({ user, empresa, permisosUsuario }) {
   // ——— CONFIGURACIÓN ———
   const configItems = [];
   if (user?.admin) {
-    configItems.push({ title: "Configurar " + empresa.nombre, path: `empresa?empresaId=${empId}`, icon: icon(SettingsIcon) });
+    configItems.push({ title: "Configurar " + empresa.nombre, path: `/empresa?empresaId=${empId}`, icon: icon(SettingsIcon) });
   }
   configItems.push({ title: "Plantillas y logos", path: "/plantillas-pdf", icon: icon(AutoAwesomeRoundedIcon) });
   if (permisosUsuario.includes("ADMIN_USUARIOS")) {
     configItems.push({ title: "Administración", path: `/configuracionBasica/?empresaId=${empId}`, icon: icon(SettingsIcon) });
   }
   if (permisosUsuario.includes("VER_UNIDADES")) {
-    configItems.push({ title: "Unidades", path: `unidadesTable?empresaId=${empId}`, icon: icon(SettingsIcon) });
+    configItems.push({ title: "Unidades", path: `/unidadesTable?empresaId=${empId}`, icon: icon(SettingsIcon) });
   }
   if (permisosUsuario.includes("INTEGRACION_ODOO")) {
     configItems.push({ title: "Integración con Odoo", path: `/odooIntegracion?empresaId=${empId}`, icon: icon(NoteAltIcon) });

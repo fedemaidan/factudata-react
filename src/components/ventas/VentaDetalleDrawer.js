@@ -13,6 +13,7 @@ import {
   DialogContent,
   DialogTitle,
   Drawer,
+  FormControlLabel,
   IconButton,
   LinearProgress,
   TextField,
@@ -82,6 +83,9 @@ export default function VentaDetalleDrawer({ open, onClose, empresaId, ventaId, 
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [cobroOpen, setCobroOpen] = useState(false);
   const [devolucionOpen, setDevolucionOpen] = useState(false);
+  const [fechaOpen, setFechaOpen] = useState(false);
+  const [nuevaFecha, setNuevaFecha] = useState('');
+  const [revertirEntregaChk, setRevertirEntregaChk] = useState(false);
 
   const cargar = useCallback(async () => {
     if (!open || !ventaId) return;
@@ -138,6 +142,30 @@ export default function VentaDetalleDrawer({ open, onClose, empresaId, ventaId, 
     try {
       await ventaService.registrarEntrega(empresaId, ventaId, { entregas: entregaPayload });
       setEntregaOpen(false);
+      await cargar();
+      onChanged?.();
+    } catch (e) {
+      setError(e?.response?.data?.error || e.message);
+    } finally { setBusy(false); }
+  }
+
+  function abrirFecha() {
+    const f = venta?.fecha_entrega_estimada;
+    setNuevaFecha(f ? new Date(f).toISOString().slice(0, 10) : '');
+    setRevertirEntregaChk(false);
+    setFechaOpen(true);
+  }
+
+  async function guardarFechaEntrega() {
+    setBusy(true); setError('');
+    try {
+      // Si está entregada y el usuario eligió volverla a pendiente, revertimos la
+      // entrega (repone stock) antes de actualizar la fecha.
+      if (revertirEntregaChk && venta?.entrega?.estado === 'entregado') {
+        await ventaService.revertirEntrega(empresaId, ventaId);
+      }
+      await ventaService.modificarFechaEntrega(empresaId, ventaId, nuevaFecha || null);
+      setFechaOpen(false);
       await cargar();
       onChanged?.();
     } catch (e) {
@@ -419,6 +447,17 @@ export default function VentaDetalleDrawer({ open, onClose, empresaId, ventaId, 
               >
                 Editar
               </button>
+              {venta.tipo !== 'acopio' && (
+                <button
+                  type="button"
+                  title="Cambiar la fecha de entrega (no afecta plata ni stock)"
+                  onClick={abrirFecha}
+                  disabled={busy}
+                  className="rounded-lg border border-neutral-300 bg-white px-4 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Fecha de entrega
+                </button>
+              )}
               <button
                 type="button"
                 title={motivoCancelar || 'Cancelar venta'}
@@ -548,6 +587,31 @@ export default function VentaDetalleDrawer({ open, onClose, empresaId, ventaId, 
         onClose={() => setDevolucionOpen(false)}
         onSaved={() => { cargar(); onChanged?.(); }}
       />
+
+      {/* Dialog cambiar fecha de entrega — disponible aunque la venta esté entregada/cobrada */}
+      <Dialog open={fechaOpen} onClose={() => setFechaOpen(false)} fullWidth maxWidth="xs">
+        <DialogTitle>Cambiar fecha de entrega</DialogTitle>
+        <DialogContent>
+          <TextField
+            fullWidth size="small" type="date" label="Fecha de entrega"
+            value={nuevaFecha} onChange={(e) => setNuevaFecha(e.target.value)}
+            InputLabelProps={{ shrink: true }} sx={{ mt: 1 }}
+          />
+          {venta?.entrega?.estado === 'entregado' && (
+            <div className="mt-2">
+              <p className="text-xs text-warning-dark">Esta venta ya figura como <b>entregada</b>.</p>
+              <FormControlLabel
+                control={<Checkbox size="small" checked={revertirEntregaChk} onChange={(e) => setRevertirEntregaChk(e.target.checked)} />}
+                label="Marcarla como pendiente de entrega (revierte la entrega y repone el stock)"
+              />
+            </div>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <button type="button" onClick={() => setFechaOpen(false)} disabled={busy} className="px-3 py-1.5 text-sm text-neutral-600">Volver</button>
+          <button type="button" onClick={guardarFechaEntrega} disabled={busy} className="rounded-lg bg-primary-main px-4 py-1.5 text-sm font-semibold text-white disabled:opacity-50">Guardar</button>
+        </DialogActions>
+      </Dialog>
 
       {/* Dialog cancelar */}
       <Dialog open={cancelOpen} onClose={() => setCancelOpen(false)} fullWidth maxWidth="xs">

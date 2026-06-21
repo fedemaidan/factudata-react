@@ -42,6 +42,37 @@ const ControlObraService = {
     throw new Error('Error al obtener la obra');
   },
 
+  actualizarObra: async (id, empresa_id, cambios) => unwrap(await api.patch(`${BASE}/${id}`, { empresa_id, cambios })),
+  registrarAvance: async (id, subrubroUid, empresa_id, avance_pct) => unwrap(await api.patch(`${BASE}/${id}/subrubros/${subrubroUid}/avance`, { empresa_id, avance_pct })),
+  editarSubrubro: async (id, subrubroUid, empresa_id, cambios) => unwrap(await api.patch(`${BASE}/${id}/subrubros/${subrubroUid}`, { empresa_id, cambios })),
+  eliminarSubrubro: async (id, subrubroUid, empresa_id) => unwrap(await api.delete(`${BASE}/${id}/subrubros/${subrubroUid}`, { params: { empresa_id } })),
+  // contrato = { proveedor_id, proveedor_nombre, monto, modalidad } | null (para borrar)
+  asignarContrato: async (id, subrubroUid, empresa_id, contrato) => unwrap(await api.patch(`${BASE}/${id}/subrubros/${subrubroUid}/contrato`, { empresa_id, contrato })),
+  // responsable = { user_id, nombre } | null (para borrar)
+  asignarResponsable: async (id, subrubroUid, empresa_id, responsable) => unwrap(await api.patch(`${BASE}/${id}/subrubros/${subrubroUid}/responsable`, { empresa_id, responsable })),
+
+  /* ---------- CRUD de estructura + auditoría ---------- */
+  agregarRubro: async (id, empresa_id, nombre) => unwrap(await api.post(`${BASE}/${id}/rubros`, { empresa_id, nombre })),
+  editarRubro: async (id, rubroUid, empresa_id, nombre) => unwrap(await api.patch(`${BASE}/${id}/rubros/${rubroUid}`, { empresa_id, nombre })),
+  eliminarRubro: async (id, rubroUid, empresa_id) => unwrap(await api.delete(`${BASE}/${id}/rubros/${rubroUid}`, { params: { empresa_id } })),
+  agregarSubrubro: async (id, rubroUid, empresa_id, data) => unwrap(await api.post(`${BASE}/${id}/rubros/${rubroUid}/subrubros`, { empresa_id, ...data })),
+  auditoria: async (id, empresa_id) => {
+    const res = await api.get(`${BASE}/${id}/auditoria`, { params: { empresa_id } });
+    return Array.isArray(res.data?.items) ? res.data.items : [];
+  },
+
+  curvaS: async (id, empresa_id) => {
+    const res = await api.get(`${BASE}/${id}/curva-s`, { params: { empresa_id } });
+    if (res.status === 200) return unwrap(res);
+    return { meses: [], certificado: [], cobrado: [], plan: [] };
+  },
+
+  cronograma: async (id, empresa_id) => {
+    const res = await api.get(`${BASE}/${id}/cronograma`, { params: { empresa_id } });
+    if (res.status === 200) return unwrap(res);
+    return { rango: { min: null, max: null }, rubros: [] };
+  },
+
   /* ---------- Cartera (cross-obra) ---------- */
   resumenCartera: async (empresa_id) => {
     const res = await api.get(`${BASE}/cartera/resumen`, { params: { empresa_id } });
@@ -54,6 +85,14 @@ const ControlObraService = {
     if (res.status !== 200) throw new Error('Error al obtener cobranzas');
     return Array.isArray(res.data?.items) ? res.data.items : [];
   },
+
+  pagosCartera: async (empresa_id) => {
+    const res = await api.get(`${BASE}/cartera/pagos`, { params: { empresa_id } });
+    if (res.status !== 200) throw new Error('Error al obtener pagos');
+    return Array.isArray(res.data?.items) ? res.data.items : [];
+  },
+
+  cobrarCuota: async (obraId, cuotaId, empresa_id) => unwrap(await api.post(`${BASE}/${obraId}/cuotas/${cuotaId}/cobrar`, { empresa_id })),
 
   /* ---------- Costo y margen (Fase 2) ---------- */
   ejecucion: async (obraId, empresa_id) => {
@@ -76,6 +115,11 @@ const ControlObraService = {
     return Array.isArray(res.data?.items) ? res.data.items : [];
   },
   crearOrden: async (obraId, data) => unwrap(await api.post(`${BASE}/${obraId}/ordenes-pago`, data)),
+  ordenesSugeridas: async (obraId, empresa_id) => {
+    const res = await api.get(`${BASE}/${obraId}/ordenes-sugeridas`, { params: { empresa_id } });
+    return Array.isArray(res.data?.items) ? res.data.items : [];
+  },
+  generarOrdenSugerida: async (obraId, empresa_id, proveedor_key) => unwrap(await api.post(`${BASE}/${obraId}/ordenes-sugeridas/generar`, { empresa_id, proveedor_key })),
   aprobarOrden: async (ordenId, empresa_id) => unwrap(await api.post(`${BASE}/ordenes-pago/${ordenId}/aprobar`, { empresa_id })),
   pagarOrden: async (ordenId, empresa_id) => unwrap(await api.post(`${BASE}/ordenes-pago/${ordenId}/pagar`, { empresa_id })),
   anularOrden: async (ordenId, empresa_id) => unwrap(await api.post(`${BASE}/ordenes-pago/${ordenId}/anular`, { empresa_id })),
@@ -102,12 +146,21 @@ const ControlObraService = {
     throw new Error('No se pudo crear el certificado');
   },
 
+  editarCertificado: async (certId, empresa_id, lineas) => unwrap(await api.patch(`${BASE}/certificados/${certId}`, { empresa_id, lineas })),
+  descargarActa: async (certId, empresa_id, numero) => {
+    const res = await api.get(`${BASE}/certificados/${certId}/acta`, { params: { empresa_id }, responseType: 'blob' });
+    const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+    const a = document.createElement('a');
+    a.href = url; a.download = `certificado-${numero || certId}.pdf`;
+    document.body.appendChild(a); a.click(); a.remove();
+    window.URL.revokeObjectURL(url);
+  },
   enviarCertificado: async (certId, empresa_id) => unwrap(await api.post(`${BASE}/certificados/${certId}/enviar`, { empresa_id })),
   aprobarCertificado: async (certId, empresa_id) => unwrap(await api.post(`${BASE}/certificados/${certId}/aprobar`, { empresa_id })),
   rechazarCertificado: async (certId, empresa_id, motivo) => unwrap(await api.post(`${BASE}/certificados/${certId}/rechazar`, { empresa_id, motivo })),
   anularCertificado: async (certId, empresa_id, motivo) => unwrap(await api.post(`${BASE}/certificados/${certId}/anular`, { empresa_id, motivo })),
-  cobrarCertificado: async (certId, empresa_id, montoParcial = null) =>
-    unwrap(await api.post(`${BASE}/certificados/${certId}/cobrar`, { empresa_id, monto_parcial: montoParcial })),
+  cobrarCertificado: async (certId, empresa_id, montoParcial = null, fechaCobrado = null) =>
+    unwrap(await api.post(`${BASE}/certificados/${certId}/cobrar`, { empresa_id, monto_parcial: montoParcial, fecha_cobrado: fechaCobrado })),
 };
 
 export default ControlObraService;

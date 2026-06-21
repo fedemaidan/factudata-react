@@ -89,6 +89,16 @@ const ventaService = {
     return data;
   },
 
+  async modificarFechaEntrega(empresaId, id, fecha_entrega_estimada) {
+    const { data } = await api.patch(`/empresa/${empresaId}/ventas/${id}/fecha-entrega`, { fecha_entrega_estimada });
+    return data;
+  },
+
+  async revertirEntrega(empresaId, id) {
+    const { data } = await api.post(`/empresa/${empresaId}/ventas/${id}/revertir-entrega`, {});
+    return data;
+  },
+
   async cancelar(empresaId, id, payload = {}) {
     const { data } = await api.post(`/empresa/${empresaId}/ventas/${id}/cancelar`, payload);
     return data;

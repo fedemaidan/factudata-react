@@ -61,6 +61,7 @@ import {
 import profileService from 'src/services/profileService';
 import MaterialesFacturaActions from 'src/components/stock/MaterialesFacturaActions';
 import { getProyectosByEmpresa, getProyectosFromUser } from 'src/services/proyectosService';
+import ControlObraService from 'src/services/controlObra/controlObraService';
 import ProrrateoDialog from 'src/components/ProrrateoDialog';
 import ConfirmarPagoDialog from 'src/components/pagos/ConfirmarPagoDialog';
 import TransferenciaInternaDialog from 'src/components/TransferenciaInternaDialog';
@@ -301,6 +302,17 @@ const MovementFormPage = () => {
         console.error('[MovementForm] Error cargando reserva del proyecto:', error);
         if (!cancelado) setReservaProyecto(null);
       });
+    return () => { cancelado = true; };
+  }, [empresa?.id, effectiveProyectoId]);
+
+  // Control de Obra del proyecto: habilita imputar el egreso a una obra y sus sub-rubros.
+  const [obrasProyecto, setObrasProyecto] = useState([]);
+  useEffect(() => {
+    if (!empresa?.id || !effectiveProyectoId) { setObrasProyecto([]); return undefined; }
+    let cancelado = false;
+    ControlObraService.listarObras({ empresa_id: empresa.id, proyecto_id: effectiveProyectoId })
+      .then((data) => { if (!cancelado) setObrasProyecto(data?.items || []); })
+      .catch(() => { if (!cancelado) setObrasProyecto([]); });
     return () => { cancelado = true; };
   }, [empresa?.id, effectiveProyectoId]);
 
@@ -873,6 +885,8 @@ const createdAtStr = (() => {
       tags_extra: [],
       caja_chica: false,
       reserva_id: null,
+      control_obra_id: null,
+      imputaciones_obra: [],
       medio_pago: '',
       observacion: '',
       detalle: '',
@@ -1904,6 +1918,50 @@ const createdAtStr = (() => {
                         </label>
                       </div>
                     )}
+                    {obrasProyecto.length > 0 && formik.values.type === 'egreso' && (() => {
+                      const obraSel = obrasProyecto.find((o) => o._id === formik.values.control_obra_id) || null;
+                      const subs = obraSel ? (obraSel.rubros || []).flatMap((r) => (r.subrubros || []).map((s) => ({ uid: s.uid, nombre: `${r.nombre} · ${s.nombre}` }))) : [];
+                      const subSel = formik.values.imputaciones_obra?.[0]?.subrubro_uid || '';
+                      const setObra = (oid) => {
+                        const o = obrasProyecto.find((x) => x._id === oid);
+                        const firstSub = o ? (o.rubros || []).flatMap((r) => r.subrubros || [])[0] : null;
+                        formik.setFieldValue('control_obra_id', oid || null);
+                        formik.setFieldValue('imputaciones_obra', oid && firstSub ? [{ subrubro_uid: firstSub.uid, pct: 100 }] : []);
+                      };
+                      return (
+                        <div className="mt-2 rounded-lg border border-primary-main/40 bg-primary-main/5 px-2.5 py-2">
+                          <label className="flex cursor-pointer items-center justify-between gap-2">
+                            <span className="min-w-0">
+                              <span className="block text-xs font-medium text-neutral-800">Imputar a Control de Obra</span>
+                              <span className="block text-[11px] text-neutral-500">Asigna este gasto a una obra y sub-rubro (impacta el costo real)</span>
+                            </span>
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 shrink-0 accent-primary-main"
+                              checked={!!formik.values.control_obra_id}
+                              onChange={(e) => setObra(e.target.checked ? obrasProyecto[0]._id : null)}
+                            />
+                          </label>
+                          {formik.values.control_obra_id && (
+                            <div className="mt-2 flex flex-col gap-2">
+                              {obrasProyecto.length > 1 && (
+                                <select className="rounded border border-divider px-2 py-1 text-xs" value={formik.values.control_obra_id} onChange={(e) => setObra(e.target.value)}>
+                                  {obrasProyecto.map((o) => <option key={o._id} value={o._id}>{o.titulo || '(obra)'}</option>)}
+                                </select>
+                              )}
+                              <select
+                                className="rounded border border-divider px-2 py-1 text-xs"
+                                value={subSel}
+                                onChange={(e) => formik.setFieldValue('imputaciones_obra', e.target.value ? [{ subrubro_uid: e.target.value, pct: 100 }] : [])}
+                              >
+                                <option value="">Elegí un sub-rubro…</option>
+                                {subs.map((s) => <option key={s.uid} value={s.uid}>{s.nombre}</option>)}
+                              </select>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </StitchBlock>
                   <StitchBlock step={3} title="Detalles financieros e impuestos">
                     <MovementFields {...sharedFieldProps} block="financial" />

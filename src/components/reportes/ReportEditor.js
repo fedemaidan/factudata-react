@@ -57,6 +57,7 @@ const ReportEditor = ({
   saving = false,
   movimientos = [],
   presupuestos = [],
+  planesCobro = [],
   displayCurrencies = ['ARS'],
   cotizaciones = null,
   empresaId = null,
@@ -90,10 +91,18 @@ const ReportEditor = ({
   }, [empresaId]);
 
   // Live preview config
+  // El dataset de planes de cobro se deriva del layout: si hay algún bloque collections_*,
+  // se enciende solo (para que se carguen los planes y la preview los muestre).
+  const usaPlanesCobro = useMemo(
+    () => Array.isArray(config.layout) && config.layout.some((b) => typeof b?.type === 'string' && b.type.startsWith('collections_')),
+    [config.layout],
+  );
+
   const liveConfig = useMemo(() => ({
     ...report,
     ...config,
-  }), [report, config]);
+    datasets: { ...config.datasets, planes_cobro: (config.datasets?.planes_cobro || usaPlanesCobro) },
+  }), [report, config, usaPlanesCobro]);
 
   const liveCurrencies = useMemo(() => {
     const eq = config.filtros_schema?.moneda_equivalente;
@@ -245,7 +254,8 @@ const ReportEditor = ({
   };
 
   const handleSave = () => {
-    onSave({ ...report, ...config });
+    const datasets = { ...config.datasets, planes_cobro: (config.datasets?.planes_cobro || usaPlanesCobro) };
+    onSave({ ...report, ...config, datasets });
   };
 
   const blockSummary = (block) => {
@@ -391,6 +401,18 @@ const ReportEditor = ({
                 />
               }
               label={<Typography variant="body2">Incluir Presupuestos de Control</Typography>}
+            />
+            <FormControlLabel
+              control={
+                <Switch
+                  size="small"
+                  checked={config.datasets?.planes_cobro || false}
+                  onChange={(e) =>
+                    updateField('datasets', { ...config.datasets, planes_cobro: e.target.checked })
+                  }
+                />
+              }
+              label={<Typography variant="body2">Incluir Planes de Cobro</Typography>}
             />
           </Stack>
         </AccordionDetails>
@@ -666,7 +688,7 @@ const ReportEditor = ({
         </Stack>
         <Divider sx={{ mb: 2 }} />
 
-        {movimientos.length === 0 ? (
+        {movimientos.length === 0 && planesCobro.length === 0 ? (
           <Alert severity="info">
             No hay datos cargados para la preview. Guarda y volve al reporte para ver con datos reales.
           </Alert>
@@ -675,9 +697,10 @@ const ReportEditor = ({
             reportConfig={liveConfig}
             movimientos={movimientos}
             presupuestos={presupuestos}
+            planesCobro={planesCobro}
             displayCurrencies={liveCurrencies}
             cotizaciones={cotizaciones}
-            reportContext={{ usuariosEmpresa }}
+            reportContext={{ usuariosEmpresa, proyectos }}
           />
         )}
       </Paper>
