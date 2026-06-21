@@ -16,6 +16,7 @@ import ManoObraTab from 'src/components/controlObra/ManoObraTab';
 import ReportesTab from 'src/components/controlObra/ReportesTab';
 import ResumenTab from 'src/components/controlObra/ResumenTab';
 import AsociarProyecto from 'src/components/controlObra/AsociarProyecto';
+import SinPermisoControlObra, { puedeVerControlObra } from 'src/components/controlObra/AccesoControlObra';
 
 const fmt = (n) => (Number(n) || 0).toLocaleString('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 });
 
@@ -49,6 +50,8 @@ function ObraDetallePage() {
 
   const obra = obraQ.data;
   const ejec = ejecQ.data;
+
+  if (user && !puedeVerControlObra(user)) return <SinPermisoControlObra />;
 
   return (
     <DashboardLayout title={obra?.titulo || 'Control de Obra'}>

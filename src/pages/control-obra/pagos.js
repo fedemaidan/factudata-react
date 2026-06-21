@@ -10,6 +10,7 @@ import { useAuthContext } from 'src/contexts/auth-context';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import ControlObraService from 'src/services/controlObra/controlObraService';
 import CarteraNav from 'src/components/controlObra/CarteraNav';
+import SinPermisoControlObra, { puedeVerControlObra } from 'src/components/controlObra/AccesoControlObra';
 import { KpiCard, fmt } from 'src/components/controlObra/ui';
 
 const COLOR = { borrador: 'default', aprobada: 'info' };
@@ -37,6 +38,8 @@ function PagosObraPage() {
   const items = q.data || [];
   const aDesembolsar = items.filter((i) => i.estado === 'aprobada').reduce((a, i) => a + (i.monto_neto || 0), 0);
   const enBorrador = items.filter((i) => i.estado === 'borrador').reduce((a, i) => a + (i.monto_neto || 0), 0);
+
+  if (user && !puedeVerControlObra(user)) return <SinPermisoControlObra />;
 
   return (
     <DashboardLayout title="Control de Obra — Pagos a obra">

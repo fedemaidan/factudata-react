@@ -158,6 +158,9 @@ async function buildDefaultGroups({ user, empresa, permisosUsuario }) {
     if (permisosUsuario.includes("VER_PRESUPUESTOS_PROFESIONALES")) {
       finanzasItems.push({ title: "Presupuestos profesionales", path: "/presupuestosProfesionales", icon: icon(NoteAltIcon) });
     }
+  }
+  // Control de Obra: acceso explícito por acción (no por la heurística de admin).
+  if (permisosUsuario.includes("VER_CONTROL_OBRA") && !esCorralon) {
     finanzasItems.push({ title: "Control de Obra", path: "/control-obra", icon: icon(EngineeringIcon) });
   }
   if (finanzasItems.length > 0) groups.push({ id: "finanzas", label: "Finanzas", items: finanzasItems });

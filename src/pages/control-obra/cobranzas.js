@@ -10,6 +10,7 @@ import { useAuthContext } from 'src/contexts/auth-context';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import ControlObraService from 'src/services/controlObra/controlObraService';
 import CarteraNav from 'src/components/controlObra/CarteraNav';
+import SinPermisoControlObra, { puedeVerControlObra } from 'src/components/controlObra/AccesoControlObra';
 import { KpiCard, fmt } from 'src/components/controlObra/ui';
 
 const fecha = (d) => (d ? new Date(d).toLocaleDateString('es-AR') : '—');
@@ -38,6 +39,8 @@ function CobranzasPage() {
   const totalPendiente = items.reduce((a, i) => a + (i.pendiente || 0), 0);
   const vencidas = items.filter((i) => vencida(i.fecha_vencimiento));
   const totalVencido = vencidas.reduce((a, i) => a + (i.pendiente || 0), 0);
+
+  if (user && !puedeVerControlObra(user)) return <SinPermisoControlObra />;
 
   return (
     <DashboardLayout title="Control de Obra — Cobranzas">

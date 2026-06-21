@@ -73,6 +73,19 @@ const METRICAS = [
     { key: 'dejoEmail',         label: 'Dejó email',       emoji: '📧', color: '#8b5cf6', desc: 'Dejó el email post-agenda',              instrumentado: true },
 ];
 
+// Etapas comerciales que NO viven en los contadores diarios de LandingStats sino
+// en el CRM (ContactoSDR/ReunionSDR). Se anexan al final del embudo, alimentadas
+// por /api/funnel/landing-outcomes (vista por cohorte, no por día). Cada una
+// declara `baseKey`: el paso contra el que se calcula su conversión (el CRM tiene
+// su propio "agendó" = agendoCrm, distinto del contador diario `agendo`).
+const METRICAS_OUTCOME = [
+    { key: 'reunionExitosa', label: 'Reunión exitosa', emoji: '🤝', color: '#14b8a6', desc: 'Reunión realizada (CRM)', baseKey: 'agendoCrm', crm: true },
+    { key: 'ganado',         label: 'Ganado',          emoji: '🏆', color: '#eab308', desc: 'Cliente ganado (CRM)',   baseKey: 'reunionExitosa', crm: true },
+];
+
+// Embudo completo = pasos del landing (contadores diarios) + outcomes del CRM.
+const METRICAS_FUNNEL = [...METRICAS, ...METRICAS_OUTCOME];
+
 // Métricas del flujo VIEJO (modal web) — sólo para la tabla histórica pre 1-jun.
 const METRICAS_HIST = [
     { key: 'visitasLanding', label: 'Visitas',        emoji: '👁️', color: '#6366f1' },
@@ -110,19 +123,39 @@ function metricaVal(src, key) {
         case 'califico':          return Number(ex.califico ?? 0);
         case 'agendo':            return Number(src.agendaron ?? ex.agendo ?? 0);
         case 'dejoEmail':         return Number(ex.dejo_email ?? 0);
+        // Outcomes del CRM (inyectados como campos planos en `totales`).
+        case 'agendoCrm':         return Number(src.agendoCrm ?? 0);
+        case 'reunionExitosa':    return Number(src.reunionExitosa ?? 0);
+        case 'ganado':            return Number(src.ganado ?? 0);
         default:                  return Number(src[key] ?? 0);
     }
 }
 
+/**
+ * Conversión de un paso `i` dentro de una lista de métricas. Por defecto se
+ * calcula contra el paso anterior; si la métrica declara `baseKey`, se usa ese
+ * campo como denominador (las etapas del CRM no son secuenciales respecto al
+ * email, sino que cuelgan del "agendó" del CRM).
+ */
+function conversionEnLista(src, metricas, i) {
+    const m = metricas[i];
+    const val = metricaVal(src, m.key);
+    if (m.baseKey) {
+        const base = metricaVal(src, m.baseKey);
+        return base > 0 ? pct(val, base) : null;
+    }
+    const prev = i > 0 ? metricas[i - 1] : null;
+    return prev ? pct(val, metricaVal(src, prev.key)) : null;
+}
+
 // ─── Tarjetas de resumen ──────────────────────────────────
 
-function SummaryCards({ totales }) {
+function SummaryCards({ totales, metricas = METRICAS }) {
     return (
         <Grid container spacing={2}>
-            {METRICAS.map((m, i) => {
+            {metricas.map((m, i) => {
                 const val = metricaVal(totales, m.key);
-                const prevVal = i > 0 ? metricaVal(totales, METRICAS[i - 1].key) : null;
-                const conversion = prevVal !== null ? pct(val, prevVal) : null;
+                const conversion = conversionEnLista(totales, metricas, i);
 
                 return (
                     <Grid item xs={12} sm={6} md={2} key={m.key}>
@@ -146,9 +179,14 @@ function SummaryCards({ totales }) {
                                 <Typography variant="body2" sx={{ mt: 0.5, color: 'text.secondary' }}>
                                     {m.emoji} {m.label}
                                 </Typography>
-                                {!m.instrumentado && (
+                                {!m.instrumentado && !m.crm && (
                                     <Typography variant="caption" color="warning.main" display="block" sx={{ mt: 0.5 }}>
                                         ⚠️ Pendiente de instrumentar
+                                    </Typography>
+                                )}
+                                {m.crm && (
+                                    <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
+                                        📋 Cohorte CRM
                                     </Typography>
                                 )}
                             </CardContent>
@@ -162,22 +200,21 @@ function SummaryCards({ totales }) {
 
 // ─── Funnel visual ────────────────────────────────────────
 
-function FunnelVisual({ totales }) {
-    const metricaBase = METRICAS.find(m => metricaVal(totales, m.key) > 0);
+function FunnelVisual({ totales, metricas = METRICAS }) {
+    const metricaBase = metricas.find(m => metricaVal(totales, m.key) > 0);
     const baseVal = metricaBase ? (metricaVal(totales, metricaBase.key) || 1) : 1;
 
     return (
         <Card sx={{ height: '100%' }}>
             <CardHeader
                 title="🔽 Embudo de conversión"
-                subheader="Landing → WhatsApp → agenda (flujo nuevo, desde jun 2026)"
+                subheader="Landing → WhatsApp → agenda → reunión → cierre · 🤝🏆 = cohorte CRM"
             />
             <CardContent>
                 <Stack spacing={2}>
-                    {METRICAS.map((m, i) => {
+                    {metricas.map((m, i) => {
                         const val = metricaVal(totales, m.key);
-                        const prevVal = i > 0 ? metricaVal(totales, METRICAS[i - 1].key) : null;
-                        const stepPct = prevVal !== null ? pct(val, prevVal) : null;
+                        const stepPct = conversionEnLista(totales, metricas, i);
                         const barPct = baseVal > 0 ? Math.max((val / baseVal) * 100, val > 0 ? 3 : 0) : 0;
 
                         return (
@@ -215,7 +252,7 @@ function FunnelVisual({ totales }) {
                                         {stepPct || ''}
                                     </Typography>
                                 </Stack>
-                                {i < METRICAS.length - 1 && (
+                                {i < metricas.length - 1 && (
                                     <Typography variant="caption" color="text.disabled" sx={{ display: 'block', pl: '146px', lineHeight: 1.2 }}>
                                         ↓
                                     </Typography>
@@ -402,6 +439,96 @@ function AtribucionTabla({ extraSteps, prefix, title, dimLabel }) {
                                     </TableRow>
                                 );
                             })}
+                        </TableBody>
+                    </Table>
+                </TableContainer>
+            </CardContent>
+        </Card>
+    );
+}
+
+// ─── Resultados comerciales por rubro (cohorte CRM) ───────
+// Diferencia la cohorte del landing por el rubro que el lead respondió en
+// WhatsApp ("Sin rubro" = nunca lo respondió). Las columnas Agendó / Reunión /
+// Ganado salen del CRM (no de los contadores diarios), por eso es una vista por
+// cohorte: un lead del período cuenta acá aunque haya ganado más tarde.
+
+function RubroOutcomesTabla({ outcomes }) {
+    const porRubro = outcomes?.porRubro || [];
+
+    if (porRubro.length === 0) {
+        return (
+            <Card sx={{ borderLeft: '4px solid #14b8a6' }}>
+                <CardHeader
+                    title="🏷️ Resultados por rubro (cohorte CRM)"
+                    subheader="Sin contactos en el período — aparecerán cuando lleguen leads con rubro asignado"
+                />
+            </Card>
+        );
+    }
+
+    const totalContactos = porRubro.reduce((a, r) => a + (r.contactos || 0), 0);
+
+    return (
+        <Card sx={{ borderLeft: '4px solid #14b8a6' }}>
+            <CardHeader
+                title="🏷️ Resultados por rubro (cohorte CRM)"
+                subheader={`${porRubro.length} rubro${porRubro.length > 1 ? 's' : ''} · agendó / reunión / ganado por cohorte de leads del período · % sobre el paso anterior`}
+            />
+            <CardContent sx={{ pt: 0 }}>
+                <TableContainer component={Paper} variant="outlined">
+                    <Table size="small">
+                        <TableHead>
+                            <TableRow>
+                                <TableCell><strong>🏷️ Rubro</strong></TableCell>
+                                <TableCell align="right"><strong>👤 Contactos</strong></TableCell>
+                                <TableCell align="right"><strong>✅ Agendó</strong></TableCell>
+                                <TableCell align="right"><strong>🤝 Reunión exitosa</strong></TableCell>
+                                <TableCell align="right"><strong>🏆 Ganado</strong></TableCell>
+                            </TableRow>
+                        </TableHead>
+                        <TableBody>
+                            {porRubro.map(r => {
+                                const sinRubro = r.rubro === 'Sin rubro';
+                                const celdaOutcome = (val, base, color) => (
+                                    <TableCell align="right">
+                                        <Typography variant="body2" sx={{ color: val > 0 ? color : 'text.disabled', fontWeight: val > 0 ? 700 : 400 }}>
+                                            {val > 0 ? val.toLocaleString('es-AR') : '—'}
+                                        </Typography>
+                                        {val > 0 && base > 0 && (
+                                            <Typography variant="caption" sx={{ display: 'block', lineHeight: 1.15, color: 'text.secondary' }}>
+                                                {pct(val, base)}
+                                            </Typography>
+                                        )}
+                                    </TableCell>
+                                );
+                                return (
+                                    <TableRow key={r.rubro} sx={{ '&:hover': { bgcolor: 'action.hover' }, opacity: sinRubro ? 0.7 : 1 }}>
+                                        <TableCell>
+                                            <Typography variant="body2" sx={{ fontWeight: 600, fontStyle: sinRubro ? 'italic' : 'normal' }}>
+                                                {r.rubro}
+                                            </Typography>
+                                        </TableCell>
+                                        <TableCell align="right">
+                                            <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                                                {(r.contactos || 0).toLocaleString('es-AR')}
+                                            </Typography>
+                                        </TableCell>
+                                        {celdaOutcome(r.agendo || 0, r.contactos || 0, '#10b981')}
+                                        {celdaOutcome(r.reunionExitosa || 0, r.agendo || 0, '#14b8a6')}
+                                        {celdaOutcome(r.ganado || 0, r.reunionExitosa || 0, '#eab308')}
+                                    </TableRow>
+                                );
+                            })}
+                            {porRubro.length > 1 && (
+                                <TableRow sx={{ bgcolor: 'action.hover' }}>
+                                    <TableCell><strong>Total</strong></TableCell>
+                                    <TableCell align="right"><strong>{totalContactos.toLocaleString('es-AR')}</strong></TableCell>
+                                    <TableCell align="right"><strong>{(outcomes?.totales?.agendo || 0).toLocaleString('es-AR')}</strong></TableCell>
+                                    <TableCell align="right"><strong>{(outcomes?.totales?.reunionExitosa || 0).toLocaleString('es-AR')}</strong></TableCell>
+                                    <TableCell align="right"><strong>{(outcomes?.totales?.ganado || 0).toLocaleString('es-AR')}</strong></TableCell>
+                                </TableRow>
+                            )}
                         </TableBody>
                     </Table>
                 </TableContainer>
@@ -695,6 +822,7 @@ function buildTotalesFiltrados(extraSteps, { fuentes, campañas }) {
 
 const LandingFunnelPage = () => {
     const [data, setData] = useState(null);
+    const [outcomes, setOutcomes] = useState(null); // resultados comerciales (CRM)
     const [modo, setModo] = useState('preset'); // 'preset' | 'rango'
     const [rangoKey, setRangoKey] = useState('flujo_wa');
     const [fechaDesde, setFechaDesde] = useState(() => new Date(`${INICIO_FUNNEL_WA}T00:00:00`));
@@ -717,10 +845,21 @@ const LandingFunnelPage = () => {
             }
             if (args.desde && args.hasta && args.desde > args.hasta) {
                 setData({ totales: {}, rows: [], _futuro: true, _desde: args.desde });
+                setOutcomes(null);
                 return;
             }
             const res = await landingStatsService.getStats(args);
             setData(res);
+
+            // Resultados comerciales del CRM (reunión exitosa + ganados) para el
+            // mismo rango. Best-effort: si falla, el embudo de visitas igual se
+            // muestra (las etapas del CRM quedan en "—").
+            try {
+                const out = await landingStatsService.getLandingOutcomes({ desde: args.desde, hasta: args.hasta });
+                setOutcomes(out);
+            } catch (_) {
+                setOutcomes(null);
+            }
         } catch (err) {
             setError(err.response?.data?.error || err.message || 'Error al cargar datos');
         } finally {
@@ -756,6 +895,17 @@ const LandingFunnelPage = () => {
     const totales = hayFiltro
         ? buildTotalesFiltrados(totalesRaw.extraSteps, { fuentes: fuentesFiltro, campañas: campañasFiltro })
         : totalesRaw;
+
+    // Inyecta las etapas del CRM (cohorte global del período) como campos planos
+    // para que SummaryCards/FunnelVisual las muestren al final del embudo. Son
+    // globales: no se reparten por fuente/campaña (el CRM no guarda esa dimensión).
+    const totalesConOutcomes = {
+        ...totales,
+        agendoCrm: outcomes?.totales?.agendo ?? 0,
+        reunionExitosa: outcomes?.totales?.reunionExitosa ?? 0,
+        ganado: outcomes?.totales?.ganado ?? 0,
+    };
+    const metricasFunnel = outcomes ? METRICAS_FUNNEL : METRICAS;
 
     return (
         <>
@@ -914,17 +1064,19 @@ const LandingFunnelPage = () => {
                                 );
                             })()}
 
-                            <SummaryCards totales={totales} />
+                            <SummaryCards totales={totalesConOutcomes} metricas={metricasFunnel} />
 
                             {/* ─── Funnel + Chart ─── */}
                             <Grid container spacing={3}>
                                 <Grid item xs={12} md={5}>
-                                    <FunnelVisual totales={totales} />
+                                    <FunnelVisual totales={totalesConOutcomes} metricas={metricasFunnel} />
                                 </Grid>
                                 <Grid item xs={12} md={7}>
                                     <TendenciaChart rows={rows} />
                                 </Grid>
                             </Grid>
+
+                            <RubroOutcomesTabla outcomes={outcomes} />
 
                             <AtribucionTabla
                                 extraSteps={totales.extraSteps}

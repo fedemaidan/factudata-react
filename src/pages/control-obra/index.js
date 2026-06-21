@@ -11,6 +11,7 @@ import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import ControlObraService from 'src/services/controlObra/controlObraService';
 import CarteraNav from 'src/components/controlObra/CarteraNav';
 import NuevaObraDialog from 'src/components/controlObra/NuevaObraDialog';
+import SinPermisoControlObra, { puedeVerControlObra } from 'src/components/controlObra/AccesoControlObra';
 import { KpiCard, fmt } from 'src/components/controlObra/ui';
 
 function MisObrasPage() {
@@ -34,6 +35,8 @@ function MisObrasPage() {
   const totalContrato = obras.reduce((a, o) => a + (o.total_contrato || 0), 0);
   const totalCobrado = obras.reduce((a, o) => a + (o.cobrado || 0), 0);
   const totalPendiente = obras.reduce((a, o) => a + (o.pendiente || 0), 0);
+
+  if (user && !puedeVerControlObra(user)) return <SinPermisoControlObra />;
 
   return (
     <DashboardLayout title="Control de Obra">
