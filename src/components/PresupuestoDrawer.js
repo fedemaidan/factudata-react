@@ -283,21 +283,39 @@ const PresupuestoDrawer = ({
   const [nuevaIndexacion, setNuevaIndexacion] = useState(null);
   const [cacTipo, setCacTipo] = useState('general'); // 'general' | 'mano_obra' | 'materiales'
   const [nuevoCacTipo, setNuevoCacTipo] = useState('general');
-  // TAR-423: si el usuario tocó la indexación a mano, no la pisamos con el default de la categoría
-  const [indiceManual, setIndiceManual] = useState(false);
 
-  // Aplica el índice por defecto de la categoría elegida (solo en modo crear y si no fue tocado a mano).
+  const getIndiceCategoria = (catName) => {
+    const cat = (categorias || []).find((c) => (typeof c === 'string' ? c : c?.name) === catName);
+    return cat && typeof cat === 'object' ? cat.indice || null : null;
+  };
+  const indiceKeyStr = (indice) => (indice && indice.indexacion ? `${indice.indexacion}:${indice.cac_tipo || 'general'}` : 'ARS');
+  const labelIndice = (indice) => {
+    if (!indice || !indice.indexacion) return 'ARS fijo';
+    if (indice.indexacion === 'USD') return 'USD';
+    return `CAC ${CAC_LABELS[indice.cac_tipo] || 'Promedio'}`;
+  };
+
+  // La categoría manda el índice (solo crear). Si las categorías comparten índice, lo
+  // aplica; si difieren, no toca nada y se bloquea la creación desde la UI.
   const handleClasificacionesChange = (next) => {
     setClasificacionesSel(next);
-    if (mode !== 'crear' || indiceManual) return;
-    if (!Array.isArray(next) || next.length !== 1) return;
-    const cat = (categorias || []).find((c) => (typeof c === 'string' ? c : c?.name) === next[0]?.categoria);
-    const indice = typeof cat === 'object' ? cat?.indice : null;
-    if (!indice || !indice.indexacion) return;
+    if (mode !== 'crear') return;
+    if (!Array.isArray(next) || next.length === 0) return;
+    const keys = [...new Set(next.map((c) => indiceKeyStr(getIndiceCategoria(c.categoria))))];
+    if (keys.length !== 1) return; // índices distintos → se bloquea en la UI
+    const indice = getIndiceCategoria(next[0].categoria);
     setMoneda('ARS');
-    setIndexacion(indice.indexacion);
-    if (indice.indexacion === 'CAC') setCacTipo(indice.cac_tipo || 'general');
+    setIndexacion(indice?.indexacion || null);
+    if (indice?.indexacion === 'CAC') setCacTipo(indice.cac_tipo || 'general');
   };
+
+  // Estado del índice según las categorías elegidas (TAR-423): la categoría manda.
+  const _catsSel = Array.isArray(clasificacionesSel) ? clasificacionesSel : [];
+  const _keysSel = [...new Set(_catsSel.map((c) => indiceKeyStr(getIndiceCategoria(c.categoria))))];
+  const indicePorCategoria = mode === 'crear' && _catsSel.length > 0;
+  const conflictoIndices = indicePorCategoria && _keysSel.length > 1;
+  const indiceUnico = indicePorCategoria && !conflictoIndices; // las categorías comparten índice
+  const indiceDerivado = indiceUnico ? getIndiceCategoria(_catsSel[0].categoria) : null; // null = ARS fijo
   const [dolarRate, setDolarRate] = useState(null);
   const [cacIndice, setCacIndice] = useState(null);
   const [cacSubindices, setCacSubindices] = useState({ general: null, mano_obra: null, materiales: null });
@@ -449,7 +467,6 @@ const PresupuestoDrawer = ({
         setMoneda('ARS');
         setIndexacion(null);
         setCacTipo('general');
-        setIndiceManual(false);
         setBaseCalculo('total');
         // Precarga del form en modo crear.
         // 1) preFill (multi-dimension, viene de la selección multi-card de control-presupuestos)
@@ -1155,9 +1172,9 @@ const PresupuestoDrawer = ({
                   <ToggleButtonGroup
                     value={moneda}
                     exclusive
+                    disabled={indicePorCategoria}
                     onChange={(e, val) => {
                       if (!val) return;
-                      setIndiceManual(true);
                       setMoneda(val);
                       if (val === 'USD') setIndexacion(null);
                     }}
@@ -1240,7 +1257,8 @@ const PresupuestoDrawer = ({
                   <ToggleButtonGroup
                     value={indexacion}
                     exclusive
-                    onChange={(e, val) => { setIndiceManual(true); setIndexacion(val); }}
+                    disabled={indicePorCategoria}
+                    onChange={(e, val) => setIndexacion(val)}
                     size="small"
                     fullWidth
                   >
@@ -1259,6 +1277,13 @@ const PresupuestoDrawer = ({
                     </ToggleButton>
                   </ToggleButtonGroup>
 
+                  {/* TAR-423: el índice lo define la categoría elegida */}
+                  {indiceUnico && (
+                    <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                      Índice definido por la categoría: <strong>{labelIndice(indiceDerivado)}</strong>. Para cambiarlo, cambiá el índice de la categoría o quitá la categoría.
+                    </Typography>
+                  )}
+
                   {/* Selector de tipo de CAC (solo cuando se elige CAC) */}
                   {indexacion === 'CAC' && (
                     <Box sx={{ mt: 1 }}>
@@ -1268,6 +1293,7 @@ const PresupuestoDrawer = ({
                       <ToggleButtonGroup
                         value={cacTipo}
                         exclusive
+                        disabled={indicePorCategoria}
                         onChange={(e, val) => val && setCacTipo(val)}
                         size="small"
                         fullWidth
@@ -1486,6 +1512,12 @@ const PresupuestoDrawer = ({
                               onChange={handleClasificacionesChange}
                               categorias={categorias}
                             />
+                            {conflictoIndices && (
+                              <Alert severity="warning" variant="outlined" sx={{ mt: 1 }}>
+                                Elegiste categorías con índices distintos ({_keysSel.map((k) => k.split(':')[0] === 'ARS' ? 'ARS' : k.split(':')[0] === 'USD' ? 'USD' : 'CAC').filter((v, i, a) => a.indexOf(v) === i).join(', ')}).
+                                Un presupuesto usa un solo índice. Creá un presupuesto por índice (ej: uno para las categorías CAC y otro para las USD).
+                              </Alert>
+                            )}
                           </Box>
 
                           <Box>
@@ -2867,10 +2899,10 @@ const PresupuestoDrawer = ({
               variant="contained"
               fullWidth
               onClick={handleCrear}
-              disabled={loading || adjuntosBusy || !monto || parseFloat(monto) <= 0 || (showFullForm && !proyectoSel)}
+              disabled={loading || adjuntosBusy || !monto || parseFloat(monto) <= 0 || (showFullForm && !proyectoSel) || conflictoIndices}
               startIcon={loading || adjuntosBusy ? <CircularProgress size={16} color="inherit" /> : null}
             >
-              {loading || adjuntosBusy ? 'Creando...' : tipo === 'ingreso' ? 'Crear control de cobros' : 'Crear control de gastos'}
+              {loading || adjuntosBusy ? 'Creando...' : conflictoIndices ? 'Separá las categorías por índice' : tipo === 'ingreso' ? 'Crear control de cobros' : 'Crear control de gastos'}
             </Button>
           )}
 

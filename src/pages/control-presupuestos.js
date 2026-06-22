@@ -422,11 +422,32 @@ const consolidadoIndiceLabel = (indice) => {
   return 'ARS fijo';
 };
 
+// Formatea un monto en su moneda original (sin convertir): USD en dólares, CAC en
+// puntos de índice, ARS en pesos.
+const fmtMonedaNativa = (v, moneda) => {
+  if (v == null) return 's/d';
+  if (moneda === 'USD') return `USD ${Number(v).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  if (moneda === 'CAC') return `CAC ${Number(v).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return formatCurrency(v);
+};
+
 const ConsolidadoCard = ({ consolidado }) => {
-  const { nombre, indice, presupuestado_ars, ejecutado_ars, saldo_ars, techo_ars } = consolidado;
-  const fmt = (v) => (v == null ? 's/d' : formatCurrency(v));
-  const base = techo_ars != null && techo_ars > 0 ? techo_ars : presupuestado_ars;
-  const pct = base > 0 ? (ejecutado_ars / base) * 100 : 0;
+  const {
+    nombre, indice, moneda_nativa,
+    presupuestado_nativo, ejecutado_nativo, saldo_nativo,
+    presupuestado_ars, ejecutado_ars, saldo_ars, techo, techo_ars,
+  } = consolidado;
+
+  // Si el grupo es homogéneo, mostramos su moneda original; si no (Nivel 2 mixto), ARS.
+  const nativa = moneda_nativa && presupuestado_nativo != null;
+  const mon = nativa ? moneda_nativa : 'ARS';
+  const pres = nativa ? presupuestado_nativo : presupuestado_ars;
+  const ejec = nativa ? ejecutado_nativo : ejecutado_ars;
+  const saldo = nativa ? saldo_nativo : saldo_ars;
+  const techoVal = techo_ars == null ? null : (nativa ? techo : techo_ars);
+
+  const base = techoVal != null && techoVal > 0 ? techoVal : pres;
+  const pct = base > 0 ? (ejec / base) * 100 : 0;
 
   return (
     <Card variant="outlined" sx={{ height: '100%' }}>
@@ -441,9 +462,11 @@ const ConsolidadoCard = ({ consolidado }) => {
           />
         </Stack>
         <Typography variant="h5" fontWeight={700} sx={{ mt: 1, fontSize: { xs: '1.1rem', md: '1.5rem' } }} noWrap>
-          {fmt(presupuestado_ars)}
+          {fmtMonedaNativa(pres, mon)}
         </Typography>
-        <Typography variant="caption" color="text.secondary">Presupuestado · valuado a hoy</Typography>
+        <Typography variant="caption" color="text.secondary">
+          Presupuestado{mon !== 'ARS' && presupuestado_ars != null ? ` · ≈ ${formatCurrency(presupuestado_ars)} hoy` : ''}
+        </Typography>
 
         <LinearProgress
           variant="determinate"
@@ -452,14 +475,14 @@ const ConsolidadoCard = ({ consolidado }) => {
           sx={{ my: 1, height: 6, borderRadius: 3 }}
         />
         <Stack direction="row" justifyContent="space-between" spacing={1}>
-          <Typography variant="caption" color="text.secondary" noWrap>Gastado: {fmt(ejecutado_ars)}</Typography>
-          <Typography variant="caption" fontWeight={600} color={(saldo_ars ?? 0) >= 0 ? 'success.main' : 'error.main'} noWrap>
-            Saldo: {fmt(saldo_ars)}
+          <Typography variant="caption" color="text.secondary" noWrap>Gastado: {fmtMonedaNativa(ejec, mon)}</Typography>
+          <Typography variant="caption" fontWeight={600} color={(saldo ?? 0) >= 0 ? 'success.main' : 'error.main'} noWrap>
+            Saldo: {fmtMonedaNativa(saldo, mon)}
           </Typography>
         </Stack>
-        {techo_ars != null && (
+        {techoVal != null && (
           <Typography variant="caption" color="text.disabled" sx={{ display: 'block', mt: 0.5 }}>
-            Techo: {fmt(techo_ars)}
+            Techo: {fmtMonedaNativa(techoVal, mon)}
           </Typography>
         )}
       </CardContent>
@@ -623,7 +646,10 @@ const ControlPresupuestosPage = () => {
         if (router.query.empresaId) {
           empresaData = await getEmpresaById(router.query.empresaId);
         } else {
-          empresaData = await getEmpresaDetailsFromUser(user);
+          const fromUser = await getEmpresaDetailsFromUser(user);
+          // user.empresaData es un snapshot del login y puede no traer la config más
+          // nueva (ej. el índice por categoría de TAR-423). Releemos fresco por id.
+          empresaData = fromUser?.id ? await getEmpresaById(fromUser.id) : fromUser;
         }
 
         setEmpresa(empresaData);
