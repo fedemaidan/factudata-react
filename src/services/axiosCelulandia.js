@@ -5,7 +5,7 @@ const isProduction = process.env.NODE_ENV === "production";
 const apiUrl =
   process.env.NEXT_PUBLIC_CELULANDIA_URL
   || (isProduction
-    ? "https://api.sorbydata.com/celulandia/api"
+    ? "https://api.sorbydata.com/api/celulandia"
     : "http://localhost:3003/api/celulandia");
 // Crea una instancia de axios
 const api = axios.create({
