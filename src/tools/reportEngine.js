@@ -206,6 +206,53 @@ function getPresupuestoProveedores(presupuesto) {
   return nombres;
 }
 
+function getPresupuestoSubcategorias(presupuesto) {
+  const set = new Set();
+  const clasificaciones = Array.isArray(presupuesto?.clasificaciones)
+    ? presupuesto.clasificaciones
+    : [];
+  for (const clasificacion of clasificaciones) {
+    const subs = Array.isArray(clasificacion?.subcategorias)
+      ? clasificacion.subcategorias
+      : [];
+    for (const sub of subs) {
+      const label = String(sub || '').trim();
+      if (label) set.add(label);
+    }
+  }
+  return [...set];
+}
+
+function getPresupuestoBreakdownLabel(presupuesto, agruparPor) {
+  const parts = [];
+  const categorias = getPresupuestoCategorias(presupuesto);
+  const subcategorias = getPresupuestoSubcategorias(presupuesto);
+  const proveedores = getPresupuestoProveedores(presupuesto);
+
+  if (agruparPor !== 'categoria' && categorias.length > 0) {
+    parts.push(categorias.join(' + '));
+  }
+
+  if (subcategorias.length > 0) {
+    parts.push(subcategorias.join(' + '));
+  } else if (agruparPor === 'categoria') {
+    parts.push('General');
+  }
+
+  if (agruparPor !== 'etapa' && presupuesto?.etapa) {
+    parts.push(presupuesto.etapa);
+  }
+
+  if (agruparPor !== 'proveedor' && proveedores.length > 0) {
+    parts.push(proveedores.join(' + '));
+  }
+
+  return parts.filter(Boolean).join(' · ')
+    || presupuesto?.nombre
+    || presupuesto?.rubro
+    || 'Presupuesto';
+}
+
 function presupuestoTieneProveedores(presupuesto) {
   return getPresupuestoProveedores(presupuesto).length > 0;
 }
@@ -824,6 +871,14 @@ function groupMovimientosByUsuario(movimientos, extraContext = {}) {
   return [...map.entries()];
 }
 
+function getCategoryLabel(mov) {
+  return String(mov?.categoria || mov?.rubro || 'Sin categoría').trim() || 'Sin categoría';
+}
+
+function getSubcategoryLabel(mov) {
+  return String(mov?.subcategoria || mov?.subrubro || 'Otros rubros').trim() || 'Otros rubros';
+}
+
 // ─── Procesadores de bloques ───
 
 /**
@@ -931,6 +986,81 @@ export function processMetricCards(block, movimientos, presupuestos, currencies,
       _movimientos: data,
     };
   });
+}
+
+/**
+ * Procesa un bloque category_subcategory_accordion
+ * Agrupa movimientos por categoría y subcategoría, preservando movimientos para drill-down.
+ */
+export function processCategorySubcategoryAccordion(block, movimientos, _presupuestos, currencies) {
+  const data = applyBlockFilters(movimientos, {
+    ...block,
+    filtro_tipo: block.filtro_tipo || 'egreso',
+  });
+  const displayCurrency = block.display_currency || currencies?.[0] || 'ARS';
+  const campo = block.campo_monto || 'total';
+  const categoriesMap = new Map();
+
+  for (const mov of data) {
+    const categoryLabel = getCategoryLabel(mov);
+    const categoryKey = normalizeCategoryFilterValue(categoryLabel);
+    const subcategoryLabel = getSubcategoryLabel(mov);
+    const subcategoryKey = normalizeCategoryFilterValue(subcategoryLabel);
+    const amount = Math.abs(getAmount(mov, displayCurrency, campo));
+
+    const category = categoriesMap.get(categoryKey) || {
+      key: categoryKey,
+      label: categoryLabel,
+      total: 0,
+      count: 0,
+      movimientos: [],
+      subcategoriesMap: new Map(),
+    };
+
+    const subcategory = category.subcategoriesMap.get(subcategoryKey) || {
+      key: subcategoryKey,
+      label: subcategoryLabel,
+      total: 0,
+      count: 0,
+      movimientos: [],
+    };
+
+    category.total += amount;
+    category.count += 1;
+    category.movimientos.push(mov);
+    subcategory.total += amount;
+    subcategory.count += 1;
+    subcategory.movimientos.push(mov);
+
+    category.subcategoriesMap.set(subcategoryKey, subcategory);
+    categoriesMap.set(categoryKey, category);
+  }
+
+  const categories = [...categoriesMap.values()]
+    .map((category) => ({
+      key: category.key,
+      label: category.label,
+      total: round2(category.total),
+      count: category.count,
+      movimientos: category.movimientos,
+      subcategories: [...category.subcategoriesMap.values()]
+        .map((sub) => ({
+          ...sub,
+          total: round2(sub.total),
+        }))
+        .sort((a, b) => b.total - a.total || a.label.localeCompare(b.label)),
+    }))
+    .sort((a, b) => b.total - a.total || a.label.localeCompare(b.label));
+
+  return {
+    categories,
+    total: round2(categories.reduce((acc, category) => acc + category.total, 0)),
+    count: data.length,
+    displayCurrency,
+    campo,
+    showCounts: block.mostrar_cantidad_movimientos !== false,
+    showSubcategories: block.desglose_subcategorias !== false,
+  };
 }
 
 /**
@@ -1095,6 +1225,13 @@ export function processMovementsTable(block, movimientos, _presupuestos, currenc
 
   // Paginar
   const pageSize = block.page_size || 25;
+  const summaryLabel = block.resumen_titulo
+    || (block.filtro_tipo === 'ingreso' ? 'Ingresos' : block.filtro_tipo === 'egreso' ? 'Egresos' : 'Movimientos');
+  const summaryTotal = round2(rows.reduce((acc, row) => {
+    if (block.filtro_tipo === 'egreso') return acc + Math.abs(row.egreso_display ?? row.monto_display ?? 0);
+    if (block.filtro_tipo === 'ingreso') return acc + Math.abs(row.ingreso_display ?? row.monto_display ?? 0);
+    return acc + Number(row.monto_display || 0);
+  }, 0));
 
   return {
     columnas: columnasVisibles,
@@ -1103,6 +1240,10 @@ export function processMovementsTable(block, movimientos, _presupuestos, currenc
     totalRows: rows.length,
     currencies,
     displayCurrency: primaryCurrency,
+    summaryAccordion: block.resumen_desplegable === true,
+    summaryLabel,
+    summaryTotal,
+    showSummaryCount: block.mostrar_cantidad_resumen === true,
   };
 }
 
@@ -1115,6 +1256,11 @@ export function processBudgetVsActual(block, movimientos, presupuestos, currenci
   const displayCurrency = currencies[0];
   const data = applyBlockFilters(movimientos, block);
   const agruparPor = block.agrupar_por || 'categoria';
+  const groupLabelByField = {
+    categoria: 'Categoría',
+    proveedor: 'Proveedor',
+    etapa: 'Etapa',
+  };
   const runtimeProjectIds = new Set((extraContext?.filters?.proyectos || []).map((id) => String(id)));
   const runtimeCategorySet = toNormalizedSet(extraContext?.filters?.categorias || []);
 
@@ -1195,10 +1341,23 @@ export function processBudgetVsActual(block, movimientos, presupuestos, currenci
     for (const nombre of getPresKeys(p)) {
       const key = String(nombre).toLowerCase();
       if (!presMap.has(key)) {
-        presMap.set(key, { nombre, presupuestado: 0, ejecutado: 0 });
+        presMap.set(key, { nombre, presupuestado: 0, ejecutado: 0, details: [] });
       }
       presMap.get(key).presupuestado += monto;
       presMap.get(key).ejecutado += ejecutado;
+      const presupuestoMovs = data.filter((m) => movimientoMatchesPresupuesto(m, p));
+      const detalleDisponible = monto - ejecutado;
+      const detallePorcentaje = monto > 0 ? ejecutado / monto : 0;
+      presMap.get(key).details.push({
+        id: getPresupuestoId(p) || `${key}-${presMap.get(key).details.length}`,
+        label: getPresupuestoBreakdownLabel(p, agruparPor),
+        presupuestado: monto,
+        ejecutado,
+        disponible: detalleDisponible,
+        porcentaje: detallePorcentaje,
+        sobreejecucion: block.alerta_sobreejecucion && detallePorcentaje > 1,
+        _movimientos: presupuestoMovs,
+      });
     }
   }
 
@@ -1216,7 +1375,7 @@ export function processBudgetVsActual(block, movimientos, presupuestos, currenci
 
   const rows = [];
   for (const key of allKeys) {
-    const presData = presMap.get(key) || { nombre: key, presupuestado: 0, ejecutado: 0 };
+    const presData = presMap.get(key) || { nombre: key, presupuestado: 0, ejecutado: 0, details: [] };
 
     const movs = movGrouped.get(
       [...movGrouped.keys()].find((k) => k.toLowerCase() === key),
@@ -1235,6 +1394,7 @@ export function processBudgetVsActual(block, movimientos, presupuestos, currenci
       disponible,
       porcentaje,
       sobreejecucion,
+      details: [...(presData.details || [])].sort((a, b) => b.presupuestado - a.presupuestado || a.label.localeCompare(b.label)),
       _movimientos: movs,
     });
   }
@@ -1247,6 +1407,9 @@ export function processBudgetVsActual(block, movimientos, presupuestos, currenci
   ];
 
   return {
+    groupField: agruparPor,
+    groupLabel: groupLabelByField[agruparPor] || capitalizar(agruparPor),
+    showBudgetBreakdown: block.mostrar_desglose_presupuestos === true,
     columnas: columnasConfig,
     rows,
     totals: {
@@ -2941,6 +3104,7 @@ const BLOCK_PROCESSORS = {
   chart: processChart,
   grouped_detail: processGroupedDetail,
   balance_between_partners: processBalanceBetweenPartners,
+  category_subcategory_accordion: processCategorySubcategoryAccordion,
   collections_summary: processCollectionsSummary,
   collections_schedule: processCollectionsSchedule,
   collections_chart: processCollectionsChart,
@@ -3093,7 +3257,8 @@ export function formatValue(value, formato, displayCurrency = 'ARS', options = {
     case 'currency': {
       const prefix = displayCurrency === 'ARS' ? '$' : displayCurrency === 'USD' ? 'U$D ' : '';
       const suffix = displayCurrency === 'CAC' ? ' CAC' : '';
-      const maxFrac = options.maximumFractionDigits != null ? options.maximumFractionDigits : 2;
+      const defaultFractionDigits = displayCurrency === 'CAC' ? 2 : 0;
+      const maxFrac = options.maximumFractionDigits != null ? options.maximumFractionDigits : defaultFractionDigits;
       const minFrac = options.minimumFractionDigits != null ? options.minimumFractionDigits : maxFrac;
       return `${prefix}${Number(value).toLocaleString('es-AR', {
         minimumFractionDigits: minFrac,

@@ -32,6 +32,8 @@ const COLUMN_LABELS = {
   usuario_nombre: 'Usuario',
 };
 
+const MOVEMENT_CURRENCY_OPTS = { minimumFractionDigits: 2, maximumFractionDigits: 2 };
+
 const getColumnLabel = (col) => {
   if (COLUMN_LABELS[col]) return COLUMN_LABELS[col];
   const match = col.match(/^(monto_display|subtotal_display|ingreso_display|egreso_display)__(.+)$/);
@@ -114,12 +116,16 @@ const GroupedDetailBlock = ({ data, displayCurrency, displayCurrencies, onDrillD
     if (col.match(/^(monto_display|subtotal_display|ingreso_display|egreso_display)__/)) {
       const [base, currency] = col.split('__');
       if (base === 'ingreso_display') {
-        return row.type === 'ingreso' ? formatValue(row[`monto_display__${currency}`] ?? getAmount(row, currency, 'total'), 'currency', currency) : '';
+        return row.type === 'ingreso'
+          ? formatValue(row[`monto_display__${currency}`] ?? getAmount(row, currency, 'total'), 'currency', currency, MOVEMENT_CURRENCY_OPTS)
+          : '';
       }
       if (base === 'egreso_display') {
-        return row.type === 'egreso' ? formatValue(row[`monto_display__${currency}`] ?? getAmount(row, currency, 'total'), 'currency', currency) : '';
+        return row.type === 'egreso'
+          ? formatValue(row[`monto_display__${currency}`] ?? getAmount(row, currency, 'total'), 'currency', currency, MOVEMENT_CURRENCY_OPTS)
+          : '';
       }
-      return formatValue(row[col] ?? getAmount(row, currency, 'total'), 'currency', currency);
+      return formatValue(row[col] ?? getAmount(row, currency, 'total'), 'currency', currency, MOVEMENT_CURRENCY_OPTS);
     }
 
     switch (col) {
@@ -135,13 +141,17 @@ const GroupedDetailBlock = ({ data, displayCurrency, displayCurrencies, onDrillD
           />
         );
       case 'monto_display':
-        return formatValue(getAmount(row, displayCurrency, 'total'), 'currency', displayCurrency);
+        return formatValue(getAmount(row, displayCurrency, 'total'), 'currency', displayCurrency, MOVEMENT_CURRENCY_OPTS);
       case 'subtotal_display':
-        return formatValue(getAmount(row, displayCurrency, 'subtotal'), 'currency', displayCurrency);
+        return formatValue(getAmount(row, displayCurrency, 'subtotal'), 'currency', displayCurrency, MOVEMENT_CURRENCY_OPTS);
       case 'ingreso_display':
-        return row.type === 'ingreso' ? formatValue(getAmount(row, displayCurrency, 'total'), 'currency', displayCurrency) : '';
+        return row.type === 'ingreso'
+          ? formatValue(getAmount(row, displayCurrency, 'total'), 'currency', displayCurrency, MOVEMENT_CURRENCY_OPTS)
+          : '';
       case 'egreso_display':
-        return row.type === 'egreso' ? formatValue(getAmount(row, displayCurrency, 'total'), 'currency', displayCurrency) : '';
+        return row.type === 'egreso'
+          ? formatValue(getAmount(row, displayCurrency, 'total'), 'currency', displayCurrency, MOVEMENT_CURRENCY_OPTS)
+          : '';
       case 'moneda':
         return row.moneda || 'ARS';
       case 'subcategoria':
