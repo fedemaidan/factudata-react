@@ -269,7 +269,7 @@ const ProyectoCard = ({ proyecto, resumen, onSelect, formatMonto, tipoCambio, mo
 const PresupuestoItem = ({
   label, presupuesto, ejecutado, formatMonto, onEditar, onCrear, onToggleSeleccion, seleccionada = false,
   historial, moneda, indexacion, baseCalculo, cotizacionSnapshot, montoIngresado,
-  cacIndiceActual: cacIdx, tipoCambioActual, cacTipo,
+  cacIndiceActual: cacIdx, tipoCambioActual, cacTipo, cacEstado,
   modoSeleccion = false,
 }) => {
   const tienePresupuesto = presupuesto !== null && presupuesto !== undefined;
@@ -364,6 +364,11 @@ const PresupuestoItem = ({
         <Typography fontWeight={500} noWrap sx={{ fontSize: { xs: '0.85rem', md: '1rem' }, flex: { xs: '1 1 auto', sm: '0 1 auto' }, minWidth: 0 }}>{label}</Typography>
         {esIndexado && (
           <Chip label={`idx ${unidadIdx}`} size="small" color="secondary" variant="outlined" sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }} />
+        )}
+        {indexacion === 'CAC' && cacEstado === 'estimado' && (
+          <Tooltip title="Usa el último CAC disponible; se actualiza solo cuando se publique el CAC oficial del mes" arrow>
+            <Chip label="Estimado" size="small" color="warning" variant="outlined" sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }} />
+          </Tooltip>
         )}
         {baseCalculo === 'subtotal' && (
           <Chip label="neto" size="small" color="default" variant="outlined" sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }} />
@@ -991,6 +996,7 @@ const ControlPresupuestosPage = () => {
         base_calculo: item.base_calculo || 'total',
         cotizacion_snapshot: item.cotizacion_snapshot || null,
         cac_tipo: item.cac_tipo || null,
+        cac_estado: item.cac_estado || null,
         fecha_presupuesto: item.fecha_presupuesto || null,
         tipo: item.tipo || 'egreso',
         proveedores: Array.isArray(item.proveedores) ? item.proveedores : [],
@@ -1094,6 +1100,7 @@ const ControlPresupuestosPage = () => {
         ejecutado: item.ejecutado || 0,
         cotizacion_snapshot: item.cotizacion_snapshot || null,
         cac_tipo: item.cac_tipo || null,
+        cac_estado: item.cac_estado || null,
         fecha_presupuesto: item.fecha_presupuesto || null,
         proveedores: Array.isArray(item.proveedores) ? item.proveedores : [],
         clasificaciones: getClasificacionesEfectivas(item),
@@ -1120,6 +1127,7 @@ const ControlPresupuestosPage = () => {
     ejecutado: item.ejecutado || 0,
     cotizacion_snapshot: item.cotizacion_snapshot || null,
     cac_tipo: item.cac_tipo || null,
+    cac_estado: item.cac_estado || null,
     fecha_presupuesto: item.fecha_presupuesto || null,
     proveedores: Array.isArray(item.proveedores) ? item.proveedores : [],
     clasificaciones: getClasificacionesEfectivas(item),
@@ -2107,6 +2115,7 @@ const ControlPresupuestosPage = () => {
                                   cacIndiceActual={getCacIndice(dataAjustada.cac_tipo)}
                                   tipoCambioActual={tipoCambio}
                                   cacTipo={dataAjustada.cac_tipo}
+                                  cacEstado={dataAjustada.cac_estado}
                                   seleccionada={seleccionMulti.clasificaciones.includes(catName)}
                                   modoSeleccion={modoSeleccion}
                                   onToggleSeleccion={() => toggleSeleccionCategoria(catName)}
@@ -2136,6 +2145,7 @@ const ControlPresupuestosPage = () => {
                                   cacIndiceActual={getCacIndice(item.cac_tipo)}
                                   tipoCambioActual={tipoCambio}
                                   cacTipo={item.cac_tipo || null}
+                                  cacEstado={item.cac_estado}
                                   seleccionada={false}
                                   modoSeleccion={false}
                                   onToggleSeleccion={() => abrirDrawerEditar(item, label)}
@@ -2181,6 +2191,7 @@ const ControlPresupuestosPage = () => {
                                 cacIndiceActual={getCacIndice(data.cac_tipo)}
                                 tipoCambioActual={tipoCambio}
                                 cacTipo={data.cac_tipo}
+                                cacEstado={data.cac_estado}
                                 seleccionada={seleccionMulti.etapa === etapaName}
                                 modoSeleccion={modoSeleccion}
                                 onToggleSeleccion={() => toggleSeleccionEtapa(etapaName)}
@@ -2246,6 +2257,7 @@ const ControlPresupuestosPage = () => {
                                 cacIndiceActual={getCacIndice(data.cac_tipo)}
                                 tipoCambioActual={tipoCambio}
                                 cacTipo={data.cac_tipo}
+                                cacEstado={data.cac_estado}
                                 seleccionada={seleccionMulti.proveedores.includes(proveedor)}
                                 modoSeleccion={modoSeleccion}
                                 onToggleSeleccion={() => toggleSeleccionProveedor(proveedor)}
@@ -2293,6 +2305,7 @@ const ControlPresupuestosPage = () => {
                             cacIndiceActual={getCacIndice(item.cac_tipo)}
                             tipoCambioActual={tipoCambio}
                             cacTipo={item.cac_tipo || null}
+                            cacEstado={item.cac_estado}
                             onEditar={() => abrirDrawerEditar(item, label)}
                           />
                         );

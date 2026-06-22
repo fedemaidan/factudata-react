@@ -66,6 +66,7 @@ import 'dayjs/locale/es';
 import presupuestoService from 'src/services/presupuestoService';
 import MonedasService from 'src/services/monedasService';
 import { formatCurrency } from 'src/utils/formatters';
+import { CAC_LABELS } from 'src/components/presupuestosProfesionales/monedaAjusteConfig';
 import {
   PRESUPUESTO_ADJUNTOS_MAX,
   validatePresupuestoAdjuntoFile,
@@ -87,13 +88,10 @@ const loadDefaultControlPresupuestoDoc = () =>
     (m) => m.PdfControlPresupuestoDocument
   );
 
-// Helper: calcular la fecha YYYY-MM del CAC aplicado (regla -2 meses)
-const calcularFechaCACAplicada = (fechaStr) => {
-  if (!fechaStr) return null;
-  const d = new Date(fechaStr + 'T12:00:00');
-  d.setMonth(d.getMonth() - 2);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-};
+// Helper: mes (YYYY-MM) de una fecha YYYY-MM-DD. El presupuesto usa el CAC de su
+// mes REAL (TAR-423 Ticket 2): si todavía no salió, se usa el último disponible
+// como estimación y se recalcula solo cuando se publique el oficial.
+const mesDeFecha = (fechaStr) => (typeof fechaStr === 'string' && fechaStr.length >= 7 ? fechaStr.slice(0, 7) : null);
 
 // Helper: formato legible de mes YYYY-MM → "Marzo 2026"
 const formatMesLegible = (fechaAAAAMM) => {
@@ -316,6 +314,17 @@ const PresupuestoDrawer = ({
   const conflictoIndices = indicePorCategoria && _keysSel.length > 1;
   const indiceUnico = indicePorCategoria && !conflictoIndices; // las categorías comparten índice
   const indiceDerivado = indiceUnico ? getIndiceCategoria(_catsSel[0].categoria) : null; // null = ARS fijo
+  // Crear: la categoría manda el índice. Sincroniza el estado real (indexacion/cacTipo)
+  // con el índice derivado — cubre el form simplificado precargado por categoría (card),
+  // donde handleClasificacionesChange no se dispara.
+  const _indiceDerivadoKey = indiceUnico ? indiceKeyStr(indiceDerivado) : 'none';
+  useEffect(() => {
+    if (mode !== 'crear' || !indiceUnico) return;
+    setMoneda('ARS');
+    setIndexacion(indiceDerivado?.indexacion || null);
+    if (indiceDerivado?.indexacion === 'CAC') setCacTipo(indiceDerivado.cac_tipo || 'general');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, indiceUnico, _indiceDerivadoKey]);
   const [dolarRate, setDolarRate] = useState(null);
   const [cacIndice, setCacIndice] = useState(null);
   const [cacSubindices, setCacSubindices] = useState({ general: null, mano_obra: null, materiales: null });
@@ -376,8 +385,8 @@ const PresupuestoDrawer = ({
         }
       }
 
-      // CAC: aplicar regla de desfase (-2 meses) sobre la fecha del presupuesto
-      const cacFecha = calcularFechaCACAplicada(fechaStr);
+      // CAC: usar el mes REAL del presupuesto (sin corrimiento). Si no salió, último disponible.
+      const cacFecha = mesDeFecha(fechaStr);
       setCacFecha(cacFecha);
       if (cacFecha) {
         const cacData = await MonedasService.obtenerCAC(cacFecha).catch(() => null);
@@ -492,7 +501,7 @@ const PresupuestoDrawer = ({
         }
         setProyectoSel(proyectoId || '');
         setFechaPresupuesto(hoyStr);
-        setCacFechaAplicada(calcularFechaCACAplicada(hoyStr));
+        setCacFechaAplicada(mesDeFecha(hoyStr));
         setPendingAdjuntosFiles([]);
         setAdjuntosEdit([]);
       } else if (mode === 'editar' && presupuesto) {
@@ -509,7 +518,7 @@ const PresupuestoDrawer = ({
         // Fecha del presupuesto: usar la guardada o hoy
         const fechaP = presupuesto.fecha_presupuesto || presupuesto.cotizacion_snapshot?.fecha_presupuesto || hoyStr;
         setFechaPresupuesto(fechaP);
-        setCacFechaAplicada(calcularFechaCACAplicada(fechaP));
+        setCacFechaAplicada(mesDeFecha(fechaP));
         // Fecha del adicional: default = fecha del presupuesto
         setFechaAdicional(fechaP);
         // Reset estados de edición de adicionales
@@ -1131,7 +1140,7 @@ const PresupuestoDrawer = ({
                     <CalendarMonthIcon sx={{ fontSize: 14, color: 'text.disabled' }} />
                     <Typography variant="caption" color="text.secondary">
                       {indexacion === 'CAC'
-                        ? <>Índice CAC aplicado: <strong>{formatMesLegible(cacFechaAplicada)}</strong> (fecha presupuesto − 2 meses){cacEsFallback && cacFechaFallback ? <> · <em>último disponible: {formatMesLegible(cacFechaFallback)}</em></> : ''}{cacEfectivo ? <> = {Number(cacEfectivo).toLocaleString('es-AR', { maximumFractionDigits: 1 })}</> : ''}</>
+                        ? <>Índice CAC de <strong>{formatMesLegible(cacFechaAplicada)}</strong>{cacEsFallback ? <> · <em>aún no publicado, se estima con el último disponible{cacFechaFallback ? ` (${formatMesLegible(cacFechaFallback)})` : ''}</em></> : ''}{cacEfectivo ? <> = {Number(cacEfectivo).toLocaleString('es-AR', { maximumFractionDigits: 1 })}</> : ''}</>
                         : <>Dólar blue aplicado: <strong>{dayjs(fechaPresupuesto).format('DD/MM/YYYY')}</strong></>
                       }
                     </Typography>
@@ -1860,7 +1869,7 @@ const PresupuestoDrawer = ({
                         <CalendarMonthIcon sx={{ fontSize: 14, color: 'text.disabled' }} />
                         <Typography variant="caption" color="text.secondary">
                           {nuevaIndexacion === 'CAC'
-                            ? <>Índice CAC aplicado: <strong>{formatMesLegible(cacFechaAplicada)}</strong> (fecha presupuesto − 2 meses){cacEsFallback && cacFechaFallback ? <> · <em>último disponible: {formatMesLegible(cacFechaFallback)}</em></> : ''}{cacEfectivo ? <> = {Number(cacEfectivo).toLocaleString('es-AR')}</> : ''}</>
+                            ? <>Índice CAC de <strong>{formatMesLegible(cacFechaAplicada)}</strong>{cacEsFallback ? <> · <em>aún no publicado, se estima con el último disponible{cacFechaFallback ? ` (${formatMesLegible(cacFechaFallback)})` : ''}</em></> : ''}{cacEfectivo ? <> = {Number(cacEfectivo).toLocaleString('es-AR')}</> : ''}</>
                             : <>Dólar blue aplicado: <strong>{dayjs(fechaPresupuesto).format('DD/MM/YYYY')}</strong>{dolarEfectivo ? <> = ${Number(dolarEfectivo).toLocaleString('es-AR')}</> : ''}</>
                           }
                         </Typography>

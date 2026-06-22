@@ -23,7 +23,9 @@ import {
   Snackbar,
   Alert,
   Stack,
-  MenuItem
+  MenuItem,
+  Switch,
+  FormControlLabel,
 } from '@mui/material';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
@@ -125,6 +127,32 @@ export const CategoriasDetails = ({ empresa, refreshEmpresa }) => {
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [snackbarSeverity, setSnackbarSeverity] = useState('success');
+
+  // TAR-423 Ticket 2: recálculo automático de presupuestos CAC (config por empresa, default ON).
+  const [cacRecalcular, setCacRecalcular] = useState(empresa?.presupuesto_cac_recalcular !== false);
+  const [savingCacRecalcular, setSavingCacRecalcular] = useState(false);
+
+  useEffect(() => {
+    setCacRecalcular(empresa?.presupuesto_cac_recalcular !== false);
+  }, [empresa?.presupuesto_cac_recalcular]);
+
+  const handleToggleCacRecalcular = async (value) => {
+    setCacRecalcular(value); // optimista
+    setSavingCacRecalcular(true);
+    try {
+      await updateEmpresaDetails(empresa.id, { presupuesto_cac_recalcular: value });
+      await refreshEmpresa?.();
+      setSnackbarMessage('Configuración guardada');
+      setSnackbarSeverity('success');
+    } catch (e) {
+      setCacRecalcular(!value); // revertir
+      setSnackbarMessage('No se pudo guardar la configuración');
+      setSnackbarSeverity('error');
+    } finally {
+      setSavingCacRecalcular(false);
+      setSnackbarOpen(true);
+    }
+  };
 
   const handleSnackbarClose = () => {
     setSnackbarOpen(false);
@@ -511,6 +539,38 @@ const handleImportarCSV = async (e) => {
             Restaurar Categorías por defecto
           </Button>
         </CardActions>
+      </Card>
+
+      <Card sx={{ mt: 3 }}>
+        <CardHeader
+          title="Índice CAC de presupuestos"
+          subheader="Cómo se comportan los presupuestos ajustados por CAC cuando se publica el índice oficial."
+        />
+        <Divider />
+        <CardContent>
+          <FormControlLabel
+            sx={{ alignItems: 'flex-start', m: 0 }}
+            control={
+              <Switch
+                checked={cacRecalcular}
+                disabled={savingCacRecalcular}
+                onChange={(e) => handleToggleCacRecalcular(e.target.checked)}
+              />
+            }
+            label={
+              <Box sx={{ pt: 0.6 }}>
+                <Typography variant="body2" fontWeight={500}>
+                  Actualizar los presupuestos CAC automáticamente cuando se publique el índice oficial
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {cacRecalcular
+                    ? 'Activado: mientras no salga el CAC del mes se usa una estimación, y al publicarse el oficial el presupuesto se ajusta solo.'
+                    : 'Desactivado: el presupuesto queda con el valor estimado y no se actualiza solo. Cada presupuesto nuevo toma esta configuración al crearse.'}
+                </Typography>
+              </Box>
+            }
+          />
+        </CardContent>
       </Card>
 
       <ConsolidadosPresupuestoDetails empresa={empresa} refreshEmpresa={refreshEmpresa} />
