@@ -283,6 +283,21 @@ const PresupuestoDrawer = ({
   const [nuevaIndexacion, setNuevaIndexacion] = useState(null);
   const [cacTipo, setCacTipo] = useState('general'); // 'general' | 'mano_obra' | 'materiales'
   const [nuevoCacTipo, setNuevoCacTipo] = useState('general');
+  // TAR-423: si el usuario tocó la indexación a mano, no la pisamos con el default de la categoría
+  const [indiceManual, setIndiceManual] = useState(false);
+
+  // Aplica el índice por defecto de la categoría elegida (solo en modo crear y si no fue tocado a mano).
+  const handleClasificacionesChange = (next) => {
+    setClasificacionesSel(next);
+    if (mode !== 'crear' || indiceManual) return;
+    if (!Array.isArray(next) || next.length !== 1) return;
+    const cat = (categorias || []).find((c) => (typeof c === 'string' ? c : c?.name) === next[0]?.categoria);
+    const indice = typeof cat === 'object' ? cat?.indice : null;
+    if (!indice || !indice.indexacion) return;
+    setMoneda('ARS');
+    setIndexacion(indice.indexacion);
+    if (indice.indexacion === 'CAC') setCacTipo(indice.cac_tipo || 'general');
+  };
   const [dolarRate, setDolarRate] = useState(null);
   const [cacIndice, setCacIndice] = useState(null);
   const [cacSubindices, setCacSubindices] = useState({ general: null, mano_obra: null, materiales: null });
@@ -434,6 +449,7 @@ const PresupuestoDrawer = ({
         setMoneda('ARS');
         setIndexacion(null);
         setCacTipo('general');
+        setIndiceManual(false);
         setBaseCalculo('total');
         // Precarga del form en modo crear.
         // 1) preFill (multi-dimension, viene de la selección multi-card de control-presupuestos)
@@ -1141,6 +1157,7 @@ const PresupuestoDrawer = ({
                     exclusive
                     onChange={(e, val) => {
                       if (!val) return;
+                      setIndiceManual(true);
                       setMoneda(val);
                       if (val === 'USD') setIndexacion(null);
                     }}
@@ -1223,7 +1240,7 @@ const PresupuestoDrawer = ({
                   <ToggleButtonGroup
                     value={indexacion}
                     exclusive
-                    onChange={(e, val) => setIndexacion(val)}
+                    onChange={(e, val) => { setIndiceManual(true); setIndexacion(val); }}
                     size="small"
                     fullWidth
                   >
@@ -1466,7 +1483,7 @@ const PresupuestoDrawer = ({
                             </Typography>
                             <ClasificacionesPicker
                               value={clasificacionesSel}
-                              onChange={setClasificacionesSel}
+                              onChange={handleClasificacionesChange}
                               categorias={categorias}
                             />
                           </Box>

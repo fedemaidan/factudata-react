@@ -64,6 +64,7 @@ import proveedorService from 'src/services/proveedorService';
 import { getProyectosFromUser } from 'src/services/proyectosService';
 import { formatCurrency, formatTimestamp } from 'src/utils/formatters';
 import { getClasificacionesEfectivas, formatClasificacionesText } from 'src/utils/presupuestoLegacy';
+import { CAC_LABELS } from 'src/components/presupuestosProfesionales/monedaAjusteConfig';
 
 // ─── Helpers de item de presupuesto (multi-categoría / multi-proveedor) ──────
 const itemTieneCategorias = (item) =>
@@ -408,6 +409,61 @@ const PresupuestoItem = ({
         </Typography>
       </Stack>
     </Paper>
+  );
+};
+
+// ============ COMPONENTE: TARJETA DE CONSOLIDADO POR ÍNDICE (TAR-423) ============
+// Cada consolidado vive en su propio índice (CAC / USD / ARS) y se muestra valuado a
+// ARS de hoy. No hay conversión entre consolidados: lo que sube con CAC y lo que sube
+// con dólar nunca se mezclan en un mismo número.
+const consolidadoIndiceLabel = (indice) => {
+  if (indice?.indexacion === 'CAC') return `Ajustado por CAC ${CAC_LABELS[indice.cac_tipo] || ''}`.trim();
+  if (indice?.indexacion === 'USD') return 'Ajustado por dólar';
+  return 'ARS fijo';
+};
+
+const ConsolidadoCard = ({ consolidado }) => {
+  const { nombre, indice, presupuestado_ars, ejecutado_ars, saldo_ars, techo_ars } = consolidado;
+  const fmt = (v) => (v == null ? 's/d' : formatCurrency(v));
+  const base = techo_ars != null && techo_ars > 0 ? techo_ars : presupuestado_ars;
+  const pct = base > 0 ? (ejecutado_ars / base) * 100 : 0;
+
+  return (
+    <Card variant="outlined" sx={{ height: '100%' }}>
+      <CardContent sx={{ p: { xs: 1.5, md: 2 } }}>
+        <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1}>
+          <Typography variant="subtitle2" fontWeight={700} noWrap title={nombre}>{nombre}</Typography>
+          <Chip
+            label={consolidadoIndiceLabel(indice)}
+            size="small"
+            variant="outlined"
+            color={indice?.indexacion ? 'secondary' : 'default'}
+          />
+        </Stack>
+        <Typography variant="h5" fontWeight={700} sx={{ mt: 1, fontSize: { xs: '1.1rem', md: '1.5rem' } }} noWrap>
+          {fmt(presupuestado_ars)}
+        </Typography>
+        <Typography variant="caption" color="text.secondary">Presupuestado · valuado a hoy</Typography>
+
+        <LinearProgress
+          variant="determinate"
+          value={Math.min(Math.max(pct, 0), 100)}
+          color={pct > 100 ? 'error' : pct > 80 ? 'warning' : 'primary'}
+          sx={{ my: 1, height: 6, borderRadius: 3 }}
+        />
+        <Stack direction="row" justifyContent="space-between" spacing={1}>
+          <Typography variant="caption" color="text.secondary" noWrap>Gastado: {fmt(ejecutado_ars)}</Typography>
+          <Typography variant="caption" fontWeight={600} color={(saldo_ars ?? 0) >= 0 ? 'success.main' : 'error.main'} noWrap>
+            Saldo: {fmt(saldo_ars)}
+          </Typography>
+        </Stack>
+        {techo_ars != null && (
+          <Typography variant="caption" color="text.disabled" sx={{ display: 'block', mt: 0.5 }}>
+            Techo: {fmt(techo_ars)}
+          </Typography>
+        )}
+      </CardContent>
+    </Card>
   );
 };
 
@@ -1452,10 +1508,30 @@ const ControlPresupuestosPage = () => {
 
             {resumen && (
               <>
-                {/* Resumen General */}
+                {/* Consolidados por índice (TAR-423): cada índice separado, sin mezclar */}
+                {resumen.consolidados?.egresos?.length > 0 && (
+                  <Box>
+                    <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1 }}>
+                      Consolidados por índice
+                    </Typography>
+                    <Grid container spacing={{ xs: 1.5, md: 2 }}>
+                      {resumen.consolidados.egresos.map((c) => (
+                        <Grid item xs={12} sm={6} md={4} key={`egr-${c.id}`}>
+                          <ConsolidadoCard consolidado={c} />
+                        </Grid>
+                      ))}
+                    </Grid>
+                  </Box>
+                )}
+
+                {/* Resumen General (convertido a la moneda de vista — modo opcional) */}
                 {(() => {
                   const totales = calcularTotales();
                   return (
+                    <Box>
+                    <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
+                      Totales convertidos a {moneda} (con el índice de hoy) — usá el selector de arriba para cambiar la moneda.
+                    </Typography>
                     <Grid container spacing={{ xs: 1.5, md: 3 }}>
                       <Grid item xs={6} sm={4}>
                         <Card>
@@ -1531,6 +1607,7 @@ const ControlPresupuestosPage = () => {
                         </Card>
                       </Grid>
                     </Grid>
+                    </Box>
                   );
                 })()}
 

@@ -21,7 +21,9 @@ import {
   DialogContent,
   DialogActions,
   Snackbar,
-  Alert
+  Alert,
+  Stack,
+  MenuItem
 } from '@mui/material';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
@@ -33,6 +35,22 @@ import RestoreIcon from '@mui/icons-material/Restore';
 import { updateEmpresaDetails } from 'src/services/empresaService';
 import proveedorService from 'src/services/proveedorService';
 import Papa from 'papaparse';
+import { CAC_TIPOS, CAC_LABELS } from 'src/components/presupuestosProfesionales/monedaAjusteConfig';
+import { ConsolidadosPresupuestoDetails } from 'src/sections/empresa/consolidadosPresupuestoDetails';
+
+// Índice por categoría (TAR-423): determina con qué se actualiza/consolida lo gastado en
+// esa categoría. null = ARS fijo. Se guarda dentro de cada categoría de la empresa.
+const buildIndiceCategoria = (indexacion, cac_tipo) => {
+  if (indexacion === 'CAC') return { indexacion: 'CAC', cac_tipo: cac_tipo || CAC_TIPOS.GENERAL };
+  if (indexacion === 'USD') return { indexacion: 'USD', cac_tipo: null };
+  return null; // fijo (ARS)
+};
+
+export const indiceCategoriaLabel = (indice) => {
+  if (!indice || !indice.indexacion) return 'ARS fijo';
+  if (indice.indexacion === 'USD') return 'USD';
+  return `CAC ${CAC_LABELS[indice.cac_tipo] || CAC_LABELS[CAC_TIPOS.GENERAL]}`;
+};
 
 //todo - borrar luego
 const categoriasDefault = [
@@ -121,6 +139,8 @@ export const CategoriasDetails = ({ empresa, refreshEmpresa }) => {
     initialValues: {
       name: editingCategoria ? editingCategoria.name : '',
       subcategoria: '',
+      indexacion: editingCategoria?.indice?.indexacion || '',
+      cac_tipo: editingCategoria?.indice?.cac_tipo || CAC_TIPOS.GENERAL,
     },
     enableReinitialize: true,
     validationSchema: Yup.object({
@@ -129,13 +149,14 @@ export const CategoriasDetails = ({ empresa, refreshEmpresa }) => {
     onSubmit: async (values, { resetForm }) => {
       setIsLoading(true);
       let newCategorias = [...categorias];
+      const indice = buildIndiceCategoria(values.indexacion || null, values.cac_tipo);
       try {
         if (editingCategoria) {
           const nombreAnterior = editingCategoria.name;
           const nuevoNombre = values.name;
 
           newCategorias = newCategorias.map((cat) =>
-            cat.id === editingCategoria.id ? { ...cat, name: values.name } : cat
+            cat.id === editingCategoria.id ? { ...cat, name: values.name, indice } : cat
           );
           if (values.subcategoria) {
             newCategorias = newCategorias.map((cat) =>
@@ -169,7 +190,7 @@ export const CategoriasDetails = ({ empresa, refreshEmpresa }) => {
             categorias: newCategorias
           });
         } else {
-          const newCategoria = { id: Date.now(), name: values.name, subcategorias: [] };
+          const newCategoria = { id: Date.now(), name: values.name, subcategorias: [], indice };
           newCategorias = [...newCategorias, newCategoria];
           setSnackbarMessage('Categoría creada con éxito');
           
@@ -371,7 +392,12 @@ const handleImportarCSV = async (e) => {
 
   const startEditCategoria = (categoria) => {
     setEditingCategoria(categoria);
-    formik.setValues({ name: categoria.name, subcategoria: '' });
+    formik.setValues({
+      name: categoria.name,
+      subcategoria: '',
+      indexacion: categoria?.indice?.indexacion || '',
+      cac_tipo: categoria?.indice?.cac_tipo || CAC_TIPOS.GENERAL,
+    });
     setOpenModal(true);
   };
 
@@ -396,7 +422,17 @@ const handleImportarCSV = async (e) => {
           <List>
             {categorias.map((categoria) => (
               <ListItem key={categoria.id} divider>
-                <ListItemText primary={categoria.name} secondary={
+                <ListItemText primary={
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <span>{categoria.name}</span>
+                    <Chip
+                      label={indiceCategoriaLabel(categoria.indice)}
+                      size="small"
+                      variant="outlined"
+                      color={categoria.indice?.indexacion ? 'secondary' : 'default'}
+                    />
+                  </Box>
+                } secondary={
                   categoria.subcategorias?.map((sub, index) => {
                     // Manejar tanto strings como objetos {id, name}
                     const subName = typeof sub === 'string' ? sub : sub?.name || '';
@@ -477,6 +513,8 @@ const handleImportarCSV = async (e) => {
         </CardActions>
       </Card>
 
+      <ConsolidadosPresupuestoDetails empresa={empresa} refreshEmpresa={refreshEmpresa} />
+
       <Dialog open={openModal} onClose={cancelarEdicion} aria-labelledby="form-dialog-title">
         <form autoComplete="off" noValidate onSubmit={formik.handleSubmit}>
           <DialogTitle id="form-dialog-title">{editingCategoria ? 'Editar Categoría' : 'Agregar Categoría'}</DialogTitle>
@@ -491,6 +529,35 @@ const handleImportarCSV = async (e) => {
               helperText={formik.touched.name && formik.errors.name}
               style={{ marginTop: '1rem' }}
             />
+            <Stack direction="row" spacing={2} sx={{ mt: 2 }}>
+              <TextField
+                select
+                fullWidth
+                name="indexacion"
+                label="Índice de actualización"
+                value={formik.values.indexacion}
+                onChange={formik.handleChange}
+                helperText="Con qué se actualiza/consolida lo gastado en esta categoría"
+              >
+                <MenuItem value="">ARS fijo (sin índice)</MenuItem>
+                <MenuItem value="CAC">CAC</MenuItem>
+                <MenuItem value="USD">USD</MenuItem>
+              </TextField>
+              {formik.values.indexacion === 'CAC' && (
+                <TextField
+                  select
+                  fullWidth
+                  name="cac_tipo"
+                  label="Subíndice CAC"
+                  value={formik.values.cac_tipo}
+                  onChange={formik.handleChange}
+                >
+                  {Object.values(CAC_TIPOS).map((t) => (
+                    <MenuItem key={t} value={t}>{CAC_LABELS[t]}</MenuItem>
+                  ))}
+                </TextField>
+              )}
+            </Stack>
             {editingCategoria && (
               <TextField
                 fullWidth
