@@ -79,6 +79,8 @@ const AgentChatPage = () => {
     },
     [sendMessage],
   );
+  // Estable para que React.memo de AgentReportPreview funcione también en el dialog mobile.
+  const closeMobilePreview = useCallback(() => setMobilePreviewOpen(false), []);
   const { specialists } = useAgenteSpecialists();
   const quickActions = useMemo(() => pickQuickActions(specialists), [specialists]);
   const examplePrompts = useMemo(() => pickExamplePrompts(specialists), [specialists]);
@@ -638,7 +640,7 @@ const AgentChatPage = () => {
               draft={reportDraft}
               user={user}
               onSave={handleSaveReport}
-              onClose={() => setMobilePreviewOpen(false)}
+              onClose={closeMobilePreview}
             />
           </Dialog>
         </>

@@ -57,6 +57,17 @@ export function exportReportToXLSX(reportConfig, results, movimientos = [], disp
       case 'balance_between_partners':
         exportBalanceBetweenPartners(wb, sheetName, block.data, displayCurrency);
         break;
+      // Plan de cobros: mismas shapes que metric_cards / summary_table.
+      case 'collections_summary':
+        exportMetricCards(wb, sheetName, block.data, displayCurrency);
+        break;
+      case 'collections_schedule':
+      case 'collections_chart':
+      case 'collections_aging':
+      case 'collections_plans':
+      case 'collections_installments':
+        exportSummaryTable(wb, sheetName, block.data, displayCurrency);
+        break;
       default:
         break;
     }

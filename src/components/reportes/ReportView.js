@@ -26,6 +26,14 @@ const BLOCK_COMPONENTS = {
   balance_between_partners: BalanceBetweenPartnersBlock,
   income_budget_control: IncomeBudgetControlBlock,
   category_subcategory_accordion: CategorySubcategoryAccordionBlock,
+  // Plan de cobros: reutilizan los componentes existentes porque sus processors
+  // emiten las mismas shapes (metric_cards / summary_table).
+  collections_summary: MetricCardsBlock,
+  collections_schedule: SummaryTableBlock,
+  collections_chart: ChartBlock,
+  collections_aging: SummaryTableBlock,
+  collections_plans: SummaryTableBlock,
+  collections_installments: SummaryTableBlock,
 };
 
 /**
@@ -39,6 +47,7 @@ const ReportView = ({
   reportConfig,
   movimientos = [],
   presupuestos = [],
+  planesCobro = [],
   displayCurrencies,
   cotizaciones,
   reportContext = {},
@@ -67,8 +76,9 @@ const ReportView = ({
 
   const results = useMemo(() => {
     if (!reportConfig?.layout?.length) return [];
-    return executeReport(reportConfig, movimientos, presupuestos, currencies, cotizaciones, reportContext);
-  }, [reportConfig, movimientos, presupuestos, currencies, cotizaciones, reportContext]);
+    const ctx = { ...reportContext, planesCobro };
+    return executeReport(reportConfig, movimientos, presupuestos, currencies, cotizaciones, ctx);
+  }, [reportConfig, movimientos, presupuestos, planesCobro, currencies, cotizaciones, reportContext]);
 
   if (!reportConfig) {
     return (

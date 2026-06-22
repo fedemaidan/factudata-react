@@ -18,6 +18,20 @@ const landingStatsService = {
     },
 
     /**
+     * Resultados comerciales (reunión exitosa + ganados) de la cohorte del
+     * landing, total y por rubro. Vienen del CRM (ContactoSDR/ReunionSDR), no
+     * de los contadores diarios, así que requiere un rango exacto desde/hasta.
+     */
+    getLandingOutcomes: async ({ desde, hasta, segmento } = {}) => {
+        const params = new URLSearchParams();
+        params.set('desde', desde);
+        params.set('hasta', hasta);
+        if (segmento) params.set('segmento', segmento);
+        const { data } = await api.get(`/funnel/landing-outcomes?${params.toString()}`);
+        return data;
+    },
+
+    /**
      * Devuelve A vs B con tasas + lift relativo del test form-first.
      * El backend ya calcula los porcentajes — no hace falta repetirlo en cliente.
      */

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import api from 'src/services/axiosConfig';
 import { getProyectosFromUser } from 'src/services/proyectosService';
 import PresupuestoService from 'src/services/presupuestoService';
+import planCobroService from 'src/services/planCobroService';
 import ReportService from 'src/services/reportService';
 import MonedasService from 'src/services/monedasService';
 import profileService from 'src/services/profileService';
@@ -121,6 +122,7 @@ export function useReportData(user, empresaId) {
   // ─── Datos crudos ───
   const [allMovimientos, setAllMovimientos] = useState([]);
   const [presupuestos, setPresupuestos] = useState([]);
+  const [planesCobro, setPlanesCobro] = useState([]);
   const [proyectos, setProyectos] = useState([]);
   const [usuariosEmpresa, setUsuariosEmpresa] = useState([]);
   const [loadingData, setLoadingData] = useState(false);
@@ -283,6 +285,23 @@ export function useReportData(user, empresaId) {
   }, [proyectos, enrichPresupuestosWithProjectName]);
 
   // ═══════════════════════════════════════════
+  //  4b. Cargar planes de cobro (dataset planes_cobro)
+  // ═══════════════════════════════════════════
+  const loadPlanesCobro = useCallback(async () => {
+    if (!empresaId) return;
+    try {
+      const response = await planCobroService.listarPlanes(empresaId);
+      // El backend responde { ok, data: [...planes] }, envuelto por axios en .data
+      const body = response?.data;
+      const list = (body?.ok ? body.data : body) || [];
+      setPlanesCobro(Array.isArray(list) ? list : []);
+    } catch (err) {
+      console.error('Error cargando planes de cobro:', err);
+      setPlanesCobro([]);
+    }
+  }, [empresaId]);
+
+  // ═══════════════════════════════════════════
   //  5. Cargar datos completos cuando se selecciona un reporte
   // ═══════════════════════════════════════════
   const loadReportData = useCallback(async (report) => {
@@ -328,6 +347,11 @@ export function useReportData(user, empresaId) {
         await loadPresupuestos();
       }
 
+      // Cargar planes de cobro si el reporte los usa
+      if (fullReport.datasets?.planes_cobro) {
+        await loadPlanesCobro();
+      }
+
       // Poblar opciones de filtros
       const excludedCategorySet = getExcludedCategorySetFromLayout(fullReport.layout || []);
       const visibleCategories = getUniqueValues(movs, 'categoria').filter((category) => {
@@ -354,7 +378,7 @@ export function useReportData(user, empresaId) {
     } finally {
       setLoadingData(false);
     }
-  }, [empresaId, proyectos, usuariosEmpresa, fetchMovimientosForProyectos, loadPresupuestos]);
+  }, [empresaId, proyectos, usuariosEmpresa, fetchMovimientosForProyectos, loadPresupuestos, loadPlanesCobro]);
 
   // ═══════════════════════════════════════════
   //  6. Cuando cambian los filtros, re-filtrar movimientos
@@ -501,6 +525,7 @@ export function useReportData(user, empresaId) {
     selectedReport,
     filteredMovimientos,
     presupuestos,
+    planesCobro,
     proyectos,
     usuariosEmpresa,
     filters,

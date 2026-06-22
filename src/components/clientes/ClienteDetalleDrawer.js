@@ -25,10 +25,12 @@ import grupoClienteService from 'src/services/grupoClienteService';
 import { formatCurrencyWithCode, formatTimestamp } from 'src/utils/formatters';
 import CobroFormDrawer from 'src/components/clientes/CobroFormDrawer';
 import DevolucionDrawer from 'src/components/clientes/DevolucionDrawer';
+import VentaDetalleDrawer from 'src/components/ventas/VentaDetalleDrawer';
 
 export default function ClienteDetalleDrawer({ open, onClose, empresaId, clienteId, esCorralon, cajas = [], onEdit, onChanged }) {
   const [cobroOpen, setCobroOpen] = useState(false);
   const [devolucionOpen, setDevolucionOpen] = useState(false);
+  const [detalleVentaId, setDetalleVentaId] = useState(null);
   const [data, setData] = useState(null);
   const [grupoInfo, setGrupoInfo] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -89,6 +91,8 @@ export default function ClienteDetalleDrawer({ open, onClose, empresaId, cliente
         fecha: m.fecha_factura || m.createdAt,
         titulo: m.descripcion || m.categoria || 'Venta / deuda',
         monto: total, pendiente: pend,
+        // Venta vinculada (si la hay): permite abrir el detalle al hacer click.
+        venta_id: Array.isArray(m.venta_ids) && m.venta_ids.length ? String(m.venta_ids[0]) : null,
       });
     }
     for (const c of cobros) {
@@ -218,8 +222,14 @@ export default function ClienteDetalleDrawer({ open, onClose, empresaId, cliente
                   <div className="divide-y divide-divider">
                     {extracto.slice(0, 50).map((r) => {
                       const esCobro = r.tipo === 'cobro';
+                      const abreVenta = Boolean(r.venta_id);
                       return (
-                        <div key={r.key} className="flex items-center justify-between gap-2 px-3 py-2">
+                        <div
+                          key={r.key}
+                          onClick={abreVenta ? () => setDetalleVentaId(r.venta_id) : undefined}
+                          className={`flex items-center justify-between gap-2 px-3 py-2 ${abreVenta ? 'cursor-pointer hover:bg-neutral-50' : ''}`}
+                          title={abreVenta ? 'Ver la venta' : undefined}
+                        >
                           <div className="min-w-0">
                             <p className={`truncate text-sm ${r.anulado ? 'text-neutral-400 line-through' : esCobro ? 'text-info-dark' : 'text-neutral-900'}`}>
                               {r.titulo}
@@ -321,6 +331,16 @@ export default function ClienteDetalleDrawer({ open, onClose, empresaId, cliente
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Detalle de la venta al hacer click en una fila de la cuenta corriente */}
+      <VentaDetalleDrawer
+        open={Boolean(detalleVentaId)}
+        ventaId={detalleVentaId}
+        empresaId={empresaId}
+        cajas={cajas}
+        onClose={() => setDetalleVentaId(null)}
+        onChanged={() => { cargar(); onChanged?.(); }}
+      />
     </Drawer>
   );
 }

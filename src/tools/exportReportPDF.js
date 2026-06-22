@@ -17,6 +17,7 @@ export async function exportReportToPDF({
   reportConfig,
   movimientos,
   presupuestos,
+  planesCobro = [],
   displayCurrencies,
   cotizaciones,
   filters = {},
@@ -29,7 +30,7 @@ export async function exportReportToPDF({
     presupuestos,
     displayCurrencies,
     cotizaciones,
-    reportContext,
+    { ...reportContext, planesCobro },
   );
   const displayCurrency = displayCurrencies?.[0] || reportConfig.display_currency || 'ARS';
 
