@@ -9,6 +9,8 @@ import ImageIcon from '@mui/icons-material/Image';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import { formatValue } from 'src/tools/reportEngine';
 
+const MOVEMENT_CURRENCY_OPTS = { minimumFractionDigits: 2, maximumFractionDigits: 2 };
+
 const formatDate = (d) => {
   if (!d) return '-';
   const date = d?.toDate ? d.toDate() : d?.seconds ? new Date(d.seconds * 1000) : new Date(d);
@@ -77,7 +79,7 @@ const DrillDownDialog = ({ open, onClose, movimientos = [], titulo = '', display
   const formatCurrencyValue = (amount, currency) => {
     if (amount == null || isNaN(amount)) return '-';
     if (currency === 'ARS') {
-      return formatValue(amount, 'currency', 'ARS');
+      return formatValue(amount, 'currency', 'ARS', MOVEMENT_CURRENCY_OPTS);
     }
     if (currency === 'USD') {
       return Number(amount).toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });

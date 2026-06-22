@@ -120,6 +120,7 @@ const PublicReportPage = () => {
   const [report, setReport] = useState(null);
   const [allMovimientos, setAllMovimientos] = useState([]);
   const [presupuestos, setPresupuestos] = useState([]);
+  const [planesCobro, setPlanesCobro] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -170,6 +171,7 @@ const PublicReportPage = () => {
           setReport(rpt);
           setAllMovimientos(movs);
           setPresupuestos(Array.isArray(data.presupuestos) ? data.presupuestos : []);
+          setPlanesCobro(Array.isArray(data.planes_cobro) ? data.planes_cobro : []);
           // Inicializar filtros: si hay filtros en la URL, usarlos; sino, defaults del reporte
           if (rpt?.filtros_schema) {
             const defaults = buildDefaultFilters(rpt.filtros_schema);
@@ -340,7 +342,7 @@ const PublicReportPage = () => {
             disabled={filteredMovimientos.length === 0}
             onClick={async () => {
               try {
-                const results = executeReport(report, filteredMovimientos, presupuestos, displayCurrencies, null, { filters, proyectos: availableOptions.proyectos || [] });
+                const results = executeReport(report, filteredMovimientos, presupuestos, displayCurrencies, null, { filters, proyectos: availableOptions.proyectos || [], planesCobro });
                 const res = await axios.post(
                   `${config.apiUrl}/reports/export-pdf`,
                   {
@@ -388,6 +390,7 @@ const PublicReportPage = () => {
           reportConfig={report}
           movimientos={filteredMovimientos}
           presupuestos={presupuestos}
+          planesCobro={planesCobro}
           displayCurrencies={displayCurrencies}
           cotizaciones={null}
           reportContext={{ filters, proyectos: availableOptions.proyectos || [] }}

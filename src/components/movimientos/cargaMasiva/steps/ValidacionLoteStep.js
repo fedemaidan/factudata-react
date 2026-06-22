@@ -27,8 +27,9 @@ function isItemSplit(item) {
 }
 
 /**
- * Agrupa items consecutivos del mismo PDF splitteado para la barra de chips.
- * Items no-split (imágenes, PDFs sin toggle) caen en grupos kind:'single' del mismo elemento.
+ * Agrupa items consecutivos del mismo archivo con varios comprobantes (imagen con
+ * varios comprobantes o PDF splitteado) para la barra de chips. Items simples
+ * (un solo comprobante por archivo) caen en grupos kind:'single'.
  */
 function groupItemsForChipBar(items) {
   const groups = [];
@@ -223,7 +224,7 @@ const ValidacionLoteStep = forwardRef(
     const renderChipForItem = (item, i) => {
       const isCurrent = item.clientId === current?.clientId;
       const label = String(i + 1);
-      const tip = item.page != null ? `${item.originalname} · pág. ${item.page}` : item.originalname;
+      const tip = item.page != null ? `${item.originalname} · comprob. ${item.page}` : item.originalname;
       if (item.omitido) {
         return (
           <Tooltip key={item.clientId} title={tip}>
@@ -299,7 +300,7 @@ const ValidacionLoteStep = forwardRef(
                     sx={{ display: 'block', lineHeight: 1.2, mb: 0.25, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                     title={group.originalname}
                   >
-                    {group.originalname} · {group.totalPages} págs
+                    {group.originalname} · {group.totalPages} comprob.
                   </Typography>
                   <Stack direction="row" spacing={0.5} useFlexGap flexWrap="wrap">
                     {group.entries.map(({ item, idx: gIdx }) => renderChipForItem(item, gIdx))}
@@ -350,28 +351,28 @@ const ValidacionLoteStep = forwardRef(
                   size="small"
                   variant="outlined"
                   color="primary"
-                  label={`Página ${current.page} de ${current.total_pages}`}
+                  label={`Comprobante ${current.page} de ${current.total_pages}`}
                   sx={{ fontFeatureSettings: '"tnum"' }}
                 />
-                <Tooltip title="Página anterior del mismo PDF">
+                <Tooltip title="Comprobante anterior del mismo archivo">
                   <span>
                     <IconButton
                       size="small"
                       onClick={() => goToSibling(-1)}
                       disabled={!hasPrevSibling}
-                      aria-label="Página anterior del mismo PDF"
+                      aria-label="Comprobante anterior del mismo archivo"
                     >
                       <KeyboardArrowLeftIcon fontSize="small" />
                     </IconButton>
                   </span>
                 </Tooltip>
-                <Tooltip title="Página siguiente del mismo PDF">
+                <Tooltip title="Comprobante siguiente del mismo archivo">
                   <span>
                     <IconButton
                       size="small"
                       onClick={() => goToSibling(1)}
                       disabled={!hasNextSibling}
-                      aria-label="Página siguiente del mismo PDF"
+                      aria-label="Comprobante siguiente del mismo archivo"
                     >
                       <KeyboardArrowRightIcon fontSize="small" />
                     </IconButton>
@@ -459,7 +460,7 @@ const ValidacionLoteStep = forwardRef(
                       startIcon={<ContentCopyIcon />}
                       onClick={handleCopyToSiblingsClick}
                     >
-                      Copiar a las demás páginas de este PDF
+                      Copiar a los demás comprobantes de este archivo
                     </Button>
                     <FormControlLabel
                       control={
@@ -473,7 +474,7 @@ const ValidacionLoteStep = forwardRef(
                     />
                   </Stack>
                   <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                    Copia proveedor, fecha, proyecto, categoría y medio de pago a las otras {siblings.length - 1} página(s) del mismo PDF.
+                    Copia proveedor, fecha, proyecto, categoría y medio de pago a los otros {siblings.length - 1} comprobante(s) del mismo archivo.
                     No copia importes ni número de comprobante.
                   </Typography>
                 </Box>

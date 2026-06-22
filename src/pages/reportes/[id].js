@@ -83,6 +83,7 @@ const ReportDetailPage = () => {
     selectedReport,
     filteredMovimientos,
     presupuestos,
+    planesCobro,
     proyectos,
     usuariosEmpresa,
     filters,
@@ -262,26 +263,29 @@ const ReportDetailPage = () => {
 
   const handleExport = () => {
     const hasBudgetDataset = !!selectedReport?.datasets?.presupuestos;
-    if (!selectedReport || (filteredMovimientos.length === 0 && !hasBudgetDataset)) return;
+    const hasCollectionsDataset = !!selectedReport?.datasets?.planes_cobro;
+    if (!selectedReport || (filteredMovimientos.length === 0 && !hasBudgetDataset && !hasCollectionsDataset)) return;
     const results = executeReport(
       selectedReport,
       filteredMovimientos,
       presupuestos,
       displayCurrencies,
       cotizaciones,
-      { usuariosEmpresa, filters, proyectos },
+      { usuariosEmpresa, filters, proyectos, planesCobro },
     );
     exportReportToXLSX(selectedReport, results, filteredMovimientos, displayCurrencies);
   };
 
   const handleExportPDF = async () => {
     const hasBudgetDataset = !!selectedReport?.datasets?.presupuestos;
-    if (!selectedReport || (filteredMovimientos.length === 0 && !hasBudgetDataset)) return;
+    const hasCollectionsDataset = !!selectedReport?.datasets?.planes_cobro;
+    if (!selectedReport || (filteredMovimientos.length === 0 && !hasBudgetDataset && !hasCollectionsDataset)) return;
     try {
       await exportReportToPDF({
         reportConfig: selectedReport,
         movimientos: filteredMovimientos,
         presupuestos,
+        planesCobro,
         displayCurrencies,
         cotizaciones,
         filters,
@@ -494,6 +498,7 @@ const ReportDetailPage = () => {
                 saving={saving}
                 movimientos={filteredMovimientos}
                 presupuestos={presupuestos}
+                planesCobro={planesCobro}
                 displayCurrencies={displayCurrencies}
                 cotizaciones={cotizaciones}
                 empresaId={empresaId}
@@ -535,6 +540,7 @@ const ReportDetailPage = () => {
                       reportConfig={selectedReport}
                       movimientos={filteredMovimientos}
                       presupuestos={presupuestos}
+                      planesCobro={planesCobro}
                       displayCurrencies={displayCurrencies}
                       cotizaciones={cotizaciones}
                       reportContext={{ usuariosEmpresa, filters, proyectos }}

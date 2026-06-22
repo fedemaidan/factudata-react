@@ -29,6 +29,7 @@ const BLOCK_TYPE_LABELS = {
   income_budget_control: 'Control de Ingresos CAC',
   chart: 'Gráfico',
   grouped_detail: 'Detalle por Grupo',
+  category_subcategory_accordion: 'Categorias y Subcategorias',
   balance_between_partners: 'Balance entre Socios',
 };
 
@@ -57,6 +58,7 @@ const ReportEditor = ({
   saving = false,
   movimientos = [],
   presupuestos = [],
+  planesCobro = [],
   displayCurrencies = ['ARS'],
   cotizaciones = null,
   empresaId = null,
@@ -90,10 +92,18 @@ const ReportEditor = ({
   }, [empresaId]);
 
   // Live preview config
+  // El dataset de planes de cobro se deriva del layout: si hay algún bloque collections_*,
+  // se enciende solo (para que se carguen los planes y la preview los muestre).
+  const usaPlanesCobro = useMemo(
+    () => Array.isArray(config.layout) && config.layout.some((b) => typeof b?.type === 'string' && b.type.startsWith('collections_')),
+    [config.layout],
+  );
+
   const liveConfig = useMemo(() => ({
     ...report,
     ...config,
-  }), [report, config]);
+    datasets: { ...config.datasets, planes_cobro: (config.datasets?.planes_cobro || usaPlanesCobro) },
+  }), [report, config, usaPlanesCobro]);
 
   const liveCurrencies = useMemo(() => {
     const eq = config.filtros_schema?.moneda_equivalente;
@@ -187,7 +197,13 @@ const ReportEditor = ({
 
   // Layout / Bloques
   const addBlock = (block) => {
-    setConfig((prev) => ({ ...prev, layout: [...prev.layout, block] }));
+    setConfig((prev) => ({
+      ...prev,
+      datasets: block.type === 'budget_vs_actual'
+        ? { ...(prev.datasets || {}), presupuestos: true }
+        : prev.datasets,
+      layout: [...prev.layout, block],
+    }));
   };
 
   const updateBlock = (idx, block) => {
@@ -245,7 +261,8 @@ const ReportEditor = ({
   };
 
   const handleSave = () => {
-    onSave({ ...report, ...config });
+    const datasets = { ...config.datasets, planes_cobro: (config.datasets?.planes_cobro || usaPlanesCobro) };
+    onSave({ ...report, ...config, datasets });
   };
 
   const blockSummary = (block) => {
@@ -261,10 +278,10 @@ const ReportEditor = ({
         detail = 'Agrupado por ' + (block.agrupar_por || '?') + ' - ' + (block.columnas?.length || 0) + ' col';
         break;
       case 'movements_table':
-        detail = (block.columnas_visibles?.length || 7) + ' col - ' + (block.page_size || 25) + '/pag';
+        detail = (block.columnas_visibles?.length || 7) + ' col - ' + (block.page_size || 25) + '/pag' + (block.resumen_desplegable ? ' · desplegable' : '');
         break;
       case 'budget_vs_actual':
-        detail = 'Tipo: ' + (block.mostrar_tipo || 'egreso') + ' · Por: ' + (block.agrupar_por || 'categoria');
+        detail = 'Tipo: ' + (block.mostrar_tipo || 'egreso') + ' · Por: ' + (block.agrupar_por || 'categoria') + (block.mostrar_desglose_presupuestos ? ' · con desglose' : '');
         break;
       case 'monthly_budget_control':
         detail = 'Mensual · ' + (block.categorias_control?.length || 3) + ' categorias · % avance';
@@ -280,6 +297,9 @@ const ReportEditor = ({
         break;
       case 'grouped_detail':
         detail = 'Por ' + (block.agrupar_por || 'etapa') + ' · ' + (block.chips_style === 'chip' ? 'Chips' : 'Mini-cards') + ' · ' + (block.columnas_visibles?.length || 7) + ' col';
+        break;
+      case 'category_subcategory_accordion':
+        detail = (block.desglose_subcategorias === false ? 'Categorias con drilldown' : 'Accordion categoria -> subcategoria') + ' · ' + (block.campo_monto || 'total');
         break;
       case 'balance_between_partners':
         detail = 'Movimientos por telefono · reparto equitativo · resumen de deudas';
@@ -391,6 +411,18 @@ const ReportEditor = ({
                 />
               }
               label={<Typography variant="body2">Incluir Presupuestos de Control</Typography>}
+            />
+            <FormControlLabel
+              control={
+                <Switch
+                  size="small"
+                  checked={config.datasets?.planes_cobro || false}
+                  onChange={(e) =>
+                    updateField('datasets', { ...config.datasets, planes_cobro: e.target.checked })
+                  }
+                />
+              }
+              label={<Typography variant="body2">Incluir Planes de Cobro</Typography>}
             />
           </Stack>
         </AccordionDetails>
@@ -666,7 +698,7 @@ const ReportEditor = ({
         </Stack>
         <Divider sx={{ mb: 2 }} />
 
-        {movimientos.length === 0 ? (
+        {movimientos.length === 0 && planesCobro.length === 0 ? (
           <Alert severity="info">
             No hay datos cargados para la preview. Guarda y volve al reporte para ver con datos reales.
           </Alert>
@@ -675,9 +707,10 @@ const ReportEditor = ({
             reportConfig={liveConfig}
             movimientos={movimientos}
             presupuestos={presupuestos}
+            planesCobro={planesCobro}
             displayCurrencies={liveCurrencies}
             cotizaciones={cotizaciones}
-            reportContext={{ usuariosEmpresa }}
+            reportContext={{ usuariosEmpresa, proyectos }}
           />
         )}
       </Paper>

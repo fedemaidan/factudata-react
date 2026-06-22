@@ -206,6 +206,53 @@ function getPresupuestoProveedores(presupuesto) {
   return nombres;
 }
 
+function getPresupuestoSubcategorias(presupuesto) {
+  const set = new Set();
+  const clasificaciones = Array.isArray(presupuesto?.clasificaciones)
+    ? presupuesto.clasificaciones
+    : [];
+  for (const clasificacion of clasificaciones) {
+    const subs = Array.isArray(clasificacion?.subcategorias)
+      ? clasificacion.subcategorias
+      : [];
+    for (const sub of subs) {
+      const label = String(sub || '').trim();
+      if (label) set.add(label);
+    }
+  }
+  return [...set];
+}
+
+function getPresupuestoBreakdownLabel(presupuesto, agruparPor) {
+  const parts = [];
+  const categorias = getPresupuestoCategorias(presupuesto);
+  const subcategorias = getPresupuestoSubcategorias(presupuesto);
+  const proveedores = getPresupuestoProveedores(presupuesto);
+
+  if (agruparPor !== 'categoria' && categorias.length > 0) {
+    parts.push(categorias.join(' + '));
+  }
+
+  if (subcategorias.length > 0) {
+    parts.push(subcategorias.join(' + '));
+  } else if (agruparPor === 'categoria') {
+    parts.push('General');
+  }
+
+  if (agruparPor !== 'etapa' && presupuesto?.etapa) {
+    parts.push(presupuesto.etapa);
+  }
+
+  if (agruparPor !== 'proveedor' && proveedores.length > 0) {
+    parts.push(proveedores.join(' + '));
+  }
+
+  return parts.filter(Boolean).join(' · ')
+    || presupuesto?.nombre
+    || presupuesto?.rubro
+    || 'Presupuesto';
+}
+
 function presupuestoTieneProveedores(presupuesto) {
   return getPresupuestoProveedores(presupuesto).length > 0;
 }
@@ -824,6 +871,14 @@ function groupMovimientosByUsuario(movimientos, extraContext = {}) {
   return [...map.entries()];
 }
 
+function getCategoryLabel(mov) {
+  return String(mov?.categoria || mov?.rubro || 'Sin categoría').trim() || 'Sin categoría';
+}
+
+function getSubcategoryLabel(mov) {
+  return String(mov?.subcategoria || mov?.subrubro || 'Otros rubros').trim() || 'Otros rubros';
+}
+
 // ─── Procesadores de bloques ───
 
 /**
@@ -931,6 +986,81 @@ export function processMetricCards(block, movimientos, presupuestos, currencies,
       _movimientos: data,
     };
   });
+}
+
+/**
+ * Procesa un bloque category_subcategory_accordion
+ * Agrupa movimientos por categoría y subcategoría, preservando movimientos para drill-down.
+ */
+export function processCategorySubcategoryAccordion(block, movimientos, _presupuestos, currencies) {
+  const data = applyBlockFilters(movimientos, {
+    ...block,
+    filtro_tipo: block.filtro_tipo || 'egreso',
+  });
+  const displayCurrency = block.display_currency || currencies?.[0] || 'ARS';
+  const campo = block.campo_monto || 'total';
+  const categoriesMap = new Map();
+
+  for (const mov of data) {
+    const categoryLabel = getCategoryLabel(mov);
+    const categoryKey = normalizeCategoryFilterValue(categoryLabel);
+    const subcategoryLabel = getSubcategoryLabel(mov);
+    const subcategoryKey = normalizeCategoryFilterValue(subcategoryLabel);
+    const amount = Math.abs(getAmount(mov, displayCurrency, campo));
+
+    const category = categoriesMap.get(categoryKey) || {
+      key: categoryKey,
+      label: categoryLabel,
+      total: 0,
+      count: 0,
+      movimientos: [],
+      subcategoriesMap: new Map(),
+    };
+
+    const subcategory = category.subcategoriesMap.get(subcategoryKey) || {
+      key: subcategoryKey,
+      label: subcategoryLabel,
+      total: 0,
+      count: 0,
+      movimientos: [],
+    };
+
+    category.total += amount;
+    category.count += 1;
+    category.movimientos.push(mov);
+    subcategory.total += amount;
+    subcategory.count += 1;
+    subcategory.movimientos.push(mov);
+
+    category.subcategoriesMap.set(subcategoryKey, subcategory);
+    categoriesMap.set(categoryKey, category);
+  }
+
+  const categories = [...categoriesMap.values()]
+    .map((category) => ({
+      key: category.key,
+      label: category.label,
+      total: round2(category.total),
+      count: category.count,
+      movimientos: category.movimientos,
+      subcategories: [...category.subcategoriesMap.values()]
+        .map((sub) => ({
+          ...sub,
+          total: round2(sub.total),
+        }))
+        .sort((a, b) => b.total - a.total || a.label.localeCompare(b.label)),
+    }))
+    .sort((a, b) => b.total - a.total || a.label.localeCompare(b.label));
+
+  return {
+    categories,
+    total: round2(categories.reduce((acc, category) => acc + category.total, 0)),
+    count: data.length,
+    displayCurrency,
+    campo,
+    showCounts: block.mostrar_cantidad_movimientos !== false,
+    showSubcategories: block.desglose_subcategorias !== false,
+  };
 }
 
 /**
@@ -1095,6 +1225,13 @@ export function processMovementsTable(block, movimientos, _presupuestos, currenc
 
   // Paginar
   const pageSize = block.page_size || 25;
+  const summaryLabel = block.resumen_titulo
+    || (block.filtro_tipo === 'ingreso' ? 'Ingresos' : block.filtro_tipo === 'egreso' ? 'Egresos' : 'Movimientos');
+  const summaryTotal = round2(rows.reduce((acc, row) => {
+    if (block.filtro_tipo === 'egreso') return acc + Math.abs(row.egreso_display ?? row.monto_display ?? 0);
+    if (block.filtro_tipo === 'ingreso') return acc + Math.abs(row.ingreso_display ?? row.monto_display ?? 0);
+    return acc + Number(row.monto_display || 0);
+  }, 0));
 
   return {
     columnas: columnasVisibles,
@@ -1103,6 +1240,10 @@ export function processMovementsTable(block, movimientos, _presupuestos, currenc
     totalRows: rows.length,
     currencies,
     displayCurrency: primaryCurrency,
+    summaryAccordion: block.resumen_desplegable === true,
+    summaryLabel,
+    summaryTotal,
+    showSummaryCount: block.mostrar_cantidad_resumen === true,
   };
 }
 
@@ -1115,6 +1256,11 @@ export function processBudgetVsActual(block, movimientos, presupuestos, currenci
   const displayCurrency = currencies[0];
   const data = applyBlockFilters(movimientos, block);
   const agruparPor = block.agrupar_por || 'categoria';
+  const groupLabelByField = {
+    categoria: 'Categoría',
+    proveedor: 'Proveedor',
+    etapa: 'Etapa',
+  };
   const runtimeProjectIds = new Set((extraContext?.filters?.proyectos || []).map((id) => String(id)));
   const runtimeCategorySet = toNormalizedSet(extraContext?.filters?.categorias || []);
 
@@ -1195,10 +1341,23 @@ export function processBudgetVsActual(block, movimientos, presupuestos, currenci
     for (const nombre of getPresKeys(p)) {
       const key = String(nombre).toLowerCase();
       if (!presMap.has(key)) {
-        presMap.set(key, { nombre, presupuestado: 0, ejecutado: 0 });
+        presMap.set(key, { nombre, presupuestado: 0, ejecutado: 0, details: [] });
       }
       presMap.get(key).presupuestado += monto;
       presMap.get(key).ejecutado += ejecutado;
+      const presupuestoMovs = data.filter((m) => movimientoMatchesPresupuesto(m, p));
+      const detalleDisponible = monto - ejecutado;
+      const detallePorcentaje = monto > 0 ? ejecutado / monto : 0;
+      presMap.get(key).details.push({
+        id: getPresupuestoId(p) || `${key}-${presMap.get(key).details.length}`,
+        label: getPresupuestoBreakdownLabel(p, agruparPor),
+        presupuestado: monto,
+        ejecutado,
+        disponible: detalleDisponible,
+        porcentaje: detallePorcentaje,
+        sobreejecucion: block.alerta_sobreejecucion && detallePorcentaje > 1,
+        _movimientos: presupuestoMovs,
+      });
     }
   }
 
@@ -1216,7 +1375,7 @@ export function processBudgetVsActual(block, movimientos, presupuestos, currenci
 
   const rows = [];
   for (const key of allKeys) {
-    const presData = presMap.get(key) || { nombre: key, presupuestado: 0, ejecutado: 0 };
+    const presData = presMap.get(key) || { nombre: key, presupuestado: 0, ejecutado: 0, details: [] };
 
     const movs = movGrouped.get(
       [...movGrouped.keys()].find((k) => k.toLowerCase() === key),
@@ -1235,6 +1394,7 @@ export function processBudgetVsActual(block, movimientos, presupuestos, currenci
       disponible,
       porcentaje,
       sobreejecucion,
+      details: [...(presData.details || [])].sort((a, b) => b.presupuestado - a.presupuestado || a.label.localeCompare(b.label)),
       _movimientos: movs,
     });
   }
@@ -1247,6 +1407,9 @@ export function processBudgetVsActual(block, movimientos, presupuestos, currenci
   ];
 
   return {
+    groupField: agruparPor,
+    groupLabel: groupLabelByField[agruparPor] || capitalizar(agruparPor),
+    showBudgetBreakdown: block.mostrar_desglose_presupuestos === true,
     columnas: columnasConfig,
     rows,
     totals: {
@@ -2544,6 +2707,392 @@ export function processChart(block, movimientos, presupuestos, currencies, cotiz
   };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  Bloques de PLAN DE COBROS (dataset planes_cobro)
+//
+//  A diferencia del resto del engine, estos bloques no operan sobre `movimientos`
+//  sino sobre los planes de cobro con sus cuotas, que llegan por
+//  `extraContext.planesCobro` (cargados por useReportData / useReportDataSources /
+//  getPublicData). Cada plan trae `cuotas` ya decoradas con `estado_ui` y un
+//  `resumen` (ver backend planCobroService.getPlanes).
+//
+//  Todos emiten las shapes ya soportadas por los renderers (metric_cards /
+//  summary_table), así que reutilizan componentes, PDF y XLSX sin código nuevo.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const COLLECTION_ESTADOS_DEFAULT = ['activo'];
+const CUOTA_PENDIENTE_ESTADOS = ['pendiente', 'cobrada_parcial'];
+
+const ESTADO_CUOTA_LABEL = {
+  pendiente: 'Pendiente',
+  cobrada: 'Cobrada',
+  cobrada_parcial: 'Parcial',
+  vencida: 'Vencida',
+  cobrada_parcial_vencida: 'Parcial vencida',
+};
+
+const ESTADO_PLAN_LABEL = {
+  borrador: 'Borrador',
+  activo: 'Activo',
+  completado: 'Completado',
+};
+
+/**
+ * Valoriza una cuota a ARS según la indexación del plan (criterio idéntico a
+ * planCobroService.marcarCuotaCobrada):
+ *  - plan en USD       → nominal × dólar de hoy
+ *  - indexación CAC    → monto_cac × CAC de hoy
+ *  - indexación USD    → monto_usd × dólar de hoy
+ *  - sin indexación    → monto nominal
+ * Si `valuarAHoy` es false, devuelve siempre el nominal (en ARS si el plan es USD).
+ */
+function valuarCuotaARS(cuota, plan, cotizaciones, valuarAHoy = true) {
+  const nominal = Number(cuota?.monto) || 0;
+  const cot = cotizaciones || {};
+  const dolar = Number(cot.dolar_blue) || 0;
+  const cac = Number(cot.cac) || 0;
+  if (plan?.moneda === 'USD') {
+    return dolar ? round2(nominal * dolar) : round2(nominal);
+  }
+  if (valuarAHoy && plan?.indexacion === 'CAC' && cuota?.monto_cac && cac) {
+    return round2(Number(cuota.monto_cac) * cac);
+  }
+  if (valuarAHoy && plan?.indexacion === 'USD' && cuota?.monto_usd && dolar) {
+    return round2(Number(cuota.monto_usd) * dolar);
+  }
+  return round2(nominal);
+}
+
+/** Monto ya cobrado de una cuota, llevado a ARS (los planes USD guardan cobrado en USD). */
+function cobradoCuotaARS(cuota, plan, cotizaciones) {
+  const cobrado = Number(cuota?.monto_cobrado) || 0;
+  if (plan?.moneda === 'USD') return round2(cobrado * (Number(cotizaciones?.dolar_blue) || 0));
+  return round2(cobrado);
+}
+
+/** Filtra los planes del contexto por estado (default 'activo') y proyecto. */
+function getPlanesFiltrados(ctx, block) {
+  const planes = Array.isArray(ctx?.planesCobro) ? ctx.planesCobro : [];
+  const estados = Array.isArray(block.plan_estados) && block.plan_estados.length
+    ? block.plan_estados
+    : COLLECTION_ESTADOS_DEFAULT;
+  const provSet = Array.isArray(block.proyecto_ids) && block.proyecto_ids.length
+    ? new Set(block.proyecto_ids.map(String))
+    : null;
+  return planes.filter((p) => {
+    if (estados.length && !estados.includes(p.estado)) return false;
+    if (provSet && !provSet.has(String(p.proyecto_id))) return false;
+    return true;
+  });
+}
+
+/** ¿La cuota está vencida? Usa estado_ui si vino decorado; si no, compara fechas. */
+function cuotaVencida(cuota, hoy) {
+  if (cuota?.estado_ui === 'vencida' || cuota?.estado_ui === 'cobrada_parcial_vencida') return true;
+  if (!CUOTA_PENDIENTE_ESTADOS.includes(cuota?.estado)) return false;
+  const f = toPlainDate(cuota?.fecha_vencimiento);
+  return f != null && f < hoy;
+}
+
+/**
+ * Aplana las cuotas pendientes (pendiente / cobrada_parcial con saldo > 0) de los
+ * planes filtrados, valorizadas a ARS. Cada item: { plan, cuota, valor, cobrado,
+ * saldo, fecha, vencida }.
+ */
+function getCuotasPendientes(planes, block, cotizaciones) {
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  const valuarAHoy = block.valuar_a_hoy !== false;
+  const out = [];
+  for (const plan of planes) {
+    for (const cuota of (plan.cuotas || [])) {
+      if (!CUOTA_PENDIENTE_ESTADOS.includes(cuota.estado)) continue;
+      const valor = valuarCuotaARS(cuota, plan, cotizaciones, valuarAHoy);
+      const cobrado = cobradoCuotaARS(cuota, plan, cotizaciones);
+      const saldo = round2(Math.max(valor - cobrado, 0));
+      if (saldo <= 0) continue;
+      out.push({ plan, cuota, valor, cobrado, saldo, fecha: toPlainDate(cuota.fecha_vencimiento), vencida: cuotaVencida(cuota, hoy) });
+    }
+  }
+  return out;
+}
+
+/** Formatea una fecha a dd/mm/aa para columnas de texto. */
+function fmtFechaCorta(value) {
+  const d = toPlainDate(value);
+  if (!d) return '—';
+  return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' });
+}
+
+/** KPIs de cobranza (shape metric_cards). */
+export function processCollectionsSummary(block, _movimientos, _presupuestos, _currencies, cotizaciones, extraContext = {}) {
+  const planes = getPlanesFiltrados(extraContext, block);
+  const valuarAHoy = block.valuar_a_hoy !== false;
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+
+  let total = 0;
+  let cobrado = 0;
+  let pendiente = 0;
+  let vencido = 0;
+  let proxima = null;
+
+  for (const plan of planes) {
+    for (const cuota of (plan.cuotas || [])) {
+      const valor = valuarCuotaARS(cuota, plan, cotizaciones, valuarAHoy);
+      const cob = cobradoCuotaARS(cuota, plan, cotizaciones);
+      total += valor;
+      cobrado += cob;
+      if (CUOTA_PENDIENTE_ESTADOS.includes(cuota.estado)) {
+        const saldo = Math.max(valor - cob, 0);
+        pendiente += saldo;
+        if (cuotaVencida(cuota, hoy)) {
+          vencido += saldo;
+        } else if (saldo > 0) {
+          const f = toPlainDate(cuota.fecha_vencimiento);
+          if (f && f >= hoy && (!proxima || f < proxima.fecha)) proxima = { fecha: f, saldo };
+        }
+      }
+    }
+  }
+
+  const proximoTitulo = proxima ? `Próximo cobro (${fmtFechaCorta(proxima.fecha)})` : 'Próximo cobro';
+  return [
+    { id: 'total_cobrar', titulo: 'Total a cobrar', valor: round2(total), formato: 'currency', color: 'info' },
+    { id: 'cobrado', titulo: 'Cobrado', valor: round2(cobrado), formato: 'currency', color: 'success' },
+    { id: 'pendiente', titulo: 'Pendiente', valor: round2(pendiente), formato: 'currency', color: 'default' },
+    { id: 'vencido', titulo: 'Vencido', valor: round2(vencido), formato: 'currency', color: 'error' },
+    { id: 'proximo', titulo: proximoTitulo, valor: proxima ? round2(proxima.saldo) : 0, formato: 'currency', color: 'warning' },
+  ];
+}
+
+/**
+ * Agrupa el saldo de cuotas pendientes por mes de vencimiento, ordenado año-mes
+ * ascendente. Las vencidas van al bucket 'vencido' (al frente) si incluirVencidas;
+ * si no, se omiten (vista "solo futuro"). Devuelve [{ key, label, monto }].
+ */
+function collectionsMonthlyBuckets(cuotas, incluirVencidas) {
+  const porMes = new Map(); // key 'YYYY-MM' | 'vencido' | 'sin-fecha' → saldo
+  for (const c of cuotas) {
+    let key;
+    if (c.vencida) {
+      if (!incluirVencidas) continue;
+      key = 'vencido';
+    } else if (!c.fecha) {
+      key = 'sin-fecha';
+    } else {
+      key = getMonthKeyFromDate(c.fecha);
+    }
+    porMes.set(key, (porMes.get(key) || 0) + c.saldo);
+  }
+  const keys = [...porMes.keys()].sort((a, b) => {
+    if (a === 'vencido') return -1;
+    if (b === 'vencido') return 1;
+    if (a === 'sin-fecha') return 1;
+    if (b === 'sin-fecha') return -1;
+    return a < b ? -1 : a > b ? 1 : 0;
+  });
+  return keys.map((k) => ({
+    key: k,
+    label: k === 'vencido' ? '⚠️ Vencido' : k === 'sin-fecha' ? 'Sin fecha' : formatMonthKey(k),
+    monto: round2(porMes.get(k)),
+  }));
+}
+
+/** Proyección de cobros agrupada por mes de vencimiento (shape summary_table). */
+export function processCollectionsSchedule(block, _movimientos, _presupuestos, _currencies, cotizaciones, extraContext = {}) {
+  const planes = getPlanesFiltrados(extraContext, block);
+  const cuotas = getCuotasPendientes(planes, block, cotizaciones);
+  const buckets = collectionsMonthlyBuckets(cuotas, block.incluir_vencidas !== false);
+
+  const headers = [
+    { id: 'grupo', titulo: 'Mes' },
+    { id: 'a_cobrar', titulo: 'A cobrar', formato: 'currency', currency: 'ARS' },
+    { id: 'acumulado', titulo: 'Acumulado', formato: 'currency', currency: 'ARS' },
+  ];
+  let acc = 0;
+  const rows = buckets.map((b) => {
+    acc = round2(acc + b.monto);
+    return { grupo: b.label, a_cobrar: b.monto, acumulado: acc };
+  });
+  const totalMonto = round2(rows.reduce((s, r) => s + r.a_cobrar, 0));
+  return { headers, rows, totals: { grupo: 'TOTAL', a_cobrar: totalMonto, acumulado: totalMonto } };
+}
+
+/**
+ * Proyección de cobros como GRÁFICO (barras/línea/área) por mes de vencimiento.
+ * A diferencia del bloque `chart` genérico (que grafica movimientos históricos),
+ * éste lee los planes de cobro y proyecta a FUTURO. Por eso `incluir_vencidas`
+ * default es FALSE: muestra solo lo que viene. Shape igual a processChart.
+ */
+export function processCollectionsChart(block, _movimientos, _presupuestos, _currencies, cotizaciones, extraContext = {}) {
+  const planes = getPlanesFiltrados(extraContext, block);
+  const cuotas = getCuotasPendientes(planes, block, cotizaciones);
+  // Solo futuro por defecto (la pregunta típica es "cuánto voy a cobrar de acá en adelante").
+  const buckets = collectionsMonthlyBuckets(cuotas, block.incluir_vencidas === true);
+
+  const headers = [
+    { id: 'grupo', titulo: 'Mes' },
+    { id: 'a_cobrar', titulo: 'A cobrar', formato: 'currency', currency: 'ARS' },
+  ];
+  const rows = buckets.map((b) => ({ grupo: b.label, a_cobrar: b.monto }));
+  const totalMonto = round2(rows.reduce((s, r) => s + r.a_cobrar, 0));
+  return {
+    chartType: block.chart_type || 'bar',
+    chartOptions: block.chart_options || {},
+    headers,
+    rows,
+    totals: { grupo: 'TOTAL', a_cobrar: totalMonto },
+  };
+}
+
+/** Aging del saldo pendiente por antigüedad de vencimiento (shape summary_table). */
+export function processCollectionsAging(block, _movimientos, _presupuestos, _currencies, cotizaciones, extraContext = {}) {
+  const planes = getPlanesFiltrados(extraContext, block);
+  const cuotas = getCuotasPendientes(planes, block, cotizaciones);
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+
+  const buckets = [
+    { id: 'por_vencer', label: 'Por vencer', monto: 0, cant: 0 },
+    { id: 'd1_30', label: '1-30 días', monto: 0, cant: 0 },
+    { id: 'd31_60', label: '31-60 días', monto: 0, cant: 0 },
+    { id: 'd61_90', label: '61-90 días', monto: 0, cant: 0 },
+    { id: 'd90', label: '90+ días', monto: 0, cant: 0 },
+  ];
+  const byId = Object.fromEntries(buckets.map((b) => [b.id, b]));
+  const MS_DIA = 86400000;
+  for (const c of cuotas) {
+    let bucket;
+    if (!c.fecha || c.fecha >= hoy) {
+      bucket = byId.por_vencer;
+    } else {
+      const dias = Math.floor((hoy - c.fecha) / MS_DIA);
+      bucket = dias <= 30 ? byId.d1_30 : dias <= 60 ? byId.d31_60 : dias <= 90 ? byId.d61_90 : byId.d90;
+    }
+    bucket.monto = round2(bucket.monto + c.saldo);
+    bucket.cant += 1;
+  }
+
+  const headers = [
+    { id: 'grupo', titulo: 'Antigüedad' },
+    { id: 'monto', titulo: 'Saldo', formato: 'currency', currency: 'ARS' },
+    { id: 'cantidad', titulo: 'Cuotas', formato: 'number' },
+  ];
+  const rows = buckets.map((b) => ({ grupo: b.label, monto: b.monto, cantidad: b.cant }));
+  const totals = {
+    grupo: 'TOTAL',
+    monto: round2(rows.reduce((s, r) => s + r.monto, 0)),
+    cantidad: rows.reduce((s, r) => s + r.cantidad, 0),
+  };
+  return { headers, rows, totals };
+}
+
+/** Una fila por plan: total / cobrado / pendiente / avance / próxima / estado. */
+export function processCollectionsPlans(block, _movimientos, _presupuestos, _currencies, cotizaciones, extraContext = {}) {
+  const planes = getPlanesFiltrados(extraContext, block);
+  const valuarAHoy = block.valuar_a_hoy !== false;
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  const projectNameById = buildProjectNameMap(extraContext?.proyectos || extraContext?.projects || []);
+
+  const headers = [
+    { id: 'grupo', titulo: 'Plan' },
+    { id: 'total', titulo: 'Total', formato: 'currency', currency: 'ARS' },
+    { id: 'cobrado', titulo: 'Cobrado', formato: 'currency', currency: 'ARS' },
+    { id: 'pendiente', titulo: 'Pendiente', formato: 'currency', currency: 'ARS' },
+    { id: 'avance', titulo: 'Avance', formato: 'percentage' },
+    { id: 'proxima', titulo: 'Próx. cobro', formato: 'text' },
+    { id: 'estado', titulo: 'Estado', formato: 'text' },
+  ];
+
+  const rows = planes.map((plan) => {
+    let total = 0; let cobrado = 0; let pendiente = 0; let proxima = null;
+    for (const cuota of (plan.cuotas || [])) {
+      const valor = valuarCuotaARS(cuota, plan, cotizaciones, valuarAHoy);
+      const cob = cobradoCuotaARS(cuota, plan, cotizaciones);
+      total += valor;
+      cobrado += cob;
+      if (CUOTA_PENDIENTE_ESTADOS.includes(cuota.estado)) {
+        const saldo = Math.max(valor - cob, 0);
+        pendiente += saldo;
+        const f = toPlainDate(cuota.fecha_vencimiento);
+        if (saldo > 0 && f && f >= hoy && (!proxima || f < proxima)) proxima = f;
+      }
+    }
+    const proyNombre = plan.proyecto_id ? (projectNameById.get(String(plan.proyecto_id)) || '') : '';
+    const grupo = proyNombre ? `${plan.nombre} · ${proyNombre}` : (plan.nombre || `Plan ${plan.codigo || ''}`.trim());
+    return {
+      grupo,
+      total: round2(total),
+      cobrado: round2(cobrado),
+      pendiente: round2(pendiente),
+      avance: total > 0 ? cobrado / total : 0,
+      proxima: proxima ? fmtFechaCorta(proxima) : '—',
+      estado: ESTADO_PLAN_LABEL[plan.estado] || plan.estado || '',
+    };
+  });
+  rows.sort((a, b) => b.pendiente - a.pendiente);
+
+  const totTotal = round2(rows.reduce((s, r) => s + r.total, 0));
+  const totCobrado = round2(rows.reduce((s, r) => s + r.cobrado, 0));
+  const totals = {
+    grupo: 'TOTAL',
+    total: totTotal,
+    cobrado: totCobrado,
+    pendiente: round2(rows.reduce((s, r) => s + r.pendiente, 0)),
+    avance: totTotal > 0 ? totCobrado / totTotal : 0,
+    proxima: '',
+    estado: '',
+  };
+  return { headers, rows, totals };
+}
+
+/** Detalle plano de cuotas pendientes (shape summary_table). */
+export function processCollectionsInstallments(block, _movimientos, _presupuestos, _currencies, cotizaciones, extraContext = {}) {
+  const planes = getPlanesFiltrados(extraContext, block);
+  const cuotas = getCuotasPendientes(planes, block, cotizaciones)
+    .sort((a, b) => {
+      const fa = a.fecha ? a.fecha.getTime() : Infinity;
+      const fb = b.fecha ? b.fecha.getTime() : Infinity;
+      return fa - fb;
+    });
+  const limite = block.page_size > 0 ? block.page_size : 50;
+  const limitadas = cuotas.slice(0, limite);
+
+  const headers = [
+    { id: 'grupo', titulo: 'Plan' },
+    { id: 'numero', titulo: 'N°', formato: 'number' },
+    { id: 'descripcion', titulo: 'Detalle', formato: 'text' },
+    { id: 'vence', titulo: 'Vence', formato: 'text' },
+    { id: 'monto', titulo: 'Monto', formato: 'currency', currency: 'ARS' },
+    { id: 'cobrado', titulo: 'Cobrado', formato: 'currency', currency: 'ARS' },
+    { id: 'saldo', titulo: 'Saldo', formato: 'currency', currency: 'ARS' },
+    { id: 'estado', titulo: 'Estado', formato: 'text' },
+  ];
+  const rows = limitadas.map(({ plan, cuota, valor, cobrado, saldo }) => ({
+    grupo: plan.nombre || `Plan ${plan.codigo || ''}`.trim(),
+    numero: cuota.numero,
+    descripcion: cuota.descripcion || '—',
+    vence: fmtFechaCorta(cuota.fecha_vencimiento),
+    monto: valor,
+    cobrado: round2(cobrado),
+    saldo,
+    estado: ESTADO_CUOTA_LABEL[cuota.estado_ui] || ESTADO_CUOTA_LABEL[cuota.estado] || cuota.estado || '',
+  }));
+  const totals = {
+    grupo: 'TOTAL',
+    numero: '',
+    descripcion: '',
+    vence: '',
+    monto: round2(rows.reduce((s, r) => s + r.monto, 0)),
+    cobrado: round2(rows.reduce((s, r) => s + r.cobrado, 0)),
+    saldo: round2(rows.reduce((s, r) => s + r.saldo, 0)),
+    estado: '',
+  };
+  return { headers, rows, totals };
+}
+
 const BLOCK_PROCESSORS = {
   metric_cards: processMetricCards,
   summary_table: processSummaryTable,
@@ -2555,6 +3104,13 @@ const BLOCK_PROCESSORS = {
   chart: processChart,
   grouped_detail: processGroupedDetail,
   balance_between_partners: processBalanceBetweenPartners,
+  category_subcategory_accordion: processCategorySubcategoryAccordion,
+  collections_summary: processCollectionsSummary,
+  collections_schedule: processCollectionsSchedule,
+  collections_chart: processCollectionsChart,
+  collections_aging: processCollectionsAging,
+  collections_plans: processCollectionsPlans,
+  collections_installments: processCollectionsInstallments,
 };
 
 /**
@@ -2692,13 +3248,17 @@ export function buildDefaultFilters(filtrosSchema) {
  * Formatea un valor según su formato
  */
 export function formatValue(value, formato, displayCurrency = 'ARS', options = {}) {
+  // Columnas de texto (estado, fecha, nombre): se muestran tal cual. Va antes del
+  // guard de isNaN porque los strings no son numéricos.
+  if (formato === 'text') return value == null ? '' : String(value);
   if (value == null || isNaN(value)) return '-';
 
   switch (formato) {
     case 'currency': {
       const prefix = displayCurrency === 'ARS' ? '$' : displayCurrency === 'USD' ? 'U$D ' : '';
       const suffix = displayCurrency === 'CAC' ? ' CAC' : '';
-      const maxFrac = options.maximumFractionDigits != null ? options.maximumFractionDigits : 2;
+      const defaultFractionDigits = displayCurrency === 'CAC' ? 2 : 0;
+      const maxFrac = options.maximumFractionDigits != null ? options.maximumFractionDigits : defaultFractionDigits;
       const minFrac = options.minimumFractionDigits != null ? options.minimumFractionDigits : maxFrac;
       return `${prefix}${Number(value).toLocaleString('es-AR', {
         minimumFractionDigits: minFrac,

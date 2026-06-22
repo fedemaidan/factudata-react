@@ -135,6 +135,25 @@ export const updateEmpresaDetails = async (empresaId, newDetails) => {
 };
 
 /**
+ * Re-sube a Google Drive los comprobantes históricos que matchean una regla de
+ * organización (los que se cargaron antes de crear la regla). Corre en segundo
+ * plano en el backend.
+ * @param {string} empresaId
+ * @param {object} regla - La regla de Drive (niveles, nombre_archivo, filtro, proyectos).
+ * @param {{ tipo: 'todos'|'rango'|'faltantes', fechaDesde?: string, fechaHasta?: string }} scope
+ * @returns {Promise<{ data: object|null, error: string|null }>}
+ */
+export const backfillReglaDrive = async (empresaId, regla, scope) => {
+  try {
+    const response = await api.post(`/empresa/${empresaId}/drive/backfill-regla`, { regla, scope });
+    return { data: response.data, error: null };
+  } catch (err) {
+    console.error('Error al reorganizar comprobantes históricos:', err);
+    return { data: null, error: err?.response?.data?.error || err.message };
+  }
+};
+
+/**
  * Invalida el caché de la empresa manualmente.
  * @param {string} empresaId - El ID de la empresa.
  * @returns {Promise<boolean>}

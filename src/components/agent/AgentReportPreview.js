@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Box,
@@ -30,7 +30,7 @@ import { buildSampleMovimientos } from 'src/utils/reportes/sampleMovimientos';
  * @param {Function} props.onSave    - (nombre) => void: dispara el guardado vía chat
  * @param {Function} [props.onClose] - cierra el panel (solo en el Dialog mobile)
  */
-export default function AgentReportPreview({ draft, user, onSave, onClose }) {
+function AgentReportPreview({ draft, user, onSave, onClose }) {
   const [empresaId, setEmpresaId] = useState(null);
   const [name, setName] = useState(draft?.nombre || 'Reporte sin título');
 
@@ -60,6 +60,7 @@ export default function AgentReportPreview({ draft, user, onSave, onClose }) {
     filteredMovimientos,
     totalMovimientos,
     presupuestos,
+    planesCobro,
     proyectos,
     usuariosEmpresa,
     cotizaciones,
@@ -95,6 +96,13 @@ export default function AgentReportPreview({ draft, user, onSave, onClose }) {
     [usandoEjemplo, draft],
   );
   const movimientosParaVista = usandoEjemplo ? sampleMovimientos : filteredMovimientos;
+  // Estable entre renders: si fuera un objeto literal inline, el useMemo de executeReport
+  // dentro de <ReportView> recomputaría TODO en cada tecla del chat (jank perceptible con
+  // datasets grandes como planes de cobro). Memoizarlo lo evita.
+  const reportContext = useMemo(
+    () => ({ usuariosEmpresa, filters, proyectos }),
+    [usuariosEmpresa, filters, proyectos],
+  );
   const canSave = blockCount > 0 && !!name.trim();
   // Si el borrador edita un reporte existente, guardar lo sobrescribe (no crea una copia).
   const isEditingExisting = !!draft?.source_report_id;
@@ -207,9 +215,10 @@ export default function AgentReportPreview({ draft, user, onSave, onClose }) {
               reportConfig={draft}
               movimientos={movimientosParaVista}
               presupuestos={presupuestos}
+              planesCobro={planesCobro}
               displayCurrencies={displayCurrencies}
               cotizaciones={cotizaciones}
-              reportContext={{ usuariosEmpresa, filters, proyectos }}
+              reportContext={reportContext}
             />
           </Box>
         )}
@@ -252,3 +261,8 @@ export default function AgentReportPreview({ draft, user, onSave, onClose }) {
     </Box>
   );
 }
+
+// memo: aísla la preview del tipeo en el chat. Sus props (draft, user, onSave) son
+// estables entre renders del padre (onSave es useCallback), así que tipear ya no
+// dispara el re-render pesado de la preview.
+export default memo(AgentReportPreview);

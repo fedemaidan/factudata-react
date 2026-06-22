@@ -1,10 +1,14 @@
 import React, { useState, useMemo } from 'react';
 import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Paper, Typography, TablePagination, Chip, Box, IconButton, Dialog,
   DialogTitle, DialogContent,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ImageIcon from '@mui/icons-material/Image';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import { formatValue } from 'src/tools/reportEngine';
@@ -28,6 +32,8 @@ const COLUMN_LABELS = {
   usuario_nombre: 'Usuario',
   archivo: 'Archivo',
 };
+
+const MOVEMENT_CURRENCY_OPTS = { minimumFractionDigits: 2, maximumFractionDigits: 2 };
 
 /** Resuelve label de columna, incluyendo columnas multi-moneda dinámicas */
 const getColumnLabel = (col) => {
@@ -56,7 +62,16 @@ const MovementsTableBlock = ({ data, displayCurrency }) => {
   const [page, setPage] = useState(0);
   const [imgPreview, setImgPreview] = useState({ open: false, url: null });
 
-  const { columnas = [], rows = [], pageSize, totalRows = 0 } = data || {};
+  const {
+    columnas = [],
+    rows = [],
+    pageSize,
+    totalRows = 0,
+    summaryAccordion,
+    summaryLabel = 'Movimientos',
+    summaryTotal = 0,
+    showSummaryCount,
+  } = data || {};
   const tableCurrency = data?.displayCurrency || displayCurrency;
   const rowsPerPage = pageSize || 25;
 
@@ -73,7 +88,7 @@ const MovementsTableBlock = ({ data, displayCurrency }) => {
       const [, currency] = col.split('__');
       const val = row[col];
       if (val == null) return '';
-      return formatValue(val, 'currency', currency);
+      return formatValue(val, 'currency', currency, MOVEMENT_CURRENCY_OPTS);
     }
 
     switch (col) {
@@ -89,13 +104,13 @@ const MovementsTableBlock = ({ data, displayCurrency }) => {
           />
         );
       case 'monto_display':
-        return formatValue(row.monto_display, 'currency', tableCurrency);
+        return formatValue(row.monto_display, 'currency', tableCurrency, MOVEMENT_CURRENCY_OPTS);
       case 'subtotal_display':
-        return formatValue(row.subtotal_display, 'currency', tableCurrency);
+        return formatValue(row.subtotal_display, 'currency', tableCurrency, MOVEMENT_CURRENCY_OPTS);
       case 'ingreso_display':
-        return row.ingreso_display != null ? formatValue(row.ingreso_display, 'currency', tableCurrency) : '';
+        return row.ingreso_display != null ? formatValue(row.ingreso_display, 'currency', tableCurrency, MOVEMENT_CURRENCY_OPTS) : '';
       case 'egreso_display':
-        return row.egreso_display != null ? formatValue(row.egreso_display, 'currency', tableCurrency) : '';
+        return row.egreso_display != null ? formatValue(row.egreso_display, 'currency', tableCurrency, MOVEMENT_CURRENCY_OPTS) : '';
       case 'moneda':
         return row.moneda || 'ARS';
       case 'subcategoria':
@@ -137,8 +152,8 @@ const MovementsTableBlock = ({ data, displayCurrency }) => {
     }
   };
 
-  return (
-    <Box>
+  const renderTable = () => (
+    <>
       <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 500 }}>
         <Table size="small" stickyHeader>
           <TableHead>
@@ -189,6 +204,55 @@ const MovementsTableBlock = ({ data, displayCurrency }) => {
           rowsPerPageOptions={[rowsPerPage]}
           labelDisplayedRows={({ from, to, count }) => `${from}-${to} de ${count}`}
         />
+      )}
+    </>
+  );
+
+  return (
+    <Box>
+      {summaryAccordion ? (
+        <Accordion
+          disableGutters
+          variant="outlined"
+          sx={{
+            borderRadius: 1,
+            '&:before': { display: 'none' },
+            overflow: 'hidden',
+            boxShadow: 'none',
+          }}
+        >
+          <AccordionSummary
+            expandIcon={<ExpandMoreIcon />}
+            sx={{
+              minHeight: 48,
+              px: 1.5,
+              '&:hover': { bgcolor: 'action.hover' },
+              '& .MuiAccordionSummary-content': {
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 2,
+                my: 0.75,
+              },
+            }}
+          >
+            <Box sx={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Typography variant="body2" fontWeight={700} noWrap>
+                {summaryLabel}
+              </Typography>
+              {showSummaryCount && (
+                <Chip size="small" variant="outlined" label={`${totalRows || 0} mov.`} sx={{ height: 22 }} />
+              )}
+            </Box>
+            <Typography variant="body2" fontWeight={700} sx={{ whiteSpace: 'nowrap' }}>
+              {formatValue(summaryTotal || 0, 'currency', tableCurrency)}
+            </Typography>
+          </AccordionSummary>
+          <AccordionDetails sx={{ p: 0 }}>
+            {renderTable()}
+          </AccordionDetails>
+        </Accordion>
+      ) : (
+        renderTable()
       )}
       <Dialog open={imgPreview.open} onClose={() => setImgPreview({ open: false, url: null })} maxWidth="md" fullWidth>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>

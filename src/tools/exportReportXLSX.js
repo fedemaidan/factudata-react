@@ -48,11 +48,25 @@ export function exportReportToXLSX(reportConfig, results, movimientos = [], disp
       case 'category_budget_matrix':
         exportCategoryBudgetMatrix(wb, sheetName, block.data, displayCurrency);
         break;
+      case 'category_subcategory_accordion':
+        exportCategorySubcategoryAccordion(wb, sheetName, block.data, displayCurrency);
+        break;
       case 'income_budget_control':
         exportIncomeBudgetControl(wb, sheetName, block.data);
         break;
       case 'balance_between_partners':
         exportBalanceBetweenPartners(wb, sheetName, block.data, displayCurrency);
+        break;
+      // Plan de cobros: mismas shapes que metric_cards / summary_table.
+      case 'collections_summary':
+        exportMetricCards(wb, sheetName, block.data, displayCurrency);
+        break;
+      case 'collections_schedule':
+      case 'collections_chart':
+      case 'collections_aging':
+      case 'collections_plans':
+      case 'collections_installments':
+        exportSummaryTable(wb, sheetName, block.data, displayCurrency);
         break;
       default:
         break;
@@ -174,18 +188,35 @@ function exportMovementsTable(wb, name, data, displayCurrency) {
 
 function exportBudgetVsActual(wb, name, data, displayCurrency) {
   const { rows, totals } = data;
+  const groupLabel = data?.groupLabel || 'Categoría';
+  const showBreakdown = data?.showBudgetBreakdown === true;
 
-  const xlsRows = rows.map((r) => ({
-    Categoría: r.categoria,
-    Presupuestado: r.presupuestado,
-    Ejecutado: r.ejecutado,
-    Disponible: r.disponible,
-    '% Ejecución': `${(r.porcentaje * 100).toFixed(1)}%`,
-  }));
+  const xlsRows = [];
+  for (const r of rows) {
+    xlsRows.push({
+      [groupLabel]: r.categoria,
+      Presupuestado: r.presupuestado,
+      Ejecutado: r.ejecutado,
+      Disponible: r.disponible,
+      '% Ejecución': `${(r.porcentaje * 100).toFixed(1)}%`,
+    });
+
+    if (showBreakdown) {
+      for (const detail of r.details || []) {
+        xlsRows.push({
+          [groupLabel]: `  ${detail.label}`,
+          Presupuestado: detail.presupuestado,
+          Ejecutado: detail.ejecutado,
+          Disponible: detail.disponible,
+          '% Ejecución': `${(detail.porcentaje * 100).toFixed(1)}%`,
+        });
+      }
+    }
+  }
 
   if (totals) {
     xlsRows.push({
-      Categoría: 'TOTAL',
+      [groupLabel]: 'TOTAL',
       Presupuestado: totals.presupuestado,
       Ejecutado: totals.ejecutado,
       Disponible: totals.disponible,
@@ -278,6 +309,39 @@ function exportCategoryBudgetMatrix(wb, name, data, displayCurrency) {
     }
     aoa.push(line);
   }
+
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  XLSX.utils.book_append_sheet(wb, ws, name);
+}
+
+function exportCategorySubcategoryAccordion(wb, name, data, displayCurrency) {
+  const categories = data?.categories || [];
+  const currency = data?.displayCurrency || displayCurrency;
+  const showCounts = data?.showCounts !== false;
+  const showSubcategories = data?.showSubcategories !== false;
+  const aoa = [
+    showCounts
+      ? ['Categoria / Subcategoria', 'Movimientos', `Total (${currency})`]
+      : ['Categoria / Subcategoria', `Total (${currency})`],
+  ];
+
+  for (const category of categories) {
+    aoa.push(showCounts
+      ? [String(category.label || '').toUpperCase(), Number(category.count || 0), Number(category.total || 0)]
+      : [String(category.label || '').toUpperCase(), Number(category.total || 0)]);
+    if (showSubcategories) {
+      for (const sub of category.subcategories || []) {
+        aoa.push(showCounts
+          ? [`  ${sub.label || ''}`, Number(sub.count || 0), Number(sub.total || 0)]
+          : [`  ${sub.label || ''}`, Number(sub.total || 0)]);
+      }
+    }
+  }
+
+  aoa.push([]);
+  aoa.push(showCounts
+    ? ['TOTAL', Number(data?.count || 0), Number(data?.total || 0)]
+    : ['TOTAL', Number(data?.total || 0)]);
 
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   XLSX.utils.book_append_sheet(wb, ws, name);

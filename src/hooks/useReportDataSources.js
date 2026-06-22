@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import api from 'src/services/axiosConfig';
 import { getProyectosFromUser } from 'src/services/proyectosService';
 import PresupuestoService from 'src/services/presupuestoService';
+import planCobroService from 'src/services/planCobroService';
 import MonedasService from 'src/services/monedasService';
 import profileService from 'src/services/profileService';
 import {
@@ -51,6 +52,7 @@ export function useReportDataSources(user, empresaId) {
   const [proyectos, setProyectos] = useState([]);
   const [usuariosEmpresa, setUsuariosEmpresa] = useState([]);
   const [presupuestos, setPresupuestos] = useState([]);
+  const [planesCobro, setPlanesCobro] = useState([]);
   const [cotizaciones, setCotizaciones] = useState(null);
 
   const [filteredMovimientos, setFilteredMovimientos] = useState([]);
@@ -169,6 +171,19 @@ export function useReportDataSources(user, empresaId) {
     }
   }, [empresaId]);
 
+  const loadPlanesCobro = useCallback(async () => {
+    if (!empresaId) return [];
+    try {
+      const response = await planCobroService.listarPlanes(empresaId);
+      const body = response?.data;
+      const list = (body?.ok ? body.data : body) || [];
+      return Array.isArray(list) ? list : [];
+    } catch (err) {
+      console.error('useReportDataSources: error cargando planes de cobro', err);
+      return [];
+    }
+  }, [empresaId]);
+
   // ─── Carga los datos para un borrador concreto ───────────────────────────
   const loadDataForDraft = useCallback(async (draft) => {
     if (!draft || !empresaId) return;
@@ -199,6 +214,11 @@ export function useReportDataSources(user, empresaId) {
         presus = await loadPresupuestos();
       }
 
+      let planes = [];
+      if (draft.datasets?.planes_cobro) {
+        planes = await loadPlanesCobro();
+      }
+
       const excludedCategorySet = getExcludedCategorySetFromLayout(draft.layout || []);
       const visibleCategories = getUniqueValues(movs, 'categoria').filter((category) => {
         const key = normalizeFilterOptionText(normalizeCategoryLabel(category));
@@ -219,6 +239,7 @@ export function useReportDataSources(user, empresaId) {
       const filtered = filterMovimientos(movs, boundedFilters, { usuariosEmpresa: usuarios });
 
       setPresupuestos(presus);
+      setPlanesCobro(planes);
       setFilters(boundedFilters);
       setAvailableOptions(options);
       setDisplayCurrencies(deriveDisplayCurrencies(draft));
@@ -230,13 +251,14 @@ export function useReportDataSources(user, empresaId) {
     } finally {
       setLoading(false);
     }
-  }, [empresaId, fetchMovimientosForProyectos, loadPresupuestos]);
+  }, [empresaId, fetchMovimientosForProyectos, loadPresupuestos, loadPlanesCobro]);
 
   return {
     loadDataForDraft,
     filteredMovimientos,
     totalMovimientos,
     presupuestos,
+    planesCobro,
     proyectos,
     usuariosEmpresa,
     cotizaciones,

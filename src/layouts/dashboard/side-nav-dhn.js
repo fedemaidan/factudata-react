@@ -115,7 +115,7 @@ export const SideNavDHN = ({
     });
     items.push({
       title: "Configurar " + (empresa?.nombre || "empresa"),
-      path: "empresa?empresaId=" + empresa?.id,
+      path: "/empresa?empresaId=" + empresa?.id,
       icon: <SvgIcon fontSize="small"><SettingsIcon /></SvgIcon>,
     });
   }

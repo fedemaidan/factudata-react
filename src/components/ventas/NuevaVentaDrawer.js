@@ -111,6 +111,8 @@ export default function NuevaVentaDrawer({ open, onClose, empresa, onCreated, ve
   const [modalidad, setModalidad] = useState('contado');
   const [fechaEntrega, setFechaEntrega] = useState('');
   const [cobrado, setCobrado] = useState(true);
+  // Entrega independiente del pago: toda venta tiene fecha de entrega y estado entregado/pendiente.
+  const [entregado, setEntregado] = useState(true);
 
   // Modo acopio (corralón): el cliente deja plata y retira a precios congelados.
   const [montoAcopio, setMontoAcopio] = useState('');
@@ -184,6 +186,7 @@ export default function NuevaVentaDrawer({ open, onClose, empresa, onCreated, ve
       setModalidad((esInerte ? ventaEdit.borrador_data?.modalidad : ventaEdit.tipo) || 'contado');
       setFechaEntrega(toDateInput(esInerte ? ventaEdit.borrador_data?.fecha_entrega_estimada : ventaEdit.fecha_entrega_estimada));
       setCobrado(ventaEdit.cobro?.estado === 'pagado');
+      setEntregado(ventaEdit.entrega?.estado === 'entregado');
       const fuenteMats = (esInerte ? ventaEdit.borrador_data?.materiales : ventaEdit.materiales) || [];
       const rows = fuenteMats.map((m) => {
         const mid = m.material_id || m.id_material || '';
@@ -208,6 +211,7 @@ export default function NuevaVentaDrawer({ open, onClose, empresa, onCreated, ve
       setModalidad('contado');
       setFechaEntrega('');
       setCobrado(true);
+      setEntregado(true);
       setMontoAcopio('');
       setTipoAcopio('lista_precios');
       setCobradoAcopio(false);
@@ -329,7 +333,10 @@ export default function NuevaVentaDrawer({ open, onClose, empresa, onCreated, ve
     const sucursal_id = sucursalSel || null;
     return {
       cliente_id, sucursal_id, fecha: fecha || null,
-      fecha_entrega_estimada: modalidad === 'contra_entrega' ? (fechaEntrega || null) : null,
+      // Entrega independiente del pago: toda venta lleva fecha de entrega (default hoy
+      // si no se eligió) y un estado entregado/pendiente, sin importar la modalidad.
+      fecha_entrega_estimada: fechaEntrega || fecha || null,
+      entregar_al_crear: entregado,
       moneda, modalidad,
       cobrado: modalidad === 'contado' ? cobrado : false,
       notas: notas || null,
@@ -681,16 +688,14 @@ export default function NuevaVentaDrawer({ open, onClose, empresa, onCreated, ve
                 </StepBlock>
 
                 {operacion !== 'acopio' && (
-                <StepBlock step={3} title="¿Cuándo paga?">
-                  <Segmented value={modalidad} onChange={setModalidad} options={MODALIDADES} />
+                <StepBlock step={3} title="Pago y entrega">
+                  <p className="text-xs font-medium text-neutral-600 mb-1">¿Cuándo paga?</p>
+                  <Segmented
+                    value={modalidad}
+                    onChange={(v) => { setModalidad(v); setEntregado(v === 'contado'); }}
+                    options={MODALIDADES}
+                  />
                   <p className="mt-2 text-xs text-neutral-500">{modalidadMeta?.desc}</p>
-                  {modalidad === 'contra_entrega' && (
-                    <TextField
-                      sx={{ mt: 2 }} fullWidth size="small" label="Fecha entrega estimada" type="date"
-                      value={fechaEntrega} onChange={(e) => setFechaEntrega(e.target.value)}
-                      InputLabelProps={{ shrink: true }}
-                    />
-                  )}
                   {modalidad === 'contado' && (
                     <FormControlLabel
                       sx={{ mt: 1 }}
@@ -698,6 +703,21 @@ export default function NuevaVentaDrawer({ open, onClose, empresa, onCreated, ve
                       label="Marcar cobrado al crear"
                     />
                   )}
+
+                  <div className="mt-3 border-t border-neutral-200 pt-3">
+                    <p className="text-xs font-medium text-neutral-600 mb-1">Entrega</p>
+                    <TextField
+                      fullWidth size="small" label="Fecha de entrega" type="date"
+                      value={fechaEntrega} onChange={(e) => setFechaEntrega(e.target.value)}
+                      InputLabelProps={{ shrink: true }}
+                      helperText="Si la dejás vacía, se usa la fecha de la venta."
+                    />
+                    <FormControlLabel
+                      sx={{ mt: 1 }}
+                      control={<Checkbox size="small" checked={entregado} onChange={(e) => setEntregado(e.target.checked)} />}
+                      label="Ya entregado"
+                    />
+                  </div>
                 </StepBlock>
                 )}
 

@@ -52,6 +52,7 @@ import SyncIcon from "@mui/icons-material/Sync";
 import TableChartIcon from "@mui/icons-material/TableChart";
 import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import { getProyectosByEmpresa } from "src/services/proyectosService";
+import { backfillReglaDrive } from "src/services/empresaService";
 import {
   KEY_ID,
   ORDEN_DEFAULT,
@@ -1808,6 +1809,14 @@ export const OrganizacionDrive = ({ empresa, updateEmpresaData }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarInfo, setSnackbarInfo] = useState({ message: "", severity: "success" });
+  // Backfill de históricos por regla
+  const [backfillTarget, setBackfillTarget] = useState(null); // { regla }
+  const [backfillScope, setBackfillScope] = useState("todos"); // todos | rango | faltantes
+  const [backfillDesde, setBackfillDesde] = useState("");
+  const [backfillHasta, setBackfillHasta] = useState("");
+  const [backfillLoading, setBackfillLoading] = useState(false);
+  // Borrador del texto para agregar un nivel de nombre fijo (por regla)
+  const [nivelFijoDraft, setNivelFijoDraft] = useState({});
 
   useEffect(() => {
     const cargarProyectos = async () => {
@@ -1846,6 +1855,16 @@ export const OrganizacionDrive = ({ empresa, updateEmpresaData }) => {
     const regla = reglas[reglaIdx];
     if (regla.niveles.includes(nivel)) return;
     actualizarRegla(reglaIdx, "niveles", [...regla.niveles, nivel]);
+  };
+
+  // Agrega un nivel de carpeta con nombre fijo (texto literal escrito por el usuario)
+  const agregarNivelFijo = (reglaIdx) => {
+    const texto = (nivelFijoDraft[reglaIdx] || "").trim();
+    if (!texto) return;
+    const regla = reglas[reglaIdx];
+    if (regla.niveles.includes(texto)) return;
+    actualizarRegla(reglaIdx, "niveles", [...regla.niveles, texto]);
+    setNivelFijoDraft((d) => ({ ...d, [reglaIdx]: "" }));
   };
 
   const eliminarNivel = (reglaIdx, nivelIdx) => {
@@ -1888,6 +1907,43 @@ export const OrganizacionDrive = ({ empresa, updateEmpresaData }) => {
     }
     setSnackbarOpen(true);
     setIsLoading(false);
+  };
+
+  // ── Backfill de históricos por regla ────────────────────────
+  const abrirBackfill = (regla) => {
+    setBackfillTarget({ regla });
+    setBackfillScope("todos");
+    setBackfillDesde("");
+    setBackfillHasta("");
+  };
+
+  const backfillScopeInvalido =
+    backfillScope === "rango" && (!backfillDesde || !backfillHasta || backfillDesde > backfillHasta);
+
+  const handleBackfill = async () => {
+    if (!backfillTarget || backfillScopeInvalido) return;
+    setBackfillLoading(true);
+    const scope = { tipo: backfillScope };
+    if (backfillScope === "rango") {
+      scope.fechaDesde = backfillDesde;
+      scope.fechaHasta = backfillHasta;
+    }
+    const { error } = await backfillReglaDrive(empresa.id, backfillTarget.regla, scope);
+    setBackfillLoading(false);
+    if (error) {
+      setSnackbarInfo({
+        message: typeof error === "string" ? error : "Error al reorganizar los históricos.",
+        severity: "error",
+      });
+    } else {
+      setSnackbarInfo({
+        message:
+          "Reorganización de históricos iniciada en segundo plano. Los comprobantes se irán copiando a las carpetas de esta regla.",
+        severity: "success",
+      });
+      setBackfillTarget(null);
+    }
+    setSnackbarOpen(true);
   };
 
   // ── Render ──────────────────────────────────────────────────
@@ -1934,6 +1990,18 @@ export const OrganizacionDrive = ({ empresa, updateEmpresaData }) => {
                         size="small"
                         fullWidth
                       />
+                      <Tooltip title="Copiar comprobantes ya cargados (anteriores a esta regla) a sus carpetas">
+                        <Button
+                          onClick={() => abrirBackfill(regla)}
+                          size="small"
+                          variant="outlined"
+                          color="warning"
+                          startIcon={<SyncIcon sx={{ fontSize: 16 }} />}
+                          sx={{ flexShrink: 0, whiteSpace: "nowrap", textTransform: "none" }}
+                        >
+                          Traer históricos
+                        </Button>
+                      </Tooltip>
                       <Tooltip title="Eliminar regla">
                         <IconButton
                           color="error"
@@ -1951,13 +2019,15 @@ export const OrganizacionDrive = ({ empresa, updateEmpresaData }) => {
                         Niveles de carpetas (el orden importa)
                       </Typography>
                       <Stack spacing={0.5}>
-                        {regla.niveles.map((nivel, nivelIdx) => (
+                        {regla.niveles.map((nivel, nivelIdx) => {
+                          const esDinamico = nivelesDisponibles.some((n) => n.value === nivel);
+                          return (
                           <Stack key={nivel} direction="row" spacing={0.5} alignItems="center">
                             <Chip
-                              label={`${nivelIdx + 1}. ${getLabelNivel(nivel)}`}
+                              label={`${nivelIdx + 1}. ${getLabelNivel(nivel)}${esDinamico ? "" : " (fijo)"}`}
                               onDelete={() => eliminarNivel(reglaIdx, nivelIdx)}
                               size="small"
-                              color="primary"
+                              color={esDinamico ? "primary" : "warning"}
                               variant="outlined"
                             />
                             <IconButton
@@ -1975,31 +2045,69 @@ export const OrganizacionDrive = ({ empresa, updateEmpresaData }) => {
                               <ArrowDownwardIcon sx={{ fontSize: 16 }} />
                             </IconButton>
                           </Stack>
-                        ))}
+                          );
+                        })}
                       </Stack>
 
                       {/* Agregar nivel */}
-                      {regla.niveles.length < nivelesDisponibles.length && (
+                      <Stack direction="row" spacing={1} alignItems="flex-start" sx={{ mt: 1, flexWrap: "wrap" }}>
+                        {regla.niveles.length < nivelesDisponibles.length && (
+                          <TextField
+                            select
+                            label="Agregar nivel"
+                            value=""
+                            onChange={(e) => agregarNivel(reglaIdx, e.target.value)}
+                            size="small"
+                            sx={{ minWidth: 220 }}
+                          >
+                            {nivelesDisponibles
+                              .filter((n) => !regla.niveles.includes(n.value))
+                              .map((n) => (
+                                <MenuItem key={n.value} value={n.value}>
+                                  {n.label}
+                                  <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                                    (ej: {n.ejemplo})
+                                  </Typography>
+                                </MenuItem>
+                              ))}
+                          </TextField>
+                        )}
+
+                        {/* Nivel de nombre fijo (texto literal) */}
                         <TextField
-                          select
-                          label="Agregar nivel"
-                          value=""
-                          onChange={(e) => agregarNivel(reglaIdx, e.target.value)}
+                          label="Carpeta de nombre fijo"
+                          placeholder="Ej: Comprobantes"
+                          value={nivelFijoDraft[reglaIdx] || ""}
+                          onChange={(e) =>
+                            setNivelFijoDraft((d) => ({ ...d, [reglaIdx]: e.target.value }))
+                          }
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              agregarNivelFijo(reglaIdx);
+                            }
+                          }}
                           size="small"
-                          sx={{ mt: 1, minWidth: 250 }}
-                        >
-                          {nivelesDisponibles
-                            .filter((n) => !regla.niveles.includes(n.value))
-                            .map((n) => (
-                              <MenuItem key={n.value} value={n.value}>
-                                {n.label}
-                                <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
-                                  (ej: {n.ejemplo})
-                                </Typography>
-                              </MenuItem>
-                            ))}
-                        </TextField>
-                      )}
+                          sx={{ minWidth: 220 }}
+                          helperText="Una subcarpeta con este nombre exacto"
+                          InputProps={{
+                            endAdornment: (
+                              <Tooltip title="Agregar nivel fijo">
+                                <span>
+                                  <IconButton
+                                    size="small"
+                                    edge="end"
+                                    disabled={!(nivelFijoDraft[reglaIdx] || "").trim()}
+                                    onClick={() => agregarNivelFijo(reglaIdx)}
+                                  >
+                                    <AddIcon sx={{ fontSize: 18 }} />
+                                  </IconButton>
+                                </span>
+                              </Tooltip>
+                            ),
+                          }}
+                        />
+                      </Stack>
                     </Box>
 
                     {/* Nombre del archivo */}
@@ -2123,6 +2231,93 @@ export const OrganizacionDrive = ({ empresa, updateEmpresaData }) => {
           {isLoading ? <CircularProgress size={24} /> : "Guardar configuración de Drive"}
         </Button>
       </Box>
+
+      {/* Diálogo: traer históricos de una regla */}
+      <Dialog
+        open={!!backfillTarget}
+        onClose={() => {
+          if (backfillLoading) return;
+          setBackfillTarget(null);
+        }}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 2 } }}
+      >
+        <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+          <SyncIcon sx={{ fontSize: 18, color: "warning.main" }} />
+          <Typography variant="subtitle1" fontWeight={600}>
+            Traer comprobantes históricos
+          </Typography>
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Copia a las carpetas de la regla{" "}
+            <strong>{backfillTarget?.regla?.nombre || "(sin nombre)"}</strong> los comprobantes ya
+            cargados que coinciden con ella (los que se subieron antes de crearla). Se usa la regla
+            tal como está ahora — si la editaste, guardá primero para que coincida con el flujo en
+            vivo. Corre en segundo plano y no duplica si lo repetís.
+          </Typography>
+
+          <TextField
+            select
+            label="Alcance"
+            value={backfillScope}
+            onChange={(e) => setBackfillScope(e.target.value)}
+            size="small"
+            fullWidth
+            sx={{ mb: 2 }}
+          >
+            <MenuItem value="todos">Todos los comprobantes</MenuItem>
+            <MenuItem value="rango">Por rango de fechas</MenuItem>
+            <MenuItem value="faltantes">Solo los que no están en Drive</MenuItem>
+          </TextField>
+
+          {backfillScope === "rango" && (
+            <Stack direction="row" spacing={1.5}>
+              <TextField
+                type="date"
+                label="Desde"
+                value={backfillDesde}
+                onChange={(e) => setBackfillDesde(e.target.value)}
+                size="small"
+                fullWidth
+                InputLabelProps={{ shrink: true }}
+              />
+              <TextField
+                type="date"
+                label="Hasta"
+                value={backfillHasta}
+                onChange={(e) => setBackfillHasta(e.target.value)}
+                size="small"
+                fullWidth
+                InputLabelProps={{ shrink: true }}
+                error={!!backfillDesde && !!backfillHasta && backfillDesde > backfillHasta}
+              />
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button
+            onClick={() => setBackfillTarget(null)}
+            size="small"
+            variant="outlined"
+            color="inherit"
+            disabled={backfillLoading}
+          >
+            Cancelar
+          </Button>
+          <Button
+            onClick={handleBackfill}
+            size="small"
+            variant="contained"
+            color="warning"
+            disabled={backfillLoading || backfillScopeInvalido}
+            startIcon={backfillLoading ? <CircularProgress size={14} color="inherit" /> : <SyncIcon sx={{ fontSize: 16 }} />}
+          >
+            Iniciar
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Snackbar open={snackbarOpen} autoHideDuration={6000} onClose={() => setSnackbarOpen(false)}>
         <Alert

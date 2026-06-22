@@ -21,7 +21,14 @@ const BLOCK_TYPES = [
   { value: 'income_budget_control', label: 'Control de Ingresos CAC', desc: 'Muestra presupuesto de ingreso, adicionales, pagos recibidos y saldo CAC valorizado a hoy.' },
   { value: 'chart', label: 'Gráfico', desc: 'Muestra datos agrupados en gráficos de barras, torta, línea o área.' },
   { value: 'grouped_detail', label: 'Detalle por Grupo', desc: 'Muestra chips o mini-cards de grupos con tabla de movimientos filtrada al seleccionar.' },
+  { value: 'category_subcategory_accordion', label: 'Categorías y Subcategorías', desc: 'Accordion de egresos por categoría con detalle clickeable por subcategoría.' },
   { value: 'balance_between_partners', label: 'Balance entre Socios', desc: 'Calcula saldo neto por socio (telefono), diferencia contra saldo ideal y deudas entre socios.' },
+  { value: 'collections_summary', label: 'Cobranzas · KPIs', desc: 'Total a cobrar, cobrado, pendiente, vencido y próximo cobro según los planes de cobro.' },
+  { value: 'collections_schedule', label: 'Cobranzas · Proyección por mes', desc: 'Cobros esperados a futuro agrupados por mes de vencimiento de las cuotas.' },
+  { value: 'collections_chart', label: 'Cobranzas · Gráfico por mes', desc: 'Proyección de cobros a futuro como gráfico de barras/línea por mes de vencimiento.' },
+  { value: 'collections_aging', label: 'Cobranzas · Antigüedad (aging)', desc: 'Saldo pendiente clasificado por antigüedad: por vencer, 1-30, 31-60, 61-90 y 90+ días.' },
+  { value: 'collections_plans', label: 'Cobranzas · Planes', desc: 'Una fila por plan de cobro: total, cobrado, pendiente, avance, próxima cuota y estado.' },
+  { value: 'collections_installments', label: 'Cobranzas · Cuotas', desc: 'Detalle de cuotas pendientes con vencimiento, monto, cobrado y saldo.' },
 ];
 
 const OPERACIONES = [
@@ -217,6 +224,9 @@ function defaultBlock(type) {
         columnas_visibles: ['fecha_factura', 'tipo', 'categoria', 'proveedor_nombre', 'proyecto_nombre', 'monto_display', 'moneda'],
         page_size: 25,
         filtro_tipo: null,
+        resumen_desplegable: false,
+        resumen_titulo: '',
+        mostrar_cantidad_resumen: false,
       };
     case 'budget_vs_actual':
       return {
@@ -225,6 +235,7 @@ function defaultBlock(type) {
         mostrar_tipo: 'egreso',
         alerta_sobreejecucion: true,
         incluir_sin_presupuesto: false,
+        mostrar_desglose_presupuestos: false,
         presupuestos_con_campo: null,
         excluir: {},
       };
@@ -281,6 +292,16 @@ function defaultBlock(type) {
         columnas_visibles: ['fecha_factura', 'categoria', 'proveedor_nombre', 'egreso_display', 'ingreso_display', 'moneda', 'notas'],
         page_size: 25,
         filtro_tipo: null,
+        excluir: {},
+      };
+    case 'category_subcategory_accordion':
+      return {
+        ...base,
+        titulo: 'Egresos por categoría',
+        filtro_tipo: 'egreso',
+        campo_monto: 'total',
+        mostrar_cantidad_movimientos: true,
+        desglose_subcategorias: true,
         excluir: {},
       };
     case 'balance_between_partners':
@@ -477,8 +498,14 @@ const BlockEditorDialog = ({
           {block.type === 'grouped_detail' && (
             <GroupedDetailConfig block={block} onChange={updateBlock} excludeOptions={excludeOptions} />
           )}
+          {block.type === 'category_subcategory_accordion' && (
+            <CategorySubcategoryAccordionConfig block={block} onChange={updateBlock} excludeOptions={excludeOptions} />
+          )}
           {block.type === 'balance_between_partners' && (
             <BalanceBetweenPartnersConfig block={block} onChange={updateBlock} sociosOptions={sociosOptions} />
+          )}
+          {block.type?.startsWith('collections_') && (
+            <CollectionsConfig block={block} onChange={updateBlock} />
           )}
         </Stack>
       </DialogContent>
@@ -879,6 +906,39 @@ function MovementsTableConfig({ block, onChange }) {
         fullWidth
         inputProps={{ min: 5, max: 100 }}
       />
+
+      <FormControlLabel
+        control={
+          <Switch
+            checked={block.resumen_desplegable === true}
+            onChange={(e) => onChange('resumen_desplegable', e.target.checked)}
+          />
+        }
+        label="Mostrar como resumen desplegable"
+      />
+
+      {block.resumen_desplegable === true && (
+        <>
+          <TextField
+            label="Título del resumen"
+            value={block.resumen_titulo || ''}
+            onChange={(e) => onChange('resumen_titulo', e.target.value)}
+            size="small"
+            fullWidth
+            placeholder="Ej: Ingresos"
+            helperText="Si queda vacío se usa Ingresos, Egresos o Movimientos según el filtro del bloque."
+          />
+          <FormControlLabel
+            control={
+              <Switch
+                checked={block.mostrar_cantidad_resumen === true}
+                onChange={(e) => onChange('mostrar_cantidad_resumen', e.target.checked)}
+              />
+            }
+            label="Mostrar cantidad de movimientos"
+          />
+        </>
+      )}
     </Stack>
   );
 }
@@ -944,6 +1004,16 @@ function BudgetVsActualConfig({ block, onChange, excludeOptions = {} }) {
           />
         }
         label="Incluir categorías con movimientos pero sin presupuesto"
+      />
+
+      <FormControlLabel
+        control={
+          <Switch
+            checked={block.mostrar_desglose_presupuestos === true}
+            onChange={(e) => onChange('mostrar_desglose_presupuestos', e.target.checked)}
+          />
+        }
+        label="Mostrar desglose de presupuestos"
       />
 
       <Divider />
@@ -1434,6 +1504,85 @@ function CategoryBudgetMatrixConfig({ block, onChange, proyectos = [] }) {
   );
 }
 
+const PLAN_ESTADOS_OPTS = [
+  { value: 'activo', label: 'Activos' },
+  { value: 'completado', label: 'Completados' },
+  { value: 'borrador', label: 'Borradores' },
+];
+
+function CollectionsConfig({ block, onChange }) {
+  const estados = Array.isArray(block.plan_estados) && block.plan_estados.length ? block.plan_estados : ['activo'];
+  const esChart = block.type === 'collections_chart';
+  const muestraVencidas = block.type === 'collections_schedule' || block.type === 'collections_aging' || esChart;
+  const esCuotas = block.type === 'collections_installments';
+
+  return (
+    <Stack spacing={2}>
+      <Alert severity="info" variant="outlined" sx={{ py: 0.5 }}>
+        Lee los planes de cobro y sus cuotas (no usa movimientos). Los montos se valorizan según la indexación de cada plan.
+      </Alert>
+
+      {esChart && (
+        <FormControl size="small" fullWidth>
+          <InputLabel>Tipo de gráfico</InputLabel>
+          <Select
+            value={block.chart_type || 'bar'}
+            label="Tipo de gráfico"
+            onChange={(e) => onChange('chart_type', e.target.value)}
+          >
+            <MenuItem value="bar">Barras</MenuItem>
+            <MenuItem value="line">Línea</MenuItem>
+            <MenuItem value="area">Área</MenuItem>
+          </Select>
+        </FormControl>
+      )}
+
+      <FormControlLabel
+        control={
+          <Switch
+            checked={block.valuar_a_hoy !== false}
+            onChange={(e) => onChange('valuar_a_hoy', e.target.checked)}
+          />
+        }
+        label={<Typography variant="body2">Valorizar cuotas indexadas a hoy (CAC/USD)</Typography>}
+      />
+
+      {muestraVencidas && (
+        <FormControlLabel
+          control={
+            <Switch
+              // El gráfico es "solo futuro" por default (vencidas off); las tablas, vencidas on.
+              checked={esChart ? block.incluir_vencidas === true : block.incluir_vencidas !== false}
+              onChange={(e) => onChange('incluir_vencidas', e.target.checked)}
+            />
+          }
+          label={<Typography variant="body2">Incluir cuotas vencidas</Typography>}
+        />
+      )}
+
+      <Autocomplete
+        multiple
+        size="small"
+        options={PLAN_ESTADOS_OPTS.map((o) => o.value)}
+        getOptionLabel={(v) => PLAN_ESTADOS_OPTS.find((o) => o.value === v)?.label || v}
+        value={estados}
+        onChange={(_, v) => onChange('plan_estados', v.length ? v : ['activo'])}
+        renderInput={(params) => <TextField {...params} label="Estados de plan a incluir" size="small" />}
+      />
+
+      {esCuotas && (
+        <TextField
+          size="small"
+          type="number"
+          label="Máximo de cuotas a listar"
+          value={block.page_size || 50}
+          onChange={(e) => onChange('page_size', Number(e.target.value) || 50)}
+        />
+      )}
+    </Stack>
+  );
+}
+
 function IncomeBudgetControlConfig({ block, onChange }) {
   return (
     <Stack spacing={2}>
@@ -1581,6 +1730,68 @@ function GroupedDetailConfig({ block, onChange, excludeOptions = {} }) {
           ))
         }
         renderInput={(params) => <TextField {...params} label="Excluir usuarios" placeholder="Escribí y presioná Enter" />}
+      />
+    </Stack>
+  );
+}
+
+function CategorySubcategoryAccordionConfig({ block, onChange, excludeOptions = {} }) {
+  return (
+    <Stack spacing={2}>
+      <Alert severity="info" variant="outlined" sx={{ py: 0.5 }}>
+        Agrupa movimientos por categoria y permite desplegar el gasto por subcategoria. Al tocar una subcategoria abre el detalle de movimientos.
+      </Alert>
+
+      <FormControl size="small" fullWidth>
+        <InputLabel>Campo de monto</InputLabel>
+        <Select
+          value={block.campo_monto || 'total'}
+          label="Campo de monto"
+          onChange={(e) => onChange('campo_monto', e.target.value)}
+        >
+          {CAMPOS.map((c) => (
+            <MenuItem key={c.value} value={c.value}>{c.label}</MenuItem>
+          ))}
+        </Select>
+      </FormControl>
+
+      <FormControlLabel
+        control={
+          <Switch
+            checked={block.mostrar_cantidad_movimientos !== false}
+            onChange={(e) => onChange('mostrar_cantidad_movimientos', e.target.checked)}
+          />
+        }
+        label="Mostrar cantidad de movimientos"
+      />
+
+      <FormControlLabel
+        control={
+          <Switch
+            checked={block.desglose_subcategorias !== false}
+            onChange={(e) => onChange('desglose_subcategorias', e.target.checked)}
+          />
+        }
+        label="Desglosar por subcategoría"
+      />
+
+      <Divider />
+
+      <Typography variant="subtitle2" fontWeight={600}>Ocultar categorias</Typography>
+      <Autocomplete
+        multiple
+        freeSolo
+        size="small"
+        options={excludeOptions.categorias || []}
+        filterSelectedOptions
+        value={block.excluir?.categorias || []}
+        onChange={(_, val) => onChange('excluir', { ...(block.excluir || {}), categorias: sanitizeExcludeValues(val) })}
+        renderTags={(value, getTagProps) =>
+          value.map((option, index) => (
+            <Chip key={option} label={option} size="small" color="error" variant="outlined" {...getTagProps({ index })} />
+          ))
+        }
+        renderInput={(params) => <TextField {...params} label="Excluir categorias" placeholder="Escribi y presiona Enter" />}
       />
     </Stack>
   );
