@@ -51,6 +51,7 @@ const DetallePlanPage = () => {
   const { id } = router.query;
 
   const [empresaId, setEmpresaId] = useState(null);
+  const [empresa, setEmpresa] = useState(null);
   const [alert, setAlert] = useState({ open: false, message: '', severity: 'info' });
   const [confirmEliminar, setConfirmEliminar] = useState(false);
   const [confirmCobrar, setConfirmCobrar] = useState(null); // cuota object or null
@@ -58,6 +59,7 @@ const DetallePlanPage = () => {
   const [reverting, setReverting] = useState(null);
   const [tipoCobro, setTipoCobro] = useState('total'); // 'total' | 'parcial'
   const [montoParcial, setMontoParcial] = useState('');
+  const [montoIva, setMontoIva] = useState(''); // IVA del cobro (TAR-343), neto va contra la cuota
 
   // Edit cuota dialog
   const [editCuota, setEditCuota] = useState(null); // cuota object or null
@@ -79,6 +81,7 @@ const DetallePlanPage = () => {
     if (!user) return;
     getEmpresaDetailsFromUser(user).then((empresa) => {
       if (empresa?.id) setEmpresaId(empresa.id);
+      setEmpresa(empresa || null);
     });
   }, [user]);
 
@@ -123,11 +126,16 @@ const DetallePlanPage = () => {
     return cuota.monto || 0;
   };
 
+  // El plan/cuota están en NETO; cuando la empresa separa IVA en ingresos, el cobro puede
+  // incluir un monto de IVA que se suma al total recibido pero NO cuenta contra la cuota (TAR-343).
+  const ivaEnIngresos = empresa?.ingreso_info?.impuestos === true;
+
   const handleCobrarClick = (cuotaId) => {
     const cuota = (plan.cuotas || []).find((c) => c._id === cuotaId);
     setConfirmCobrar(cuota || { _id: cuotaId });
     setTipoCobro('total');
     setMontoParcial('');
+    setMontoIva('');
   };
 
   const handleCobrarConfirm = async () => {
@@ -135,12 +143,14 @@ const DetallePlanPage = () => {
     const cuotaId = confirmCobrar._id;
     const parcial = tipoCobro === 'parcial' ? parseNumberInput(montoParcial) : null;
     if (tipoCobro === 'parcial' && (!parcial || Number(parcial) <= 0)) return;
+    const iva = ivaEnIngresos ? parseNumberInput(montoIva) : null;
     setConfirmCobrar(null);
     setCobrandoId(cuotaId);
     try {
       await marcarCobrada(cuotaId, {
         fecha_cobrado: new Date().toISOString().split('T')[0],
         monto_parcial: parcial ? Number(parcial) : undefined,
+        monto_iva: iva && Number(iva) > 0 ? Number(iva) : undefined,
       });
       await refresh();
       const msg = tipoCobro === 'parcial'
@@ -853,6 +863,35 @@ const DetallePlanPage = () => {
                     }
                   />
                 )}
+
+                {ivaEnIngresos && (() => {
+                  const neto = tipoCobro === 'parcial' ? (Number(montoParcial) || 0) : montoRestante;
+                  const ivaNum = Number(montoIva) || 0;
+                  return (
+                    <>
+                      <TextField
+                        label="IVA (si corresponde)"
+                        value={formatNumberInput(montoIva)}
+                        onChange={(e) => setMontoIva(parseNumberInput(e.target.value))}
+                        fullWidth
+                        size="small"
+                        sx={{ mt: 2 }}
+                        inputProps={{ inputMode: 'decimal' }}
+                        InputProps={{
+                          startAdornment: <InputAdornment position="start">$</InputAdornment>,
+                        }}
+                        helperText="El IVA se suma al total recibido pero no descuenta del saldo de la cuota."
+                      />
+                      {ivaNum > 0 && (
+                        <Typography variant="body2" color="text.secondary" mt={1.5}>
+                          Neto (al saldo): <strong>{formatCurrency(neto, monedaDisplay)}</strong>
+                          {' '}+ IVA: <strong>{formatCurrency(ivaNum, monedaDisplay)}</strong>
+                          {' '}= Total recibido: <strong>{formatCurrency(neto + ivaNum, monedaDisplay)}</strong>
+                        </Typography>
+                      )}
+                    </>
+                  );
+                })()}
 
                 <Typography variant="body2" color="text.secondary" mt={2}>
                   Se registrará un movimiento de caja automáticamente.
