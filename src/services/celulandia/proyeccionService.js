@@ -1,28 +1,6 @@
 import axiosCelulandia from "src/services/axiosCelulandia";
 
 const proyeccionService = {
-  getAllProyecciones: async ({
-    limit = 20,
-    offset = 0,
-    sortField = "fechaCreacion",
-    sortDirection = "desc",
-  } = {}) => {
-    const response = await axiosCelulandia.get("/proyeccion", {
-      params: { limit, offset, sortField, sortDirection },
-    });
-    return response.data;
-  },
-
-  getProyeccionById: async (
-    id,
-    { limit = 20, offset = 0, sortField = "codigo", sortDirection = "asc", tag = "" } = {}
-  ) => {
-    const response = await axiosCelulandia.get(`/proyeccion/${id}`, {
-      params: { limit, offset, sortField, sortDirection, tag },
-    });
-    return response.data;
-  },
-
   createProyeccion: async ({
     fechaInicio,
     fechaFin,
@@ -61,63 +39,17 @@ const proyeccionService = {
     return response.data;
   },
 
-  ignorarArticulos: async ({ codigos }) => {
-    const response = await axiosCelulandia.post("/proyeccion/ignorar", { codigos });
-    return response?.data;
-  },
-
-  eliminarArticuloIgnorado: async ({ id }) => {
-    console.log("id", id);
-    const response = await axiosCelulandia.delete("/proyeccion/ignorar", { data: { id } });
-    return response.data;
-  },
-
-  eliminarProductosYAgregarIgnorar: async ({ ids, codigos }) => {
-    // 1) Agregar a ignorados (por códigos)
-    if (Array.isArray(codigos) && codigos.length > 0) {
-      await axiosCelulandia.post("/proyeccion/ignorar", { codigos });
-    }
-
-    // 2) Eliminar productos de proyección (por ids) — se llama por cada id
-    if (Array.isArray(ids) && ids.length > 0) {
-      await Promise.all(
-        ids.map((id) => axiosCelulandia.delete("/proyeccion/producto", { data: { id } }))
-      );
-    }
-
-    return { success: true };
-  },
-
-  getProductosIgnorados: async () => {
-    const response = await axiosCelulandia.get("/proyeccion/ignorar");
-    const payload = response?.data;
-    return Array.isArray(payload?.data) ? payload.data : [];
+  // Serie mensual + tendencia de un producto (para el gráfico de evolución).
+  getHistoricoProducto: async (codigo) => {
+    const response = await axiosCelulandia.get(
+      `/proyeccion/producto/${encodeURIComponent(codigo)}/historico`
+    );
+    return response.data; // { success, data: { codigo, serie, tendencia } }
   },
 
   getTags: async () => {
     const response = await axiosCelulandia.get("/tags");
     return response?.data?.data || [];
-  },
-
-  getTagsNombres: async () => {
-    const response = await axiosCelulandia.get("/tags/nombres");
-    return response?.data?.data || [];
-  },
-
-  agregarTagsAProductos: async ({ productosProyeccionId, tag, persist = false }) => {
-    const response = await axiosCelulandia.post("proyeccion/tags", {
-      productosProyeccionId,
-      tag,
-      persist,
-    });
-    return response?.data;
-  },
-
-  eliminarTagsAProductos: async ({ productosProyeccionId }) => {
-    const response = await axiosCelulandia.delete("proyeccion/tags", {
-      data: { productosProyeccionId },
-    });
-    return response?.data;
   },
 
   actualizarTag: async ({ id, nombre }) => {

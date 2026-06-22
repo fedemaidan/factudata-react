@@ -31,6 +31,10 @@ import WarningIcon from "@mui/icons-material/Warning";
 import CalendarTodayIcon from "@mui/icons-material/CalendarToday";
 import { LineChart } from "@mui/x-charts/LineChart";
 import { formatDateDDMMYYYY } from "src/utils/handleDates";
+import GraficoEvolucionProducto from "src/components/celulandia/proyecciones/GraficoEvolucionProducto";
+import HistoricoTablaMensual from "src/components/celulandia/proyecciones/HistoricoTablaMensual";
+import { useHistoricoProducto } from "src/hooks/celulandia/useHistoricoProducto";
+import { formatMesCorto, desglosePonderado } from "src/utils/celulandia/proyeccionView";
 
 const MAX_EVENTS_PREVIEW = 10;
 
@@ -77,7 +81,7 @@ const formatNumFloor = (n) => {
   return String(Math.floor(Number(n)));
 };
 
-const TabCalculoContent = ({ producto, calculo, formatDateDDMMYYYY, theme }) => {
+const TabCalculoContent = ({ producto, calculo, formatDateDDMMYYYY, theme, ponderado = false, serie = [] }) => {
   const inputs = calculo?.inputs || {};
   const intermedios = calculo?.resultadosIntermedios || {};
   const flags = calculo?.flags || {};
@@ -114,8 +118,50 @@ const TabCalculoContent = ({ producto, calculo, formatDateDDMMYYYY, theme }) => 
     overflow: "hidden",
   };
 
+  const desglose = ponderado ? desglosePonderado(serie) : null;
+
   return (
     <Stack spacing={2} sx={{ mt: 2 }}>
+      {ponderado && desglose && desglose.filas.length > 0 ? (
+        <Card sx={{ ...cardSx, borderColor: theme.palette.primary.main }}>
+          <CardContent sx={{ p: 2 }}>
+            <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
+              Ritmo de venta (promedio ponderado)
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+              En vez del promedio del último período, usamos el de los últimos meses dándole más peso a
+              los recientes. Este ritmo es el que alimenta los cálculos de abajo.
+            </Typography>
+            <TableContainer component={Box} sx={{ border: `1px solid ${theme.palette.divider}`, borderRadius: 1 }}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 600 }}>Mes</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 600 }}>Peso</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 600 }}>Venta/día</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {desglose.filas.map((f) => (
+                    <TableRow key={f.mes?.mes ?? `${f.mes?.anio}-${f.mes?.mesNum}`}>
+                      <TableCell>{formatMesCorto(f.mes)}</TableCell>
+                      <TableCell align="right">×{f.peso}</TableCell>
+                      <TableCell align="right">{formatNum2Dec(f.ventasDiarias, true)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+            <Box sx={{ p: 1.5, mt: 1.5, bgcolor: theme.palette.action.hover, borderRadius: 1, fontFamily: "monospace", fontSize: 14 }}>
+              Ritmo ponderado ={" "}
+              <Box component="span" sx={{ fontWeight: 700, color: "primary.main" }}>
+                {formatNum2Dec(desglose.resultado, true)} ventas/día
+              </Box>
+            </Box>
+          </CardContent>
+        </Card>
+      ) : null}
+
       <Card sx={cardSx}>
         <CardContent sx={{ p: 2 }}>
           <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
@@ -248,23 +294,55 @@ const buildTooltip = (day, isFinalDay) => {
   ];
 };
 
-const ProductDetailModal = ({ open, onClose, producto }) => {
+const ProductDetailModal = ({ open, onClose, producto, usarPonderado = false }) => {
   const theme = useTheme();
+
+  // Si el toggle está activo y hay proyección ponderada, todo el detalle (tabla diaria,
+  // cálculo y resultados) usa esa versión en lugar de la lineal.
+  const ponderadoActivo = Boolean(usarPonderado && producto?.proyeccionPonderada);
+  const productoVista = useMemo(() => {
+    if (!ponderadoActivo) return producto;
+    const p = producto.proyeccionPonderada;
+    return {
+      ...producto,
+      ventasProyectadas: p.ventasProyectadas,
+      stockProyectado: p.stockProyectado,
+      diasHastaAgotarStock: p.diasHastaAgotarStock,
+      fechaAgotamientoStock: p.fechaAgotamientoStock,
+      cantidadCompraSugerida: p.cantidadCompraSugerida,
+      fechaCompraSugerida: p.fechaCompraSugerida,
+      seAgota: p.seAgota,
+      agotamientoExcede365Dias: p.agotamientoExcede365Dias,
+      proyeccionCalculo: p.proyeccionCalculo,
+      proyeccionDetalle: p.proyeccionDetalle,
+    };
+  }, [producto, ponderadoActivo]);
+
   const detalle = useMemo(
     () =>
-      Array.isArray(producto?.proyeccionDetalle)
-        ? producto.proyeccionDetalle
+      Array.isArray(productoVista?.proyeccionDetalle)
+        ? productoVista.proyeccionDetalle
             .map((day, index) => serializeDay(day, index))
             .filter((day) => day.dia != null)
             .sort((a, b) => a.dia - b.dia)
         : [],
-    [producto]
+    [productoVista]
   );
   const hasDetalle = detalle.length > 0;
-  const calculo = producto?.proyeccionCalculo || null;
+  const calculo = productoVista?.proyeccionCalculo || null;
   const hasCalculo = Boolean(calculo?.inputs);
   const [tabIndex, setTabIndex] = useState(1);
   const [showAllEvents, setShowAllEvents] = useState(false);
+
+  // Evolución histórica (on-demand): solo se trae mientras el modal está abierto.
+  const codigoProducto = producto?.codigo || null;
+  const {
+    serie: historicoSerie,
+    serieStock: historicoSerieStock,
+    tendencia: historicoTendencia,
+    isLoading: historicoLoading,
+    isError: historicoError,
+  } = useHistoricoProducto(codigoProducto, { enabled: open });
 
   useEffect(() => {
     if (!open) return;
@@ -397,9 +475,20 @@ const ProductDetailModal = ({ open, onClose, producto }) => {
     >
       <DialogTitle sx={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
         <Box>
-          <Typography variant="h6" component="span">
-            Detalle de proyección (90 días)
-          </Typography>
+          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+            <Typography variant="h6" component="span">
+              Detalle de proyección (90 días)
+            </Typography>
+            {ponderadoActivo ? (
+              <Chip
+                icon={<TrendingUpIcon sx={{ fontSize: 16 }} />}
+                label="Con tendencia aplicada"
+                color="primary"
+                size="small"
+                sx={{ fontWeight: 600 }}
+              />
+            ) : null}
+          </Stack>
           <Typography variant="body2" color="text.secondary">
             {producto?.codigo ? `${producto.codigo} · ` : ""}
             {producto?.nombre ?? "Producto sin nombre"}
@@ -428,9 +517,32 @@ const ProductDetailModal = ({ open, onClose, producto }) => {
               <Tab label="Resumen" value={0} sx={{ display: "none" }} />
               <Tab label="Tabla completa" value={1} disabled={!hasDetalle} />
               <Tab label="Cálculo" value={2} disabled={!hasCalculo} />
+              <Tab label="Evolución" value={3} disabled={!codigoProducto} />
             </Tabs>
-            {tabIndex === 2 && hasCalculo ? (
-              <TabCalculoContent producto={producto} calculo={calculo} formatDateDDMMYYYY={formatDateDDMMYYYY} theme={theme} />
+            {tabIndex === 3 ? (
+              <>
+                <GraficoEvolucionProducto
+                  serie={historicoSerie}
+                  serieStock={historicoSerieStock}
+                  tendencia={historicoTendencia}
+                  codigo={codigoProducto}
+                  nombre={producto?.nombre}
+                  loading={historicoLoading}
+                  error={historicoError}
+                />
+                {!historicoLoading && !historicoError ? (
+                  <HistoricoTablaMensual serie={historicoSerie} />
+                ) : null}
+              </>
+            ) : tabIndex === 2 && hasCalculo ? (
+              <TabCalculoContent
+                producto={productoVista}
+                calculo={calculo}
+                formatDateDDMMYYYY={formatDateDDMMYYYY}
+                theme={theme}
+                ponderado={ponderadoActivo}
+                serie={historicoSerie}
+              />
             ) : tabIndex === 0 ? (
               <>
                 <Grid container spacing={2} sx={{ mb: 2 }}>
