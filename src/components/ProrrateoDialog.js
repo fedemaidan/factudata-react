@@ -28,12 +28,13 @@ import {
   PieChart as PieChartIcon
 } from '@mui/icons-material';
 
-const ProrrateoDialog = ({ 
-  open, 
-  onClose, 
-  datosBase, 
+const ProrrateoDialog = ({
+  open,
+  onClose,
+  datosBase,
   proyectos = [],
-  onSuccess 
+  proyectosPreseleccionados = [],
+  onSuccess
 }) => {
   const [distribuciones, setDistribuciones] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -41,6 +42,21 @@ const ProrrateoDialog = ({
 
   // Inicializar con el proyecto actual si existe
   useEffect(() => {
+    // Si vienen proyectos preseleccionados (ej: viene del step de multi-select previo),
+    // arrancamos con una fila por cada uno y split equitativo del total.
+    if (open && proyectosPreseleccionados.length > 0) {
+      const total = Number(datosBase?.total || 0);
+      const montoPorProyecto = Number((total / proyectosPreseleccionados.length).toFixed(2));
+      const porcentajePorProyecto = Number((100 / proyectosPreseleccionados.length).toFixed(2));
+      setDistribuciones(proyectosPreseleccionados.map((p, index) => ({
+        id: index + 1,
+        proyecto_id: p.id,
+        proyecto_nombre: p.nombre,
+        monto: montoPorProyecto,
+        porcentaje: porcentajePorProyecto,
+      })));
+      return;
+    }
     if (open && proyectos.length > 0) {
       // Intentar encontrar el proyecto actual por ID o por nombre
       let proyectoActual = null;
@@ -87,7 +103,7 @@ const ProrrateoDialog = ({
         porcentaje: 0
       }]);
     }
-  }, [open, datosBase, proyectos]);
+  }, [open, datosBase, proyectos, proyectosPreseleccionados]);
 
   // Calcular totales
   const totales = useMemo(() => {
@@ -170,11 +186,25 @@ const ProrrateoDialog = ({
   const distribuirEquitativamente = () => {
     const montoPorProyecto = (totales.montoBase / distribuciones.length).toFixed(2);
     const porcentajePorProyecto = (100 / distribuciones.length).toFixed(2);
-    
+
     setDistribuciones(prev => prev.map(d => ({
       ...d,
       monto: montoPorProyecto,
       porcentaje: porcentajePorProyecto
+    })));
+  };
+
+  // Crear una distribución por cada proyecto disponible y repartir el total en partes iguales.
+  const seleccionarTodosLosProyectos = () => {
+    if (proyectos.length === 0) return;
+    const montoPorProyecto = (totales.montoBase / proyectos.length).toFixed(2);
+    const porcentajePorProyecto = (100 / proyectos.length).toFixed(2);
+    setDistribuciones(proyectos.map((p, index) => ({
+      id: index + 1,
+      proyecto_id: p.id,
+      proyecto_nombre: p.nombre,
+      monto: montoPorProyecto,
+      porcentaje: porcentajePorProyecto,
     })));
   };
 
@@ -326,9 +356,17 @@ const ProrrateoDialog = ({
         </Paper>
 
         {/* Botones de acceso rápido */}
-        <Stack direction="row" spacing={2} sx={{ mb: 3 }}>
-          <Button 
-            variant="outlined" 
+        <Stack direction="row" spacing={2} sx={{ mb: 3 }} flexWrap="wrap" useFlexGap>
+          <Button
+            variant="outlined"
+            onClick={seleccionarTodosLosProyectos}
+            startIcon={<PieChartIcon />}
+            disabled={proyectos.length === 0}
+          >
+            Seleccionar todos los proyectos
+          </Button>
+          <Button
+            variant="outlined"
             onClick={distribuirEquitativamente}
             startIcon={<CalculateIcon />}
           >
