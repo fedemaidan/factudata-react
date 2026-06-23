@@ -1086,6 +1086,12 @@ const LandingFunnelPage = () => {
                             />
                             <AtribucionTabla
                                 extraSteps={totales.extraSteps}
+                                prefix="flow"
+                                title="🔀 A/B de flujo (WhatsApp vs Web directa)"
+                                dimLabel="flujo"
+                            />
+                            <AtribucionTabla
+                                extraSteps={totales.extraSteps}
                                 prefix="src"
                                 title="🎯 Atribución por fuente"
                                 dimLabel="fuente"
