@@ -9,13 +9,12 @@ import {
   Dialog,
   Divider,
   IconButton,
+  MenuItem,
   Slider,
   Stack,
   Tab,
   Tabs,
   TextField,
-  ToggleButton,
-  ToggleButtonGroup,
   Toolbar,
   Tooltip,
   Typography,
@@ -36,6 +35,9 @@ import FileDownloadIcon from "@mui/icons-material/FileDownload";
 import { HorasRawTable } from "src/components/dhn/HorasRawModal";
 import { ImageViewer, useImageViewerState } from "src/components/ImageViewer";
 import { getHourChipSx } from "src/components/dhn/hourChipStyles";
+import tiposLicenciaService from "src/services/dhn/tiposLicenciaService";
+
+const SIN_TIPO_LICENCIA = "__sin_tipo__";
 
 const HORA_FIELDS = [
   { key: "horasNormales", label: "Normales" },
@@ -128,7 +130,37 @@ const CorreccionConciliacionModal = ({
 }) => {
   const theme = useTheme();
   const isMdDown = useMediaQuery(theme.breakpoints.down("md"));
+  // Los botones "Horas Sistema / Horas NASA" y el panel "Sheet NASA" solo aplican
+  // en conciliación (cuando el padre pasa los handlers de selección). Reutilizado
+  // sin esos handlers (ej: edición de un trabajo diario) el modal los oculta.
+  const isConciliacion = typeof onSelectExcel === "function" || typeof onSelectSistema === "function";
   const comprobantes = useMemo(() => (Array.isArray(row?.comprobantes) ? row.comprobantes : []), [row]);
+
+  const [tiposLicencia, setTiposLicencia] = useState([]);
+  useEffect(() => {
+    if (!open) return undefined;
+    let active = true;
+    tiposLicenciaService
+      .getAll()
+      .then((items) => {
+        if (active) setTiposLicencia(Array.isArray(items) ? items : []);
+      })
+      .catch(() => {
+        if (active) setTiposLicencia([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [open]);
+
+  const tipoLicenciaOptions = useMemo(() => {
+    const opts = tiposLicencia.map((t) => ({ value: t.codigo, label: `${t.codigo} — ${t.nombre}` }));
+    const current = formHoras?.tipoLicencia;
+    if (current && !opts.some((o) => o.value === current)) {
+      opts.unshift({ value: current, label: current });
+    }
+    return opts;
+  }, [tiposLicencia, formHoras?.tipoLicencia]);
   const turnosDetectados = useMemo(
     () => (Array.isArray(row?.turnosDetectados) ? row.turnosDetectados : []),
     [row]
@@ -188,13 +220,25 @@ const CorreccionConciliacionModal = ({
     [onFormHorasChange]
   );
 
-  const handleLicenseToggle = useCallback(
-    (_event, value) => {
-      if (value === null) return;
-      handleHorasFieldChange("fechaLicencia", value === "si");
+  const handleLicenciaChange = useCallback(
+    (event) => {
+      if (typeof onFormHorasChange !== "function") return;
+      const value = event.target.value;
+      const isLicencia = value !== "";
+      onFormHorasChange((prev) => ({
+        ...prev,
+        fechaLicencia: isLicencia,
+        tipoLicencia: isLicencia && value !== SIN_TIPO_LICENCIA ? value : null,
+      }));
     },
-    [handleHorasFieldChange]
+    [onFormHorasChange]
   );
+
+  // Valor del select: vacío = sin licencia; un código = licencia de ese tipo.
+  // SIN_TIPO_LICENCIA cubre registros viejos con licencia marcada pero sin tipo.
+  const licenciaValue = formHoras?.fechaLicencia
+    ? (formHoras?.tipoLicencia || SIN_TIPO_LICENCIA)
+    : "";
 
   const handleSelectExcelClick = useCallback(async () => {
     if (typeof onSelectExcel === "function") {
@@ -507,27 +551,31 @@ const CorreccionConciliacionModal = ({
           }}
         >
           <Stack spacing={2}>
-            <Stack direction="row" spacing={1} flexWrap="wrap">
-              <Button
-                variant="outlined"
-                size="small"
-                onClick={handleSelectSistemaClick}
-                disabled={selectionLoading}
-                sx={{ textTransform: "none" }}
-              >
-                Horas Sistema
-              </Button>
-              <Button
-                variant="contained"
-                size="small"
-                onClick={handleSelectExcelClick}
-                disabled={selectionLoading}
-                sx={{ textTransform: "none" }}
-              >
-                Horas NASA
-              </Button>
-            </Stack>
-            <Divider />
+            {isConciliacion && (
+              <>
+                <Stack direction="row" spacing={1} flexWrap="wrap">
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={handleSelectSistemaClick}
+                    disabled={selectionLoading}
+                    sx={{ textTransform: "none" }}
+                  >
+                    Horas Sistema
+                  </Button>
+                  <Button
+                    variant="contained"
+                    size="small"
+                    onClick={handleSelectExcelClick}
+                    disabled={selectionLoading}
+                    sx={{ textTransform: "none" }}
+                  >
+                    Horas NASA
+                  </Button>
+                </Stack>
+                <Divider />
+              </>
+            )}
             <Stack
               direction="row"
               spacing={2}
@@ -537,7 +585,7 @@ const CorreccionConciliacionModal = ({
             >
               <Box sx={{ flex: 1, minWidth: 200 }}>
                 <Typography variant="subtitle2" gutterBottom>
-                  Sistema
+                  {isConciliacion ? "Sistema" : "Horas"}
                 </Typography>
                 <Stack spacing={1} sx={{ flexWrap: "wrap" }}>
                   {HORA_FIELDS.map((field) => (
@@ -555,57 +603,52 @@ const CorreccionConciliacionModal = ({
                     />
                   ))}
                 </Stack>
-                <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1 }}>
-                  <Typography variant="body2" sx={{ minWidth: 60 }}>
-                    Licencia
-                  </Typography>
-                  <ToggleButtonGroup
-                    value={formHoras?.fechaLicencia ? "si" : "no"}
-                    exclusive
+                <Box sx={{ mt: 1.5 }}>
+                  <TextField
+                    select
+                    fullWidth
+                    label="Licencia"
+                    value={licenciaValue}
+                    onChange={handleLicenciaChange}
                     size="small"
-                    onChange={handleLicenseToggle}
-                    sx={{
-                      borderRadius: 1,
-                      bgcolor: "background.paper",
-                      boxShadow: 1,
-                      "& .MuiToggleButton-root": {
-                        borderColor: "divider",
-                        px: 1.5,
-                      },
-                    }}
-                    aria-label="Seleccionar licencia"
+                    sx={{ maxWidth: 240 }}
                   >
-                    <ToggleButton value="si" aria-label="Licencia sí">
-                      Sí
-                    </ToggleButton>
-                    <ToggleButton value="no" aria-label="Licencia no">
-                      No
-                    </ToggleButton>
-                  </ToggleButtonGroup>
-                </Stack>
+                    <MenuItem value="">Sin licencia</MenuItem>
+                    {licenciaValue === SIN_TIPO_LICENCIA && (
+                      <MenuItem value={SIN_TIPO_LICENCIA}>Licencia (sin tipo)</MenuItem>
+                    )}
+                    {tipoLicenciaOptions.map((opt) => (
+                      <MenuItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                </Box>
               </Box>
-              <Box sx={{ flex: 1, minWidth: 200 }}>
-                <Typography variant="subtitle2" gutterBottom>
-                  Sheet NASA
-                </Typography>
-                <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
-                  {sheetItems.length === 0 ? (
-                    <Typography variant="caption" color="text.secondary">
-                      Sin horas en sheet
-                    </Typography>
-                  ) : (
-                    sheetItems.map((item) => (
-                      <Chip
-                        key={item.k}
-                        label={`${item.k} ${item.v} hs`}
-                        size="small"
-                        variant="outlined"
-                        sx={getHourChipSx(item.k)}
-                      />
-                    ))
-                  )}
-                </Stack>
-              </Box>
+              {isConciliacion && (
+                <Box sx={{ flex: 1, minWidth: 200 }}>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Sheet NASA
+                  </Typography>
+                  <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+                    {sheetItems.length === 0 ? (
+                      <Typography variant="caption" color="text.secondary">
+                        Sin horas en sheet
+                      </Typography>
+                    ) : (
+                      sheetItems.map((item) => (
+                        <Chip
+                          key={item.k}
+                          label={`${item.k} ${item.v} hs`}
+                          size="small"
+                          variant="outlined"
+                          sx={getHourChipSx(item.k)}
+                        />
+                      ))
+                    )}
+                  </Stack>
+                </Box>
+              )}
             </Stack>
             {turnosDetectados.length > 0 && (
               <Box>
