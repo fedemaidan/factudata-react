@@ -3,3 +3,4 @@ export { default as TagsProductoCell } from "./TagsProductoCell";
 export { default as StockActualProductoCell } from "./StockActualProductoCell";
 export { default as DiasHastaAgotarProductoCell } from "./DiasHastaAgotarProductoCell";
 export { default as NotasProductoCell } from "./NotasProductoCell";
+export { default as TendenciaProductoCell } from "./TendenciaProductoCell";
