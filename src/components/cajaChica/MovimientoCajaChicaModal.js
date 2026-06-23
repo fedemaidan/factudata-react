@@ -1,5 +1,5 @@
 // components/cajaChica/MovimientoCajaChicaModal.js
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -17,11 +17,13 @@ import {
 } from '@mui/material';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import RemoveCircleOutlineIcon from '@mui/icons-material/RemoveCircleOutline';
+import PieChartOutlineIcon from '@mui/icons-material/PieChartOutline';
 
 const MovimientoCajaChicaModal = ({
   open,
   onClose,
   onSubmit,
+  onProrratear,
   proyectos = [],
   categorias = [],
   proveedores = [],
@@ -40,6 +42,23 @@ const MovimientoCajaChicaModal = ({
   });
 
   const [errors, setErrors] = useState({});
+
+  // Resetear el form cada vez que el modal se abre, para que arranque limpio sin importar
+  // cómo se cerró antes (incluido el camino de prorrateo, que cierra desde el padre).
+  useEffect(() => {
+    if (open) {
+      setFormData({
+        type: tipoInicial,
+        total: '',
+        proyecto_id: '',
+        categoria: '',
+        observacion: '',
+        nombre_proveedor: '',
+        fecha_factura: new Date().toISOString().slice(0, 10),
+      });
+      setErrors({});
+    }
+  }, [open, tipoInicial]);
 
   const handleChange = (field) => (event) => {
     const value = event.target.value;
@@ -99,6 +118,23 @@ const MovimientoCajaChicaModal = ({
     };
 
     onSubmit(movimientoData);
+  };
+
+  // Abre el diálogo de prorrateo (distribuir el egreso entre varios proyectos). La identidad del
+  // dueño de la caja chica + empresa_id las inyecta el padre (cajaChica.js), igual que en el egreso normal.
+  const handleProrratear = () => {
+    if (!validateForm()) return;
+    const proyectoSeleccionado = proyectos.find((p) => p.id === formData.proyecto_id);
+    onProrratear({
+      type: 'egreso',
+      total: parseFloat(formData.total),
+      categoria: formData.categoria,
+      observacion: formData.observacion || '',
+      nombre_proveedor: formData.nombre_proveedor || '',
+      fecha_factura: { seconds: Math.floor(new Date(formData.fecha_factura + 'T12:00:00').getTime() / 1000) },
+      proyecto_id: formData.proyecto_id || null,
+      proyecto_nombre: proyectoSeleccionado?.nombre || null,
+    });
   };
 
   const handleClose = () => {
@@ -252,6 +288,18 @@ const MovimientoCajaChicaModal = ({
       </DialogContent>
 
       <DialogActions sx={{ px: 3, pb: 2 }}>
+        {formData.type === 'egreso' && onProrratear && (
+          <Button
+            onClick={handleProrratear}
+            variant="outlined"
+            color="error"
+            startIcon={<PieChartOutlineIcon />}
+            disabled={isLoading}
+            sx={{ mr: 'auto' }}
+          >
+            Prorratear entre proyectos
+          </Button>
+        )}
         <Button onClick={handleClose} disabled={isLoading}>
           Cancelar
         </Button>
