@@ -25,6 +25,7 @@ const BLOCK_TYPES = [
   { value: 'balance_between_partners', label: 'Balance entre Socios', desc: 'Calcula saldo neto por socio (telefono), diferencia contra saldo ideal y deudas entre socios.' },
   { value: 'collections_summary', label: 'Cobranzas · KPIs', desc: 'Total a cobrar, cobrado, pendiente, vencido y próximo cobro según los planes de cobro.' },
   { value: 'collections_schedule', label: 'Cobranzas · Proyección por mes', desc: 'Cobros esperados a futuro agrupados por mes de vencimiento de las cuotas.' },
+  { value: 'collections_due_ranges', label: 'Cobranzas · Vencimientos por plazo', desc: 'Saldo pendiente por rangos futuros: 1-30, 31-120, 121-180, más de 180, vencido y sin fecha.' },
   { value: 'collections_chart', label: 'Cobranzas · Gráfico por mes', desc: 'Proyección de cobros a futuro como gráfico de barras/línea por mes de vencimiento.' },
   { value: 'collections_aging', label: 'Cobranzas · Antigüedad (aging)', desc: 'Saldo pendiente clasificado por antigüedad: por vencer, 1-30, 31-60, 61-90 y 90+ días.' },
   { value: 'collections_plans', label: 'Cobranzas · Planes', desc: 'Una fila por plan de cobro: total, cobrado, pendiente, avance, próxima cuota y estado.' },

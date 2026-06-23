@@ -30,6 +30,7 @@ const BLOCK_COMPONENTS = {
   // emiten las mismas shapes (metric_cards / summary_table).
   collections_summary: MetricCardsBlock,
   collections_schedule: SummaryTableBlock,
+  collections_due_ranges: SummaryTableBlock,
   collections_chart: ChartBlock,
   collections_aging: SummaryTableBlock,
   collections_plans: SummaryTableBlock,
