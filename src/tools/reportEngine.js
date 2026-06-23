@@ -2776,12 +2776,17 @@ function getPlanesFiltrados(ctx, block) {
   const estados = Array.isArray(block.plan_estados) && block.plan_estados.length
     ? block.plan_estados
     : COLLECTION_ESTADOS_DEFAULT;
-  const provSet = Array.isArray(block.proyecto_ids) && block.proyecto_ids.length
+  const blockProjectIds = Array.isArray(block.proyecto_ids) && block.proyecto_ids.length
     ? new Set(block.proyecto_ids.map(String))
+    : null;
+  const runtimeProjectIds = Array.isArray(ctx?.filters?.proyectos) && ctx.filters.proyectos.length
+    ? new Set(ctx.filters.proyectos.map((value) => String(value?.id || value?._id || value)))
     : null;
   return planes.filter((p) => {
     if (estados.length && !estados.includes(p.estado)) return false;
-    if (provSet && !provSet.has(String(p.proyecto_id))) return false;
+    const projectId = String(p?.proyecto_id?.id || p?.proyecto_id?._id || p?.proyecto_id || '');
+    if (blockProjectIds && !blockProjectIds.has(projectId)) return false;
+    if (runtimeProjectIds && !runtimeProjectIds.has(projectId)) return false;
     return true;
   });
 }
