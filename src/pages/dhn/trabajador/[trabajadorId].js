@@ -12,8 +12,8 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import useTrabajoDiarioPage from 'src/hooks/dhn/useTrabajoDiarioPage';
+import useEditarTrabajoDiario from 'src/hooks/dhn/useEditarTrabajoDiario';
 import CorreccionConciliacionModal from 'src/components/dhn/CorreccionConciliacionModal';
-import TrabajoRegistradoService from 'src/services/dhn/TrabajoRegistradoService';
 import FiltroTrabajoDiario from 'src/components/dhn/FiltroTrabajoDiario';
 import ImagenModal from 'src/components/ImagenModal';
 import TrabajosDetectadosList from 'src/components/dhn/TrabajosDetectadosList';
@@ -75,19 +75,6 @@ const TrabajadorPage = () => {
   const [rawModalFileName, setRawModalFileName] = useState('');
   const [rawModalUrl, setRawModalUrl] = useState('');
 
-  const [formHoras, setFormHoras] = useState({
-    horasNormales: null,
-    horas50: null,
-    horas100: null,
-    horasAltura: null,
-    horasHormigon: null,
-    horasZanjeo: null,
-    horasNocturnas: null,
-    fechaLicencia: false,
-    tipoLicencia: null,
-  });
-  const [savingEdit, setSavingEdit] = useState(false);
-
   const handleOpenComprobante = useCallback((comp, item) => {
     if (!comp) return;
     const url = comp?.url || comp?.url_storage || '';
@@ -148,52 +135,8 @@ const TrabajadorPage = () => {
     onOpenComprobante: handleOpenComprobante,
   });
 
-  useEffect(() => {
-    if (!edit.open || !edit.entity) return;
-    const t = edit.entity;
-    const he = t.horasExcel || {};
-    setFormHoras({
-      horasNormales: he.horasNormales ?? t.horasNormales ?? null,
-      horas50: he.horas50 ?? t.horas50 ?? null,
-      horas100: he.horas100 ?? t.horas100 ?? null,
-      horasAltura: t.horasAltura ?? null,
-      horasHormigon: t.horasHormigon ?? null,
-      horasZanjeo: t.horasZanjeo ?? null,
-      horasNocturnas: he.horasNocturnas ?? t.horasNocturnas ?? null,
-      fechaLicencia: t.fechaLicencia || false,
-      tipoLicencia: t.tipoLicencia ?? null,
-    });
-  }, [edit.open, edit.entity]);
-
-  const handleSaveTrabajoDiario = useCallback(async () => {
-    const entity = edit.entity;
-    if (!entity?._id) return;
-    setSavingEdit(true);
-    try {
-      const base = entity.horasExcel || {};
-      const payload = {
-        fechaLicencia: Boolean(formHoras.fechaLicencia),
-        tipoLicencia: formHoras.fechaLicencia ? (formHoras.tipoLicencia ?? null) : null,
-        horasAltura: formHoras.horasAltura ?? null,
-        horasHormigon: formHoras.horasHormigon ?? null,
-        horasZanjeo: formHoras.horasZanjeo ?? null,
-        horasExcel: {
-          ...base,
-          horasNormales: formHoras.horasNormales ?? null,
-          horas50: formHoras.horas50 ?? null,
-          horas100: formHoras.horas100 ?? null,
-          horasNocturnas: formHoras.horasNocturnas ?? null,
-        },
-      };
-      await TrabajoRegistradoService.update(entity._id, payload);
-      await edit.onSave();
-      edit.onClose();
-    } catch (e) {
-      console.error('Error al actualizar trabajo diario', e);
-    } finally {
-      setSavingEdit(false);
-    }
-  }, [edit, formHoras]);
+  const { formHoras, setFormHoras, saving: savingEdit, onSave: handleSaveTrabajoDiario } =
+    useEditarTrabajoDiario(edit);
 
   const formatters = { fecha: formatDateDDMMYYYY };
 

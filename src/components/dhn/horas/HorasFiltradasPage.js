@@ -18,7 +18,8 @@ import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import BackButton from 'src/components/shared/BackButton';
 import TableComponent from 'src/components/TableComponent';
-import EditarTrabajoDiarioModal from 'src/components/dhn/EditarTrabajoDiarioModal';
+import CorreccionConciliacionModal from 'src/components/dhn/CorreccionConciliacionModal';
+import useEditarTrabajoDiario from 'src/hooks/dhn/useEditarTrabajoDiario';
 import HistorialModal from 'src/components/dhn/HistorialModal';
 import HorasRawModal from 'src/components/dhn/HorasRawModal';
 import ImagenModal from 'src/components/ImagenModal';
@@ -169,6 +170,9 @@ const HorasFiltradasPage = ({ filtroFijo, title }) => {
     filtroFijo,
   });
 
+  const { formHoras, setFormHoras, saving: savingEdit, onSave: handleSaveTrabajoDiario } =
+    useEditarTrabajoDiario(edit);
+
   const formatters = useMemo(() => ({ fecha: formatDateDDMMYYYY }), []);
 
   return (
@@ -238,11 +242,14 @@ const HorasFiltradasPage = ({ filtroFijo, title }) => {
         </Stack>
       </Container>
 
-      <EditarTrabajoDiarioModal
+      <CorreccionConciliacionModal
         open={edit.open}
         onClose={edit.onClose}
-        onSave={edit.onSave}
-        trabajoDiario={edit.entity}
+        row={edit.entity}
+        formHoras={formHoras}
+        onFormHorasChange={setFormHoras}
+        selectionLoading={savingEdit}
+        onSave={handleSaveTrabajoDiario}
       />
 
       <HistorialModal

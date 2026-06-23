@@ -12,7 +12,8 @@ import ImagenModal from 'src/components/ImagenModal';
 import HorasRawModal from 'src/components/dhn/HorasRawModal';
 import TrabajosDetectadosList from 'src/components/dhn/TrabajosDetectadosList';
 import ClearIcon from '@mui/icons-material/Clear';
-import EditarTrabajoDiarioModal from 'src/components/dhn/EditarTrabajoDiarioModal';
+import CorreccionConciliacionModal from 'src/components/dhn/CorreccionConciliacionModal';
+import useEditarTrabajoDiario from 'src/hooks/dhn/useEditarTrabajoDiario';
 
 const ControlDiaPage = () => {
   const router = useRouter();
@@ -87,6 +88,9 @@ const ControlDiaPage = () => {
     defaultLimit: 200,
     onOpenComprobante: handleOpenComprobante,
   });
+
+  const { formHoras, setFormHoras, saving: savingEdit, onSave: handleSaveTrabajoDiario } =
+    useEditarTrabajoDiario(edit);
 
   const formatters = {
     fecha: formatDateDDMMYYYY,
@@ -186,11 +190,14 @@ const ControlDiaPage = () => {
         downloadUrl={rawModalUrl}
       />
 
-      <EditarTrabajoDiarioModal
+      <CorreccionConciliacionModal
         open={edit.open}
         onClose={edit.onClose}
-        onSave={edit.onSave}
-        trabajoDiario={edit.entity}
+        row={edit.entity}
+        formHoras={formHoras}
+        onFormHorasChange={setFormHoras}
+        selectionLoading={savingEdit}
+        onSave={handleSaveTrabajoDiario}
       />
     </DashboardLayout>
   );
