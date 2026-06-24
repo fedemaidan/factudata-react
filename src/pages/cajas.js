@@ -1010,6 +1010,7 @@ const csvDefaultSelected = useMemo(
    usd_blue:    { out: 'USD',       path: (e) => e?.total?.usd_blue },
    usd_oficial: { out: 'USD',       path: (e) => e?.total?.usd_oficial },  // si lo tenés
    usd_mep_medio: { out: 'USD',     path: (e) => e?.total?.usd_mep_medio },  // si lo tenés
+   usd_referencia: { out: 'USD',    path: (e) => e?.total?.usd_referencia }, // TC cargado en cada movimiento
    ars_oficial: { out: 'ARS',       path: (e) => e?.total?.ars_oficial },
    cac:         { out: 'ARS',       path: (e) => e?.total?.cac },          // ej. si calculás CAC a ARS
  };
@@ -3017,6 +3018,7 @@ useEffect(() => {
             <MenuItem value="usd_blue">USD blue</MenuItem>
             <MenuItem value="usd_oficial">USD oficial</MenuItem>
             <MenuItem value="usd_mep_medio">USD mep (medio)</MenuItem>
+            <MenuItem value="usd_referencia">USD (Tipo de Cambio utilizado en el movimiento)</MenuItem>
           </Select>
         </FormControl>
       </>
