@@ -11,6 +11,7 @@ import CategoryBudgetMatrixBlock from './blocks/CategoryBudgetMatrixBlock';
 import IncomeBudgetControlBlock from './blocks/IncomeBudgetControlBlock';
 import BalanceBetweenPartnersBlock from './blocks/BalanceBetweenPartnersBlock';
 import CategorySubcategoryAccordionBlock from './blocks/CategorySubcategoryAccordionBlock';
+import SubcategoryMonthlyEvolutionBlock from './blocks/SubcategoryMonthlyEvolutionBlock';
 import DrillDownDialog from './DrillDownDialog';
 import { executeReport, filterMovimientos } from 'src/tools/reportEngine';
 
@@ -26,6 +27,7 @@ const BLOCK_COMPONENTS = {
   balance_between_partners: BalanceBetweenPartnersBlock,
   income_budget_control: IncomeBudgetControlBlock,
   category_subcategory_accordion: CategorySubcategoryAccordionBlock,
+  subcategory_monthly_evolution: SubcategoryMonthlyEvolutionBlock,
   // Plan de cobros: reutilizan los componentes existentes porque sus processors
   // emiten las mismas shapes (metric_cards / summary_table).
   collections_summary: MetricCardsBlock,

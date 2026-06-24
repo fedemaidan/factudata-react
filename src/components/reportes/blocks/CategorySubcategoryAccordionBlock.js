@@ -21,6 +21,7 @@ const CategorySubcategoryAccordionBlock = ({ data, displayCurrency, onDrillDown 
   const currency = data.displayCurrency || displayCurrency || 'ARS';
   const showCounts = data.showCounts !== false;
   const showSubcategories = data.showSubcategories !== false;
+  const showMissingQuotes = data.mostrarSinCotizacion === true;
 
   if (categories.length === 0) {
     return (
@@ -44,6 +45,9 @@ const CategorySubcategoryAccordionBlock = ({ data, displayCurrency, onDrillDown 
               </Typography>
               {showCounts && (
                 <Chip size="small" variant="outlined" label={`${category.count || 0} mov.`} sx={{ height: 22 }} />
+              )}
+              {showMissingQuotes && category.sinCotizacion > 0 && (
+                <Chip size="small" color="warning" variant="outlined" label={`${category.sinCotizacion} sin cotización`} sx={{ height: 22 }} />
               )}
             </Stack>
             <Typography variant="body2" fontWeight={600} sx={{ whiteSpace: 'nowrap' }}>
@@ -139,6 +143,9 @@ const CategorySubcategoryAccordionBlock = ({ data, displayCurrency, onDrillDown 
                           {showCounts && (
                             <Chip size="small" variant="outlined" label={`${sub.count || 0}`} sx={{ height: 20 }} />
                           )}
+                          {showMissingQuotes && sub.sinCotizacion > 0 && (
+                            <Chip size="small" color="warning" variant="outlined" label={`${sub.sinCotizacion} sin cotización`} sx={{ height: 20 }} />
+                          )}
                         </Stack>
                         <Box
                           sx={{
@@ -190,9 +197,14 @@ const CategorySubcategoryAccordionBlock = ({ data, displayCurrency, onDrillDown 
           bgcolor: 'grey.50',
         }}
       >
-        <Typography variant="caption" color="text.secondary" fontWeight={700} sx={{ textTransform: 'uppercase', letterSpacing: 0.4 }}>
-          Total egresos
-        </Typography>
+        <Stack direction="row" spacing={1} alignItems="center">
+          <Typography variant="caption" color="text.secondary" fontWeight={700} sx={{ textTransform: 'uppercase', letterSpacing: 0.4 }}>
+            Total egresos
+          </Typography>
+          {showMissingQuotes && data.sinCotizacion > 0 && (
+            <Chip size="small" color="warning" variant="outlined" label={`${data.sinCotizacion} sin cotización`} sx={{ height: 22 }} />
+          )}
+        </Stack>
         <Typography variant="subtitle1" fontWeight={700} sx={{ lineHeight: 1.25, textAlign: 'right', whiteSpace: 'nowrap' }}>
           {formatValue(data.total || 0, 'currency', currency)}
         </Typography>

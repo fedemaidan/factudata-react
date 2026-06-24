@@ -51,6 +51,9 @@ export function exportReportToXLSX(reportConfig, results, movimientos = [], disp
       case 'category_subcategory_accordion':
         exportCategorySubcategoryAccordion(wb, sheetName, block.data, displayCurrency);
         break;
+      case 'subcategory_monthly_evolution':
+        exportSummaryTable(wb, sheetName, block.data.matrix || block.data, displayCurrency);
+        break;
       case 'income_budget_control':
         exportIncomeBudgetControl(wb, sheetName, block.data);
         break;
@@ -93,7 +96,10 @@ function exportMetricCards(wb, name, data, displayCurrency) {
       }
     } else {
       row.Valor = m.valor;
-      row['Valor formateado'] = formatValue(m.valor, m.formato, displayCurrency);
+      row['Valor formateado'] = formatValue(m.valor, m.formato, m.display_currency || displayCurrency);
+    }
+    if (m.mostrar_sin_cotizacion === true && m.sin_cotizacion > 0) {
+      row['Sin cotización'] = m.sin_cotizacion;
     }
     return row;
   });
@@ -142,6 +148,8 @@ function exportMovementsTable(wb, name, data, displayCurrency) {
     categoria: 'Categoría',
     proveedor_nombre: 'Proveedor',
     proyecto_nombre: 'Proyecto',
+    monto_original: 'Monto original',
+    equivalente_display: `Equivalente (${data.displayCurrency || displayCurrency})`,
     monto_display: 'Monto',
     subtotal_display: 'Subtotal',
     moneda: 'Moneda',
@@ -160,8 +168,13 @@ function exportMovementsTable(wb, name, data, displayCurrency) {
         const f = row.fecha_factura || row.fecha;
         const d = f?.toDate ? f.toDate() : f?.seconds ? new Date(f.seconds * 1000) : new Date(f);
         obj[label] = isNaN(d?.getTime()) ? '' : d.toLocaleDateString('es-AR');
-      } else if (col === 'monto_display' || col === 'subtotal_display') {
-        obj[label] = row[col] ?? 0;
+      } else if (col === 'monto_original') {
+        obj[label] = row.monto_original ?? 0;
+      } else if (col === 'equivalente_display' || col === 'monto_display' || col === 'subtotal_display') {
+        const missingQuote = row._sin_cotizacion && (col === 'equivalente_display' || col === 'monto_display');
+        obj[label] = missingQuote
+          ? (data.mostrarSinCotizacion === true ? 'Sin cotización' : '')
+          : (row[col] ?? 0);
       } else if (col.startsWith('monto_display__') || col.startsWith('subtotal_display__')) {
         const currency = col.split('__')[1];
         const base = col.startsWith('monto') ? 'Monto' : 'Subtotal';
@@ -320,29 +333,36 @@ function exportCategorySubcategoryAccordion(wb, name, data, displayCurrency) {
   const currency = data?.displayCurrency || displayCurrency;
   const showCounts = data?.showCounts !== false;
   const showSubcategories = data?.showSubcategories !== false;
-  const aoa = [
-    showCounts
-      ? ['Categoria / Subcategoria', 'Movimientos', `Total (${currency})`]
-      : ['Categoria / Subcategoria', `Total (${currency})`],
-  ];
+  const showMissingQuotes = data?.mostrarSinCotizacion === true && Number(data?.sinCotizacion || 0) > 0;
+  const headers = ['Categoria / Subcategoria'];
+  if (showCounts) headers.push('Movimientos');
+  if (showMissingQuotes) headers.push('Sin cotización');
+  headers.push(`Total (${currency})`);
+  const aoa = [headers];
 
   for (const category of categories) {
-    aoa.push(showCounts
-      ? [String(category.label || '').toUpperCase(), Number(category.count || 0), Number(category.total || 0)]
-      : [String(category.label || '').toUpperCase(), Number(category.total || 0)]);
+    const categoryRow = [String(category.label || '').toUpperCase()];
+    if (showCounts) categoryRow.push(Number(category.count || 0));
+    if (showMissingQuotes) categoryRow.push(Number(category.sinCotizacion || 0));
+    categoryRow.push(Number(category.total || 0));
+    aoa.push(categoryRow);
     if (showSubcategories) {
       for (const sub of category.subcategories || []) {
-        aoa.push(showCounts
-          ? [`  ${sub.label || ''}`, Number(sub.count || 0), Number(sub.total || 0)]
-          : [`  ${sub.label || ''}`, Number(sub.total || 0)]);
+        const subRow = [`  ${sub.label || ''}`];
+        if (showCounts) subRow.push(Number(sub.count || 0));
+        if (showMissingQuotes) subRow.push(Number(sub.sinCotizacion || 0));
+        subRow.push(Number(sub.total || 0));
+        aoa.push(subRow);
       }
     }
   }
 
   aoa.push([]);
-  aoa.push(showCounts
-    ? ['TOTAL', Number(data?.count || 0), Number(data?.total || 0)]
-    : ['TOTAL', Number(data?.total || 0)]);
+  const totalRow = ['TOTAL'];
+  if (showCounts) totalRow.push(Number(data?.count || 0));
+  if (showMissingQuotes) totalRow.push(Number(data?.sinCotizacion || 0));
+  totalRow.push(Number(data?.total || 0));
+  aoa.push(totalRow);
 
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   XLSX.utils.book_append_sheet(wb, ws, name);

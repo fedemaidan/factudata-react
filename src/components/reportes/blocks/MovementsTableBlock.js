@@ -5,7 +5,7 @@ import {
   AccordionSummary,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Paper, Typography, TablePagination, Chip, Box, IconButton, Dialog,
-  DialogTitle, DialogContent,
+  DialogTitle, DialogContent, Alert,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
@@ -20,6 +20,8 @@ const COLUMN_LABELS = {
   subcategoria: 'Subcategoría',
   proveedor_nombre: 'Proveedor',
   proyecto_nombre: 'Proyecto',
+  monto_original: 'Monto original',
+  equivalente_display: 'Monto equivalente',
   monto_display: 'Monto',
   subtotal_display: 'Subtotal',
   ingreso_display: 'Ingreso',
@@ -70,6 +72,8 @@ const MovementsTableBlock = ({ data, displayCurrency }) => {
     summaryAccordion,
     summaryLabel = 'Movimientos',
     summaryTotal = 0,
+    sinCotizacion = 0,
+    mostrarSinCotizacion = false,
     showSummaryCount,
   } = data || {};
   const tableCurrency = data?.displayCurrency || displayCurrency;
@@ -104,7 +108,15 @@ const MovementsTableBlock = ({ data, displayCurrency }) => {
           />
         );
       case 'monto_display':
-        return formatValue(row.monto_display, 'currency', tableCurrency, MOVEMENT_CURRENCY_OPTS);
+        return mostrarSinCotizacion && row._sin_cotizacion
+          ? <Chip size="small" color="warning" variant="outlined" label="Sin cotización" />
+          : (row.monto_display == null ? '-' : formatValue(row.monto_display, 'currency', tableCurrency, MOVEMENT_CURRENCY_OPTS));
+      case 'monto_original':
+        return formatValue(row.monto_original, 'currency', row.moneda || 'ARS', MOVEMENT_CURRENCY_OPTS);
+      case 'equivalente_display':
+        return mostrarSinCotizacion && row._sin_cotizacion
+          ? <Chip size="small" color="warning" variant="outlined" label="Sin cotización" />
+          : (row.equivalente_display == null ? '-' : formatValue(row.equivalente_display, 'currency', tableCurrency, MOVEMENT_CURRENCY_OPTS));
       case 'subtotal_display':
         return formatValue(row.subtotal_display, 'currency', tableCurrency, MOVEMENT_CURRENCY_OPTS);
       case 'ingreso_display':
@@ -167,7 +179,9 @@ const MovementsTableBlock = ({ data, displayCurrency }) => {
                     whiteSpace: 'nowrap',
                   }}
                 >
-                  {COLUMN_LABELS[col] || getColumnLabel(col)}
+                  {col === 'equivalente_display'
+                    ? `Equivalente (${tableCurrency})`
+                    : (COLUMN_LABELS[col] || getColumnLabel(col))}
                 </TableCell>
               ))}
             </TableRow>
@@ -210,6 +224,11 @@ const MovementsTableBlock = ({ data, displayCurrency }) => {
 
   return (
     <Box>
+      {mostrarSinCotizacion && sinCotizacion > 0 && !summaryAccordion && (
+        <Alert severity="warning" variant="outlined" sx={{ mb: 1 }}>
+          {sinCotizacion} movimiento{sinCotizacion === 1 ? '' : 's'} sin cotización no se incluyen en el total equivalente.
+        </Alert>
+      )}
       {summaryAccordion ? (
         <Accordion
           disableGutters
@@ -241,6 +260,9 @@ const MovementsTableBlock = ({ data, displayCurrency }) => {
               </Typography>
               {showSummaryCount && (
                 <Chip size="small" variant="outlined" label={`${totalRows || 0} mov.`} sx={{ height: 22 }} />
+              )}
+              {mostrarSinCotizacion && sinCotizacion > 0 && (
+                <Chip size="small" color="warning" variant="outlined" label={`${sinCotizacion} sin cotización`} sx={{ height: 22 }} />
               )}
             </Box>
             <Typography variant="body2" fontWeight={700} sx={{ whiteSpace: 'nowrap' }}>

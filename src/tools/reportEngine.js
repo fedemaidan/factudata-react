@@ -97,6 +97,43 @@ function getConvertedAmount(mov, displayCurrency = 'ARS', campo = 'total') {
   return 0;
 }
 
+function getRawMovementAmount(mov, campo = 'total') {
+  const value = campo === 'subtotal'
+    ? (mov?.subtotal ?? mov?.total ?? mov?.monto ?? 0)
+    : (mov?.total ?? mov?.monto ?? 0);
+  return Number(value) || 0;
+}
+
+/**
+ * Convierte ARS y USD usando exclusivamente el dolar_referencia del movimiento.
+ * Los movimientos que ya están en la moneda destino conservan su monto original.
+ * Si una conversión ARS <-> USD no tiene cotización, devuelve null para no sumar
+ * una equivalencia incorrecta al consolidado.
+ */
+export function getReportAmountResult(mov, displayCurrency = 'ARS', campo = 'total') {
+  const sourceCurrency = String(mov?.moneda || 'ARS').toUpperCase();
+  const targetCurrency = String(displayCurrency || 'ARS').toUpperCase();
+  const amount = getRawMovementAmount(mov, campo);
+
+  if (targetCurrency === 'ORIGINAL' || sourceCurrency === targetCurrency) {
+    return { value: amount, missingQuote: false };
+  }
+
+  const dolarReferencia = Number(mov?.dolar_referencia);
+  if (sourceCurrency === 'ARS' && targetCurrency === 'USD') {
+    return dolarReferencia > 0
+      ? { value: amount / dolarReferencia, missingQuote: false }
+      : { value: null, missingQuote: true };
+  }
+  if (sourceCurrency === 'USD' && targetCurrency === 'ARS') {
+    return dolarReferencia > 0
+      ? { value: amount * dolarReferencia, missingQuote: false }
+      : { value: null, missingQuote: true };
+  }
+
+  return { value: getConvertedAmount(mov, targetCurrency, campo), missingQuote: false };
+}
+
 /**
  * Extrae el mes en formato YYYY-MM de un movimiento
  */
@@ -572,7 +609,7 @@ export function filterMovimientos(movimientos, filters = {}, extraContext = {}) 
   if (filters.moneda_movimiento?.length > 0) {
     const set = toNormalizedSet(filters.moneda_movimiento);
     result = result.filter(
-      (m) => set.has(normalizeFilterText(m.moneda)),
+      (m) => set.has(normalizeFilterText(m.moneda || 'ARS')),
     );
   }
 
@@ -617,7 +654,7 @@ export function applyBlockFilters(movimientos, block) {
         ? fe.moneda_movimiento
         : [fe.moneda_movimiento];
       const set = toNormalizedSet(monedas);
-      result = result.filter((m) => set.has(normalizeFilterText(m.moneda)));
+      result = result.filter((m) => set.has(normalizeFilterText(m.moneda || 'ARS')));
     }
   }
 
@@ -693,7 +730,7 @@ function filterMovimientosForColumn(items, column) {
       ? column.moneda_movimiento
       : [column.moneda_movimiento];
     const set = toNormalizedSet(monedas);
-    result = result.filter((m) => set.has(normalizeFilterText(m.moneda)));
+    result = result.filter((m) => set.has(normalizeFilterText(m.moneda || 'ARS')));
   }
   return result;
 }
@@ -963,7 +1000,7 @@ export function processMetricCards(block, movimientos, presupuestos, currencies,
           ? fe.moneda_movimiento
           : [fe.moneda_movimiento];
         const set = toNormalizedSet(monedas);
-        data = data.filter((m) => set.has(normalizeFilterText(m.moneda)));
+        data = data.filter((m) => set.has(normalizeFilterText(m.moneda || 'ARS')));
       }
     }
 
@@ -972,23 +1009,39 @@ export function processMetricCards(block, movimientos, presupuestos, currencies,
     const metricCurrency = metrica.display_currency || null;
     const metricCurrencies = metricCurrency ? [metricCurrency] : currencies;
     const valores = {};
+    const missingQuoteByCurrency = {};
     for (const cur of metricCurrencies) {
-      if (metrica.operacion === 'saldo_neto') {
-        valores[cur] = sum(data.map((m) => signedAmount(m, cur, campo)));
-      } else {
-        const vals = data.map((m) => getAmount(m, cur, campo));
-        valores[cur] = aggregate(vals, metrica.operacion);
+      if (metrica.operacion === 'count') {
+        valores[cur] = data.length;
+        missingQuoteByCurrency[cur] = 0;
+        continue;
       }
+
+      const converted = data.map((m) => ({ mov: m, ...getReportAmountResult(m, cur, campo) }));
+      const valid = converted.filter((item) => !item.missingQuote && item.value != null);
+      missingQuoteByCurrency[cur] = converted.length - valid.length;
+      const vals = valid.map((item) => (
+        metrica.operacion === 'saldo_neto'
+          ? (item.mov?.type === 'ingreso' ? Math.abs(item.value) : -Math.abs(item.value))
+          : item.value
+      ));
+      valores[cur] = metrica.operacion === 'saldo_neto'
+        ? sum(vals)
+        : aggregate(vals, metrica.operacion);
     }
+
+    const mainCurrency = metricCurrency || currencies[0];
 
     return {
       id: metrica.id,
       titulo: metrica.titulo,
-      valor: valores[metricCurrency || currencies[0]],
+      valor: valores[mainCurrency],
       valores,
       display_currency: metricCurrency,
       formato: metrica.formato || 'currency',
       color: metrica.color || 'default',
+      sin_cotizacion: missingQuoteByCurrency[mainCurrency] || 0,
+      mostrar_sin_cotizacion: block.mostrar_sin_cotizacion === true,
       _movimientos: data,
     };
   });
@@ -1012,13 +1065,15 @@ export function processCategorySubcategoryAccordion(block, movimientos, _presupu
     const categoryKey = normalizeCategoryFilterValue(categoryLabel);
     const subcategoryLabel = getSubcategoryLabel(mov);
     const subcategoryKey = normalizeCategoryFilterValue(subcategoryLabel);
-    const amount = Math.abs(getAmount(mov, displayCurrency, campo));
+    const conversion = getReportAmountResult(mov, displayCurrency, campo);
+    const amount = conversion.value == null ? 0 : Math.abs(conversion.value);
 
     const category = categoriesMap.get(categoryKey) || {
       key: categoryKey,
       label: categoryLabel,
       total: 0,
       count: 0,
+      sinCotizacion: 0,
       movimientos: [],
       subcategoriesMap: new Map(),
     };
@@ -1028,14 +1083,17 @@ export function processCategorySubcategoryAccordion(block, movimientos, _presupu
       label: subcategoryLabel,
       total: 0,
       count: 0,
+      sinCotizacion: 0,
       movimientos: [],
     };
 
     category.total += amount;
     category.count += 1;
+    if (conversion.missingQuote) category.sinCotizacion += 1;
     category.movimientos.push(mov);
     subcategory.total += amount;
     subcategory.count += 1;
+    if (conversion.missingQuote) subcategory.sinCotizacion += 1;
     subcategory.movimientos.push(mov);
 
     category.subcategoriesMap.set(subcategoryKey, subcategory);
@@ -1048,6 +1106,7 @@ export function processCategorySubcategoryAccordion(block, movimientos, _presupu
       label: category.label,
       total: round2(category.total),
       count: category.count,
+      sinCotizacion: category.sinCotizacion,
       movimientos: category.movimientos,
       subcategories: [...category.subcategoriesMap.values()]
         .map((sub) => ({
@@ -1062,10 +1121,148 @@ export function processCategorySubcategoryAccordion(block, movimientos, _presupu
     categories,
     total: round2(categories.reduce((acc, category) => acc + category.total, 0)),
     count: data.length,
+    sinCotizacion: categories.reduce((acc, category) => acc + (category.sinCotizacion || 0), 0),
+    mostrarSinCotizacion: block.mostrar_sin_cotizacion === true,
     displayCurrency,
     campo,
     showCounts: block.mostrar_cantidad_movimientos !== false,
     showSubcategories: block.desglose_subcategorias !== false,
+  };
+}
+
+/** Evolución histórica mensual de egresos, con una serie por subcategoría. */
+export function processSubcategoryMonthlyEvolution(block, movimientos, _presupuestos, currencies) {
+  let data = applyBlockFilters(movimientos, {
+    ...block,
+    filtro_tipo: block.filtro_tipo || 'egreso',
+  });
+
+  if (block.categoria_objetivo) {
+    const targetCategory = normalizeCategoryFilterValue(block.categoria_objetivo);
+    data = data.filter((mov) => normalizeCategoryFilterValue(getCategoryLabel(mov)) === targetCategory);
+  }
+
+  const displayCurrency = block.display_currency || currencies?.[0] || 'ARS';
+  const campo = block.campo_monto || 'total';
+  const records = [];
+  const totalsBySubcategory = new Map();
+  let sinCotizacion = 0;
+  let sinFecha = 0;
+
+  for (const mov of data) {
+    const monthKey = getMes(mov);
+    if (monthKey === 'sin-fecha') {
+      sinFecha += 1;
+      continue;
+    }
+    const conversion = getReportAmountResult(mov, displayCurrency, campo);
+    if (conversion.missingQuote || conversion.value == null) {
+      sinCotizacion += 1;
+      continue;
+    }
+    const subcategory = getSubcategoryLabel(mov);
+    const amount = Math.abs(Number(conversion.value) || 0);
+    records.push({ mov, monthKey, subcategory, amount });
+    totalsBySubcategory.set(subcategory, (totalsBySubcategory.get(subcategory) || 0) + amount);
+  }
+
+  const topN = Math.max(1, Number(block.top_n) || 8);
+  const rankedSubcategories = [...totalsBySubcategory.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const visibleSubcategories = rankedSubcategories.slice(0, topN).map(([label]) => label);
+  const visibleSet = new Set(visibleSubcategories);
+  const seriesLabels = rankedSubcategories.length > topN
+    ? [...visibleSubcategories, 'Otras subcategorías']
+    : visibleSubcategories;
+  const seriesByLabel = new Map(seriesLabels.map((label, index) => [label, `sub_${index}`]));
+
+  const existingMonths = [...new Set(records.map((record) => record.monthKey))].sort();
+  let monthKeys = existingMonths;
+  if (existingMonths.length > 1) {
+    const [startYear, startMonth] = existingMonths[0].split('-').map(Number);
+    const [endYear, endMonth] = existingMonths[existingMonths.length - 1].split('-').map(Number);
+    const continuousMonths = [];
+    let cursor = new Date(startYear, startMonth - 1, 1);
+    const end = new Date(endYear, endMonth - 1, 1);
+    while (cursor <= end && continuousMonths.length < 240) {
+      continuousMonths.push(`${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`);
+      cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+    }
+    if (cursor > end) monthKeys = continuousMonths;
+  }
+
+  const headers = [
+    { id: 'grupo', titulo: 'Mes' },
+    ...seriesLabels.map((label) => ({
+      id: seriesByLabel.get(label),
+      titulo: label,
+      formato: 'currency',
+      currency: displayCurrency,
+    })),
+  ];
+  const rowsByMonth = new Map(monthKeys.map((monthKey) => {
+    const row = {
+      grupo: formatMonthKey(monthKey),
+      _monthKey: monthKey,
+      _movimientos: [],
+      _movimientosPorSerie: {},
+    };
+    for (const header of headers.slice(1)) {
+      row[header.id] = 0;
+      row._movimientosPorSerie[header.id] = [];
+    }
+    return [monthKey, row];
+  }));
+
+  for (const record of records) {
+    const row = rowsByMonth.get(record.monthKey);
+    if (!row) continue;
+    const seriesLabel = visibleSet.has(record.subcategory) ? record.subcategory : 'Otras subcategorías';
+    const seriesId = seriesByLabel.get(seriesLabel);
+    if (!seriesId) continue;
+    row[seriesId] += record.amount;
+    row._movimientos.push(record.mov);
+    row._movimientosPorSerie[seriesId].push(record.mov);
+  }
+
+  const rows = monthKeys.map((monthKey) => {
+    const row = rowsByMonth.get(monthKey);
+    for (const header of headers.slice(1)) row[header.id] = round2(row[header.id]);
+    return row;
+  });
+  const totals = { grupo: 'TOTAL' };
+  for (const header of headers.slice(1)) {
+    totals[header.id] = round2(rows.reduce((sumValue, row) => sumValue + Number(row[header.id] || 0), 0));
+  }
+  const matrixHeaders = [
+    ...headers,
+    { id: '_total_mes', titulo: 'Total mes', formato: 'currency', currency: displayCurrency },
+  ];
+  const matrixRows = rows.map((row) => ({
+    ...row,
+    _total_mes: round2(headers.slice(1).reduce((sumValue, header) => sumValue + Number(row[header.id] || 0), 0)),
+  }));
+  const matrixTotals = {
+    ...totals,
+    _total_mes: round2(headers.slice(1).reduce((sumValue, header) => sumValue + Number(totals[header.id] || 0), 0)),
+  };
+
+  return {
+    chartType: block.chart_type || 'bar',
+    chartOptions: { stacked: (block.chart_type || 'bar') === 'bar', height: 400 },
+    headers,
+    rows,
+    totals,
+    matrix: {
+      headers: matrixHeaders,
+      rows: matrixRows,
+      totals: matrixTotals,
+    },
+    mostrarMatriz: block.mostrar_matriz !== false,
+    displayCurrency,
+    sinCotizacion,
+    sinFecha,
+    mostrarSinCotizacion: block.mostrar_sin_cotizacion === true,
   };
 }
 
@@ -1184,7 +1381,7 @@ export function processSummaryTable(block, movimientos, _presupuestos, currencie
 export function processMovementsTable(block, movimientos, _presupuestos, currencies) {
   const data = applyBlockFilters(movimientos, block);
   const primaryCurrency = block.display_currency || currencies[0];
-  const isMulti = currencies.length > 1;
+  const isMulti = !block.display_currency && currencies.length > 1;
 
   const defaultCols = [
     'fecha_factura', 'tipo', 'categoria', 'proveedor_nombre',
@@ -1207,20 +1404,27 @@ export function processMovementsTable(block, movimientos, _presupuestos, currenc
 
   // Enriquecer cada movimiento
   const rows = data.map((m) => {
+    const totalConversion = getReportAmountResult(m, primaryCurrency, 'total');
+    const subtotalConversion = getReportAmountResult(m, primaryCurrency, 'subtotal');
     const row = {
       ...m,
-      monto_display: getAmount(m, primaryCurrency, 'total'),
-      subtotal_display: getAmount(m, primaryCurrency, 'subtotal'),
-      ingreso_display: m.type === 'ingreso' ? getAmount(m, primaryCurrency, 'total') : null,
-      egreso_display: m.type === 'egreso' ? getAmount(m, primaryCurrency, 'total') : null,
+      monto_original: getRawMovementAmount(m, 'total'),
+      equivalente_display: totalConversion.value,
+      monto_display: totalConversion.value,
+      subtotal_display: subtotalConversion.value,
+      ingreso_display: m.type === 'ingreso' ? totalConversion.value : null,
+      egreso_display: m.type === 'egreso' ? totalConversion.value : null,
+      _sin_cotizacion: totalConversion.missingQuote,
       _fecha: toDate(m),
     };
     if (isMulti) {
       for (const cur of currencies) {
-        row[`monto_display__${cur}`] = getAmount(m, cur, 'total');
-        row[`subtotal_display__${cur}`] = getAmount(m, cur, 'subtotal');
-        row[`ingreso_display__${cur}`] = m.type === 'ingreso' ? getAmount(m, cur, 'total') : null;
-        row[`egreso_display__${cur}`] = m.type === 'egreso' ? getAmount(m, cur, 'total') : null;
+        const totalResult = getReportAmountResult(m, cur, 'total');
+        const subtotalResult = getReportAmountResult(m, cur, 'subtotal');
+        row[`monto_display__${cur}`] = totalResult.value;
+        row[`subtotal_display__${cur}`] = subtotalResult.value;
+        row[`ingreso_display__${cur}`] = m.type === 'ingreso' ? totalResult.value : null;
+        row[`egreso_display__${cur}`] = m.type === 'egreso' ? totalResult.value : null;
       }
     }
     return row;
@@ -1249,6 +1453,8 @@ export function processMovementsTable(block, movimientos, _presupuestos, currenc
     summaryAccordion: block.resumen_desplegable === true,
     summaryLabel,
     summaryTotal,
+    sinCotizacion: rows.filter((row) => row._sin_cotizacion).length,
+    mostrarSinCotizacion: block.mostrar_sin_cotizacion === true,
     showSummaryCount: block.mostrar_cantidad_resumen === true,
   };
 }
@@ -2917,9 +3123,9 @@ export function processCollectionsSchedule(block, _movimientos, _presupuestos, _
   const buckets = collectionsMonthlyBuckets(cuotas, block.incluir_vencidas !== false);
 
   const headers = [
-    { id: 'grupo', titulo: 'Mes' },
-    { id: 'a_cobrar', titulo: 'A cobrar', formato: 'currency', currency: 'ARS' },
-    { id: 'acumulado', titulo: 'Acumulado', formato: 'currency', currency: 'ARS' },
+    { id: 'grupo', titulo: 'Mes', width: '33.333%' },
+    { id: 'a_cobrar', titulo: 'A cobrar', formato: 'currency', currency: 'ARS', width: '33.333%' },
+    { id: 'acumulado', titulo: 'Acumulado', formato: 'currency', currency: 'ARS', width: '33.334%' },
   ];
   let acc = 0;
   const rows = buckets.map((b) => {
@@ -2969,9 +3175,9 @@ export function processCollectionsDueRanges(block, _movimientos, _presupuestos, 
   }
 
   const headers = [
-    { id: 'grupo', titulo: 'Plazo de cobro' },
-    { id: 'monto', titulo: 'Saldo', formato: 'currency', currency: 'ARS' },
-    { id: 'cantidad', titulo: 'Cuotas', formato: 'number' },
+    { id: 'grupo', titulo: 'Plazo de cobro', width: '33.333%' },
+    { id: 'monto', titulo: 'Saldo', formato: 'currency', currency: 'ARS', width: '33.333%' },
+    { id: 'cantidad', titulo: 'Cuotas', formato: 'number', width: '33.334%' },
   ];
   const rows = buckets.map((bucket) => ({
     grupo: bucket.label,
@@ -3172,6 +3378,7 @@ const BLOCK_PROCESSORS = {
   grouped_detail: processGroupedDetail,
   balance_between_partners: processBalanceBetweenPartners,
   category_subcategory_accordion: processCategorySubcategoryAccordion,
+  subcategory_monthly_evolution: processSubcategoryMonthlyEvolution,
   collections_summary: processCollectionsSummary,
   collections_schedule: processCollectionsSchedule,
   collections_due_ranges: processCollectionsDueRanges,

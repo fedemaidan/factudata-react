@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Card, CardContent, Typography, Grid } from '@mui/material';
+import { Box, Card, CardContent, Typography, Grid, Chip } from '@mui/material';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import TrendingDownIcon from '@mui/icons-material/TrendingDown';
 import { formatValue } from 'src/tools/reportEngine';
@@ -81,7 +81,7 @@ const MetricCardsBlock = ({ data, displayCurrency, displayCurrencies, onDrillDow
                   ))}
                 </Box>
               ) : (
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mt: 1, minWidth: 0 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mt: 1, minWidth: 0, flexWrap: 'wrap' }}>
                   <Typography
                     sx={{
                       fontWeight: 700,
@@ -97,6 +97,15 @@ const MetricCardsBlock = ({ data, displayCurrency, displayCurrencies, onDrillDow
                     metric.valor > 0
                       ? <TrendingUpIcon fontSize="small" color="success" sx={{ flexShrink: 0 }} />
                       : <TrendingDownIcon fontSize="small" color="error" sx={{ flexShrink: 0 }} />
+                  )}
+                  {metric.mostrar_sin_cotizacion === true && metric.sin_cotizacion > 0 && (
+                    <Chip
+                      size="small"
+                      color="warning"
+                      variant="outlined"
+                      label={`${metric.sin_cotizacion} sin cotización`}
+                      sx={{ height: 22 }}
+                    />
                   )}
                 </Box>
               )}
