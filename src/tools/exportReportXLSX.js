@@ -62,6 +62,7 @@ export function exportReportToXLSX(reportConfig, results, movimientos = [], disp
         exportMetricCards(wb, sheetName, block.data, displayCurrency);
         break;
       case 'collections_schedule':
+      case 'collections_due_ranges':
       case 'collections_chart':
       case 'collections_aging':
       case 'collections_plans':

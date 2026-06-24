@@ -144,6 +144,12 @@ function toPlainDate(value) {
   if (value?.toDate) return value.toDate();
   if (value?.seconds) return new Date(value.seconds * 1000);
   if (value instanceof Date) return isNaN(value.getTime()) ? null : value;
+  const raw = String(value).trim();
+  const dateOnly = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (dateOnly) {
+    const localDate = new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]));
+    return isNaN(localDate.getTime()) ? null : localDate;
+  }
   const d = new Date(value);
   return isNaN(d.getTime()) ? null : d;
 }
@@ -2776,12 +2782,17 @@ function getPlanesFiltrados(ctx, block) {
   const estados = Array.isArray(block.plan_estados) && block.plan_estados.length
     ? block.plan_estados
     : COLLECTION_ESTADOS_DEFAULT;
-  const provSet = Array.isArray(block.proyecto_ids) && block.proyecto_ids.length
+  const blockProjectIds = Array.isArray(block.proyecto_ids) && block.proyecto_ids.length
     ? new Set(block.proyecto_ids.map(String))
+    : null;
+  const runtimeProjectIds = Array.isArray(ctx?.filters?.proyectos) && ctx.filters.proyectos.length
+    ? new Set(ctx.filters.proyectos.map((value) => String(value?.id || value?._id || value)))
     : null;
   return planes.filter((p) => {
     if (estados.length && !estados.includes(p.estado)) return false;
-    if (provSet && !provSet.has(String(p.proyecto_id))) return false;
+    const projectId = String(p?.proyecto_id?.id || p?.proyecto_id?._id || p?.proyecto_id || '');
+    if (blockProjectIds && !blockProjectIds.has(projectId)) return false;
+    if (runtimeProjectIds && !runtimeProjectIds.has(projectId)) return false;
     return true;
   });
 }
@@ -2894,7 +2905,7 @@ function collectionsMonthlyBuckets(cuotas, incluirVencidas) {
   });
   return keys.map((k) => ({
     key: k,
-    label: k === 'vencido' ? '⚠️ Vencido' : k === 'sin-fecha' ? 'Sin fecha' : formatMonthKey(k),
+    label: k === 'vencido' ? 'Vencido' : k === 'sin-fecha' ? 'Sin fecha' : formatMonthKey(k),
     monto: round2(porMes.get(k)),
   }));
 }
@@ -2917,6 +2928,62 @@ export function processCollectionsSchedule(block, _movimientos, _presupuestos, _
   });
   const totalMonto = round2(rows.reduce((s, r) => s + r.a_cobrar, 0));
   return { headers, rows, totals: { grupo: 'TOTAL', a_cobrar: totalMonto, acumulado: totalMonto } };
+}
+
+/** Saldo pendiente agrupado por plazo futuro de vencimiento (shape summary_table). */
+export function processCollectionsDueRanges(block, _movimientos, _presupuestos, _currencies, cotizaciones, extraContext = {}) {
+  const planes = getPlanesFiltrados(extraContext, block);
+  const cuotas = getCuotasPendientes(planes, block, cotizaciones);
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+
+  const buckets = [
+    { id: 'vencido', label: 'Vencido', monto: 0, cant: 0 },
+    { id: 'd1_30', label: '1-30 días', monto: 0, cant: 0 },
+    { id: 'd31_120', label: '31-120 días', monto: 0, cant: 0 },
+    { id: 'd121_180', label: '121-180 días', monto: 0, cant: 0 },
+    { id: 'd180', label: 'Más de 180 días', monto: 0, cant: 0 },
+    { id: 'sin_fecha', label: 'Sin fecha', monto: 0, cant: 0 },
+  ];
+  const byId = Object.fromEntries(buckets.map((bucket) => [bucket.id, bucket]));
+  const MS_DIA = 86400000;
+
+  for (const cuota of cuotas) {
+    let bucket;
+    if (!cuota.fecha) {
+      bucket = byId.sin_fecha;
+    } else if (cuota.vencida || cuota.fecha < hoy) {
+      bucket = byId.vencido;
+    } else {
+      const dias = Math.max(1, Math.ceil((cuota.fecha - hoy) / MS_DIA));
+      bucket = dias <= 30
+        ? byId.d1_30
+        : dias <= 120
+          ? byId.d31_120
+          : dias <= 180
+            ? byId.d121_180
+            : byId.d180;
+    }
+    bucket.monto = round2(bucket.monto + cuota.saldo);
+    bucket.cant += 1;
+  }
+
+  const headers = [
+    { id: 'grupo', titulo: 'Plazo de cobro' },
+    { id: 'monto', titulo: 'Saldo', formato: 'currency', currency: 'ARS' },
+    { id: 'cantidad', titulo: 'Cuotas', formato: 'number' },
+  ];
+  const rows = buckets.map((bucket) => ({
+    grupo: bucket.label,
+    monto: bucket.monto,
+    cantidad: bucket.cant,
+  }));
+  const totals = {
+    grupo: 'TOTAL',
+    monto: round2(rows.reduce((sumMonto, row) => sumMonto + row.monto, 0)),
+    cantidad: rows.reduce((sumCantidad, row) => sumCantidad + row.cantidad, 0),
+  };
+  return { headers, rows, totals };
 }
 
 /**
@@ -3107,6 +3174,7 @@ const BLOCK_PROCESSORS = {
   category_subcategory_accordion: processCategorySubcategoryAccordion,
   collections_summary: processCollectionsSummary,
   collections_schedule: processCollectionsSchedule,
+  collections_due_ranges: processCollectionsDueRanges,
   collections_chart: processCollectionsChart,
   collections_aging: processCollectionsAging,
   collections_plans: processCollectionsPlans,

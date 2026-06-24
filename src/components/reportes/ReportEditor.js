@@ -31,6 +31,7 @@ const BLOCK_TYPE_LABELS = {
   grouped_detail: 'Detalle por Grupo',
   category_subcategory_accordion: 'Categorias y Subcategorias',
   balance_between_partners: 'Balance entre Socios',
+  collections_due_ranges: 'Vencimientos por Plazo',
 };
 
 const FILTRO_FIELDS = [
