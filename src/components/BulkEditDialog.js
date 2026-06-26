@@ -76,6 +76,20 @@ const BulkEditDialog = ({ open, onClose, selectedCount, selectedIds, onDone, opt
     if (field.optionsKey === 'asignados') {
       return Array.isArray(empresa?.asignados) ? empresa.asignados.filter(Boolean) : [];
     }
+    if (field.optionsKey === 'categorias' || field.optionsKey === 'subcategorias') {
+      const cates = [
+        ...(Array.isArray(empresa?.categorias) ? empresa.categorias : []),
+        { name: 'Ingreso dinero', subcategorias: [] },
+        { name: 'Ajuste', subcategorias: ['Ajuste'] },
+      ];
+      if (field.optionsKey === 'categorias') {
+        return cates.map((c) => (typeof c === 'string' ? c : c?.name)).filter(Boolean);
+      }
+      const subs = cates
+        .flatMap((c) => (typeof c === 'string' ? [] : (c?.subcategorias || [])))
+        .filter(Boolean);
+      return [...new Set(subs)];
+    }
     if (field.optionsKey && options[field.optionsKey]) return options[field.optionsKey];
     if (field.optionsKey === 'subempresas') {
       return getSubempresasOptions(empresa);
@@ -155,8 +169,13 @@ const BulkEditDialog = ({ open, onClose, selectedCount, selectedIds, onDone, opt
       } else if (fieldDef?.type === 'operation_date') {
         if (val?.op && val?.value !== null && val?.value !== '' && val?.value !== undefined) {
           if (val.op === 'set') {
-            // Enviar como timestamp en milisegundos
-            campos[name] = { op: 'set', value: new Date(val.value).getTime() };
+            // Enviar el día calendario como 'YYYY-MM-DD' (sin hora). El backend lo ancla
+            // a hora local; mandar timestamp de medianoche local lo corría un día atrás.
+            const d = new Date(val.value);
+            const yyyy = d.getFullYear();
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const dd = String(d.getDate()).padStart(2, '0');
+            campos[name] = { op: 'set', value: `${yyyy}-${mm}-${dd}` };
           } else {
             campos[name] = { op: val.op, value: parseInt(val.value, 10) };
           }
