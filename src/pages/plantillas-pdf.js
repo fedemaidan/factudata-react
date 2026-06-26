@@ -16,7 +16,7 @@ import { useAuthContext } from 'src/contexts/auth-context';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import empresaLogoService from 'src/services/empresaLogoService';
 import SeccionPlantillas from 'src/components/plantillasPdf/SeccionPlantillas';
-import CONTROL_PRESUPUESTO_SAMPLE_DATA from 'src/utils/controlPresupuesto/sampleData';
+import CONTROL_PRESUPUESTO_SAMPLE_DATA, { buildSampleData as buildControlPresupuestoSampleData } from 'src/utils/controlPresupuesto/sampleData';
 import COMPROBANTE_MOVIMIENTO_SAMPLE_DATA from 'src/utils/comprobanteMovimiento/sampleData';
 
 // Los documentos por defecto se cargan client-side (importan @react-pdf, fuera del bundle SSR).
@@ -164,6 +164,8 @@ const PlantillasPdfPage = () => {
                 titulo="Plantillas de control de presupuesto"
                 descripcionDefault="Recibo de pagos estándar. Se usa cuando no hay una plantilla principal."
                 sampleData={CONTROL_PRESUPUESTO_SAMPLE_DATA}
+                buildSampleData={buildControlPresupuestoSampleData}
+                sampleDataModes={['nominal', 'cac', 'usd']}
                 defaultDocumentLoader={loadDefaultControlPresupuestoDoc}
                 onNotify={notify}
               />

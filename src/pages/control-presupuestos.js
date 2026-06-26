@@ -2418,6 +2418,11 @@ const ControlPresupuestosPage = () => {
                     : movDrawer.tipo === 'ingreso' ? 'RECIBO DE INGRESOS'
                       : 'ESTADO DE CUENTA'
                 }
+                modosDisponibles={[
+                  'nominal',
+                  ...(movDrawerData.some((m) => (m.moneda || 'ARS') === 'USD') ? ['usd'] : []),
+                ]}
+                modoDefault="nominal"
                 buildData={(opts) => {
                   const totales = calcularTotales();
                   const presupuestado =
@@ -2430,10 +2435,11 @@ const ControlPresupuestosPage = () => {
                         : 'ESTADO DE CUENTA'
                   );
                   // Export a nivel proyecto: presupuestos mixtos, sin indexación única.
-                  // El builder cae al modo "moneda de vista" (sin columna de equivalencia).
+                  // Modo nominal (pesos reales) por default; USD si hay movimientos en dólares.
                   return buildControlPresupuestoData({
                     movimientos: movDrawerData,
                     titulo,
+                    modo: opts?.modo || 'nominal',
                     presupuestoLabel: movDrawer.label,
                     obra: proyectoActual?.nombre || '',
                     empresaNombre: empresa?.nombre || '',
