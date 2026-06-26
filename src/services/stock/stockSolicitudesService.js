@@ -168,6 +168,7 @@ const StockSolicitudesService = {
         observacion: m.observacion || null,
 
         id_material: m.id_material ?? null,
+        precio_unitario: (m.precio_unitario === '' || m.precio_unitario == null) ? null : Number(m.precio_unitario),
       }));
 
     // Preparar fecha para la solicitud (11:00 del mediodía)

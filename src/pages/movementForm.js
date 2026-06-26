@@ -61,6 +61,7 @@ import {
 } from 'src/components/movementFieldsConfig';
 import profileService from 'src/services/profileService';
 import MaterialesFacturaActions from 'src/components/stock/MaterialesFacturaActions';
+import SolicitudMaterialesInline from 'src/components/stock/solicitudes/SolicitudMaterialesInline';
 import { getProyectosByEmpresa, getProyectosFromUser } from 'src/services/proyectosService';
 import ControlObraService from 'src/services/controlObra/controlObraService';
 import ProrrateoDialog from 'src/components/ProrrateoDialog';
@@ -268,6 +269,7 @@ const MovementFormPage = () => {
   const pendingExtraccionRef = useRef(false);
   const returnAfterSaveRef = useRef(false);
   const exportAfterSaveRef = useRef(false);
+  const materialesInlineRef = useRef(null);
   // "Guardar y exportar": tras cerrar el diálogo de PDF, volver a la página anterior (cajas).
   const returnAfterExportRef = useRef(false);
   const [createdUser, setCreatedUser] = useState(null);
@@ -443,6 +445,9 @@ const MovementFormPage = () => {
           formik.setFieldValue('monto_aprobado', updatedMovimiento.monto_aprobado ?? '', false);
         }
       }
+
+      // Guardar los materiales extraídos editados inline junto con el movimiento.
+      await materialesInlineRef.current?.guardar?.();
 
       setAlert({ open: true, message: 'Movimiento guardado con éxito!', severity: 'success' });
       if (returnAfterSaveRef.current) {
@@ -867,6 +872,12 @@ const createdAtStr = (() => {
         message: `Completá los campos obligatorios: ${labels.join(', ')}`,
         severity: 'error',
       });
+      return;
+    }
+
+    const materialesCheck = materialesInlineRef.current?.validar?.();
+    if (materialesCheck && !materialesCheck.ok) {
+      setAlert({ open: true, message: materialesCheck.message, severity: 'error' });
       return;
     }
 
@@ -2090,6 +2101,17 @@ const createdAtStr = (() => {
                   <StitchBlock step={3} title="Detalles financieros e impuestos">
                     <MovementFields {...sharedFieldProps} block="financial" />
                   </StitchBlock>
+                  {isEditMode
+                    && formik.values.categoria === 'Materiales'
+                    && empresa?.stock_config?.caja_a_stock === true
+                    && movimiento?.solicitud_stock_id && (
+                    <SolicitudMaterialesInline
+                      ref={materialesInlineRef}
+                      solicitudId={movimiento.solicitud_stock_id}
+                      user={user}
+                      onError={(message) => setAlert({ open: true, message, severity: 'error' })}
+                    />
+                  )}
                 </div>
               </div>
             </form>
