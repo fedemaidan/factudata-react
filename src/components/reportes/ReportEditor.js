@@ -30,6 +30,7 @@ const BLOCK_TYPE_LABELS = {
   chart: 'Gráfico',
   grouped_detail: 'Detalle por Grupo',
   category_subcategory_accordion: 'Categorias y Subcategorias',
+  subcategory_monthly_evolution: 'Evolución mensual por subcategoría',
   balance_between_partners: 'Balance entre Socios',
   collections_due_ranges: 'Vencimientos por Plazo',
 };
