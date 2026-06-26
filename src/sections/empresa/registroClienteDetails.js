@@ -176,7 +176,8 @@ export const RegistroClienteDetails = ({ empresa }) => {
   const ingresoMensualEq = (() => {
     if (susc.activa === false) return 0;
     const imp = Number(susc.importe) || 0;
-    return susc.periodicidad === 'anual' ? Math.round((imp / 12) * 100) / 100 : imp;
+    const meses = { mensual: 1, bimestral: 2, semestral: 6, anual: 12 }[susc.periodicidad] || 1;
+    return Math.round((imp / meses) * 100) / 100;
   })();
 
   const handleSaveSuscripcion = async () => {
@@ -536,6 +537,8 @@ export const RegistroClienteDetails = ({ empresa }) => {
                       value={susc.periodicidad}
                       onChange={(e) => handleSuscChange('periodicidad', e.target.value)}>
                       <MenuItem value="mensual">Mensual</MenuItem>
+                      <MenuItem value="bimestral">Bimestral</MenuItem>
+                      <MenuItem value="semestral">Semestral</MenuItem>
                       <MenuItem value="anual">Anual</MenuItem>
                     </TextField>
                   </Grid>

@@ -47,6 +47,7 @@ const ESTADO_CHIP = {
 };
 
 const MOTIVOS = ['descuento', 'bonificacion', 'comision', 'dif_cambio', 'ajuste', 'otro'];
+const MP_FEE = 0.05; // costo Mercado Pago (debe coincidir con SORBY_MP_COMISION del backend)
 
 const AdminCobranzas = () => {
   const [periodo, setPeriodo] = useState(currentMonth());
@@ -237,6 +238,7 @@ const AdminCobranzas = () => {
                   <MenuItem value="facu">Caja Facu</MenuItem>
                   <MenuItem value="fede">Caja Fede</MenuItem>
                   <MenuItem value="puente">Caja Puente</MenuItem>
+                  <MenuItem value="lucha">Caja Lucha</MenuItem>
                 </TextField>
                 <TextField label="Medio de pago" select size="small" fullWidth
                   value={form.medio_pago} onChange={(e) => setF('medio_pago', e.target.value)}>
@@ -245,6 +247,11 @@ const AdminCobranzas = () => {
                   <MenuItem value="mp">Mercado Pago</MenuItem>
                   <MenuItem value="cheque">Cheque</MenuItem>
                 </TextField>
+                {form.medio_pago === 'mp' && round2(form.monto) > 0 && (
+                  <Alert severity="info" sx={{ py: 0 }}>
+                    Costo Mercado Pago ({Math.round(MP_FEE * 100)}%): {fmtMoney(round2(round2(form.monto) * MP_FEE), dialog.row.moneda)} (egreso) · neto en caja {fmtMoney(round2(round2(form.monto) * (1 - MP_FEE)), dialog.row.moneda)}
+                  </Alert>
+                )}
                 <Stack direction="row" spacing={2} alignItems="center">
                   <FormControlLabel
                     control={<Switch checked={form.facturado} onChange={(e) => setF('facturado', e.target.checked)} />}
