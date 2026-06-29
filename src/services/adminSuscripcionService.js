@@ -49,6 +49,25 @@ const adminSuscripcionService = {
     return data;
   },
 
+  /** Omitir (saltear) o reactivar el cobro de un período de una empresa. */
+  async omitirPeriodo(empresaClienteId, periodo, omitir = true) {
+    const { data } = await api.post('/admin/cobranzas/omitir', {
+      empresa_cliente_id: empresaClienteId, periodo, omitir,
+    });
+    return data;
+  },
+
+  /**
+   * Posponer un vencimiento N meses. `periodo` = período ORIGINAL del vencimiento.
+   * `cascada=true` mueve esa cuota y todas las siguientes; false solo esa. `meses=0` deshace.
+   */
+  async posponerCobro(empresaClienteId, periodo, meses, cascada = false) {
+    const { data } = await api.post('/admin/cobranzas/posponer', {
+      empresa_cliente_id: empresaClienteId, periodo, meses, cascada,
+    });
+    return data;
+  },
+
   // ─── Reportes (Fase 3) ───────────────────────────────────────────────
   async reporteClientes(periodo) {
     const params = periodo ? `?periodo=${encodeURIComponent(periodo)}` : '';

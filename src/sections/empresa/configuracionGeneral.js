@@ -234,6 +234,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
     "VER_PLANES_COBRO",
     "VER_CONTROL_OBRA",
     "VER_CONTROL_PAGOS",
+    "VER_GASTOS_RECURRENTES",
     "VER_CUENTA_CORRIENTE_PROVEEDORES",
     "GESTIONAR_PROVEEDORES",
     "REPORTE_MANUAL",

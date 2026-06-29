@@ -33,12 +33,17 @@ import {
   Menu,
   ListItemIcon,
   ListItemText,
+  Divider,
 } from '@mui/material';
 import PaidIcon from '@mui/icons-material/Paid';
 import SearchIcon from '@mui/icons-material/Search';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import EventBusyIcon from '@mui/icons-material/EventBusy';
+import EventAvailableIcon from '@mui/icons-material/EventAvailable';
+import UpdateIcon from '@mui/icons-material/Update';
+import RestoreIcon from '@mui/icons-material/Restore';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import adminSuscripcionService from 'src/services/adminSuscripcionService';
 import FichaComercialDrawer from 'src/components/admin/FichaComercialDrawer';
@@ -56,8 +61,9 @@ const ESTADO_CHIP = {
   pago_parcial: { label: 'Pago parcial', color: 'warning' },
   pendiente: { label: 'Pendiente', color: 'default' },
   vencido: { label: 'Vencido', color: 'error' },
+  omitido: { label: 'Omitido', color: 'info' },
 };
-const ESTADOS = ['pendiente', 'pago_parcial', 'pagado', 'vencido'];
+const ESTADOS = ['pendiente', 'pago_parcial', 'pagado', 'vencido', 'omitido'];
 
 const MOTIVOS = ['descuento', 'bonificacion', 'comision', 'dif_cambio', 'ajuste', 'otro'];
 const MP_FEE = 0.05; // costo Mercado Pago (debe coincidir con SORBY_MP_COMISION del backend)
@@ -90,6 +96,9 @@ const AdminCobranzas = () => {
   const [menuRow, setMenuRow] = useState(null);
   const [anularState, setAnularState] = useState(null);
   const [anularMotivo, setAnularMotivo] = useState('');
+  const [posponerState, setPosponerState] = useState(null);
+  const [posMeses, setPosMeses] = useState('3');
+  const [posCascada, setPosCascada] = useState('una');
 
   const cargar = useCallback(async () => {
     try {
@@ -201,15 +210,58 @@ const AdminCobranzas = () => {
     try {
       setSaving(true);
       await adminSuscripcionService.anularCobro(anularState.cobro.id, { motivo: anularMotivo || null });
-      setSnackbar({ open: true, message: 'Cobro descartado', severity: 'success' });
+      setSnackbar({ open: true, message: 'Cobro anulado', severity: 'success' });
       setAnularState(null);
       setAnularMotivo('');
       await cargar();
     } catch (e) {
-      setSnackbar({ open: true, message: e?.response?.data?.error || 'Error al descartar el cobro', severity: 'error' });
+      setSnackbar({ open: true, message: e?.response?.data?.error || 'Error al anular el cobro', severity: 'error' });
     } finally {
       setSaving(false);
     }
+  };
+
+  const toggleOmitir = async (row, omitir) => {
+    cerrarMenu();
+    try {
+      setSaving(true);
+      await adminSuscripcionService.omitirPeriodo(row.empresa_id, row.periodo, omitir);
+      setSnackbar({ open: true, message: omitir ? 'Mes omitido (no se cobra)' : 'Mes reactivado', severity: 'success' });
+      await cargar();
+    } catch (e) {
+      setSnackbar({ open: true, message: e?.response?.data?.error || 'Error al actualizar el mes', severity: 'error' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const abrirPosponer = (row) => {
+    setPosponerState({ row });
+    setPosMeses('3');
+    setPosCascada('una');
+    cerrarMenu();
+  };
+
+  // anchor = período ORIGINAL del vencimiento (lo que entiende el backend). meses=0 deshace.
+  const aplicarPosponer = async (row, meses) => {
+    try {
+      setSaving(true);
+      await adminSuscripcionService.posponerCobro(
+        row.empresa_id, row.periodo_original || row.periodo, meses, posCascada === 'cascada',
+      );
+      setSnackbar({ open: true, message: meses ? 'Cobro pospuesto' : 'Fecha restablecida', severity: 'success' });
+      setPosponerState(null);
+      await cargar();
+    } catch (e) {
+      setSnackbar({ open: true, message: e?.response?.data?.error || 'Error al posponer el cobro', severity: 'error' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const restablecerFecha = async (row) => {
+    cerrarMenu();
+    await aplicarPosponer(row, 0);
   };
 
   const filtered = rows.filter((r) => {
@@ -230,7 +282,7 @@ const AdminCobranzas = () => {
 
   // Métricas: montos + cantidad de clientes por estado (sobre lo filtrado).
   const tot = filtered.reduce((a, r) => {
-    a.esperado += Number(r.importe_esperado) || 0;
+    if (r.estado !== 'omitido') a.esperado += Number(r.importe_esperado) || 0; // omitido no se cobra
     a.cobrado += Number(r.importe_cobrado) || 0;
     if (r.estado === 'vencido') a.vencido += Number(r.saldo) || 0;
     a.count[r.estado] = (a.count[r.estado] || 0) + 1;
@@ -352,7 +404,15 @@ const AdminCobranzas = () => {
                           </Button>
                         </TableCell>
                         <TableCell>{r.periodo}{r.numero_cuota ? ` · cuota ${r.numero_cuota}` : ''}</TableCell>
-                        <TableCell>{fmtDate(r.fecha_vencimiento)}</TableCell>
+                        <TableCell>
+                          {fmtDate(r.fecha_vencimiento)}
+                          {r.movido && (
+                            <Chip
+                              label={`pospuesto ${r.meses_movido}m`} size="small" color="info" variant="outlined"
+                              sx={{ ml: 0.5, height: 18, '& .MuiChip-label': { px: 0.6, fontSize: 10 } }}
+                            />
+                          )}
+                        </TableCell>
                         <TableCell align="center">{r.semana_pago || '—'}</TableCell>
                         <TableCell align="right">{fmtMoney(r.importe_esperado, r.moneda)}</TableCell>
                         <TableCell align="right">{fmtMoney(r.saldo, r.moneda)}</TableCell>
@@ -365,11 +425,9 @@ const AdminCobranzas = () => {
                             >
                               {pagado ? 'Cobrado' : 'Registrar cobro'}
                             </Button>
-                            {r.cobros?.length > 0 && (
-                              <IconButton size="small" onClick={(e) => abrirMenu(e, r)}>
-                                <MoreVertIcon fontSize="small" />
-                              </IconButton>
-                            )}
+                            <IconButton size="small" onClick={(e) => abrirMenu(e, r)}>
+                              <MoreVertIcon fontSize="small" />
+                            </IconButton>
                           </Stack>
                         </TableCell>
                       </TableRow>
@@ -466,14 +524,39 @@ const AdminCobranzas = () => {
         )}
       </Dialog>
 
-      {/* Menú de acciones sobre los cobros del período */}
+      {/* Menú de acciones del período (omitir mes) + por cada cobro (editar / anular) */}
       <Menu anchorEl={menuAnchor} open={!!menuAnchor} onClose={cerrarMenu}>
+        {/* Omitir / reactivar el mes (saltear el cobro de ese período) */}
+        {menuRow?.omitido ? (
+          <MenuItem onClick={() => toggleOmitir(menuRow, false)}>
+            <ListItemIcon><EventAvailableIcon fontSize="small" /></ListItemIcon>
+            <ListItemText primary="Reactivar este mes" secondary="Vuelve a cobrarse" />
+          </MenuItem>
+        ) : (
+          <MenuItem onClick={() => toggleOmitir(menuRow, true)}>
+            <ListItemIcon><EventBusyIcon fontSize="small" /></ListItemIcon>
+            <ListItemText primary="Omitir este mes" secondary="No se cobra este período" />
+          </MenuItem>
+        )}
+        {/* Posponer el vencimiento (correr la cuota a futuro) */}
+        <MenuItem onClick={() => abrirPosponer(menuRow)}>
+          <ListItemIcon><UpdateIcon fontSize="small" /></ListItemIcon>
+          <ListItemText primary="Posponer cobro" secondary="Correr la cuota a futuro" />
+        </MenuItem>
+        {menuRow?.movido && (
+          <MenuItem onClick={() => restablecerFecha(menuRow)}>
+            <ListItemIcon><RestoreIcon fontSize="small" /></ListItemIcon>
+            <ListItemText primary="Restablecer fecha" secondary={`Corrida ${menuRow.meses_movido} mes(es)`} />
+          </MenuItem>
+        )}
+        {menuRow?.cobros?.length > 0 && <Divider />}
+        {/* Acciones sobre cada cobro registrado del período */}
         {(menuRow?.cobros || []).flatMap((c) => [
           <MenuItem key={`edit-${c.id}`} onClick={() => abrirEditar(menuRow, c)}>
             <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon>
             <ListItemText
-              primary={`Editar ${fmtMoney(c.importe_cobrado, menuRow.moneda)}`}
-              secondary={fmtDate(c.fecha_cobro)}
+              primary="Editar cobro"
+              secondary={`${fmtMoney(c.importe_cobrado, menuRow.moneda)} · ${fmtDate(c.fecha_cobro)}`}
             />
           </MenuItem>,
           <MenuItem
@@ -481,7 +564,10 @@ const AdminCobranzas = () => {
             onClick={() => { setAnularState({ cobro: c, row: menuRow }); cerrarMenu(); }}
           >
             <ListItemIcon><DeleteOutlineIcon fontSize="small" color="error" /></ListItemIcon>
-            <ListItemText primary={`Descartar ${fmtMoney(c.importe_cobrado, menuRow.moneda)}`} />
+            <ListItemText
+              primary="Anular cobro"
+              secondary={`${fmtMoney(c.importe_cobrado, menuRow.moneda)} — revierte el pago`}
+            />
           </MenuItem>,
         ])}
       </Menu>
@@ -509,6 +595,50 @@ const AdminCobranzas = () => {
             <DialogActions>
               <Button onClick={() => setAnularState(null)}>Cancelar</Button>
               <Button color="error" variant="contained" onClick={confirmarAnular} disabled={saving}>Descartar</Button>
+            </DialogActions>
+          </>
+        )}
+      </Dialog>
+
+      {/* Posponer un vencimiento */}
+      <Dialog open={!!posponerState} onClose={() => setPosponerState(null)} maxWidth="xs" fullWidth>
+        {posponerState && (
+          <>
+            <DialogTitle>Posponer cobro</DialogTitle>
+            <DialogContent>
+              <Typography variant="body2" color="text.secondary" gutterBottom>
+                {posponerState.row.empresa_nombre} · período {posponerState.row.periodo_original || posponerState.row.periodo}
+                {posponerState.row.numero_cuota ? ` · cuota ${posponerState.row.numero_cuota}` : ''}
+              </Typography>
+              <Stack spacing={2} sx={{ mt: 1 }}>
+                <TextField
+                  label="Meses a posponer" type="number" size="small" fullWidth
+                  value={posMeses} onChange={(e) => setPosMeses(e.target.value)}
+                  inputProps={{ min: 1, max: 24 }}
+                />
+                <ToggleButtonGroup
+                  exclusive size="small" fullWidth orientation="vertical"
+                  value={posCascada} onChange={(_, v) => v && setPosCascada(v)}
+                >
+                  <ToggleButton value="una">Solo esta cuota</ToggleButton>
+                  <ToggleButton value="cascada">Esta y todas las siguientes</ToggleButton>
+                </ToggleButtonGroup>
+                <Alert severity="info" sx={{ py: 0 }}>
+                  {posCascada === 'cascada'
+                    ? `Se corre esta cuota y todas las posteriores ${Number(posMeses) || 0} mes(es) hacia adelante.`
+                    : `Solo se mueve esta cuota ${Number(posMeses) || 0} mes(es); las demás quedan igual.`}
+                  {' '}No crea cobros ni toca la caja.
+                </Alert>
+              </Stack>
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setPosponerState(null)}>Cancelar</Button>
+              <Button
+                variant="contained" disabled={saving || !(Number(posMeses) > 0)}
+                onClick={() => aplicarPosponer(posponerState.row, Math.trunc(Number(posMeses) || 0))}
+              >
+                Posponer
+              </Button>
             </DialogActions>
           </>
         )}
