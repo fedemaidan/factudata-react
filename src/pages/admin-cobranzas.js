@@ -10,6 +10,7 @@ import {
   TableCell,
   TableHead,
   TableRow,
+  TableSortLabel,
   Chip,
   Skeleton,
   Snackbar,
@@ -17,6 +18,7 @@ import {
   Button,
   TextField,
   MenuItem,
+  InputAdornment,
   Card,
   Grid,
   Dialog,
@@ -29,10 +31,12 @@ import {
   ToggleButtonGroup,
 } from '@mui/material';
 import PaidIcon from '@mui/icons-material/Paid';
+import SearchIcon from '@mui/icons-material/Search';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import adminSuscripcionService from 'src/services/adminSuscripcionService';
 
 const fmtMoney = (n, mon = 'ARS') => (n == null ? '—' : `${Number(n).toLocaleString('es-AR')} ${mon}`);
+const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('es-AR') : '—');
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const currentMonth = () => {
   const d = new Date();
@@ -45,16 +49,32 @@ const ESTADO_CHIP = {
   pendiente: { label: 'Pendiente', color: 'default' },
   vencido: { label: 'Vencido', color: 'error' },
 };
+const ESTADOS = ['pendiente', 'pago_parcial', 'pagado', 'vencido'];
 
 const MOTIVOS = ['descuento', 'bonificacion', 'comision', 'dif_cambio', 'ajuste', 'otro'];
 const MP_FEE = 0.05; // costo Mercado Pago (debe coincidir con SORBY_MP_COMISION del backend)
+
+const SORT = {
+  cliente: (r) => (r.empresa_nombre || '').toLowerCase(),
+  vencimiento: (r) => (r.fecha_vencimiento ? new Date(r.fecha_vencimiento).getTime() : Infinity),
+  esperado: (r) => Number(r.importe_esperado) || 0,
+  saldo: (r) => Number(r.saldo) || 0,
+  semana: (r) => Number(r.semana_pago) || 0,
+  estado: (r) => r.estado || '',
+};
 
 const AdminCobranzas = () => {
   const [periodo, setPeriodo] = useState(currentMonth());
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [q, setQ] = useState('');
+  const [fEstado, setFEstado] = useState('');
+  const [fSemana, setFSemana] = useState('');
+  const [fMp, setFMp] = useState('');
+  const [orderBy, setOrderBy] = useState('vencimiento');
+  const [order, setOrder] = useState('asc');
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
-  const [dialog, setDialog] = useState(null); // { row }
+  const [dialog, setDialog] = useState(null);
   const [form, setForm] = useState(null);
   const [saving, setSaving] = useState(false);
 
@@ -70,6 +90,11 @@ const AdminCobranzas = () => {
   }, [periodo]);
 
   useEffect(() => { cargar(); }, [cargar]);
+
+  const handleSort = (key) => {
+    if (orderBy === key) setOrder((o) => (o === 'asc' ? 'desc' : 'asc'));
+    else { setOrderBy(key); setOrder('asc'); }
+  };
 
   const abrirCobro = (row) => {
     setDialog({ row });
@@ -119,12 +144,39 @@ const AdminCobranzas = () => {
     }
   };
 
-  const tot = rows.reduce((a, r) => {
+  const filtered = rows.filter((r) => {
+    if (q && !(r.empresa_nombre || '').toLowerCase().includes(q.toLowerCase())) return false;
+    if (fEstado && r.estado !== fEstado) return false;
+    if (fSemana && String(r.semana_pago || '') !== fSemana) return false;
+    if (fMp === 'si' && !r.paga_por_mp) return false;
+    if (fMp === 'no' && r.paga_por_mp) return false;
+    return true;
+  });
+  const sorted = [...filtered].sort((a, b) => {
+    const g = SORT[orderBy] || SORT.cliente;
+    const av = g(a); const bv = g(b);
+    if (av < bv) return order === 'asc' ? -1 : 1;
+    if (av > bv) return order === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  // Métricas: montos + cantidad de clientes por estado (sobre lo filtrado).
+  const tot = filtered.reduce((a, r) => {
     a.esperado += Number(r.importe_esperado) || 0;
     a.cobrado += Number(r.importe_cobrado) || 0;
     if (r.estado === 'vencido') a.vencido += Number(r.saldo) || 0;
+    a.count[r.estado] = (a.count[r.estado] || 0) + 1;
     return a;
-  }, { esperado: 0, cobrado: 0, vencido: 0 });
+  }, { esperado: 0, cobrado: 0, vencido: 0, count: {} });
+
+  const selProps = { size: 'small', select: true, sx: { minWidth: 130 } };
+  const Header = ({ id, label, align = 'left' }) => (
+    <TableCell align={align} sortDirection={orderBy === id ? order : false}>
+      <TableSortLabel active={orderBy === id} direction={orderBy === id ? order : 'asc'} onClick={() => handleSort(id)}>
+        {label}
+      </TableSortLabel>
+    </TableCell>
+  );
 
   return (
     <>
@@ -135,63 +187,105 @@ const AdminCobranzas = () => {
             <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2}>
               <Typography variant="h4">Cobranzas</Typography>
               <TextField
-                type="month"
-                size="small"
-                label="Período"
+                type="month" size="small" label="Período"
                 InputLabelProps={{ shrink: true }}
-                value={periodo}
-                onChange={(e) => setPeriodo(e.target.value)}
+                value={periodo} onChange={(e) => setPeriodo(e.target.value)}
               />
             </Stack>
 
+            {/* Métricas: montos */}
             <Grid container spacing={2}>
               {[
-                { k: 'Esperado', v: tot.esperado, c: 'text.primary' },
-                { k: 'Cobrado', v: tot.cobrado, c: 'success.main' },
-                { k: 'Vencido', v: tot.vencido, c: 'error.main' },
+                { k: 'Esperado', v: fmtMoney(round2(tot.esperado)), c: 'text.primary' },
+                { k: 'Cobrado', v: fmtMoney(round2(tot.cobrado)), c: 'success.main' },
+                { k: 'Vencido', v: fmtMoney(round2(tot.vencido)), c: 'error.main' },
               ].map((m) => (
-                <Grid item xs={12} sm={4} key={m.k}>
+                <Grid item xs={6} sm={4} key={m.k}>
                   <Card variant="outlined" sx={{ p: 2 }}>
                     <Typography variant="caption" color="text.secondary">{m.k}</Typography>
-                    <Typography variant="h5" sx={{ color: m.c }}>{fmtMoney(round2(m.v))}</Typography>
+                    <Typography variant="h5" sx={{ color: m.c }}>{m.v}</Typography>
                   </Card>
                 </Grid>
               ))}
             </Grid>
 
+            {/* Métricas: cantidad de clientes por estado */}
+            <Grid container spacing={2}>
+              {ESTADOS.map((est) => (
+                <Grid item xs={6} sm={3} key={est}>
+                  <Card
+                    variant="outlined"
+                    sx={{ p: 2, cursor: 'pointer', borderColor: fEstado === est ? 'primary.main' : undefined }}
+                    onClick={() => setFEstado((s) => (s === est ? '' : est))}
+                  >
+                    <Stack direction="row" alignItems="center" justifyContent="space-between">
+                      <Chip label={ESTADO_CHIP[est].label} size="small" color={ESTADO_CHIP[est].color} variant="outlined" />
+                      <Typography variant="h5">{tot.count[est] || 0}</Typography>
+                    </Stack>
+                  </Card>
+                </Grid>
+              ))}
+            </Grid>
+
+            {/* Filtros */}
+            <Stack direction="row" gap={1.5} flexWrap="wrap" alignItems="center">
+              <TextField
+                size="small" placeholder="Buscar cliente" value={q}
+                onChange={(e) => setQ(e.target.value)}
+                InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon /></InputAdornment> }}
+              />
+              <TextField {...selProps} label="Estado" value={fEstado} onChange={(e) => setFEstado(e.target.value)}>
+                <MenuItem value="">Todos</MenuItem>
+                {ESTADOS.map((est) => <MenuItem key={est} value={est}>{ESTADO_CHIP[est].label}</MenuItem>)}
+              </TextField>
+              <TextField {...selProps} label="Semana" value={fSemana} onChange={(e) => setFSemana(e.target.value)}>
+                <MenuItem value="">Todas</MenuItem>
+                {[1, 2, 3, 4].map((s) => <MenuItem key={s} value={String(s)}>{s}</MenuItem>)}
+              </TextField>
+              <TextField {...selProps} label="MP" value={fMp} onChange={(e) => setFMp(e.target.value)}>
+                <MenuItem value="">Todos</MenuItem>
+                <MenuItem value="si">Sí</MenuItem>
+                <MenuItem value="no">No</MenuItem>
+              </TextField>
+              {(q || fEstado || fSemana || fMp) && (
+                <Button size="small" onClick={() => { setQ(''); setFEstado(''); setFSemana(''); setFMp(''); }}>Limpiar</Button>
+              )}
+            </Stack>
+
             <Card variant="outlined">
               <Table size="small">
                 <TableHead>
                   <TableRow>
-                    <TableCell>Cliente</TableCell>
+                    <Header id="cliente" label="Cliente" />
                     <TableCell>Período</TableCell>
-                    <TableCell align="right">Esperado</TableCell>
-                    <TableCell align="right">Saldo</TableCell>
-                    <TableCell>Estado</TableCell>
+                    <Header id="vencimiento" label="Vence" />
+                    <Header id="semana" label="Sem" align="center" />
+                    <Header id="esperado" label="Esperado" align="right" />
+                    <Header id="saldo" label="Saldo" align="right" />
+                    <Header id="estado" label="Estado" />
                     <TableCell />
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {loading && [...Array(6)].map((_, i) => (
-                    <TableRow key={i}><TableCell colSpan={6}><Skeleton height={28} /></TableCell></TableRow>
+                    <TableRow key={i}><TableCell colSpan={8}><Skeleton height={28} /></TableCell></TableRow>
                   ))}
-                  {!loading && rows.map((r, i) => {
+                  {!loading && sorted.map((r, i) => {
                     const chip = ESTADO_CHIP[r.estado] || ESTADO_CHIP.pendiente;
                     const pagado = r.estado === 'pagado';
                     return (
                       <TableRow key={`${r.empresa_id}-${r.periodo}-${i}`} hover>
                         <TableCell>{r.empresa_nombre}</TableCell>
                         <TableCell>{r.periodo}{r.numero_cuota ? ` · cuota ${r.numero_cuota}` : ''}</TableCell>
+                        <TableCell>{fmtDate(r.fecha_vencimiento)}</TableCell>
+                        <TableCell align="center">{r.semana_pago || '—'}</TableCell>
                         <TableCell align="right">{fmtMoney(r.importe_esperado, r.moneda)}</TableCell>
                         <TableCell align="right">{fmtMoney(r.saldo, r.moneda)}</TableCell>
                         <TableCell><Chip label={chip.label} size="small" color={chip.color} variant="outlined" /></TableCell>
                         <TableCell align="right">
                           <Button
-                            size="small"
-                            variant="contained"
-                            startIcon={<PaidIcon />}
-                            disabled={pagado}
-                            onClick={() => abrirCobro(r)}
+                            size="small" variant="contained" startIcon={<PaidIcon />}
+                            disabled={pagado} onClick={() => abrirCobro(r)}
                           >
                             {pagado ? 'Cobrado' : 'Registrar cobro'}
                           </Button>
@@ -199,9 +293,9 @@ const AdminCobranzas = () => {
                       </TableRow>
                     );
                   })}
-                  {!loading && rows.length === 0 && (
-                    <TableRow><TableCell colSpan={6} align="center" sx={{ py: 4 }}>
-                      <Typography color="text.secondary">No hay cobranzas para este período.</Typography>
+                  {!loading && sorted.length === 0 && (
+                    <TableRow><TableCell colSpan={8} align="center" sx={{ py: 4 }}>
+                      <Typography color="text.secondary">No hay cobranzas para este filtro.</Typography>
                     </TableCell></TableRow>
                   )}
                 </TableBody>
