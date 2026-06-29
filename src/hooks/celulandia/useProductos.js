@@ -32,6 +32,8 @@ export const useProductos = ({
         tagId,
       }),
     retry: false,
+    // No recargar el listado al volver a la pestaña; se refresca con sus invalidaciones.
+    refetchOnWindowFocus: false,
   });
 
   const invalidateProductos = () => {
@@ -149,6 +151,13 @@ export const useProductos = ({
           .join(", ");
       };
 
+      // Mismo formato que la celda de Variación en la tabla (es-AR, signo + y "%").
+      const formatVariacion = (item) => {
+        const n = Number(item?.tendencia?.variacionPct);
+        if (!Number.isFinite(n)) return "";
+        return `${n > 0 ? "+" : ""}${n.toLocaleString("es-AR", { maximumFractionDigits: 1 })}%`;
+      };
+
       const data = allProductos.map((item) => {
         const dias = getDiasHastaAgotar(item);
         const diasValue =
@@ -171,6 +180,8 @@ export const useProductos = ({
           "Stock actual": Number(item?.stockActual ?? 0),
           "Ventas período": Number(item?.ventasPeriodo ?? 0),
           "Ventas proyectadas": Number(item?.ventasProyectadas ?? 0),
+          // La variación es propia de la tendencia: solo se exporta con el modo ponderado activo.
+          ...(usarPonderado ? { Variación: formatVariacion(item) } : {}),
           "Días p/agotar": diasValue,
           "Stock proyectado (90 días)": Number(item?.stockProyectado ?? 0),
           "Fecha agotamiento": formatDateDDMMYYYY(item?.fechaAgotamientoStock),
