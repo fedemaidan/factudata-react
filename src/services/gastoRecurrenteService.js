@@ -13,6 +13,10 @@ const gastoRecurrenteService = {
     const { data } = await api.post(base(empresaId), payload);
     return data;
   },
+  async crearDesdeSugerencia(empresaId, payload) {
+    const { data } = await api.post(`${base(empresaId)}/desde-sugerencia`, payload);
+    return data;
+  },
   async editar(empresaId, id, payload) {
     const { data } = await api.put(`${base(empresaId)}/${id}`, payload);
     return data;
