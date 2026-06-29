@@ -29,9 +29,16 @@ import {
   Switch,
   ToggleButton,
   ToggleButtonGroup,
+  IconButton,
+  Menu,
+  ListItemIcon,
+  ListItemText,
 } from '@mui/material';
 import PaidIcon from '@mui/icons-material/Paid';
 import SearchIcon from '@mui/icons-material/Search';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
+import EditIcon from '@mui/icons-material/Edit';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import adminSuscripcionService from 'src/services/adminSuscripcionService';
 import FichaComercialDrawer from 'src/components/admin/FichaComercialDrawer';
@@ -79,6 +86,10 @@ const AdminCobranzas = () => {
   const [form, setForm] = useState(null);
   const [saving, setSaving] = useState(false);
   const [fichaId, setFichaId] = useState(null);
+  const [menuAnchor, setMenuAnchor] = useState(null);
+  const [menuRow, setMenuRow] = useState(null);
+  const [anularState, setAnularState] = useState(null);
+  const [anularMotivo, setAnularMotivo] = useState('');
 
   const cargar = useCallback(async () => {
     try {
@@ -99,7 +110,7 @@ const AdminCobranzas = () => {
   };
 
   const abrirCobro = (row) => {
-    setDialog({ row });
+    setDialog({ row, mode: 'registrar' });
     setForm({
       tipo: 'total',
       monto: String(row.saldo || row.importe_esperado || ''),
@@ -111,11 +122,51 @@ const AdminCobranzas = () => {
     });
   };
 
+  const abrirEditar = (row, cobro) => {
+    setDialog({ row, mode: 'editar', cobro });
+    setForm({
+      tipo: 'parcial',
+      monto: String(cobro.importe_cobrado ?? ''),
+      caja: cobro.caja_key || 'facu',
+      medio_pago: cobro.medio_pago || 'transferencia',
+      facturado: !!cobro.facturado,
+      factura_a_nombre_de: '',
+      motivo_diferencia: '',
+    });
+    cerrarMenu();
+  };
+
+  const abrirMenu = (e, row) => { setMenuAnchor(e.currentTarget); setMenuRow(row); };
+  const cerrarMenu = () => { setMenuAnchor(null); setMenuRow(null); };
+
   const setF = (k, v) => setForm((p) => ({ ...p, [k]: v }));
 
   const confirmar = async () => {
     const row = dialog.row;
     const monto = round2(form.monto);
+
+    // Modo editar: anula el cobro original y registra uno nuevo con los datos editados.
+    if (dialog.mode === 'editar') {
+      try {
+        setSaving(true);
+        await adminSuscripcionService.editarCobro(dialog.cobro.id, {
+          importe_cobrado: monto,
+          caja: form.caja,
+          medio_pago: form.medio_pago,
+          facturado: form.facturado,
+          factura_a_nombre_de: form.factura_a_nombre_de || null,
+        });
+        setSnackbar({ open: true, message: 'Cobro actualizado', severity: 'success' });
+        setDialog(null);
+        await cargar();
+      } catch (e) {
+        setSnackbar({ open: true, message: e?.response?.data?.error || 'Error al editar el cobro', severity: 'error' });
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+
     const diff = form.tipo === 'total' && Math.abs(monto - round2(row.saldo)) > 0.001;
     if (diff && !form.motivo_diferencia) {
       setSnackbar({ open: true, message: 'El monto difiere del saldo: indicá un motivo.', severity: 'warning' });
@@ -141,6 +192,21 @@ const AdminCobranzas = () => {
       await cargar();
     } catch (e) {
       setSnackbar({ open: true, message: e?.response?.data?.error || 'Error al registrar el cobro', severity: 'error' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const confirmarAnular = async () => {
+    try {
+      setSaving(true);
+      await adminSuscripcionService.anularCobro(anularState.cobro.id, { motivo: anularMotivo || null });
+      setSnackbar({ open: true, message: 'Cobro descartado', severity: 'success' });
+      setAnularState(null);
+      setAnularMotivo('');
+      await cargar();
+    } catch (e) {
+      setSnackbar({ open: true, message: e?.response?.data?.error || 'Error al descartar el cobro', severity: 'error' });
     } finally {
       setSaving(false);
     }
@@ -292,12 +358,19 @@ const AdminCobranzas = () => {
                         <TableCell align="right">{fmtMoney(r.saldo, r.moneda)}</TableCell>
                         <TableCell><Chip label={chip.label} size="small" color={chip.color} variant="outlined" /></TableCell>
                         <TableCell align="right">
-                          <Button
-                            size="small" variant="contained" startIcon={<PaidIcon />}
-                            disabled={pagado} onClick={() => abrirCobro(r)}
-                          >
-                            {pagado ? 'Cobrado' : 'Registrar cobro'}
-                          </Button>
+                          <Stack direction="row" spacing={0.5} justifyContent="flex-end" alignItems="center">
+                            <Button
+                              size="small" variant={pagado ? 'outlined' : 'contained'} startIcon={<PaidIcon />}
+                              onClick={() => abrirCobro(r)}
+                            >
+                              {pagado ? 'Cobrado' : 'Registrar cobro'}
+                            </Button>
+                            {r.cobros?.length > 0 && (
+                              <IconButton size="small" onClick={(e) => abrirMenu(e, r)}>
+                                <MoreVertIcon fontSize="small" />
+                              </IconButton>
+                            )}
+                          </Stack>
                         </TableCell>
                       </TableRow>
                     );
@@ -318,19 +391,26 @@ const AdminCobranzas = () => {
       <Dialog open={!!dialog} onClose={() => setDialog(null)} maxWidth="xs" fullWidth>
         {dialog && form && (
           <>
-            <DialogTitle>Registrar cobro</DialogTitle>
+            <DialogTitle>{dialog.mode === 'editar' ? 'Editar cobro' : 'Registrar cobro'}</DialogTitle>
             <DialogContent>
               <Typography variant="body2" color="text.secondary" gutterBottom>
                 {dialog.row.empresa_nombre} · período {dialog.row.periodo}
               </Typography>
               <Stack spacing={2} sx={{ mt: 1 }}>
-                <ToggleButtonGroup
-                  exclusive size="small" fullWidth value={form.tipo}
-                  onChange={(_, v) => v && setF('tipo', v)}
-                >
-                  <ToggleButton value="total">Pago total</ToggleButton>
-                  <ToggleButton value="parcial">Pago parcial</ToggleButton>
-                </ToggleButtonGroup>
+                {dialog.mode === 'editar' && (
+                  <Alert severity="info" sx={{ py: 0 }}>
+                    Se reversa el cobro original en la caja y se registra uno nuevo con estos datos (queda auditado).
+                  </Alert>
+                )}
+                {dialog.mode !== 'editar' && (
+                  <ToggleButtonGroup
+                    exclusive size="small" fullWidth value={form.tipo}
+                    onChange={(_, v) => v && setF('tipo', v)}
+                  >
+                    <ToggleButton value="total">Pago total</ToggleButton>
+                    <ToggleButton value="parcial">Pago parcial</ToggleButton>
+                  </ToggleButtonGroup>
+                )}
                 <TextField
                   label="Monto cobrado" type="number" size="small" fullWidth
                   value={form.monto} onChange={(e) => setF('monto', e.target.value)}
@@ -368,7 +448,7 @@ const AdminCobranzas = () => {
                     </TextField>
                   )}
                 </Stack>
-                {form.tipo === 'total' && Math.abs(round2(form.monto) - round2(dialog.row.saldo)) > 0.001 && (
+                {dialog.mode !== 'editar' && form.tipo === 'total' && Math.abs(round2(form.monto) - round2(dialog.row.saldo)) > 0.001 && (
                   <TextField label="Motivo de la diferencia" select size="small" fullWidth
                     value={form.motivo_diferencia} onChange={(e) => setF('motivo_diferencia', e.target.value)}>
                     {MOTIVOS.map((m) => <MenuItem key={m} value={m}>{m}</MenuItem>)}
@@ -378,7 +458,57 @@ const AdminCobranzas = () => {
             </DialogContent>
             <DialogActions>
               <Button onClick={() => setDialog(null)}>Cancelar</Button>
-              <Button variant="contained" onClick={confirmar} disabled={saving}>Confirmar cobro</Button>
+              <Button variant="contained" onClick={confirmar} disabled={saving}>
+                {dialog.mode === 'editar' ? 'Guardar cambios' : 'Confirmar cobro'}
+              </Button>
+            </DialogActions>
+          </>
+        )}
+      </Dialog>
+
+      {/* Menú de acciones sobre los cobros del período */}
+      <Menu anchorEl={menuAnchor} open={!!menuAnchor} onClose={cerrarMenu}>
+        {(menuRow?.cobros || []).flatMap((c) => [
+          <MenuItem key={`edit-${c.id}`} onClick={() => abrirEditar(menuRow, c)}>
+            <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon>
+            <ListItemText
+              primary={`Editar ${fmtMoney(c.importe_cobrado, menuRow.moneda)}`}
+              secondary={fmtDate(c.fecha_cobro)}
+            />
+          </MenuItem>,
+          <MenuItem
+            key={`del-${c.id}`}
+            onClick={() => { setAnularState({ cobro: c, row: menuRow }); cerrarMenu(); }}
+          >
+            <ListItemIcon><DeleteOutlineIcon fontSize="small" color="error" /></ListItemIcon>
+            <ListItemText primary={`Descartar ${fmtMoney(c.importe_cobrado, menuRow.moneda)}`} />
+          </MenuItem>,
+        ])}
+      </Menu>
+
+      {/* Confirmar descarte (anulación) de un cobro */}
+      <Dialog open={!!anularState} onClose={() => setAnularState(null)} maxWidth="xs" fullWidth>
+        {anularState && (
+          <>
+            <DialogTitle>Descartar cobro</DialogTitle>
+            <DialogContent>
+              <Typography variant="body2" color="text.secondary" gutterBottom>
+                {anularState.row.empresa_nombre} · período {anularState.row.periodo} · {fmtMoney(anularState.cobro.importe_cobrado, anularState.row.moneda)}
+              </Typography>
+              <Alert severity="warning" sx={{ my: 1 }}>
+                Se anula el cobro y se genera un movimiento de reverso en la caja. Queda registrado (no se borra).
+              </Alert>
+              <TextField
+                label="Motivo (opcional)" select size="small" fullWidth sx={{ mt: 1 }}
+                value={anularMotivo} onChange={(e) => setAnularMotivo(e.target.value)}
+              >
+                <MenuItem value="">—</MenuItem>
+                {MOTIVOS.map((m) => <MenuItem key={m} value={m}>{m}</MenuItem>)}
+              </TextField>
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setAnularState(null)}>Cancelar</Button>
+              <Button color="error" variant="contained" onClick={confirmarAnular} disabled={saving}>Descartar</Button>
             </DialogActions>
           </>
         )}

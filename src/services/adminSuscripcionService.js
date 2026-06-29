@@ -43,6 +43,12 @@ const adminSuscripcionService = {
     return data;
   },
 
+  /** Editar un cobro (anula el original y registra uno nuevo con los datos editados). */
+  async editarCobro(cobroId, payload) {
+    const { data } = await api.put(`/admin/cobranzas/${cobroId}`, payload);
+    return data;
+  },
+
   // ─── Reportes (Fase 3) ───────────────────────────────────────────────
   async reporteClientes(periodo) {
     const params = periodo ? `?periodo=${encodeURIComponent(periodo)}` : '';
