@@ -34,6 +34,7 @@ import PaidIcon from '@mui/icons-material/Paid';
 import SearchIcon from '@mui/icons-material/Search';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import adminSuscripcionService from 'src/services/adminSuscripcionService';
+import FichaComercialDrawer from 'src/components/admin/FichaComercialDrawer';
 
 const fmtMoney = (n, mon = 'ARS') => (n == null ? '—' : `${Number(n).toLocaleString('es-AR')} ${mon}`);
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('es-AR') : '—');
@@ -77,6 +78,7 @@ const AdminCobranzas = () => {
   const [dialog, setDialog] = useState(null);
   const [form, setForm] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [fichaId, setFichaId] = useState(null);
 
   const cargar = useCallback(async () => {
     try {
@@ -275,7 +277,14 @@ const AdminCobranzas = () => {
                     const pagado = r.estado === 'pagado';
                     return (
                       <TableRow key={`${r.empresa_id}-${r.periodo}-${i}`} hover>
-                        <TableCell>{r.empresa_nombre}</TableCell>
+                        <TableCell>
+                          <Button
+                            variant="text" size="small" sx={{ textTransform: 'none', p: 0, minWidth: 0, fontWeight: 500, textAlign: 'left' }}
+                            onClick={() => setFichaId(r.empresa_id)}
+                          >
+                            {r.empresa_nombre}
+                          </Button>
+                        </TableCell>
                         <TableCell>{r.periodo}{r.numero_cuota ? ` · cuota ${r.numero_cuota}` : ''}</TableCell>
                         <TableCell>{fmtDate(r.fecha_vencimiento)}</TableCell>
                         <TableCell align="center">{r.semana_pago || '—'}</TableCell>
@@ -374,6 +383,13 @@ const AdminCobranzas = () => {
           </>
         )}
       </Dialog>
+
+      <FichaComercialDrawer
+        empresaId={fichaId}
+        open={!!fichaId}
+        onClose={() => setFichaId(null)}
+        onSaved={cargar}
+      />
 
       <Snackbar open={snackbar.open} autoHideDuration={5000} onClose={() => setSnackbar((s) => ({ ...s, open: false }))}>
         <Alert severity={snackbar.severity}>{snackbar.message}</Alert>
