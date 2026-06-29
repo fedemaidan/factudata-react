@@ -145,6 +145,9 @@ async function buildDefaultGroups({ user, empresa, permisosUsuario }) {
   if (permisosUsuario.includes("VER_CONTROL_PAGOS")) {
     finanzasItems.push({ title: "Control de pagos", path: "/control-pagos", icon: icon(LocalAtm) });
   }
+  if (permisosUsuario.includes("VER_GASTOS_RECURRENTES")) {
+    finanzasItems.push({ title: "Gastos recurrentes", path: "/gastos-recurrentes", icon: icon(LocalAtm) });
+  }
   if (permisosUsuario.includes("GESTIONAR_PROVEEDORES") || permisosUsuario.includes("VER_CUENTA_CORRIENTE_PROVEEDORES")) {
     finanzasItems.push({ title: "Proveedores", path: "/proveedores", icon: icon(StoreIcon) });
   }

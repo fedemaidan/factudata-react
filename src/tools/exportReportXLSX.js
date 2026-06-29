@@ -34,6 +34,7 @@ export function exportReportToXLSX(reportConfig, results, movimientos = [], disp
         exportMetricCards(wb, sheetName, block.data, displayCurrency);
         break;
       case 'summary_table':
+      case 'group_month_matrix':
         exportSummaryTable(wb, sheetName, block.data, displayCurrency);
         break;
       case 'movements_table':

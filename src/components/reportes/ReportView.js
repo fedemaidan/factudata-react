@@ -28,6 +28,8 @@ const BLOCK_COMPONENTS = {
   income_budget_control: IncomeBudgetControlBlock,
   category_subcategory_accordion: CategorySubcategoryAccordionBlock,
   subcategory_monthly_evolution: SubcategoryMonthlyEvolutionBlock,
+  // Matriz grupo × mes: emite la misma shape que summary_table.
+  group_month_matrix: SummaryTableBlock,
   // Plan de cobros: reutilizan los componentes existentes porque sus processors
   // emiten las mismas shapes (metric_cards / summary_table).
   collections_summary: MetricCardsBlock,
