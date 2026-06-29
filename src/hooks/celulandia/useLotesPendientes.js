@@ -6,8 +6,9 @@ export const useLotesPendientes = () => {
   const query = useQuery({
     queryKey: ["lotesPendientes"],
     queryFn: () => pedidoService.getLotesPendientes(),
-    staleTime: 1000 * 60 * 60 , 
+    staleTime: 1000 * 60 * 60 ,
     retry: false,
+    refetchOnWindowFocus: false,
   });
 
   const lotesPendientesPorCodigo = useMemo(() => {
