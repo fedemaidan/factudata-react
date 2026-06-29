@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import dynamic from 'next/dynamic';
-import { Box, Typography, useTheme } from '@mui/material';
+import { Alert, Box, Typography, useTheme } from '@mui/material';
 import { formatValue } from 'src/tools/reportEngine';
 
 // ApexCharts SSR-safe import
@@ -12,18 +12,9 @@ const Chart = dynamic(() => import('react-apexcharts'), { ssr: false });
  */
 const ChartBlock = ({ data, displayCurrency, displayCurrencies, onDrillDown }) => {
   const theme = useTheme();
-
-  if (!data || !data.rows?.length) {
-    return (
-      <Typography variant="body2" color="text.secondary" p={2}>
-        Sin datos para graficar
-      </Typography>
-    );
-  }
-
-  const { chartType = 'bar', rows, headers, totals } = data;
+  const { chartType = 'bar', rows = [], headers = [] } = data || {};
   const currencies = displayCurrencies || [displayCurrency || 'ARS'];
-  const primaryCurrency = currencies[0];
+  const primaryCurrency = data?.displayCurrency || currencies[0];
 
   // Extraer labels y valores
   const labels = rows.map((r) => r.grupo || '');
@@ -62,13 +53,18 @@ const ChartBlock = ({ data, displayCurrency, displayCurrencies, onDrillDown }) =
       colors: baseColors,
       chart: {
         fontFamily: theme.typography.fontFamily,
+        stacked: data?.chartOptions?.stacked === true,
         toolbar: { show: true, tools: { download: true, selection: false, zoom: false, pan: false, reset: false } },
         events: {
           dataPointSelection: (_event, _chartContext, config) => {
             if (onDrillDown && config.dataPointIndex !== undefined) {
               const row = rows[config.dataPointIndex];
-              if (row?._movimientos) {
-                onDrillDown(row._movimientos, row.grupo);
+              const header = numericHeaders[config.seriesIndex];
+              const pointMovements = header ? row?._movimientosPorSerie?.[header.id] : null;
+              const drilldownMovements = pointMovements || row?._movimientos;
+              if (drilldownMovements?.length) {
+                const pointTitle = header ? `${row.grupo} - ${header.titulo || header.id}` : row.grupo;
+                onDrillDown(drilldownMovements, pointTitle);
               }
             }
           },
@@ -130,12 +126,25 @@ const ChartBlock = ({ data, displayCurrency, displayCurrencies, onDrillDown }) =
       fill: chartType === 'area' ? { type: 'gradient', gradient: { opacityFrom: 0.5, opacityTo: 0.1 } } : {},
       legend: { position: 'top', fontSize: '12px' },
     };
-  }, [chartType, labels, rows, primaryCurrency, theme, onDrillDown]);
+  }, [chartType, labels, rows, numericHeaders, primaryCurrency, theme, onDrillDown, data?.chartOptions?.stacked]);
 
-  const chartHeight = data.chartOptions?.height || 350;
+  const chartHeight = data?.chartOptions?.height || 350;
+
+  if (!rows.length) {
+    return (
+      <Typography variant="body2" color="text.secondary" p={2}>
+        Sin datos para graficar
+      </Typography>
+    );
+  }
 
   return (
     <Box sx={{ width: '100%', '& .apexcharts-canvas': { mx: 'auto' } }}>
+      {data?.mostrarSinCotizacion === true && data.sinCotizacion > 0 && (
+        <Alert severity="warning" variant="outlined" sx={{ mb: 1 }}>
+          {data.sinCotizacion} movimiento{data.sinCotizacion === 1 ? '' : 's'} sin cotización no se incluyen en la evolución.
+        </Alert>
+      )}
       <Chart
         options={options}
         series={chartType === 'pie' || chartType === 'donut' ? series : series}

@@ -9,6 +9,7 @@ const SummaryTableBlock = ({ data, displayCurrency, onDrillDown }) => {
   if (!data) return null;
 
   const { headers, rows, totals } = data;
+  const hasColumnWidths = headers.some((header) => header.width);
 
   const getColumnTone = (header) => {
     const title = String(header?.titulo || '').toLowerCase();
@@ -40,7 +41,11 @@ const SummaryTableBlock = ({ data, displayCurrency, onDrillDown }) => {
 
   return (
     <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 500 }}>
-      <Table size="small" stickyHeader>
+      <Table
+        size="small"
+        stickyHeader
+        sx={hasColumnWidths ? { tableLayout: 'fixed' } : undefined}
+      >
         <TableHead>
           <TableRow>
             {headers.map((h) => (
@@ -51,6 +56,7 @@ const SummaryTableBlock = ({ data, displayCurrency, onDrillDown }) => {
                   backgroundColor: 'grey.100',
                   color: getColumnTone(h)?.color || 'text.primary',
                   whiteSpace: 'nowrap',
+                  width: h.width,
                 }}
                 align={h.id === 'grupo' ? 'left' : 'right'}
               >

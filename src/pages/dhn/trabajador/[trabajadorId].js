@@ -12,7 +12,8 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import useTrabajoDiarioPage from 'src/hooks/dhn/useTrabajoDiarioPage';
-import EditarTrabajoDiarioModal from 'src/components/dhn/EditarTrabajoDiarioModal';
+import useEditarTrabajoDiario from 'src/hooks/dhn/useEditarTrabajoDiario';
+import CorreccionConciliacionModal from 'src/components/dhn/CorreccionConciliacionModal';
 import FiltroTrabajoDiario from 'src/components/dhn/FiltroTrabajoDiario';
 import ImagenModal from 'src/components/ImagenModal';
 import TrabajosDetectadosList from 'src/components/dhn/TrabajosDetectadosList';
@@ -134,6 +135,9 @@ const TrabajadorPage = () => {
     onOpenComprobante: handleOpenComprobante,
   });
 
+  const { formHoras, setFormHoras, saving: savingEdit, onSave: handleSaveTrabajoDiario } =
+    useEditarTrabajoDiario(edit);
+
   const formatters = { fecha: formatDateDDMMYYYY };
 
   const trabajador = useMemo(() => {
@@ -234,11 +238,14 @@ const TrabajadorPage = () => {
         </Stack>
       </Container>
 
-      <EditarTrabajoDiarioModal
+      <CorreccionConciliacionModal
         open={edit.open}
         onClose={edit.onClose}
-        onSave={edit.onSave}
-        trabajoDiario={edit.entity}
+        row={edit.entity}
+        formHoras={formHoras}
+        onFormHorasChange={setFormHoras}
+        selectionLoading={savingEdit}
+        onSave={handleSaveTrabajoDiario}
       />
 
       <HistorialModal

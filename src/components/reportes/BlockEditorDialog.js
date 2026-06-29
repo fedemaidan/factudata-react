@@ -22,9 +22,11 @@ const BLOCK_TYPES = [
   { value: 'chart', label: 'Gráfico', desc: 'Muestra datos agrupados en gráficos de barras, torta, línea o área.' },
   { value: 'grouped_detail', label: 'Detalle por Grupo', desc: 'Muestra chips o mini-cards de grupos con tabla de movimientos filtrada al seleccionar.' },
   { value: 'category_subcategory_accordion', label: 'Categorías y Subcategorías', desc: 'Accordion de egresos por categoría con detalle clickeable por subcategoría.' },
+  { value: 'subcategory_monthly_evolution', label: 'Evolución mensual por subcategoría', desc: 'Compara mes a mes cómo se distribuyen los egresos entre subcategorías.' },
   { value: 'balance_between_partners', label: 'Balance entre Socios', desc: 'Calcula saldo neto por socio (telefono), diferencia contra saldo ideal y deudas entre socios.' },
   { value: 'collections_summary', label: 'Cobranzas · KPIs', desc: 'Total a cobrar, cobrado, pendiente, vencido y próximo cobro según los planes de cobro.' },
   { value: 'collections_schedule', label: 'Cobranzas · Proyección por mes', desc: 'Cobros esperados a futuro agrupados por mes de vencimiento de las cuotas.' },
+  { value: 'collections_due_ranges', label: 'Cobranzas · Vencimientos por plazo', desc: 'Saldo pendiente por rangos futuros: 1-30, 31-120, 121-180, más de 180, vencido y sin fecha.' },
   { value: 'collections_chart', label: 'Cobranzas · Gráfico por mes', desc: 'Proyección de cobros a futuro como gráfico de barras/línea por mes de vencimiento.' },
   { value: 'collections_aging', label: 'Cobranzas · Antigüedad (aging)', desc: 'Saldo pendiente clasificado por antigüedad: por vencer, 1-30, 31-60, 61-90 y 90+ días.' },
   { value: 'collections_plans', label: 'Cobranzas · Planes', desc: 'Una fila por plan de cobro: total, cobrado, pendiente, avance, próxima cuota y estado.' },
@@ -75,7 +77,7 @@ const MONEDAS_MOVIMIENTO = [
 const MONEDAS_CALCULO = [
   { value: '', label: 'Moneda del reporte' },
   { value: 'ARS', label: 'ARS' },
-  { value: 'USD', label: 'USD Blue' },
+  { value: 'USD', label: 'USD' },
   { value: 'CAC', label: 'CAC' },
 ];
 
@@ -97,6 +99,8 @@ const COLUMNAS_VISIBLES_OPTIONS = [
   { value: 'subcategoria', label: 'Subcategoría' },
   { value: 'proveedor_nombre', label: 'Proveedor' },
   { value: 'proyecto_nombre', label: 'Proyecto' },
+  { value: 'monto_original', label: 'Monto original' },
+  { value: 'equivalente_display', label: 'Monto equivalente' },
   { value: 'monto_display', label: 'Monto' },
   { value: 'subtotal_display', label: 'Subtotal' },
   { value: 'ingreso_display', label: 'Ingreso' },
@@ -206,7 +210,7 @@ function defaultBlock(type) {
   const base = { type, titulo: '', col_span: 12 };
   switch (type) {
     case 'metric_cards':
-      return { ...base, metricas: [emptyMetrica()] };
+      return { ...base, metricas: [emptyMetrica()], mostrar_sin_cotizacion: false };
     case 'summary_table':
       return {
         ...base,
@@ -227,6 +231,7 @@ function defaultBlock(type) {
         resumen_desplegable: false,
         resumen_titulo: '',
         mostrar_cantidad_resumen: false,
+        mostrar_sin_cotizacion: false,
       };
     case 'budget_vs_actual':
       return {
@@ -302,6 +307,20 @@ function defaultBlock(type) {
         campo_monto: 'total',
         mostrar_cantidad_movimientos: true,
         desglose_subcategorias: true,
+        mostrar_sin_cotizacion: false,
+        excluir: {},
+      };
+    case 'subcategory_monthly_evolution':
+      return {
+        ...base,
+        titulo: 'Evolución mensual por subcategoría',
+        filtro_tipo: 'egreso',
+        campo_monto: 'total',
+        categoria_objetivo: '',
+        chart_type: 'bar',
+        top_n: 8,
+        mostrar_matriz: true,
+        mostrar_sin_cotizacion: false,
         excluir: {},
       };
     case 'balance_between_partners':
@@ -501,6 +520,9 @@ const BlockEditorDialog = ({
           {block.type === 'category_subcategory_accordion' && (
             <CategorySubcategoryAccordionConfig block={block} onChange={updateBlock} excludeOptions={excludeOptions} />
           )}
+          {block.type === 'subcategory_monthly_evolution' && (
+            <SubcategoryMonthlyEvolutionConfig block={block} onChange={updateBlock} categoryOptions={excludeOptions.categorias || []} />
+          )}
           {block.type === 'balance_between_partners' && (
             <BalanceBetweenPartnersConfig block={block} onChange={updateBlock} sociosOptions={sociosOptions} />
           )}
@@ -537,6 +559,18 @@ function MetricCardsConfig({ block, onChange }) {
     onChange('metricas', updated);
   };
 
+  const updateMetricaFilter = (idx, field, value) => {
+    const updated = [...metricas];
+    updated[idx] = {
+      ...updated[idx],
+      filtros_extra: {
+        ...(updated[idx].filtros_extra || {}),
+        [field]: value,
+      },
+    };
+    onChange('metricas', updated);
+  };
+
   const addMetrica = () => {
     onChange('metricas', [...metricas, emptyMetrica()]);
   };
@@ -553,6 +587,16 @@ function MetricCardsConfig({ block, onChange }) {
       <Alert severity="info" variant="outlined" sx={{ py: 0.5 }}>
         Cada métrica se muestra como una tarjeta con un valor grande. Podés agregar hasta 8.
       </Alert>
+
+      <FormControlLabel
+        control={
+          <Switch
+            checked={block.mostrar_sin_cotizacion === true}
+            onChange={(e) => onChange('mostrar_sin_cotizacion', e.target.checked)}
+          />
+        }
+        label="Mostrar avisos de movimientos sin cotización"
+      />
 
       {metricas.map((m, idx) => (
         <Box
@@ -637,6 +681,34 @@ function MetricCardsConfig({ block, onChange }) {
                 >
                   {COLORES.map((c) => (
                     <MenuItem key={c.value} value={c.value}>{c.label}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Stack>
+            <Stack direction="row" spacing={2}>
+              <FormControl size="small" sx={{ flex: 1 }}>
+                <InputLabel>Moneda del movimiento</InputLabel>
+                <Select
+                  value={Array.isArray(m.filtros_extra?.moneda_movimiento)
+                    ? (m.filtros_extra.moneda_movimiento[0] || '')
+                    : (m.filtros_extra?.moneda_movimiento || '')}
+                  label="Moneda del movimiento"
+                  onChange={(e) => updateMetricaFilter(idx, 'moneda_movimiento', e.target.value || null)}
+                >
+                  {MONEDAS_MOVIMIENTO.map((moneda) => (
+                    <MenuItem key={moneda.value} value={moneda.value}>{moneda.label}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <FormControl size="small" sx={{ flex: 1 }}>
+                <InputLabel>Calcular en</InputLabel>
+                <Select
+                  value={m.display_currency || ''}
+                  label="Calcular en"
+                  onChange={(e) => updateMetrica(idx, 'display_currency', e.target.value || null)}
+                >
+                  {MONEDAS_CALCULO.map((moneda) => (
+                    <MenuItem key={moneda.value} value={moneda.value}>{moneda.label}</MenuItem>
                   ))}
                 </Select>
               </FormControl>
@@ -875,6 +947,52 @@ function MovementsTableConfig({ block, onChange }) {
 
   return (
     <Stack spacing={2}>
+      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+        <FormControl size="small" fullWidth>
+          <InputLabel>Moneda del movimiento</InputLabel>
+          <Select
+            value={Array.isArray(block.filtros_extra?.moneda_movimiento)
+              ? (block.filtros_extra.moneda_movimiento[0] || '')
+              : (block.filtros_extra?.moneda_movimiento || '')}
+            label="Moneda del movimiento"
+            onChange={(e) => onChange('filtros_extra', {
+              ...(block.filtros_extra || {}),
+              moneda_movimiento: e.target.value || null,
+            })}
+          >
+            {MONEDAS_MOVIMIENTO.map((moneda) => (
+              <MenuItem key={moneda.value} value={moneda.value}>{moneda.label}</MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+        <FormControl size="small" fullWidth>
+          <InputLabel>Calcular equivalencia en</InputLabel>
+          <Select
+            value={block.display_currency || ''}
+            label="Calcular equivalencia en"
+            onChange={(e) => onChange('display_currency', e.target.value || null)}
+          >
+            {MONEDAS_CALCULO.map((moneda) => (
+              <MenuItem key={moneda.value} value={moneda.value}>{moneda.label}</MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+      </Stack>
+
+      <Alert severity="info" variant="outlined" sx={{ py: 0.5 }}>
+        Para comparar ambas monedas, agregá las columnas Monto original, Moneda y Monto equivalente.
+      </Alert>
+
+      <FormControlLabel
+        control={
+          <Switch
+            checked={block.mostrar_sin_cotizacion === true}
+            onChange={(e) => onChange('mostrar_sin_cotizacion', e.target.checked)}
+          />
+        }
+        label="Mostrar avisos de movimientos sin cotización"
+      />
+
       <Typography variant="subtitle2" fontWeight={600}>Columnas visibles</Typography>
       <Autocomplete
         multiple
@@ -1755,6 +1873,48 @@ function CategorySubcategoryAccordionConfig({ block, onChange, excludeOptions = 
         </Select>
       </FormControl>
 
+      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+        <FormControl size="small" fullWidth>
+          <InputLabel>Moneda del movimiento</InputLabel>
+          <Select
+            value={Array.isArray(block.filtros_extra?.moneda_movimiento)
+              ? (block.filtros_extra.moneda_movimiento[0] || '')
+              : (block.filtros_extra?.moneda_movimiento || '')}
+            label="Moneda del movimiento"
+            onChange={(e) => onChange('filtros_extra', {
+              ...(block.filtros_extra || {}),
+              moneda_movimiento: e.target.value || null,
+            })}
+          >
+            {MONEDAS_MOVIMIENTO.map((moneda) => (
+              <MenuItem key={moneda.value} value={moneda.value}>{moneda.label}</MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+        <FormControl size="small" fullWidth>
+          <InputLabel>Calcular totales en</InputLabel>
+          <Select
+            value={block.display_currency || ''}
+            label="Calcular totales en"
+            onChange={(e) => onChange('display_currency', e.target.value || null)}
+          >
+            {MONEDAS_CALCULO.map((moneda) => (
+              <MenuItem key={moneda.value} value={moneda.value}>{moneda.label}</MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+      </Stack>
+
+      <FormControlLabel
+        control={
+          <Switch
+            checked={block.mostrar_sin_cotizacion === true}
+            onChange={(e) => onChange('mostrar_sin_cotizacion', e.target.checked)}
+          />
+        }
+        label="Mostrar avisos de movimientos sin cotización"
+      />
+
       <FormControlLabel
         control={
           <Switch
@@ -1792,6 +1952,121 @@ function CategorySubcategoryAccordionConfig({ block, onChange, excludeOptions = 
           ))
         }
         renderInput={(params) => <TextField {...params} label="Excluir categorias" placeholder="Escribi y presiona Enter" />}
+      />
+    </Stack>
+  );
+}
+
+function SubcategoryMonthlyEvolutionConfig({ block, onChange, categoryOptions = [] }) {
+  return (
+    <Stack spacing={2}>
+      <Alert severity="info" variant="outlined" sx={{ py: 0.5 }}>
+        Muestra la evolución histórica mensual de los egresos, con una serie por subcategoría. Al tocar un segmento abre sus movimientos.
+      </Alert>
+
+      <Autocomplete
+        freeSolo
+        size="small"
+        options={categoryOptions}
+        value={block.categoria_objetivo || ''}
+        onChange={(_, value) => onChange('categoria_objetivo', value || '')}
+        onInputChange={(_, value) => onChange('categoria_objetivo', value || '')}
+        renderInput={(params) => (
+          <TextField
+            {...params}
+            label="Categoría a analizar"
+            placeholder="Todas las categorías"
+            helperText="Dejalo vacío para incluir todas las categorías."
+          />
+        )}
+      />
+
+      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+        <FormControl size="small" fullWidth>
+          <InputLabel>Campo de monto</InputLabel>
+          <Select
+            value={block.campo_monto || 'total'}
+            label="Campo de monto"
+            onChange={(e) => onChange('campo_monto', e.target.value)}
+          >
+            {CAMPOS.map((campo) => (
+              <MenuItem key={campo.value} value={campo.value}>{campo.label}</MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+        <FormControl size="small" fullWidth>
+          <InputLabel>Visualización</InputLabel>
+          <Select
+            value={block.chart_type || 'bar'}
+            label="Visualización"
+            onChange={(e) => onChange('chart_type', e.target.value)}
+          >
+            <MenuItem value="bar">Barras apiladas</MenuItem>
+            <MenuItem value="line">Líneas</MenuItem>
+          </Select>
+        </FormControl>
+      </Stack>
+
+      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+        <FormControl size="small" fullWidth>
+          <InputLabel>Moneda del movimiento</InputLabel>
+          <Select
+            value={Array.isArray(block.filtros_extra?.moneda_movimiento)
+              ? (block.filtros_extra.moneda_movimiento[0] || '')
+              : (block.filtros_extra?.moneda_movimiento || '')}
+            label="Moneda del movimiento"
+            onChange={(e) => onChange('filtros_extra', {
+              ...(block.filtros_extra || {}),
+              moneda_movimiento: e.target.value || null,
+            })}
+          >
+            {MONEDAS_MOVIMIENTO.map((moneda) => (
+              <MenuItem key={moneda.value} value={moneda.value}>{moneda.label}</MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+        <FormControl size="small" fullWidth>
+          <InputLabel>Calcular totales en</InputLabel>
+          <Select
+            value={block.display_currency || ''}
+            label="Calcular totales en"
+            onChange={(e) => onChange('display_currency', e.target.value || null)}
+          >
+            {MONEDAS_CALCULO.map((moneda) => (
+              <MenuItem key={moneda.value} value={moneda.value}>{moneda.label}</MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+      </Stack>
+
+      <TextField
+        label="Subcategorías visibles"
+        type="number"
+        size="small"
+        value={block.top_n || 8}
+        onChange={(e) => onChange('top_n', Math.max(1, parseInt(e.target.value, 10) || 8))}
+        inputProps={{ min: 1, max: 20 }}
+        helperText="Las demás se agrupan como Otras subcategorías."
+      />
+
+      <FormControlLabel
+        control={
+          <Switch
+            checked={block.mostrar_matriz !== false}
+            onChange={(e) => onChange('mostrar_matriz', e.target.checked)}
+          />
+        }
+        label="Mostrar detalle mensual por subcategoría"
+      />
+
+      <FormControlLabel
+        control={
+          <Switch
+            checked={block.mostrar_sin_cotizacion === true}
+            onChange={(e) => onChange('mostrar_sin_cotizacion', e.target.checked)}
+          />
+        }
+        label="Mostrar avisos de movimientos sin cotización"
       />
     </Stack>
   );

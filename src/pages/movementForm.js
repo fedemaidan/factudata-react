@@ -26,6 +26,7 @@ import {
   WalletIcon,
   EllipsisVerticalIcon,
   ChartPieIcon,
+  CheckIcon,
   ChatBubbleOvalLeftEllipsisIcon,
   GlobeAltIcon,
   ArrowPathRoundedSquareIcon,
@@ -60,6 +61,7 @@ import {
 } from 'src/components/movementFieldsConfig';
 import profileService from 'src/services/profileService';
 import MaterialesFacturaActions from 'src/components/stock/MaterialesFacturaActions';
+import SolicitudMaterialesInline from 'src/components/stock/solicitudes/SolicitudMaterialesInline';
 import { getProyectosByEmpresa, getProyectosFromUser } from 'src/services/proyectosService';
 import ControlObraService from 'src/services/controlObra/controlObraService';
 import ProrrateoDialog from 'src/components/ProrrateoDialog';
@@ -267,6 +269,7 @@ const MovementFormPage = () => {
   const pendingExtraccionRef = useRef(false);
   const returnAfterSaveRef = useRef(false);
   const exportAfterSaveRef = useRef(false);
+  const materialesInlineRef = useRef(null);
   // "Guardar y exportar": tras cerrar el diálogo de PDF, volver a la página anterior (cajas).
   const returnAfterExportRef = useRef(false);
   const [createdUser, setCreatedUser] = useState(null);
@@ -280,7 +283,13 @@ const MovementFormPage = () => {
   // Selección manual de proyecto cuando no viene por query (ej. desde drawer de Proveedor)
   // null = aún no eligió; { id: null, nombre: null } = eligió "Sin asignar"; { id, nombre } = proyecto real
   const [proyectoManual, setProyectoManual] = useState(null);
-  const necesitaElegirProyecto = !isEditMode && !proyectoId && proyectoManual === null;
+
+  // Prorrateo desde la pantalla de elegir proyecto: step intermedio de multi-select + modo del form.
+  const [eligiendoProyectosProrrateo, setEligiendoProyectosProrrateo] = useState(false);
+  const [modoProrrateo, setModoProrrateo] = useState(false);
+  const [proyectosProrrateo, setProyectosProrrateo] = useState([]); // [{ id, nombre }]
+
+  const necesitaElegirProyecto = !isEditMode && !proyectoId && proyectoManual === null && !modoProrrateo && !eligiendoProyectosProrrateo;
 
   // En edit mode, priorizar datos del movimiento sobre query params; luego fallback a selección manual.
   const effectiveProyectoId = (isEditMode && movimiento?.proyecto_id) || proyectoId || proyectoManual?.id || null;
@@ -352,7 +361,27 @@ const MovementFormPage = () => {
   
   // Prorrateo
   const [prorrateoOpen, setProrrateoOpen] = useState(false);
+  const [prorrateoSeleccionIds, setProrrateoSeleccionIds] = useState([]); // ids tildados en el step multi-select
   const [stockPopupOpen, setStockPopupOpen] = useState(false);
+
+  const proyectoKey = (p) => p._id || p.id;
+  const abrirSeleccionProrrateo = () => {
+    setProrrateoSeleccionIds((proyectos || []).map(proyectoKey)); // todos pre-tildados
+    setEligiendoProyectosProrrateo(true);
+  };
+  const toggleProrrateoSeleccion = (id) => {
+    setProrrateoSeleccionIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  };
+  const confirmarSeleccionProrrateo = () => {
+    const elegidos = (proyectos || [])
+      .filter((p) => prorrateoSeleccionIds.includes(proyectoKey(p)))
+      .map((p) => ({ id: proyectoKey(p), nombre: p.nombre }));
+    if (elegidos.length === 0) return;
+    setProyectosProrrateo(elegidos);
+    setModoProrrateo(true);
+    setEligiendoProyectosProrrateo(false);
+    setModoIngreso('manual');
+  };
 
   useEffect(() => {
     if (!accionesOpen) return undefined;
@@ -416,6 +445,9 @@ const MovementFormPage = () => {
           formik.setFieldValue('monto_aprobado', updatedMovimiento.monto_aprobado ?? '', false);
         }
       }
+
+      // Guardar los materiales extraídos editados inline junto con el movimiento.
+      await materialesInlineRef.current?.guardar?.();
 
       setAlert({ open: true, message: 'Movimiento guardado con éxito!', severity: 'success' });
       if (returnAfterSaveRef.current) {
@@ -840,6 +872,12 @@ const createdAtStr = (() => {
         message: `Completá los campos obligatorios: ${labels.join(', ')}`,
         severity: 'error',
       });
+      return;
+    }
+
+    const materialesCheck = materialesInlineRef.current?.validar?.();
+    if (materialesCheck && !materialesCheck.ok) {
+      setAlert({ open: true, message: materialesCheck.message, severity: 'error' });
       return;
     }
 
@@ -1722,35 +1760,49 @@ const createdAtStr = (() => {
               >
                 Volver sin guardar
               </button>
-              <button
-                type="button"
-                onClick={isEditMode ? handleSaveOnly : handleSaveAndExport}
-                disabled={isLoading}
-                className="inline-flex min-w-[5.5rem] items-center justify-center gap-1 rounded-lg border border-primary-main bg-white px-4 py-1.5 text-sm font-semibold text-primary-dark shadow-sm hover:bg-primary-lightest disabled:opacity-50"
-              >
-                {isEditMode ? (
-                  isLoading && !returnAfterSaveRef.current ? (
-                    <ArrowPathIcon className="h-5 w-5 animate-spin" aria-label="Cargando" />
-                  ) : (
-                    'Guardar'
-                  )
-                ) : isLoading && exportAfterSaveRef.current ? (
-                  <ArrowPathIcon className="h-5 w-5 animate-spin" aria-label="Cargando" />
-                ) : (
-                  <>
-                    <DocumentArrowDownIcon className="h-4 w-4" aria-hidden />
-                    Guardar y exportar
-                  </>
-                )}
-              </button>
-              <button
-                type="button"
-                onClick={handleSaveAndReturn}
-                disabled={isLoading}
-                className="inline-flex min-w-[7rem] items-center justify-center rounded-lg bg-primary-main px-4 py-1.5 text-sm font-semibold text-white shadow hover:bg-primary-dark disabled:opacity-50"
-              >
-                {isLoading && returnAfterSaveRef.current ? <ArrowPathIcon className="h-5 w-5 animate-spin" aria-label="Cargando" /> : 'Guardar y volver'}
-              </button>
+              {modoProrrateo ? (
+                <button
+                  type="button"
+                  onClick={() => setProrrateoOpen(true)}
+                  disabled={isLoading || !formik.values.total}
+                  className="inline-flex items-center justify-center gap-1 rounded-lg bg-primary-main px-4 py-1.5 text-sm font-semibold text-white shadow hover:bg-primary-dark disabled:opacity-50"
+                >
+                  <ChartPieIcon className="h-4 w-4" aria-hidden />
+                  Distribuir entre proyectos
+                </button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={isEditMode ? handleSaveOnly : handleSaveAndExport}
+                    disabled={isLoading}
+                    className="inline-flex min-w-[5.5rem] items-center justify-center gap-1 rounded-lg border border-primary-main bg-white px-4 py-1.5 text-sm font-semibold text-primary-dark shadow-sm hover:bg-primary-lightest disabled:opacity-50"
+                  >
+                    {isEditMode ? (
+                      isLoading && !returnAfterSaveRef.current ? (
+                        <ArrowPathIcon className="h-5 w-5 animate-spin" aria-label="Cargando" />
+                      ) : (
+                        'Guardar'
+                      )
+                    ) : isLoading && exportAfterSaveRef.current ? (
+                      <ArrowPathIcon className="h-5 w-5 animate-spin" aria-label="Cargando" />
+                    ) : (
+                      <>
+                        <DocumentArrowDownIcon className="h-4 w-4" aria-hidden />
+                        Guardar y exportar
+                      </>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveAndReturn}
+                    disabled={isLoading}
+                    className="inline-flex min-w-[7rem] items-center justify-center rounded-lg bg-primary-main px-4 py-1.5 text-sm font-semibold text-white shadow hover:bg-primary-dark disabled:opacity-50"
+                  >
+                    {isLoading && returnAfterSaveRef.current ? <ArrowPathIcon className="h-5 w-5 animate-spin" aria-label="Cargando" /> : 'Guardar y volver'}
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </header>
@@ -1836,17 +1888,90 @@ const createdAtStr = (() => {
                   <p className="px-1 text-xs text-neutral-500">No hay proyectos cargados en la empresa.</p>
                 )}
               </div>
-              {!proyectoEsObligatorio && (
-                <div className="mt-4 border-t border-divider pt-4">
-                  <button
-                    type="button"
-                    onClick={() => setProyectoManual({ id: null, nombre: null })}
-                    className="w-full rounded-lg border border-dashed border-neutral-400 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
-                  >
-                    Sin asignar proyecto
-                  </button>
+              {(proyectos?.length >= 2 || !proyectoEsObligatorio) && (
+                <div className="mt-4 flex flex-col gap-2 border-t border-divider pt-4">
+                  {proyectos?.length >= 2 && (
+                    <button
+                      type="button"
+                      onClick={abrirSeleccionProrrateo}
+                      className="flex w-full items-center justify-center gap-2 rounded-lg border border-primary-main bg-primary-main/5 px-4 py-2 text-sm font-semibold text-primary-main hover:bg-primary-main/10"
+                    >
+                      <ChartPieIcon className="h-4 w-4 shrink-0" aria-hidden />
+                      Dividir entre varios proyectos
+                    </button>
+                  )}
+                  {!proyectoEsObligatorio && (
+                    <button
+                      type="button"
+                      onClick={() => setProyectoManual({ id: null, nombre: null })}
+                      className="w-full rounded-lg border border-dashed border-neutral-400 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+                    >
+                      Sin asignar proyecto
+                    </button>
+                  )}
                 </div>
               )}
+            </div>
+          </div>
+        ) : eligiendoProyectosProrrateo ? (
+          <div className="flex flex-1 flex-col items-center justify-center px-4 py-8">
+            <div className="w-full max-w-md rounded-xl border border-divider bg-white p-6 shadow-sm">
+              <h2 className="text-center text-lg font-semibold text-neutral-900">¿Entre qué proyectos querés dividir el gasto?</h2>
+              <p className="mt-2 text-center text-sm text-neutral-600">
+                Están todos seleccionados. Destildá los que no correspondan.
+              </p>
+              <div className="mt-3 flex items-center justify-between px-1">
+                <span className="text-xs text-neutral-500">
+                  {prorrateoSeleccionIds.length} de {proyectos?.length || 0} seleccionados
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setProrrateoSeleccionIds(
+                    prorrateoSeleccionIds.length === (proyectos?.length || 0) ? [] : (proyectos || []).map(proyectoKey)
+                  )}
+                  className="text-xs font-medium text-primary-main hover:underline"
+                >
+                  {prorrateoSeleccionIds.length === (proyectos?.length || 0) ? 'Ninguno' : 'Seleccionar todos'}
+                </button>
+              </div>
+              <div className="mt-2 flex max-h-64 flex-col gap-2 overflow-y-auto">
+                {(proyectos || []).map((p) => {
+                  const id = proyectoKey(p);
+                  const checked = prorrateoSeleccionIds.includes(id);
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => toggleProrrateoSeleccion(id)}
+                      className={`flex w-full items-center gap-3 rounded-lg border px-4 py-2.5 text-left text-sm font-medium ${
+                        checked ? 'border-primary-main bg-primary-main/5 text-neutral-900' : 'border-neutral-300 bg-white text-neutral-700 hover:bg-neutral-50'
+                      }`}
+                    >
+                      <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border ${checked ? 'border-primary-main bg-primary-main text-white' : 'border-neutral-400 bg-white'}`}>
+                        {checked && <CheckIcon className="h-3.5 w-3.5" aria-hidden />}
+                      </span>
+                      {p.nombre}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="mt-5 flex flex-col gap-2">
+                <button
+                  type="button"
+                  onClick={confirmarSeleccionProrrateo}
+                  disabled={prorrateoSeleccionIds.length === 0}
+                  className="w-full rounded-lg bg-primary-main px-4 py-3 text-sm font-semibold text-white shadow hover:bg-primary-dark disabled:opacity-40"
+                >
+                  Continuar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEligiendoProyectosProrrateo(false)}
+                  className="w-full rounded-lg px-4 py-2 text-sm font-medium text-neutral-600 hover:bg-neutral-50"
+                >
+                  Volver
+                </button>
+              </div>
             </div>
           </div>
         ) : modoIngreso === null && !isEditMode ? (
@@ -1895,6 +2020,16 @@ const createdAtStr = (() => {
                 className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain"
               >
                 <div className="flex flex-col gap-2 pb-1">
+                  {modoProrrateo && (
+                    <div className="flex items-start gap-2 rounded-lg border border-primary-main/40 bg-primary-main/5 px-3 py-2">
+                      <ChartPieIcon className="mt-0.5 h-4 w-4 shrink-0 text-primary-main" aria-hidden />
+                      <p className="text-xs text-neutral-700">
+                        <span className="font-semibold text-neutral-900">Modo prorrateo:</span> cargá el gasto una vez y se
+                        dividirá entre los <span className="font-semibold">{proyectosProrrateo.length} proyectos</span> elegidos.
+                        Tocá <span className="font-semibold">“Distribuir entre proyectos”</span> para revisar y confirmar.
+                      </p>
+                    </div>
+                  )}
                   <StitchBlock step={1} title="Detalles del movimiento">
                     <MovementFields {...sharedFieldProps} block="details" />
                   </StitchBlock>
@@ -1966,6 +2101,17 @@ const createdAtStr = (() => {
                   <StitchBlock step={3} title="Detalles financieros e impuestos">
                     <MovementFields {...sharedFieldProps} block="financial" />
                   </StitchBlock>
+                  {isEditMode
+                    && formik.values.categoria === 'Materiales'
+                    && empresa?.stock_config?.caja_a_stock === true
+                    && movimiento?.solicitud_stock_id && (
+                    <SolicitudMaterialesInline
+                      ref={materialesInlineRef}
+                      solicitudId={movimiento.solicitud_stock_id}
+                      user={user}
+                      onError={(message) => setAlert({ open: true, message, severity: 'error' })}
+                    />
+                  )}
                 </div>
               </div>
             </form>
@@ -2214,6 +2360,7 @@ const createdAtStr = (() => {
             proyecto_nombre: effectiveProyectoName,
           }}
           proyectos={proyectos}
+          proyectosPreseleccionados={modoProrrateo ? proyectosProrrateo : []}
           onSuccess={(data) => {
             console.log('Prorrateo exitoso:', data);
           }}

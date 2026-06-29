@@ -6,13 +6,18 @@ import {
   Paper, Table, TableBody, TableCell, TableHead, TableRow, Chip, Snackbar, Alert,
   Button, Dialog, DialogTitle, DialogContent, DialogActions, InputAdornment,
   CircularProgress, Card, CardContent, Autocomplete, IconButton, Divider,
-  ToggleButton, ToggleButtonGroup,
+  ToggleButton, ToggleButtonGroup, Link, Tooltip,
 } from '@mui/material';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import RemoveCircleOutlineIcon from '@mui/icons-material/RemoveCircleOutline';
 import BalanceIcon from '@mui/icons-material/Balance';
 import PersonAddAltIcon from '@mui/icons-material/PersonAddAlt';
 import CloseIcon from '@mui/icons-material/Close';
+import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import VisibilityOffOutlinedIcon from '@mui/icons-material/VisibilityOffOutlined';
+import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import AccountBalanceWalletOutlinedIcon from '@mui/icons-material/AccountBalanceWalletOutlined';
 import SouthIcon from '@mui/icons-material/South';
@@ -77,6 +82,13 @@ const ReservaObraDetallePage = () => {
   const [formMoneda, setFormMoneda] = useState('ARS');
   const [formMonto, setFormMonto] = useState('');
   const [formObs, setFormObs] = useState('');
+
+  // Edición / borrado de un movimiento puntual del ledger
+  const [editMov, setEditMov] = useState(null); // entry del ledger en edición
+  const [editMonto, setEditMonto] = useState('');
+  const [editObs, setEditObs] = useState('');
+  const [editSaving, setEditSaving] = useState(false);
+  const [ocultarSaving, setOcultarSaving] = useState(false);
 
   // "Registrar gasto" reusa el form de movimientos real (no se duplica):
   // un gasto de reserva ES un MovimientoCaja (egreso) con reserva_id.
@@ -171,6 +183,86 @@ const ReservaObraDetallePage = () => {
   };
 
 
+  // ── Acceso directo al movimiento real (egreso) desde el detalle de la reserva
+  const irAMovimiento = (m) => {
+    if (!m?._id) return;
+    const backUrl = `/reservaObra?id=${id}`;
+    const params = new URLSearchParams({
+      movimientoId: m._id,
+      proyectoId: reserva?.proyecto_id || '',
+      proyectoName: reserva?.proyecto_nombre || '',
+      lastPageUrl: backUrl,
+      lastPageName: `Reserva de Obra · ${reserva?.proyecto_nombre || ''}`,
+    });
+    router.push(`/movementForm?${params.toString()}`);
+  };
+
+  // ── Editar / borrar una asignación (movimiento del ledger) puntual
+  const openEditMov = (m) => {
+    setEditMov(m);
+    setEditMonto(String(m.monto ?? ''));
+    setEditObs(m.observacion || '');
+  };
+
+  const handleEditMovSubmit = async () => {
+    if (!editMov) return;
+    const monto = Number(editMonto);
+    const esAjuste = editMov.tipo === 'ajuste';
+    if (!Number.isFinite(monto) || monto === 0 || (!esAjuste && monto <= 0)) {
+      setAlert({ open: true, message: esAjuste ? 'El ajuste debe ser un número distinto de 0' : 'El monto debe ser mayor a 0', severity: 'warning' });
+      return;
+    }
+    setEditSaving(true);
+    try {
+      await reservaObraService.editarMovimiento(id, editMov._id, { monto, observacion: editObs || null });
+      setAlert({ open: true, message: 'Movimiento actualizado', severity: 'success' });
+      setEditMov(null);
+      await fetchReserva();
+    } catch (err) {
+      console.error('Error editando movimiento:', err);
+      setAlert({ open: true, message: err?.response?.data?.error || 'Error al editar el movimiento', severity: 'error' });
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
+  const handleDeleteMov = async (m) => {
+    if (!m?._id) return;
+    if (!window.confirm('¿Borrar este movimiento de la reserva? El saldo se recalcula al instante.')) return;
+    try {
+      await reservaObraService.eliminarMovimiento(id, m._id);
+      setAlert({ open: true, message: 'Movimiento borrado', severity: 'success' });
+      await fetchReserva();
+    } catch (err) {
+      console.error('Error borrando movimiento:', err);
+      setAlert({ open: true, message: err?.response?.data?.error || 'Error al borrar el movimiento', severity: 'error' });
+    }
+  };
+
+  // ── Ocultar / mostrar la reserva (borrado lógico: no aparece en la caja)
+  const handleToggleOcultar = async () => {
+    if (!reserva) return;
+    const ocultar = reserva.activa !== false;
+    setOcultarSaving(true);
+    try {
+      await reservaObraService.actualizar(id, {
+        activa: !ocultar,
+        estado: ocultar ? 'inactiva' : 'activa',
+      });
+      setAlert({
+        open: true,
+        message: ocultar ? 'Reserva ocultada: ya no descuenta de la caja' : 'Reserva visible nuevamente en la caja',
+        severity: 'success',
+      });
+      await fetchReserva();
+    } catch (err) {
+      console.error('Error cambiando visibilidad:', err);
+      setAlert({ open: true, message: 'Error al cambiar la visibilidad de la reserva', severity: 'error' });
+    } finally {
+      setOcultarSaving(false);
+    }
+  };
+
   const handleOpenParticipantes = async () => {
     setPartOpen(true);
     if (perfiles.length === 0) {
@@ -248,6 +340,9 @@ const ReservaObraDetallePage = () => {
                   <Chip icon={<FolderOutlinedIcon />} label={`Proyecto: ${reserva.proyecto_nombre || '—'}`} size="small" variant="outlined" />
                   <Chip icon={<PersonOutlineIcon />} label={`Responsable actual: ${reserva.responsable_nombre || '—'}`} size="small" variant="outlined" />
                   {chip && <Chip label={chip.label} color={chip.color} size="small" />}
+                  {reserva.activa === false && (
+                    <Chip icon={<VisibilityOffOutlinedIcon />} label="Oculta de la caja" color="default" size="small" variant="outlined" />
+                  )}
                 </Stack>
                 <ToggleButtonGroup
                   value={selectedMoneda}
@@ -345,6 +440,17 @@ const ReservaObraDetallePage = () => {
                   </Button>
                 )}
                 <Box flexGrow={1} />
+                {puedeGestionar && (
+                  <Button
+                    variant="outlined"
+                    color={reserva.activa === false ? 'success' : 'inherit'}
+                    startIcon={reserva.activa === false ? <VisibilityOutlinedIcon /> : <VisibilityOffOutlinedIcon />}
+                    onClick={handleToggleOcultar}
+                    disabled={ocultarSaving}
+                  >
+                    {reserva.activa === false ? 'Mostrar en la caja' : 'Ocultar de la caja'}
+                  </Button>
+                )}
                 <Button
                   variant="outlined"
                   startIcon={<PersonAddAltIcon />}
@@ -413,6 +519,7 @@ const ReservaObraDetallePage = () => {
                               <TableCell>Proveedor</TableCell>
                               <TableCell>Observación</TableCell>
                               <TableCell>Cargado por</TableCell>
+                              <TableCell align="center">Acciones</TableCell>
                             </TableRow>
                           </TableHead>
                           <TableBody>
@@ -422,7 +529,19 @@ const ReservaObraDetallePage = () => {
                               const montoMostrado = esEgreso && m.monto > 0 ? -m.monto : m.monto;
                               return (
                                 <TableRow key={m._id || index} hover>
-                                  <TableCell sx={{ color: 'text.secondary' }}>{m.codigo || '—'}</TableCell>
+                                  <TableCell sx={{ color: 'text.secondary' }}>
+                                    {m.fuente === 'movimiento' && m._id ? (
+                                      <Link
+                                        component="button"
+                                        type="button"
+                                        underline="hover"
+                                        onClick={() => irAMovimiento(m)}
+                                        sx={{ fontWeight: 600 }}
+                                      >
+                                        {m.codigo || 'Ver movimiento'}
+                                      </Link>
+                                    ) : (m.codigo || '—')}
+                                  </TableCell>
                                   <TableCell>{m.fecha ? formatTimestamp(m.fecha) : '—'}</TableCell>
                                   <TableCell>
                                     <Chip label={tipoChip.label} color={tipoChip.color} size="small" variant="outlined" />
@@ -437,6 +556,28 @@ const ReservaObraDetallePage = () => {
                                   <TableCell>{m.nombre_proveedor || '—'}</TableCell>
                                   <TableCell>{m.observacion || '—'}</TableCell>
                                   <TableCell>{m.nombre_user || '—'}</TableCell>
+                                  <TableCell align="center">
+                                    {m.fuente === 'movimiento' ? (
+                                      <Tooltip title="Abrir el movimiento">
+                                        <IconButton size="small" onClick={() => irAMovimiento(m)}>
+                                          <OpenInNewIcon fontSize="small" />
+                                        </IconButton>
+                                      </Tooltip>
+                                    ) : puedeGestionar ? (
+                                      <Stack direction="row" spacing={0.5} justifyContent="center">
+                                        <Tooltip title="Editar">
+                                          <IconButton size="small" onClick={() => openEditMov(m)}>
+                                            <EditOutlinedIcon fontSize="small" />
+                                          </IconButton>
+                                        </Tooltip>
+                                        <Tooltip title="Borrar">
+                                          <IconButton size="small" color="error" onClick={() => handleDeleteMov(m)}>
+                                            <DeleteOutlineIcon fontSize="small" />
+                                          </IconButton>
+                                        </Tooltip>
+                                      </Stack>
+                                    ) : '—'}
+                                  </TableCell>
                                 </TableRow>
                               );
                             })}
@@ -492,6 +633,42 @@ const ReservaObraDetallePage = () => {
             <Button onClick={() => setLedgerDialog(null)}>Cancelar</Button>
             <Button onClick={handleLedgerSubmit} variant="contained" disabled={ledgerSaving}>
               {ledgerSaving ? 'Guardando…' : 'Guardar'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Dialog editar movimiento del ledger */}
+        <Dialog open={!!editMov} onClose={() => setEditMov(null)} maxWidth="xs" fullWidth>
+          <DialogTitle>Editar {editMov ? (TIPO_MOV[editMov.tipo]?.label || editMov.tipo) : 'movimiento'}</DialogTitle>
+          <DialogContent>
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              <TextField
+                label="Moneda"
+                value={editMov?.moneda || 'ARS'}
+                size="small"
+                disabled
+              />
+              <TextField
+                label={editMov?.tipo === 'ajuste' ? 'Monto (+/- para arqueo)' : 'Monto'}
+                type="number"
+                value={editMonto}
+                onChange={(e) => setEditMonto(e.target.value)}
+                size="small"
+              />
+              <TextField
+                label="Observación"
+                value={editObs}
+                onChange={(e) => setEditObs(e.target.value)}
+                size="small"
+                multiline
+                rows={2}
+              />
+            </Stack>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setEditMov(null)}>Cancelar</Button>
+            <Button onClick={handleEditMovSubmit} variant="contained" disabled={editSaving}>
+              {editSaving ? 'Guardando…' : 'Guardar'}
             </Button>
           </DialogActions>
         </Dialog>

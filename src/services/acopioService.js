@@ -759,20 +759,36 @@ moverRemitoAotroAcopio: async (remitoId, origenAcopioId, destinoAcopioId) => {
 /**
  * Edita los datos básicos de un acopio (NO toca productos)
  * @param {string} acopioId - ID del acopio a editar
- * @param {Object} datos - { proveedor, proyecto_id, codigo, descripcion, instrucciones_extraccion }
+ * @param {Object} datos - { proveedor, proyecto_id, codigo, descripcion, instrucciones_extraccion, sucursal_id }
  * @returns {Promise<boolean>}
  */
-editarAcopio: async (acopioId, { proveedor, proyecto_id, codigo, descripcion, instrucciones_extraccion }) => {
+editarAcopio: async (acopioId, { proveedor, proyecto_id, codigo, descripcion, instrucciones_extraccion, sucursal_id }) => {
+  const body = { proveedor, proyecto_id, codigo, descripcion, instrucciones_extraccion, sucursal_id };
   try {
-    const response = await api.put(`/acopio/${acopioId}`, { proveedor, proyecto_id, codigo, descripcion, instrucciones_extraccion });
+    const response = await api.put(`/acopio/${acopioId}`, body);
     if (response.status === 200) {
       console.log('✅ Acopio actualizado con éxito');
       return true;
-    } else {
-      console.error('❌ Error al actualizar acopio');
-      return false;
     }
+    console.error('❌ Error al actualizar acopio');
+    return false;
   } catch (error) {
+    const data = error?.response?.data;
+    // El cliente no existe: pedimos confirmación y, si el usuario acepta, reintentamos
+    // creándolo (crear_cliente:true). Evita mudar el acopio a un cliente duplicado a ciegas.
+    if (error?.response?.status === 409 && data?.requiereConfirmacionCliente) {
+      const confirmar = typeof window !== 'undefined' && window.confirm(
+        `El cliente "${data.cliente_nombre}" no existe todavía.\n¿Querés crearlo y asignarlo a este acopio?`
+      );
+      if (!confirmar) return false;
+      try {
+        const retry = await api.put(`/acopio/${acopioId}`, { ...body, crear_cliente: true });
+        return retry.status === 200;
+      } catch (e2) {
+        console.error('❌ Error al crear el cliente y editar el acopio:', e2);
+        return false;
+      }
+    }
     console.error('❌ Error en editarAcopio:', error);
     return false;
   }

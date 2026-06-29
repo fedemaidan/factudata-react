@@ -1010,6 +1010,7 @@ const csvDefaultSelected = useMemo(
    usd_blue:    { out: 'USD',       path: (e) => e?.total?.usd_blue },
    usd_oficial: { out: 'USD',       path: (e) => e?.total?.usd_oficial },  // si lo tenés
    usd_mep_medio: { out: 'USD',     path: (e) => e?.total?.usd_mep_medio },  // si lo tenés
+   usd_referencia: { out: 'USD',    path: (e) => e?.total?.usd_referencia }, // TC cargado en cada movimiento
    ars_oficial: { out: 'ARS',       path: (e) => e?.total?.ars_oficial },
    cac:         { out: 'ARS',       path: (e) => e?.total?.cac },          // ej. si calculás CAC a ARS
  };
@@ -2460,7 +2461,6 @@ const getTime = (v) => {
         handleFiltrosActivos();
         break;
       case 'registrarMovimiento':
-        if (!activeProject) break;
         {
           const currentUrl = typeof window !== 'undefined'
             ? `${window.location.pathname}${window.location.search}`
@@ -2472,15 +2472,12 @@ const getTime = (v) => {
             scrollY: typeof window !== 'undefined' ? window.scrollY : 0,
           });
           const lastPageUrl = navCtx ? appendNavCtxToUrl(currentUrl, navCtx) : currentUrl;
-          router.push({
-            pathname: '/movementForm',
-            query: {
-              proyectoName: activeProject.nombre,
-              proyectoId: activeProject.id,
-              lastPageUrl,
-              lastPageName: 'Cajas',
-            },
-          });
+          // Si hay un proyecto activo, vamos directo a su form. Si no, navegamos sin proyecto
+          // para que movementForm muestre la pantalla de elegir proyecto (y la opción de prorrateo).
+          const query = activeProject
+            ? { proyectoName: activeProject.nombre, proyectoId: activeProject.id, lastPageUrl, lastPageName: 'Cajas' }
+            : { lastPageUrl, lastPageName: 'Cajas' };
+          router.push({ pathname: '/movementForm', query });
         }
         break;
       case 'recalcularSheets':
@@ -3021,6 +3018,7 @@ useEffect(() => {
             <MenuItem value="usd_blue">USD blue</MenuItem>
             <MenuItem value="usd_oficial">USD oficial</MenuItem>
             <MenuItem value="usd_mep_medio">USD mep (medio)</MenuItem>
+            <MenuItem value="usd_referencia">USD (Tipo de Cambio utilizado en el movimiento)</MenuItem>
           </Select>
         </FormControl>
       </>
@@ -3651,7 +3649,7 @@ useEffect(() => {
   return (
     <>
       <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleCloseMenu} keepMounted>
-        <MenuOption sx={itemSx} onClick={() => handleMenuOptionClick('registrarMovimiento')} disabled={!canUseProjectActions}>
+        <MenuOption sx={itemSx} onClick={() => handleMenuOptionClick('registrarMovimiento')}>
           <AddCircleIcon fontSize="small" /> Registrar movimiento
         </MenuOption>
         <MenuOption sx={itemSx} onClick={() => { handleOpenTransferencia(); closeAllMenus(); }}>

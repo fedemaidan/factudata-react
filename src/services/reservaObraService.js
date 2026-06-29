@@ -68,6 +68,16 @@ const reservaObraService = {
     return data; // { movimiento, reserva }
   },
 
+  async editarMovimiento(id, movId, { monto, observacion }) {
+    const { data } = await api.put(`/reservas/${id}/movimientos/${movId}`, { monto, observacion });
+    return data;
+  },
+
+  async eliminarMovimiento(id, movId) {
+    const { data } = await api.delete(`/reservas/${id}/movimientos/${movId}`);
+    return data;
+  },
+
   async agregarParticipante(id, { userId, userPhone, nombre, rol }) {
     const { data } = await api.post(`/reservas/${id}/participantes`, { userId, userPhone, nombre, rol });
     return data;

@@ -103,6 +103,7 @@ const ConciliacionDetallePage = () => {
     horasZanjeo: null,
     horasNocturnas: null,
     fechaLicencia: false,
+    tipoLicencia: null,
   });
   const [selectionLoading, setSelectionLoading] = useState(false);
   const [bulkSelectionLoading, setBulkSelectionLoading] = useState(false);
@@ -641,6 +642,7 @@ const ConciliacionDetallePage = () => {
                   horasZanjeo: row?.dbHoras?.horasZanjeo ?? null,
                   horasNocturnas: row?.dbHoras?.horasNocturnas ?? null,
                   fechaLicencia: row?.dbHoras?.fechaLicencia ?? false,
+                  tipoLicencia: row?.dbHoras?.tipoLicencia ?? null,
                 };
                 setFormHoras(initial);
                 setRowToEdit(row);
