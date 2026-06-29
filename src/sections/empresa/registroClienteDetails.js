@@ -55,21 +55,10 @@ export const RegistroClienteDetails = ({ empresa }) => {
     fechaRegistroCliente: null,
     estaDadoDeBaja: false,
     fechaBaja: null,
-    motivoBaja: ''
+    motivoBaja: '',
+    notion_url: ''
   });
-  
-  // Estado de reuniones
-  const [reuniones, setReuniones] = useState([]);
-  const [openReunionDialog, setOpenReunionDialog] = useState(false);
-  const [editingReunion, setEditingReunion] = useState(null);
-  const [reunionForm, setReunionForm] = useState({
-    fecha: new Date(),
-    titulo: '',
-    descripcion: '',
-    participantes: '',
-    notas: ''
-  });
-  
+
   const [isLoading, setIsLoading] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
@@ -92,9 +81,9 @@ export const RegistroClienteDetails = ({ empresa }) => {
         fechaRegistroCliente: empresa.fechaRegistroCliente ? new Date(empresa.fechaRegistroCliente) : null,
         estaDadoDeBaja: empresa.estaDadoDeBaja || false,
         fechaBaja: empresa.fechaBaja ? new Date(empresa.fechaBaja) : null,
-        motivoBaja: empresa.motivoBaja || ''
+        motivoBaja: empresa.motivoBaja || '',
+        notion_url: empresa.notion_url || ''
       });
-      setReuniones(empresa.reuniones || []);
       const s = empresa.suscripcion || {};
       setSusc({
         activa: s.activa !== false,
@@ -140,7 +129,8 @@ export const RegistroClienteDetails = ({ empresa }) => {
         fechaRegistroCliente: clienteData.fechaRegistroCliente ? clienteData.fechaRegistroCliente.toISOString() : null,
         estaDadoDeBaja: clienteData.estaDadoDeBaja,
         fechaBaja: clienteData.fechaBaja ? clienteData.fechaBaja.toISOString() : null,
-        motivoBaja: clienteData.motivoBaja
+        motivoBaja: clienteData.motivoBaja,
+        notion_url: clienteData.notion_url || null
       };
       
       // Guardar en Firebase
@@ -217,95 +207,6 @@ export const RegistroClienteDetails = ({ empresa }) => {
       showSnackbar('Error al guardar la suscripción', 'error');
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const handleOpenReunionDialog = (reunion = null) => {
-    if (reunion) {
-      setEditingReunion(reunion);
-      setReunionForm({
-        fecha: new Date(reunion.fecha),
-        titulo: reunion.titulo,
-        descripcion: reunion.descripcion || '',
-        participantes: reunion.participantes || '',
-        notas: reunion.notas || ''
-      });
-    } else {
-      setEditingReunion(null);
-      setReunionForm({
-        fecha: new Date(),
-        titulo: '',
-        descripcion: '',
-        participantes: '',
-        notas: ''
-      });
-    }
-    setOpenReunionDialog(true);
-  };
-
-  const handleCloseReunionDialog = () => {
-    setOpenReunionDialog(false);
-    setEditingReunion(null);
-  };
-
-  const handleSaveReunion = async () => {
-    if (!reunionForm.titulo) {
-      showSnackbar('El título es requerido', 'error');
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      const nuevaReunion = {
-        ...reunionForm,
-        id: editingReunion?.id || Date.now(),
-        fecha: reunionForm.fecha.toISOString()
-      };
-
-      let nuevasReuniones;
-      if (editingReunion) {
-        nuevasReuniones = reuniones.map(r => r.id === editingReunion.id ? nuevaReunion : r);
-      } else {
-        nuevasReuniones = [...reuniones, nuevaReunion];
-      }
-
-      // Guardar en Firebase como campo de empresa
-      const success = await updateEmpresaDetails(empresa.id, { reuniones: nuevasReuniones });
-      
-      if (success) {
-        setReuniones(nuevasReuniones);
-        showSnackbar(editingReunion ? 'Reunión actualizada' : 'Reunión guardada');
-        handleCloseReunionDialog();
-      } else {
-        showSnackbar('Error al guardar la reunión', 'error');
-      }
-    } catch (error) {
-      console.error('Error al guardar reunión:', error);
-      showSnackbar('Error al guardar la reunión', 'error');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleDeleteReunion = async (reunionId) => {
-    if (window.confirm('¿Está seguro de eliminar esta reunión?')) {
-      setIsLoading(true);
-      try {
-        const nuevasReuniones = reuniones.filter(r => r.id !== reunionId);
-        const success = await updateEmpresaDetails(empresa.id, { reuniones: nuevasReuniones });
-        
-        if (success) {
-          setReuniones(nuevasReuniones);
-          showSnackbar('Reunión eliminada');
-        } else {
-          showSnackbar('Error al eliminar la reunión', 'error');
-        }
-      } catch (error) {
-        console.error('Error al eliminar reunión:', error);
-        showSnackbar('Error al eliminar la reunión', 'error');
-      } finally {
-        setIsLoading(false);
-      }
     }
   };
 
@@ -455,11 +356,34 @@ export const RegistroClienteDetails = ({ empresa }) => {
                 )}
               </Box>
 
+              <Divider />
+
+              {/* Link a Notion (status del cliente) */}
+              <Box>
+                <TextField
+                  label="Link a Notion (status del cliente)"
+                  value={clienteData.notion_url}
+                  onChange={(e) => handleClienteChange('notion_url', e.target.value)}
+                  size="small"
+                  fullWidth
+                  placeholder="https://notion.so/..."
+                  InputProps={{
+                    endAdornment: clienteData.notion_url ? (
+                      <Tooltip title="Abrir Notion">
+                        <IconButton size="small" component="a" href={clienteData.notion_url} target="_blank" rel="noopener">
+                          <EventIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    ) : null,
+                  }}
+                />
+              </Box>
+
               {/* Resumen */}
               {clienteData.esCliente && (
                 <>
                   <Divider />
-                  <Alert 
+                  <Alert
                     severity={clienteData.estaDadoDeBaja ? 'warning' : 'success'}
                     icon={clienteData.estaDadoDeBaja ? <PersonOffIcon /> : <PersonAddIcon />}
                   >
@@ -656,198 +580,6 @@ export const RegistroClienteDetails = ({ empresa }) => {
           </CardContent>
         </Card>
 
-        {/* Card de Reuniones */}
-        <Card
-          elevation={0}
-          sx={{
-            border: `1px solid ${theme.palette.divider}`,
-            borderRadius: 2
-          }}
-        >
-          <CardHeader
-            title={
-              <Stack direction="row" alignItems="center" spacing={1}>
-                <EventIcon color="primary" />
-                <Typography variant="h6">Reuniones</Typography>
-                <Chip label={reuniones.length} size="small" color="primary" />
-              </Stack>
-            }
-            action={
-              <Button
-                variant="contained"
-                startIcon={<AddIcon />}
-                onClick={() => handleOpenReunionDialog()}
-                size="small"
-              >
-                Nueva Reunión
-              </Button>
-            }
-          />
-          <Divider />
-          <CardContent>
-            {reuniones.length === 0 ? (
-              <Box 
-                sx={{ 
-                  py: 4, 
-                  textAlign: 'center',
-                  color: 'text.secondary'
-                }}
-              >
-                <EventIcon sx={{ fontSize: 48, mb: 1, opacity: 0.5 }} />
-                <Typography>No hay reuniones registradas</Typography>
-                <Button
-                  startIcon={<AddIcon />}
-                  onClick={() => handleOpenReunionDialog()}
-                  sx={{ mt: 2 }}
-                >
-                  Registrar primera reunión
-                </Button>
-              </Box>
-            ) : (
-              <TableContainer component={Paper} variant="outlined">
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Fecha</TableCell>
-                      <TableCell>Título</TableCell>
-                      <TableCell>Participantes</TableCell>
-                      <TableCell>Descripción</TableCell>
-                      <TableCell align="right">Acciones</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {reuniones
-                      .sort((a, b) => new Date(b.fecha) - new Date(a.fecha))
-                      .map((reunion) => (
-                        <TableRow key={reunion.id} hover>
-                          <TableCell>
-                            <Chip 
-                              label={formatDate(reunion.fecha)} 
-                              size="small" 
-                              variant="outlined"
-                              icon={<EventIcon />}
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Typography fontWeight={500}>
-                              {reunion.titulo}
-                            </Typography>
-                          </TableCell>
-                          <TableCell>
-                            <Typography variant="body2" color="text.secondary">
-                              {reunion.participantes || '-'}
-                            </Typography>
-                          </TableCell>
-                          <TableCell>
-                            <Typography 
-                              variant="body2" 
-                              color="text.secondary"
-                              sx={{ 
-                                maxWidth: 200, 
-                                overflow: 'hidden', 
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap'
-                              }}
-                            >
-                              {reunion.descripcion || '-'}
-                            </Typography>
-                          </TableCell>
-                          <TableCell align="right">
-                            <Tooltip title="Editar">
-                              <IconButton 
-                                size="small" 
-                                onClick={() => handleOpenReunionDialog(reunion)}
-                              >
-                                <EditIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                            <Tooltip title="Eliminar">
-                              <IconButton 
-                                size="small" 
-                                color="error"
-                                onClick={() => handleDeleteReunion(reunion.id)}
-                              >
-                                <DeleteIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Dialog para crear/editar reunión */}
-        <Dialog 
-          open={openReunionDialog} 
-          onClose={handleCloseReunionDialog}
-          maxWidth="sm"
-          fullWidth
-        >
-          <DialogTitle>
-            {editingReunion ? 'Editar Reunión' : 'Nueva Reunión'}
-          </DialogTitle>
-          <DialogContent>
-            <Stack spacing={3} sx={{ mt: 1 }}>
-              <DatePicker
-                label="Fecha de la Reunión"
-                value={reunionForm.fecha}
-                onChange={(date) => setReunionForm(prev => ({ ...prev, fecha: date }))}
-                slotProps={{
-                  textField: {
-                    fullWidth: true
-                  }
-                }}
-              />
-              <TextField
-                label="Título"
-                value={reunionForm.titulo}
-                onChange={(e) => setReunionForm(prev => ({ ...prev, titulo: e.target.value }))}
-                fullWidth
-                required
-              />
-              <TextField
-                label="Participantes"
-                value={reunionForm.participantes}
-                onChange={(e) => setReunionForm(prev => ({ ...prev, participantes: e.target.value }))}
-                fullWidth
-                placeholder="Ej: Juan Pérez, María García"
-              />
-              <TextField
-                label="Descripción"
-                value={reunionForm.descripcion}
-                onChange={(e) => setReunionForm(prev => ({ ...prev, descripcion: e.target.value }))}
-                fullWidth
-                multiline
-                rows={3}
-              />
-              <TextField
-                label="Notas adicionales"
-                value={reunionForm.notas}
-                onChange={(e) => setReunionForm(prev => ({ ...prev, notas: e.target.value }))}
-                fullWidth
-                multiline
-                rows={2}
-              />
-            </Stack>
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={handleCloseReunionDialog}>
-              Cancelar
-            </Button>
-            <Button 
-              variant="contained" 
-              onClick={handleSaveReunion}
-              startIcon={<SaveIcon />}
-              disabled={isLoading}
-            >
-              {editingReunion ? 'Actualizar' : 'Guardar'}
-            </Button>
-          </DialogActions>
-        </Dialog>
 
         {/* Snackbar para notificaciones */}
         <Snackbar

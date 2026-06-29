@@ -59,6 +59,33 @@ const adminSuscripcionService = {
     const { data } = await api.get('/admin/reportes/facturacion-mp');
     return data;
   },
+
+  // ─── Ficha comercial ─────────────────────────────────────────────────
+  async fichaCliente(empresaId) {
+    const { data } = await api.get(`/admin/clientes/${empresaId}/ficha`);
+    return data;
+  },
+
+  async refreshAnalytics(empresaId) {
+    const { data } = await api.post(`/admin/clientes/${empresaId}/ficha/refresh-analytics`);
+    return data;
+  },
+
+  // ─── Ingresos atribuidos (no-suscripción) ────────────────────────────
+  async registrarIngreso(empresaId, payload) {
+    const { data } = await api.post(`/admin/clientes/${empresaId}/ingresos`, payload);
+    return data;
+  },
+
+  async ingresosSinAtribuir() {
+    const { data } = await api.get('/admin/movimientos/sin-atribuir');
+    return data;
+  },
+
+  async atribuirMovimiento(movId, empresaClienteId) {
+    const { data } = await api.post(`/admin/movimientos/${movId}/atribuir`, { empresa_cliente_id: empresaClienteId || null });
+    return data;
+  },
 };
 
 export default adminSuscripcionService;

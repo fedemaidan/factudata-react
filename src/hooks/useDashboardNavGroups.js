@@ -354,6 +354,21 @@ export function useDashboardNavGroups() {
         permisosUsuario,
       });
       if (cancelled) return;
+
+      // Panel interno de Sorby (clientes/cobranzas/reportes). Solo si la empresa
+      // tiene acceso_admin_sorby (se configura en la ficha de empresa).
+      if (emp?.acceso_admin_sorby) {
+        groups.push({
+          id: "sorby-admin",
+          label: "Sorby Admin",
+          items: [
+            { title: "Clientes", path: "/admin-clientes", icon: icon(PeopleIcon) },
+            { title: "Cobranzas", path: "/admin-cobranzas", icon: icon(AttachMoneyIcon) },
+            { title: "Reportes", path: "/admin-reportes", icon: icon(AssessmentIcon) },
+          ],
+        });
+      }
+
       setState({
         loading: false,
         empresa: emp,
