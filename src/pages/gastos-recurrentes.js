@@ -11,6 +11,7 @@ import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import proveedorService from 'src/services/proveedorService';
 import gastoRecurrenteService from 'src/services/gastoRecurrenteService';
 import { getProyectosFromUser } from 'src/services/proyectosService';
+import MoneyField from 'src/components/MoneyField';
 
 const PERIODICIDADES = ['semanal', 'quincenal', 'mensual', 'bimestral', 'trimestral', 'semestral', 'anual'];
 const fmtMoney = (n, m = 'ARS') => (n == null ? '—' : `${Number(n).toLocaleString('es-AR')} ${m}`);
@@ -88,7 +89,7 @@ const GastosRecurrentes = () => {
     try {
       setLoading(true);
       const [ac, df] = await Promise.all([
-        gastoRecurrenteService.aCargar(empresaId, { incluirRealizados: verRealizados }),
+        gastoRecurrenteService.aCargar(empresaId, verRealizados ? { incluirRealizados: true } : {}),
         gastoRecurrenteService.listar(empresaId, {}),
       ]);
       setACargar(ac); setDefs(df);
@@ -118,6 +119,10 @@ const GastosRecurrentes = () => {
   const omitir = async (row) => {
     try { await gastoRecurrenteService.omitir(empresaId, row.gasto_id, row.periodo); notify('Período omitido'); await cargar(); }
     catch (e) { notify('Error al omitir', 'error'); }
+  };
+  const reactivar = async (row) => {
+    try { await gastoRecurrenteService.reactivarPeriodo(empresaId, row.gasto_id, row.periodo); notify('Período reactivado'); await cargar(); }
+    catch (e) { notify('Error al reactivar', 'error'); }
   };
   const confirmarSeleccionados = async () => {
     const items = aCargar.filter((r) => sel[`${r.gasto_id}|${r.periodo}`]).map((r) => ({ gasto_id: r.gasto_id, periodo: r.periodo, importe: r.importe_estandar }));
@@ -203,6 +208,70 @@ const GastosRecurrentes = () => {
       return { ...m, pct };
     });
 
+  // ── Agrupado de "A cargar" ──
+  const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+  const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+  // Índice de mes (año*12+mes) a partir de la fecha de vencimiento (UTC).
+  const mesIdx = (r) => { const d = new Date(r.fecha_vencimiento); return d.getUTCFullYear() * 12 + d.getUTCMonth(); };
+  const labelMes = (idx) => `${cap(MESES[((idx % 12) + 12) % 12])} ${Math.floor(idx / 12)}`;
+  const ahora = new Date();
+  const idxActual = ahora.getUTCFullYear() * 12 + ahora.getUTCMonth();
+
+  const pendientes = aCargar.filter((r) => !REALIZADOS.includes(r.estado));
+  const realizadosFilas = aCargar.filter((r) => REALIZADOS.includes(r.estado));
+
+  // Pendientes en tres baldes: mes pasado (anteriores), mes actual, mes futuro.
+  const gruposPendientes = [
+    { key: 'pasado', label: 'Mes pasado', rows: pendientes.filter((r) => mesIdx(r) < idxActual) },
+    { key: 'actual', label: 'Mes actual', rows: pendientes.filter((r) => mesIdx(r) === idxActual) },
+    { key: 'futuro', label: 'Mes futuro', rows: pendientes.filter((r) => mesIdx(r) > idxActual) },
+  ].filter((g) => g.rows.length);
+
+  // Realizados agrupados por mes (descendente).
+  const gruposRealizados = Object.values(
+    realizadosFilas.reduce((acc, r) => {
+      const idx = mesIdx(r);
+      (acc[idx] = acc[idx] || { key: idx, label: labelMes(idx), idx, rows: [] }).rows.push(r);
+      return acc;
+    }, {})
+  ).sort((a, b) => b.idx - a.idx);
+
+  const filaGasto = (r) => {
+    const key = `${r.gasto_id}|${r.periodo}`;
+    const chip = ESTADO[r.estado] || ESTADO.pendiente;
+    const realizado = REALIZADOS.includes(r.estado);
+    return (
+      <TableRow key={key} hover sx={realizado ? { opacity: 0.7 } : undefined}>
+        <TableCell padding="checkbox">
+          {!realizado && <Checkbox size="small" checked={!!sel[key]} onChange={(e) => setSel((s) => ({ ...s, [key]: e.target.checked }))} />}
+        </TableCell>
+        <TableCell sx={{ cursor: 'pointer' }} onClick={() => abrirDetalleGasto(r.gasto_id)}>
+          <Typography variant="body2" sx={{ '&:hover': { textDecoration: 'underline' } }}>{r.concepto}</Typography>
+          <Typography variant="caption" color="text.secondary" display="block">{r.proveedor || ''}{r.periodo ? ` · ${r.periodo}` : ''}</Typography>
+        </TableCell>
+        <TableCell>{fmtDate(realizado && r.fecha_registrado ? r.fecha_registrado : r.fecha_vencimiento)}</TableCell>
+        <TableCell align="right">{fmtMoney(realizado && r.importe_registrado != null ? r.importe_registrado : r.importe_estandar, r.moneda)}</TableCell>
+        <TableCell><Chip size="small" label={chip.label} color={chip.color} variant="outlined" /></TableCell>
+        <TableCell align="right" style={{ whiteSpace: 'nowrap' }}>
+          {!realizado && (<>
+            <Button size="small" variant="contained" onClick={() => abrirRegistrar(r)}>Registrar</Button>{' '}
+            <Button size="small" onClick={() => omitir(r)}>Omitir</Button>
+          </>)}
+          {r.estado === 'omitido' && (
+            <Button size="small" onClick={() => reactivar(r)}>Reactivar</Button>
+          )}
+        </TableCell>
+      </TableRow>
+    );
+  };
+  const filaGrupo = (label) => (
+    <TableRow key={`g-${label}`}>
+      <TableCell colSpan={6} sx={{ bgcolor: 'action.hover', py: 0.75 }}>
+        <Typography variant="caption" sx={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }} color="text.secondary">{label}</Typography>
+      </TableCell>
+    </TableRow>
+  );
+
   return (
     <>
       <Head><title>Gastos recurrentes</title></Head>
@@ -245,31 +314,8 @@ const GastosRecurrentes = () => {
                   </TableHead>
                   <TableBody>
                     {loading && [...Array(4)].map((_, i) => <TableRow key={i}><TableCell colSpan={6}><Skeleton height={26} /></TableCell></TableRow>)}
-                    {!loading && aCargar.map((r) => {
-                      const key = `${r.gasto_id}|${r.periodo}`;
-                      const chip = ESTADO[r.estado] || ESTADO.pendiente;
-                      const realizado = REALIZADOS.includes(r.estado);
-                      return (
-                        <TableRow key={key} hover sx={realizado ? { opacity: 0.7 } : undefined}>
-                          <TableCell padding="checkbox">
-                            {!realizado && <Checkbox size="small" checked={!!sel[key]} onChange={(e) => setSel((s) => ({ ...s, [key]: e.target.checked }))} />}
-                          </TableCell>
-                          <TableCell sx={{ cursor: 'pointer' }} onClick={() => abrirDetalleGasto(r.gasto_id)}>
-                            <Typography variant="body2" sx={{ '&:hover': { textDecoration: 'underline' } }}>{r.concepto}</Typography>
-                            <Typography variant="caption" color="text.secondary" display="block">{r.proveedor || ''}{r.periodo ? ` · ${r.periodo}` : ''}</Typography>
-                          </TableCell>
-                          <TableCell>{fmtDate(realizado && r.fecha_registrado ? r.fecha_registrado : r.fecha_vencimiento)}</TableCell>
-                          <TableCell align="right">{fmtMoney(realizado && r.importe_registrado != null ? r.importe_registrado : r.importe_estandar, r.moneda)}</TableCell>
-                          <TableCell><Chip size="small" label={chip.label} color={chip.color} variant="outlined" /></TableCell>
-                          <TableCell align="right" style={{ whiteSpace: 'nowrap' }}>
-                            {!realizado && (<>
-                              <Button size="small" variant="contained" onClick={() => abrirRegistrar(r)}>Registrar</Button>{' '}
-                              <Button size="small" onClick={() => omitir(r)}>Omitir</Button>
-                            </>)}
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
+                    {!loading && gruposPendientes.map((g) => [filaGrupo(g.label), ...g.rows.map(filaGasto)])}
+                    {!loading && verRealizados && gruposRealizados.map((g) => [filaGrupo(`Realizados · ${g.label}`), ...g.rows.map(filaGasto)])}
                     {!loading && !aCargar.length && <TableRow><TableCell colSpan={6} align="center" sx={{ py: 4 }}><Typography color="text.secondary">Nada por cargar.</Typography></TableCell></TableRow>}
                   </TableBody>
                 </Table>
@@ -355,7 +401,7 @@ const GastosRecurrentes = () => {
                   {proyectos.map((p) => <MenuItem key={p.id} value={p.id}>{p.nombre}</MenuItem>)}
                 </TextField>
               </Grid>
-              <Grid item xs={6} sm={4}><TextField label="Importe" type="number" size="small" fullWidth value={defDialog.form.importe} onChange={(e) => setF('importe', e.target.value)} /></Grid>
+              <Grid item xs={6} sm={4}><MoneyField label="Importe" size="small" fullWidth value={defDialog.form.importe} onChange={(v) => setF('importe', v)} /></Grid>
               <Grid item xs={6} sm={4}><TextField label="Moneda" select size="small" fullWidth value={defDialog.form.moneda} onChange={(e) => setF('moneda', e.target.value)}><MenuItem value="ARS">ARS</MenuItem><MenuItem value="USD">USD</MenuItem></TextField></Grid>
               <Grid item xs={6} sm={4}><TextField label="Frecuencia" select size="small" fullWidth value={defDialog.form.periodicidad} onChange={(e) => setF('periodicidad', e.target.value)}>{PERIODICIDADES.map((p) => <MenuItem key={p} value={p}>{p}</MenuItem>)}</TextField></Grid>
               <Grid item xs={6} sm={4}><TextField label="Día de vencimiento" type="number" size="small" fullWidth value={defDialog.form.dia_vencimiento} onChange={(e) => setF('dia_vencimiento', e.target.value)} /></Grid>
@@ -390,7 +436,7 @@ const GastosRecurrentes = () => {
           <DialogContent>
             <Typography variant="body2" color="text.secondary" gutterBottom>{regDialog.row.concepto} · {regDialog.row.periodo}</Typography>
             <Stack spacing={2} sx={{ mt: 1 }}>
-              <TextField label="Importe" type="number" size="small" fullWidth value={regDialog.importe} onChange={(e) => setRegDialog((p) => ({ ...p, importe: e.target.value }))} />
+              <MoneyField label="Importe" size="small" fullWidth value={regDialog.importe} onChange={(v) => setRegDialog((p) => ({ ...p, importe: v }))} />
               <TextField label="Fecha" type="date" size="small" fullWidth InputLabelProps={{ shrink: true }} value={regDialog.fecha} onChange={(e) => setRegDialog((p) => ({ ...p, fecha: e.target.value }))} />
               <TextField label="Estado" select size="small" fullWidth value={regDialog.estado} onChange={(e) => setRegDialog((p) => ({ ...p, estado: e.target.value }))}><MenuItem value="Pagado">Pagado</MenuItem><MenuItem value="Pendiente">Pendiente (registrado, sin pagar)</MenuItem></TextField>
               <TextField label="Proyecto / Caja" select size="small" fullWidth value={regDialog.proyecto_id || ''} onChange={(e) => setRegDialog((p) => ({ ...p, proyecto_id: e.target.value }))} helperText="Caja donde impacta el egreso">

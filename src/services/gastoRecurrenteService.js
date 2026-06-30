@@ -29,8 +29,15 @@ const gastoRecurrenteService = {
     const { data } = await api.post(`${base(empresaId)}/${id}/omitir`, { periodo });
     return data;
   },
-  async aCargar(empresaId, { incluirRealizados = false } = {}) {
-    const { data } = await api.get(`${base(empresaId)}/a-cargar`, { params: incluirRealizados ? { incluirRealizados: true } : {} });
+  async reactivarPeriodo(empresaId, id, periodo) {
+    const { data } = await api.post(`${base(empresaId)}/${id}/reactivar-periodo`, { periodo });
+    return data;
+  },
+  async aCargar(empresaId, { incluirRealizados = false, realizadosDesde, realizadosHasta } = {}) {
+    const params = incluirRealizados
+      ? { incluirRealizados: true, ...(realizadosDesde ? { realizadosDesde } : {}), ...(realizadosHasta ? { realizadosHasta } : {}) }
+      : {};
+    const { data } = await api.get(`${base(empresaId)}/a-cargar`, { params });
     return data;
   },
   async registrar(empresaId, id, payload) {

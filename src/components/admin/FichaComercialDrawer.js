@@ -12,6 +12,7 @@ import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import SaveIcon from '@mui/icons-material/Save';
 import adminSuscripcionService from 'src/services/adminSuscripcionService';
 import { updateEmpresaDetails } from 'src/services/empresaService';
+import MoneyField from 'src/components/MoneyField';
 
 const PERIODICIDADES = ['mensual', 'bimestral', 'semestral', 'anual'];
 const PLANES = ['Plan Independiente', 'Plan Básico', 'Plan Intermedio', 'Plan Premium'];
@@ -252,7 +253,7 @@ export default function FichaComercialDrawer({ empresaId, open, onClose, onSaved
                 <Divider />
                 <Typography variant="subtitle2" color="text.secondary">Suscripción</Typography>
                 <Grid container spacing={2}>
-                  <Grid item xs={6} sm={3}><TextField label="Importe" type="number" size="small" fullWidth value={form.importe} onChange={(ev) => setF('importe', ev.target.value)} /></Grid>
+                  <Grid item xs={6} sm={3}><MoneyField label="Importe" size="small" fullWidth value={form.importe} onChange={(v) => setF('importe', v)} /></Grid>
                   <Grid item xs={6} sm={3}><TextField label="Moneda" select size="small" fullWidth value={form.moneda} onChange={(ev) => setF('moneda', ev.target.value)}><MenuItem value="ARS">ARS</MenuItem><MenuItem value="USD">USD</MenuItem></TextField></Grid>
                   <Grid item xs={6} sm={3}><TextField label="Periodicidad" select size="small" fullWidth value={form.periodicidad} onChange={(ev) => setF('periodicidad', ev.target.value)}>{PERIODICIDADES.map((p) => <MenuItem key={p} value={p}>{p}</MenuItem>)}</TextField></Grid>
                   <Grid item xs={6} sm={3}><TextField label="Inicio" type="date" size="small" fullWidth InputLabelProps={{ shrink: true }} value={form.fecha_inicio} onChange={(ev) => setF('fecha_inicio', ev.target.value)} /></Grid>
@@ -398,7 +399,7 @@ export default function FichaComercialDrawer({ empresaId, open, onClose, onSaved
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
             <TextField label="Concepto" size="small" fullWidth value={ingForm.concepto} onChange={(ev) => setIngForm((p) => ({ ...p, concepto: ev.target.value }))} placeholder="implementacion / otro" />
-            <TextField label="Importe" type="number" size="small" fullWidth value={ingForm.importe} onChange={(ev) => setIngForm((p) => ({ ...p, importe: ev.target.value }))} />
+            <MoneyField label="Importe" size="small" fullWidth value={ingForm.importe} onChange={(v) => setIngForm((p) => ({ ...p, importe: v }))} />
             <Stack direction="row" spacing={2}>
               <TextField label="Moneda" select size="small" fullWidth value={ingForm.moneda} onChange={(ev) => setIngForm((p) => ({ ...p, moneda: ev.target.value }))}><MenuItem value="ARS">ARS</MenuItem><MenuItem value="USD">USD</MenuItem></TextField>
               <TextField label="Caja" select size="small" fullWidth value={ingForm.caja} onChange={(ev) => setIngForm((p) => ({ ...p, caja: ev.target.value }))}>{CAJAS.map((c) => <MenuItem key={c} value={c}>{c}</MenuItem>)}</TextField>

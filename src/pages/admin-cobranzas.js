@@ -47,6 +47,7 @@ import RestoreIcon from '@mui/icons-material/Restore';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import adminSuscripcionService from 'src/services/adminSuscripcionService';
 import FichaComercialDrawer from 'src/components/admin/FichaComercialDrawer';
+import MoneyField from 'src/components/MoneyField';
 
 const fmtMoney = (n, mon = 'ARS') => (n == null ? '—' : `${Number(n).toLocaleString('es-AR')} ${mon}`);
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('es-AR') : '—');
@@ -469,9 +470,9 @@ const AdminCobranzas = () => {
                     <ToggleButton value="parcial">Pago parcial</ToggleButton>
                   </ToggleButtonGroup>
                 )}
-                <TextField
-                  label="Monto cobrado" type="number" size="small" fullWidth
-                  value={form.monto} onChange={(e) => setF('monto', e.target.value)}
+                <MoneyField
+                  label="Monto cobrado" size="small" fullWidth
+                  value={form.monto} onChange={(v) => setF('monto', v)}
                   helperText={`Saldo esperado: ${fmtMoney(dialog.row.saldo, dialog.row.moneda)}`}
                 />
                 <TextField label="Caja de impacto" select size="small" fullWidth
