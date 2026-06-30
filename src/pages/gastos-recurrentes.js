@@ -10,7 +10,7 @@ import { useAuthContext } from 'src/contexts/auth-context';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import proveedorService from 'src/services/proveedorService';
 import gastoRecurrenteService from 'src/services/gastoRecurrenteService';
-import { getProyectosByEmpresaId } from 'src/services/proyectosService';
+import { getProyectosFromUser } from 'src/services/proyectosService';
 
 const PERIODICIDADES = ['semanal', 'quincenal', 'mensual', 'bimestral', 'trimestral', 'semestral', 'anual'];
 const fmtMoney = (n, m = 'ARS') => (n == null ? '—' : `${Number(n).toLocaleString('es-AR')} ${m}`);
@@ -56,8 +56,12 @@ const GastosRecurrentes = () => {
       try { const provs = await proveedorService.getByEmpresa(e.id); setProveedoresEmpresa((provs || []).map((p) => p.nombre).filter(Boolean).sort()); }
       catch (err) { /* sin proveedores configurados */ }
       try {
-        const proys = await getProyectosByEmpresaId(e.id);
-        setProyectos((proys || []).filter((p) => p && p.eliminado !== true).map((p) => ({ id: String(p._id || p.id), nombre: p.nombre })).filter((p) => p.id));
+        // Solo las cajas asignadas al usuario y activas (no eliminadas, activo !== false).
+        const proys = await getProyectosFromUser(user);
+        setProyectos((proys || [])
+          .filter((p) => p && p.eliminado !== true && p.activo !== false)
+          .map((p) => ({ id: String(p._id || p.id), nombre: p.nombre }))
+          .filter((p) => p.id));
       } catch (err) { /* sin proyectos */ }
     }
   })(); }, [user]);
