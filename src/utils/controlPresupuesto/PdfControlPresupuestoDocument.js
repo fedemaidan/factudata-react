@@ -88,10 +88,11 @@ export function PdfControlPresupuestoDocument({ data, logoDataUrl, empresaNombre
   const sobre = pct > 100;
   const saldoNeg = Number(d.saldo) < 0;
   const barColor = sobre ? OVER : ACCENT;
-  const equivSub = (v) => (mostrarEquiv && v != null ? fmtEquiv(v, equivLabel) : null);
-  // Etiqueta del modo de moneda (Nominal / CAC a hoy / USD). Se omite cuando ya hay
-  // columna de equivalencia, para no duplicar la referencia.
+  // Resumen: en modos índice (mostrarEquiv) el titular es la unidad índice (CAC/USD)
+  // y debajo el ≈ pesos a hoy; en nominal/USD-nativo, el titular es la moneda.
   const modoNota = !mostrarEquiv && d.modo_label ? `(${d.modo_label})` : null;
+  const titularResumen = (v, e) => (mostrarEquiv ? fmtEquiv(e, equivLabel) : fmtMoney(v, moneda));
+  const subResumen = (v) => (mostrarEquiv ? `≈ ${fmtMoney(v, moneda)} a hoy` : modoNota);
 
   return (
     <Document>
@@ -137,18 +138,18 @@ export function PdfControlPresupuestoDocument({ data, logoDataUrl, empresaNombre
           <View style={styles.resumenRow}>
             <View style={styles.resumenCell}>
               <Text style={styles.resumenLabel}>PRESUPUESTADO</Text>
-              <Text style={styles.resumenValue}>{fmtMoney(d.presupuestado, moneda)}</Text>
-              {equivSub(d.presupuestado_equiv) ? <Text style={styles.resumenEquiv}>{equivSub(d.presupuestado_equiv)}</Text> : modoNota ? <Text style={styles.resumenEquiv}>{modoNota}</Text> : null}
+              <Text style={styles.resumenValue}>{titularResumen(d.presupuestado, d.presupuestado_equiv)}</Text>
+              {subResumen(d.presupuestado) ? <Text style={styles.resumenEquiv}>{subResumen(d.presupuestado)}</Text> : null}
             </View>
             <View style={[styles.resumenCell, styles.resumenCellMid]}>
               <Text style={styles.resumenLabel}>{d.tipo === 'ingresos' ? 'INGRESADO' : 'EJECUTADO'}</Text>
-              <Text style={styles.resumenValue}>{fmtMoney(d.ejecutado, moneda)}</Text>
-              {equivSub(d.ejecutado_equiv) ? <Text style={styles.resumenEquiv}>{equivSub(d.ejecutado_equiv)}</Text> : modoNota ? <Text style={styles.resumenEquiv}>{modoNota}</Text> : null}
+              <Text style={styles.resumenValue}>{titularResumen(d.ejecutado, d.ejecutado_equiv)}</Text>
+              {subResumen(d.ejecutado) ? <Text style={styles.resumenEquiv}>{subResumen(d.ejecutado)}</Text> : null}
             </View>
             <View style={styles.resumenCell}>
               <Text style={styles.resumenLabel}>SALDO</Text>
-              <Text style={[styles.resumenValue, { color: saldoNeg ? OVER : INK }]}>{fmtMoney(d.saldo, moneda)}</Text>
-              {equivSub(d.saldo_equiv) ? <Text style={styles.resumenEquiv}>{equivSub(d.saldo_equiv)}</Text> : modoNota ? <Text style={styles.resumenEquiv}>{modoNota}</Text> : null}
+              <Text style={[styles.resumenValue, { color: saldoNeg ? OVER : INK }]}>{titularResumen(d.saldo, d.saldo_equiv)}</Text>
+              {subResumen(d.saldo) ? <Text style={styles.resumenEquiv}>{subResumen(d.saldo)}</Text> : null}
             </View>
           </View>
           <View style={styles.barRow}>
@@ -175,11 +176,11 @@ export function PdfControlPresupuestoDocument({ data, logoDataUrl, empresaNombre
             <Text style={[styles.td, styles.cDetalle]}>{m.detalle || m.proveedor || '-'}</Text>
             <Text style={[styles.td, styles.cMonto]}>{fmtMoney(m.monto, moneda)}</Text>
             {mostrarEquiv ? <Text style={[styles.td, styles.cEquiv, styles.tdMuted]}>{m.monto_equiv != null ? fmtEquiv(m.monto_equiv, equivLabel) : '—'}</Text> : null}
-            <Text style={[styles.td, styles.cAcum]}>{fmtMoney(m.acumulado, moneda)}</Text>
+            <Text style={[styles.td, styles.cAcum]}>{mostrarEquiv ? fmtEquiv(m.acumulado_equiv, equivLabel) : fmtMoney(m.acumulado, moneda)}</Text>
           </View>
         ))}
 
-        <Text style={styles.footer}>{(empresaNombre ? empresaNombre + ' — ' : '')}Documento no válido como factura{mostrarEquiv ? ` · Pesos a la fecha de emisión (equivalencia en ${equivLabel})` : ''}</Text>
+        <Text style={styles.footer}>{(empresaNombre ? empresaNombre + ' — ' : '')}Documento no válido como factura{mostrarEquiv ? ` · Montos en pesos nominales; resumen en ${equivLabel} (≈ pesos a hoy)` : ''}</Text>
       </Page>
     </Document>
   );

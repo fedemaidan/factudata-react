@@ -1,16 +1,18 @@
 /**
  * Datos de muestra para previsualizar plantillas de Control de Presupuesto.
- * Mismo shape que el objeto `data` que produce `buildControlPresupuestoData`.
  *
- * `buildSampleData(modo)` arma la muestra según el modo de moneda elegido en el
- * editor, para que el preview refleje exactamente lo que verá el usuario:
+ * `buildSampleData(modo)` arma la muestra pasando movimientos de ejemplo por el MISMO
+ * `buildControlPresupuestoData`, así el preview del editor refleja exactamente lo que
+ * verá el usuario en cada modo:
  *  - 'nominal' (default): pesos reales, sin columna de equivalencia.
- *  - 'cac': pesos a hoy + columna de equivalencia en unidades CAC.
- *  - 'usd': importes en dólares.
+ *  - 'cac': movimientos en $ nominal + columna CAC; resumen en CAC (≈ pesos a hoy).
+ *  - 'usd': movimientos en $ nominal + columna USD; resumen en USD (≈ pesos a hoy).
  */
+import buildControlPresupuestoData from './buildControlPresupuestoData';
 
 const INDICE_CAC = 500;   // pesos por unidad CAC (muestra)
 const DOLAR = 1250;       // pesos por USD (muestra)
+const PRESUPUESTADO_ARS = 8750000;
 
 const ROWS = [
   { fecha: '27/3/2026', ars: 300000 },
@@ -24,68 +26,44 @@ const ROWS = [
   { fecha: '22/5/2026', ars: 1000000 },
 ];
 
-const PRESUPUESTADO_ARS = 8750000;
+const movimientos = ROWS.map((r) => {
+  const [d, m, y] = r.fecha.split('/').map(Number);
+  const seconds = Math.floor(new Date(y, m - 1, d).getTime() / 1000);
+  return {
+    fecha_factura: { seconds },
+    total: r.ars,
+    moneda: 'ARS',
+    nombre_proveedor: 'Rodrigo Soria',
+    categoria: 'Albañilería',
+    equivalencias: { total: { ars: r.ars, cac: r.ars / INDICE_CAC, usd_blue: r.ars / DOLAR } },
+  };
+});
 
-const MODO_LABEL = { nominal: 'Nominal', cac: 'CAC a hoy', usd: 'USD' };
+const BASE = {
+  titulo: 'RECIBO DE PAGOS',
+  presupuestoLabel: 'Albañilería 1° etapa',
+  contratista: 'Rodrigo Soria',
+  obra: 'Casa Tatán',
+  empresaNombre: 'Tu empresa',
+  domicilio: 'Costa de Oro',
+  tipo: 'gastos',
+  movimientos,
+};
 
 export function buildSampleData(modo = 'nominal') {
-  const esCac = modo === 'cac';
-  const esUsd = modo === 'usd';
-  const moneda = esUsd ? 'USD' : 'ARS';
-
-  const montoDe = (ars) => (esUsd ? Math.round(ars / DOLAR) : ars);
-  const equivDe = (ars) => ars / INDICE_CAC; // unidades CAC
-
-  let acum = 0;
-  let acumEquiv = 0;
-  const movimientos = ROWS.map((r, i) => {
-    const monto = montoDe(r.ars);
-    acum += monto;
-    const monto_equiv = esCac ? equivDe(r.ars) : null;
-    if (esCac) acumEquiv += monto_equiv;
-    return {
-      numero: i + 1,
-      fecha: r.fecha,
-      detalle: 'Entrega',
-      proveedor: 'Rodrigo Soria',
-      categoria: 'Albañilería',
-      monto,
-      acumulado: acum,
-      monto_equiv,
-      acumulado_equiv: esCac ? acumEquiv : null,
-    };
-  });
-
-  const presupuestado = montoDe(PRESUPUESTADO_ARS);
-  const ejecutado = acum;
-  const saldo = presupuestado - ejecutado;
-  const presupuestado_equiv = esCac ? equivDe(PRESUPUESTADO_ARS) : null;
-  const ejecutado_equiv = esCac ? acumEquiv : null;
-
-  return {
-    titulo: 'RECIBO DE PAGOS',
-    fecha_emision: '22/5/2026',
-    empresa_nombre: 'Tu empresa',
-    domicilio: 'Costa de Oro',
-    contratista: 'Rodrigo Soria',
-    obra: 'Casa Tatán',
-    presupuesto_label: 'Albañilería 1° etapa',
-    tipo: 'gastos',
-    modo,
-    modo_label: MODO_LABEL[modo] || MODO_LABEL.nominal,
-    moneda,
-    indexacion: esCac ? 'CAC' : null,
-    mostrar_equiv: esCac,
-    equiv_label: esCac ? 'CAC' : '',
-    presupuestado,
-    ejecutado,
-    saldo,
-    avance_pct: presupuestado ? (ejecutado / presupuestado) * 100 : 0,
-    presupuestado_equiv,
-    ejecutado_equiv,
-    saldo_equiv: esCac ? presupuestado_equiv - ejecutado_equiv : null,
-    movimientos,
-  };
+  if (modo === 'cac') {
+    return buildControlPresupuestoData({
+      ...BASE, modo: 'cac', indexacion: 'CAC', cacTipo: 'general',
+      presupuestadoNativo: PRESUPUESTADO_ARS / INDICE_CAC, cacIndiceActual: INDICE_CAC,
+    });
+  }
+  if (modo === 'usd') {
+    return buildControlPresupuestoData({
+      ...BASE, modo: 'usd', indexacion: 'USD',
+      presupuestadoNativo: PRESUPUESTADO_ARS / DOLAR, tipoCambioActual: DOLAR,
+    });
+  }
+  return buildControlPresupuestoData({ ...BASE, modo: 'nominal', presupuestadoNominal: PRESUPUESTADO_ARS });
 }
 
 // Compat: muestra por defecto (modo nominal).

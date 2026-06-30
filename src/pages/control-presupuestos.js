@@ -90,6 +90,7 @@ import dayjs from 'dayjs';
 import PresupuestoDrawer from 'src/components/PresupuestoDrawer';
 import ExportarPdfMenu from 'src/components/plantillasPdf/ExportarPdfMenu';
 import { buildControlPresupuestoData } from 'src/utils/controlPresupuesto/buildControlPresupuestoData';
+import { calcPresupuestadoNominal } from 'src/utils/controlPresupuesto/presupuestoNominal';
 import Tooltip from '@mui/material/Tooltip';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import CloseIcon from '@mui/icons-material/Close';
@@ -2418,33 +2419,65 @@ const ControlPresupuestosPage = () => {
                     : movDrawer.tipo === 'ingreso' ? 'RECIBO DE INGRESOS'
                       : 'ESTADO DE CUENTA'
                 }
-                modosDisponibles={[
-                  'nominal',
-                  ...(movDrawerData.some((m) => (m.moneda || 'ARS') === 'USD') ? ['usd'] : []),
-                ]}
+                modosDisponibles={(() => {
+                  // Disponibilidad según los PRESUPUESTOS del proyecto (no la moneda de los
+                  // movimientos): CAC si hay alguno indexado por CAC; USD si hay alguno USD.
+                  const items = movDrawer.tipo === 'egreso' ? obtenerTodosLosItemsEgresos()
+                    : movDrawer.tipo === 'ingreso' ? obtenerTodosLosItemsIngresos()
+                      : [...obtenerTodosLosItemsEgresos(), ...obtenerTodosLosItemsIngresos()];
+                  return [
+                    'nominal',
+                    ...(items.some((i) => (i.moneda) === 'CAC') ? ['cac'] : []),
+                    ...(items.some((i) => (i.moneda) === 'USD') ? ['usd'] : []),
+                  ];
+                })()}
                 modoDefault="nominal"
                 buildData={(opts) => {
-                  const totales = calcularTotales();
-                  const presupuestado =
-                    movDrawer.tipo === 'egreso' ? totales.egresos.total
-                      : movDrawer.tipo === 'ingreso' ? totales.ingresos.total
-                        : 0;
+                  const modoSel = opts?.modo || 'nominal';
+                  const items = movDrawer.tipo === 'egreso' ? obtenerTodosLosItemsEgresos()
+                    : movDrawer.tipo === 'ingreso' ? obtenerTodosLosItemsIngresos()
+                      : [...obtenerTodosLosItemsEgresos(), ...obtenerTodosLosItemsIngresos()];
+                  // Pesos a hoy de un presupuesto (CAC→índice, USD→dólar, ARS→tal cual), sin
+                  // depender del toggle `moneda` de la página.
+                  const aARSHoy = (i) => {
+                    const m = Number(i?.monto) || 0;
+                    if (i?.moneda === 'CAC') { const idx = getCacIndice(i.cac_tipo); return idx ? m * idx : m; }
+                    if (i?.moneda === 'USD') return tipoCambio ? m * tipoCambio : m;
+                    return m;
+                  };
+                  // Total respetando el general como techo (igual criterio que calcularTotales).
+                  const sumar = (valOf) => {
+                    const generales = items.filter(itemEsGeneral);
+                    const especificos = items.filter((i) => !itemEsGeneral(i));
+                    if (generales.length > 0) {
+                      return Math.max(generales.reduce((s, i) => s + valOf(i), 0), especificos.reduce((s, i) => s + valOf(i), 0));
+                    }
+                    return items.reduce((s, i) => s + valOf(i), 0);
+                  };
+                  const idxGeneral = getCacIndice('general');
+                  const totalNominal = sumar(calcPresupuestadoNominal);
+                  const totalHoy = sumar(aARSHoy);
                   const titulo = opts?.titulo || (
                     movDrawer.tipo === 'egreso' ? 'RECIBO DE PAGOS'
                       : movDrawer.tipo === 'ingreso' ? 'RECIBO DE INGRESOS'
                         : 'ESTADO DE CUENTA'
                   );
-                  // Export a nivel proyecto: presupuestos mixtos, sin indexación única.
-                  // Modo nominal (pesos reales) por default; USD si hay movimientos en dólares.
+                  // Export a nivel proyecto: presupuestos mixtos. El presupuestado se calcula
+                  // en la unidad del modo elegido. CAC usa índice general (aprox. en proyectos
+                  // con subíndices). No se pasa monedaPresupuesto para no disparar USD-nativo.
                   return buildControlPresupuestoData({
                     movimientos: movDrawerData,
                     titulo,
-                    modo: opts?.modo || 'nominal',
+                    modo: modoSel,
                     presupuestoLabel: movDrawer.label,
                     obra: proyectoActual?.nombre || '',
                     empresaNombre: empresa?.nombre || '',
-                    monedaPresupuesto: moneda,
-                    presupuestadoNativo: presupuestado,
+                    presupuestadoNominal: totalNominal,
+                    presupuestadoNativo: modoSel === 'cac' ? (idxGeneral ? totalHoy / idxGeneral : 0)
+                      : modoSel === 'usd' ? (tipoCambio ? totalHoy / tipoCambio : 0)
+                        : null,
+                    cacIndiceActual: idxGeneral,
+                    tipoCambioActual: tipoCambio,
                     tipo: movDrawer.tipo === 'ingreso' ? 'ingresos' : 'gastos',
                   });
                 }}
