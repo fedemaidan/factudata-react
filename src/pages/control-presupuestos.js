@@ -303,16 +303,22 @@ const PresupuestoItem = ({
   const tieneHistorial = historial && historial.length > 0;
   const monedaItem = moneda || 'ARS';
   const esIndexado = !!indexacion;
-  const indiceActual = indexacion === 'CAC' ? cacIdx : (indexacion === 'USD' ? tipoCambioActual : null);
   const cacTipoLabel = cacTipo === 'mano_obra' ? 'MO' : cacTipo === 'materiales' ? 'MAT' : '';
-  const unidadIdx = indexacion === 'CAC' ? `CAC${cacTipoLabel ? ' ' + cacTipoLabel : ''}` : (indexacion === 'USD' ? 'USD' : '');
+  // Mostramos en unidad NATIVA (con su equivalente en pesos a hoy) tanto cuando hay
+  // indexación (CAC/USD) como cuando la moneda nativa es USD/CAC. Solo el peso plano
+  // (ARS sin indexar) usa formatMonto (que sigue el toggle de moneda de la página).
+  const esCAClike = indexacion === 'CAC' || (!esIndexado && monedaItem === 'CAC');
+  const esUSDlike = indexacion === 'USD' || (!esIndexado && monedaItem === 'USD');
+  const unidadIdx = esCAClike ? `CAC${cacTipoLabel ? ' ' + cacTipoLabel : ''}` : (esUSDlike ? 'USD' : '');
+  const mostrarUnidad = unidadIdx !== '';
+  const indiceActual = esCAClike ? cacIdx : (esUSDlike ? tipoCambioActual : null);
 
   // Para indexados: mostrar equivalencia ARS hoy
   const fmtARS = (v) => v != null ? `$${Number(v).toLocaleString('es-AR', { maximumFractionDigits: 0 })}` : '';
   const fmtUnidad = (v) => `${Number(v || 0).toLocaleString('es-AR', { maximumFractionDigits: 2 })} ${unidadIdx}`;
-  const presEnARS = esIndexado && indiceActual && presupuesto ? presupuesto * indiceActual : null;
-  const ejEnARS = esIndexado && indiceActual && ejec ? ejec * indiceActual : null;
-  const saldoEnARS = esIndexado && indiceActual ? (presupuesto - ejec) * indiceActual : null;
+  const presEnARS = mostrarUnidad && indiceActual && presupuesto ? presupuesto * indiceActual : null;
+  const ejEnARS = mostrarUnidad && indiceActual && ejec ? ejec * indiceActual : null;
+  const saldoEnARS = mostrarUnidad && indiceActual ? (presupuesto - ejec) * indiceActual : null;
 
   const stylesSeleccion = seleccionada
     ? { borderColor: 'primary.main', borderWidth: 2, bgcolor: 'action.selected' }
@@ -404,7 +410,7 @@ const PresupuestoItem = ({
       </Stack>
       {/* Fila de montos: presupuesto y ejecutado */}
       <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" useFlexGap>
-        {esIndexado ? (
+        {mostrarUnidad ? (
           <>
             <Tooltip title={presEnARS != null ? `Hoy: ${fmtARS(presEnARS)}` : ''} arrow>
               <Chip label={`Pres: ${fmtUnidad(presupuesto)}`} size="small" variant="outlined" />
@@ -431,11 +437,11 @@ const PresupuestoItem = ({
       <Stack direction="row" justifyContent="space-between" sx={{ mt: 0.75 }}>
         <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.6rem', sm: '0.75rem' } }}>
           {porcentaje.toFixed(1)}% ejecutado
-          {esIndexado && ejEnARS != null && ` · ${fmtARS(ejEnARS)} ARS`}
+          {mostrarUnidad && ejEnARS != null && ` · ${fmtARS(ejEnARS)} ARS`}
         </Typography>
         <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.6rem', sm: '0.75rem' } }}>
-          Saldo: {esIndexado ? `${fmtUnidad(presupuesto - ejec)}` : formatMonto(presupuesto - ejec, monedaItem)}
-          {esIndexado && saldoEnARS != null && ` · ${fmtARS(saldoEnARS)} ARS`}
+          Saldo: {mostrarUnidad ? `${fmtUnidad(presupuesto - ejec)}` : formatMonto(presupuesto - ejec, monedaItem)}
+          {mostrarUnidad && saldoEnARS != null && ` · ${fmtARS(saldoEnARS)} ARS`}
         </Typography>
       </Stack>
     </Paper>
@@ -847,13 +853,25 @@ const ControlPresupuestosPage = () => {
       return `$${Number(valor).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`;
     };
 
+    // El backend (egresosPorMoneda.total) suma general + categorías; como los específicos
+    // son asignaciones DENTRO del general, eso doble-cuenta. Recalculamos por moneda con el
+    // general como techo, igual que calcularTotales, así la composición cierra con el total.
+    const totalesNativos = (items = []) => {
+      const generales = items.filter(itemEsGeneral);
+      const especificos = items.filter((i) => !itemEsGeneral(i));
+      const sum = (arr, campo) => arr.reduce((s, i) => s + (i[campo] || 0), 0);
+      if (generales.length > 0) {
+        return { total: Math.max(sum(generales, 'monto'), sum(especificos, 'monto')), ejecutado: sum(generales, 'ejecutado') };
+      }
+      return { total: sum(items, 'monto'), ejecutado: sum(items, 'ejecutado') };
+    };
+
     return (
       <Box sx={{ fontSize: '0.75rem', lineHeight: 1.8 }}>
         <strong>Composición ({tipo}):</strong>
         {monedas.map(mon => {
           const data = porMoneda[mon];
-          const totalNativo = data.total || 0;
-          const ejecutadoNativo = data.ejecutado || 0;
+          const { total: totalNativo, ejecutado: ejecutadoNativo } = totalesNativos(data.items);
           return (
             <Box key={mon}>
               {mon}: Pres. {fmtNativo(totalNativo, mon)} · Ejec. {fmtNativo(ejecutadoNativo, mon)}
@@ -1699,11 +1717,15 @@ const ControlPresupuestosPage = () => {
                             const monedaItem = item.moneda || 'ARS';
                             const esIdx = !!item.indexacion;
                             const cacTipoLbl = item.cac_tipo === 'mano_obra' ? ' MO' : item.cac_tipo === 'materiales' ? ' MAT' : '';
-                            const unidadIdx = item.indexacion === 'CAC' ? `CAC${cacTipoLbl}` : (item.indexacion === 'USD' ? 'USD' : '');
-                            const idxActual = item.indexacion === 'CAC' ? getCacIndice(item.cac_tipo) : (item.indexacion === 'USD' ? tipoCambio : null);
-                            const presEnARS = esIdx && idxActual ? item.monto * idxActual : null;
-                            const ejEnARS = esIdx && idxActual ? (item.ejecutado || 0) * idxActual : null;
-                            const saldoEnARS = esIdx && idxActual ? (item.monto - (item.ejecutado || 0)) * idxActual : null;
+                            // Unidad nativa (con equiv en pesos a hoy) para indexados Y para moneda nativa USD/CAC.
+                            const esCAClike = item.indexacion === 'CAC' || (!esIdx && monedaItem === 'CAC');
+                            const esUSDlike = item.indexacion === 'USD' || (!esIdx && monedaItem === 'USD');
+                            const mostrarUnidad = esCAClike || esUSDlike;
+                            const unidadIdx = esCAClike ? `CAC${cacTipoLbl}` : (esUSDlike ? 'USD' : '');
+                            const idxActual = esCAClike ? getCacIndice(item.cac_tipo) : (esUSDlike ? tipoCambio : null);
+                            const presEnARS = mostrarUnidad && idxActual ? item.monto * idxActual : null;
+                            const ejEnARS = mostrarUnidad && idxActual ? (item.ejecutado || 0) * idxActual : null;
+                            const saldoEnARS = mostrarUnidad && idxActual ? (item.monto - (item.ejecutado || 0)) * idxActual : null;
                             const fmtARS = (v) => v != null ? `$${Number(v).toLocaleString('es-AR', { maximumFractionDigits: 0 })}` : '';
                             const fmtUnidad = (v) => `${Number(v).toLocaleString('es-AR', { maximumFractionDigits: 2 })} ${unidadIdx}`;
                             const label = labelItem(item);
@@ -1802,7 +1824,7 @@ const ControlPresupuestosPage = () => {
                                 </Stack>
                                 {/* Fila 2: chips de montos */}
                                 <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" useFlexGap>
-                                  {esIdx ? (
+                                  {mostrarUnidad ? (
                                     <>
                                       <Tooltip title={tooltipPresTitle} arrow>
                                         <Chip label={`Pres: ${fmtUnidad(item.monto)}`} size="small" variant="outlined" sx={{ cursor: 'help' }} />
@@ -1839,11 +1861,11 @@ const ControlPresupuestosPage = () => {
                                 <Stack direction="row" justifyContent="space-between" sx={{ mt: 0.5 }}>
                                   <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.6rem', sm: '0.75rem' } }}>
                                     {porcentaje.toFixed(1)}% cobrado
-                                    {esIdx && ejEnARS != null && ` · ${fmtARS(ejEnARS)} ARS`}
+                                    {mostrarUnidad && ejEnARS != null && ` · ${fmtARS(ejEnARS)} ARS`}
                                   </Typography>
                                   <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.6rem', sm: '0.75rem' } }}>
-                                    Pendiente: {esIdx ? fmtUnidad(item.monto - (item.ejecutado || 0)) : formatMonto(item.monto - (item.ejecutado || 0), monedaItem)}
-                                    {esIdx && saldoEnARS != null && ` · ${fmtARS(saldoEnARS)} ARS`}
+                                    Pendiente: {mostrarUnidad ? fmtUnidad(item.monto - (item.ejecutado || 0)) : formatMonto(item.monto - (item.ejecutado || 0), monedaItem)}
+                                    {mostrarUnidad && saldoEnARS != null && ` · ${fmtARS(saldoEnARS)} ARS`}
                                   </Typography>
                                 </Stack>
                               </Paper>
