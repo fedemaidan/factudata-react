@@ -1,12 +1,16 @@
+// 📖 El "Ajuste por CAC" (3 modos) está documentado en
+//    sorby_bot_wa/docs/control-presupuestos/ (funcional §3, técnico §7.3).
 import React, { useEffect, useState } from 'react';
 import {
   Box,
   Button,
   Card,
+  CardActionArea,
   CardActions,
   CardContent,
   CardHeader,
   Divider,
+  Stack,
   TextField,
   Typography,
   IconButton,
@@ -22,11 +26,8 @@ import {
   DialogActions,
   Snackbar,
   Alert,
-  Stack,
-  MenuItem,
-  Switch,
-  FormControlLabel,
 } from '@mui/material';
+import { alpha } from '@mui/material/styles';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
 import AddCircleIcon from '@mui/icons-material/AddCircle';
@@ -34,25 +35,38 @@ import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import SaveIcon from '@mui/icons-material/Save';
 import RestoreIcon from '@mui/icons-material/Restore';
+import HistoryIcon from '@mui/icons-material/History';
+import AutoModeIcon from '@mui/icons-material/AutoMode';
+import TrendingUpIcon from '@mui/icons-material/TrendingUp';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import { updateEmpresaDetails } from 'src/services/empresaService';
 import proveedorService from 'src/services/proveedorService';
 import Papa from 'papaparse';
-import { CAC_TIPOS, CAC_LABELS } from 'src/components/presupuestosProfesionales/monedaAjusteConfig';
-import { ConsolidadosPresupuestoDetails } from 'src/sections/empresa/consolidadosPresupuestoDetails';
 
-// Índice por categoría (TAR-423): determina con qué se actualiza/consolida lo gastado en
-// esa categoría. null = ARS fijo. Se guarda dentro de cada categoría de la empresa.
-const buildIndiceCategoria = (indexacion, cac_tipo) => {
-  if (indexacion === 'CAC') return { indexacion: 'CAC', cac_tipo: cac_tipo || CAC_TIPOS.GENERAL };
-  if (indexacion === 'USD') return { indexacion: 'USD', cac_tipo: null };
-  return null; // fijo (ARS)
-};
-
-export const indiceCategoriaLabel = (indice) => {
-  if (!indice || !indice.indexacion) return 'ARS fijo';
-  if (indice.indexacion === 'USD') return 'USD';
-  return `CAC ${CAC_LABELS[indice.cac_tipo] || CAC_LABELS[CAC_TIPOS.GENERAL]}`;
-};
+// Modo de CAC de la empresa (TAR-423): legacy / automatico / estimado.
+const CAC_MODO_OPCIONES = [
+  {
+    value: 'legacy',
+    titulo: 'Clásico',
+    resumen: 'CAC de 2 meses atrás, fijo',
+    help: 'Usa el CAC de 2 meses atrás y no se recalcula. Es el comportamiento histórico.',
+    Icon: HistoryIcon,
+  },
+  {
+    value: 'automatico',
+    titulo: 'Automático',
+    resumen: 'Último CAC y se ajusta solo',
+    help: 'Usa el último CAC disponible como estimación y, cuando se publica el CAC definitivo del mes, ajusta presupuestos y movimientos solos.',
+    Icon: AutoModeIcon,
+  },
+  {
+    value: 'estimado',
+    titulo: 'Estimado + ajuste',
+    resumen: 'Proyecta el CAC faltante',
+    help: 'Estima el CAC faltante proyectando la variación de los últimos meses y lo corrige cuando sale el definitivo.',
+    Icon: TrendingUpIcon,
+  },
+];
 
 //todo - borrar luego
 const categoriasDefault = [
@@ -128,28 +142,32 @@ export const CategoriasDetails = ({ empresa, refreshEmpresa }) => {
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [snackbarSeverity, setSnackbarSeverity] = useState('success');
 
-  // TAR-423 Ticket 2: recálculo automático de presupuestos CAC (config por empresa, default ON).
-  const [cacRecalcular, setCacRecalcular] = useState(empresa?.presupuesto_cac_recalcular !== false);
-  const [savingCacRecalcular, setSavingCacRecalcular] = useState(false);
+  // TAR-423: modo de CAC de la empresa (legacy por default para no romper prod).
+  const [cacModo, setCacModo] = useState(empresa?.presupuesto_cac_modo || 'legacy');
+  const [savingCacModo, setSavingCacModo] = useState(false);
 
   useEffect(() => {
-    setCacRecalcular(empresa?.presupuesto_cac_recalcular !== false);
-  }, [empresa?.presupuesto_cac_recalcular]);
+    setCacModo(empresa?.presupuesto_cac_modo || 'legacy');
+  }, [empresa?.presupuesto_cac_modo]);
 
-  const handleToggleCacRecalcular = async (value) => {
-    setCacRecalcular(value); // optimista
-    setSavingCacRecalcular(true);
+  // Modo guardado en la empresa vs. el que el usuario tiene seleccionado (staged).
+  const cacModoGuardado = empresa?.presupuesto_cac_modo || 'legacy';
+  const cacModoDirty = cacModo !== cacModoGuardado;
+
+  const guardarCacModo = async () => {
+    if (!cacModoDirty || savingCacModo) return;
+    setSavingCacModo(true);
     try {
-      await updateEmpresaDetails(empresa.id, { presupuesto_cac_recalcular: value });
+      await updateEmpresaDetails(empresa.id, { presupuesto_cac_modo: cacModo });
       await refreshEmpresa?.();
-      setSnackbarMessage('Configuración guardada');
+      const opt = CAC_MODO_OPCIONES.find((o) => o.value === cacModo);
+      setSnackbarMessage(`Ajuste por CAC actualizado a "${opt?.titulo || cacModo}"`);
       setSnackbarSeverity('success');
     } catch (e) {
-      setCacRecalcular(!value); // revertir
-      setSnackbarMessage('No se pudo guardar la configuración');
+      setSnackbarMessage('No se pudo guardar el ajuste por CAC');
       setSnackbarSeverity('error');
     } finally {
-      setSavingCacRecalcular(false);
+      setSavingCacModo(false);
       setSnackbarOpen(true);
     }
   };
@@ -167,8 +185,6 @@ export const CategoriasDetails = ({ empresa, refreshEmpresa }) => {
     initialValues: {
       name: editingCategoria ? editingCategoria.name : '',
       subcategoria: '',
-      indexacion: editingCategoria?.indice?.indexacion || '',
-      cac_tipo: editingCategoria?.indice?.cac_tipo || CAC_TIPOS.GENERAL,
     },
     enableReinitialize: true,
     validationSchema: Yup.object({
@@ -177,14 +193,13 @@ export const CategoriasDetails = ({ empresa, refreshEmpresa }) => {
     onSubmit: async (values, { resetForm }) => {
       setIsLoading(true);
       let newCategorias = [...categorias];
-      const indice = buildIndiceCategoria(values.indexacion || null, values.cac_tipo);
       try {
         if (editingCategoria) {
           const nombreAnterior = editingCategoria.name;
           const nuevoNombre = values.name;
 
           newCategorias = newCategorias.map((cat) =>
-            cat.id === editingCategoria.id ? { ...cat, name: values.name, indice } : cat
+            cat.id === editingCategoria.id ? { ...cat, name: values.name } : cat
           );
           if (values.subcategoria) {
             newCategorias = newCategorias.map((cat) =>
@@ -218,7 +233,7 @@ export const CategoriasDetails = ({ empresa, refreshEmpresa }) => {
             categorias: newCategorias
           });
         } else {
-          const newCategoria = { id: Date.now(), name: values.name, subcategorias: [], indice };
+          const newCategoria = { id: Date.now(), name: values.name, subcategorias: [] };
           newCategorias = [...newCategorias, newCategoria];
           setSnackbarMessage('Categoría creada con éxito');
           
@@ -423,8 +438,6 @@ const handleImportarCSV = async (e) => {
     formik.setValues({
       name: categoria.name,
       subcategoria: '',
-      indexacion: categoria?.indice?.indexacion || '',
-      cac_tipo: categoria?.indice?.cac_tipo || CAC_TIPOS.GENERAL,
     });
     setOpenModal(true);
   };
@@ -450,17 +463,7 @@ const handleImportarCSV = async (e) => {
           <List>
             {categorias.map((categoria) => (
               <ListItem key={categoria.id} divider>
-                <ListItemText primary={
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <span>{categoria.name}</span>
-                    <Chip
-                      label={indiceCategoriaLabel(categoria.indice)}
-                      size="small"
-                      variant="outlined"
-                      color={categoria.indice?.indexacion ? 'secondary' : 'default'}
-                    />
-                  </Box>
-                } secondary={
+                <ListItemText primary={categoria.name} secondary={
                   categoria.subcategorias?.map((sub, index) => {
                     // Manejar tanto strings como objetos {id, name}
                     const subName = typeof sub === 'string' ? sub : sub?.name || '';
@@ -543,37 +546,133 @@ const handleImportarCSV = async (e) => {
 
       <Card sx={{ mt: 3 }}>
         <CardHeader
-          title="Índice CAC de presupuestos"
-          subheader="Cómo se comportan los presupuestos ajustados por CAC cuando se publica el índice oficial."
+          title="Ajuste por CAC"
+          subheader="Cómo se valúan los presupuestos y movimientos ajustados por CAC mientras todavía no salió el índice del mes."
+          action={
+            <Chip
+              size="small"
+              color="primary"
+              variant="outlined"
+              icon={<CheckCircleIcon />}
+              label={`Activo: ${CAC_MODO_OPCIONES.find((o) => o.value === cacModoGuardado)?.titulo || cacModoGuardado}`}
+              sx={{ mr: 1, mt: 1 }}
+            />
+          }
         />
         <Divider />
         <CardContent>
-          <FormControlLabel
-            sx={{ alignItems: 'flex-start', m: 0 }}
-            control={
-              <Switch
-                checked={cacRecalcular}
-                disabled={savingCacRecalcular}
-                onChange={(e) => handleToggleCacRecalcular(e.target.checked)}
+          <Box
+            sx={{
+              display: 'grid',
+              gap: 1.5,
+              gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, 1fr)' },
+            }}
+          >
+            {CAC_MODO_OPCIONES.map((opt) => {
+              const seleccionado = cacModo === opt.value;
+              const { Icon } = opt;
+              return (
+                <Card
+                  key={opt.value}
+                  variant="outlined"
+                  sx={{
+                    position: 'relative',
+                    borderColor: seleccionado ? 'primary.main' : 'divider',
+                    borderWidth: seleccionado ? 2 : 1,
+                    bgcolor: (t) => (seleccionado ? alpha(t.palette.primary.main, 0.06) : 'transparent'),
+                    transition: 'border-color .15s, background-color .15s, box-shadow .15s',
+                    boxShadow: seleccionado ? 3 : 0,
+                  }}
+                >
+                  <CardActionArea
+                    onClick={() => setCacModo(opt.value)}
+                    disabled={savingCacModo}
+                    sx={{ height: '100%', p: 2, alignItems: 'flex-start' }}
+                  >
+                    {seleccionado && (
+                      <CheckCircleIcon
+                        color="primary"
+                        fontSize="small"
+                        sx={{ position: 'absolute', top: 10, right: 10 }}
+                      />
+                    )}
+                    <Stack spacing={1}>
+                      <Box
+                        sx={{
+                          width: 40,
+                          height: 40,
+                          borderRadius: '50%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          bgcolor: (t) =>
+                            seleccionado ? 'primary.main' : alpha(t.palette.text.primary, 0.06),
+                          color: seleccionado ? 'primary.contrastText' : 'text.secondary',
+                        }}
+                      >
+                        <Icon fontSize="small" />
+                      </Box>
+                      <Box>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                          {opt.titulo}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {opt.resumen}
+                        </Typography>
+                      </Box>
+                      <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.4 }}>
+                        {opt.help}
+                      </Typography>
+                    </Stack>
+                  </CardActionArea>
+                </Card>
+              );
+            })}
+          </Box>
+
+          <Stack
+            direction={{ xs: 'column', sm: 'row' }}
+            spacing={1}
+            alignItems={{ xs: 'stretch', sm: 'center' }}
+            justifyContent="space-between"
+            sx={{ mt: 2 }}
+          >
+            <Typography variant="caption" color="text.secondary">
+              Se aplica a los nuevos presupuestos y movimientos. Los ya cargados se corrigen solos cuando sale el CAC definitivo de su mes.
+            </Typography>
+            {cacModoDirty ? (
+              <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>
+                <Button
+                  size="small"
+                  color="inherit"
+                  disabled={savingCacModo}
+                  onClick={() => setCacModo(cacModoGuardado)}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  variant="contained"
+                  size="small"
+                  startIcon={<SaveIcon />}
+                  disabled={savingCacModo}
+                  onClick={guardarCacModo}
+                >
+                  {savingCacModo ? 'Guardando…' : 'Guardar cambios'}
+                </Button>
+              </Stack>
+            ) : (
+              <Chip
+                size="small"
+                color="success"
+                variant="outlined"
+                icon={<CheckCircleIcon />}
+                label="Guardado"
+                sx={{ flexShrink: 0 }}
               />
-            }
-            label={
-              <Box sx={{ pt: 0.6 }}>
-                <Typography variant="body2" fontWeight={500}>
-                  Actualizar los presupuestos CAC automáticamente cuando se publique el índice oficial
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  {cacRecalcular
-                    ? 'Activado: mientras no salga el CAC del mes se usa una estimación, y al publicarse el oficial el presupuesto se ajusta solo.'
-                    : 'Desactivado: el presupuesto queda con el valor estimado y no se actualiza solo. Cada presupuesto nuevo toma esta configuración al crearse.'}
-                </Typography>
-              </Box>
-            }
-          />
+            )}
+          </Stack>
         </CardContent>
       </Card>
-
-      <ConsolidadosPresupuestoDetails empresa={empresa} refreshEmpresa={refreshEmpresa} />
 
       <Dialog open={openModal} onClose={cancelarEdicion} aria-labelledby="form-dialog-title">
         <form autoComplete="off" noValidate onSubmit={formik.handleSubmit}>
@@ -589,35 +688,6 @@ const handleImportarCSV = async (e) => {
               helperText={formik.touched.name && formik.errors.name}
               style={{ marginTop: '1rem' }}
             />
-            <Stack direction="row" spacing={2} sx={{ mt: 2 }}>
-              <TextField
-                select
-                fullWidth
-                name="indexacion"
-                label="Índice de actualización"
-                value={formik.values.indexacion}
-                onChange={formik.handleChange}
-                helperText="Con qué se actualiza/consolida lo gastado en esta categoría"
-              >
-                <MenuItem value="">ARS fijo (sin índice)</MenuItem>
-                <MenuItem value="CAC">CAC</MenuItem>
-                <MenuItem value="USD">USD</MenuItem>
-              </TextField>
-              {formik.values.indexacion === 'CAC' && (
-                <TextField
-                  select
-                  fullWidth
-                  name="cac_tipo"
-                  label="Subíndice CAC"
-                  value={formik.values.cac_tipo}
-                  onChange={formik.handleChange}
-                >
-                  {Object.values(CAC_TIPOS).map((t) => (
-                    <MenuItem key={t} value={t}>{CAC_LABELS[t]}</MenuItem>
-                  ))}
-                </TextField>
-              )}
-            </Stack>
             {editingCategoria && (
               <TextField
                 fullWidth

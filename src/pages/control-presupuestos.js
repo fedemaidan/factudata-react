@@ -1,3 +1,5 @@
+// 📖 Doc del módulo de control de presupuestos (funcional + técnico, incluye CAC y
+//    agrupación por moneda/índice): sorby_bot_wa/docs/control-presupuestos/
 import { useEffect, useState, useMemo, Fragment } from 'react';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import Head from 'next/head';
@@ -73,6 +75,29 @@ const itemTieneProveedores = (item) =>
   Array.isArray(item?.proveedores) && item.proveedores.length > 0;
 const itemEsGeneral = (item) =>
   !itemTieneCategorias(item) && !item?.etapa && !itemTieneProveedores(item);
+
+// ─── Identidad de moneda/índice de un presupuesto (TAR-423) ──────────────────
+// Cada presupuesto vive en una moneda/índice (ARS fijo, USD, o CAC por subíndice).
+// El control no mezcla unidades distintas en un mismo número: se agrupa por esta clave.
+const itemIndiceKey = (item) => {
+  const m = item?.moneda || 'ARS';
+  return m === 'CAC' ? `CAC:${item?.cac_tipo || 'general'}` : m;
+};
+const indiceKeyMoneda = (key) => (key.startsWith('CAC') ? 'CAC' : key);
+const indiceKeyCacTipo = (key) => (key.startsWith('CAC:') ? key.slice(4) : null);
+const indiceKeyLabel = (key) => {
+  if (key === 'ARS') return 'Pesos (ARS)';
+  if (key === 'USD') return 'Dólares (USD)';
+  return `CAC ${CAC_LABELS[indiceKeyCacTipo(key)] || 'Promedio'}`;
+};
+const indiceKeyOrden = (key) => (key === 'ARS' ? 0 : key === 'USD' ? 1 : 2);
+// Formatea un monto en su moneda nativa (sin convertir): USD/CAC con su sufijo, ARS con $.
+const fmtMontoNativo = (v, monedaNativa) => {
+  const n = Number(v || 0).toLocaleString('es-AR', { maximumFractionDigits: 2 });
+  if (monedaNativa === 'USD') return `USD ${n}`;
+  if (monedaNativa === 'CAC') return `${n} CAC`;
+  return `$${Number(v || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`;
+};
 const itemMatcheaCategoria = (item, cat) =>
   (item?.clasificaciones || []).some((c) => c.categoria === cat);
 const itemMatcheaProveedor = (item, nombre) =>
@@ -414,84 +439,6 @@ const PresupuestoItem = ({
         </Typography>
       </Stack>
     </Paper>
-  );
-};
-
-// ============ COMPONENTE: TARJETA DE CONSOLIDADO POR ÍNDICE (TAR-423) ============
-// Cada consolidado vive en su propio índice (CAC / USD / ARS) y se muestra valuado a
-// ARS de hoy. No hay conversión entre consolidados: lo que sube con CAC y lo que sube
-// con dólar nunca se mezclan en un mismo número.
-const consolidadoIndiceLabel = (indice) => {
-  if (indice?.indexacion === 'CAC') return `Ajustado por CAC ${CAC_LABELS[indice.cac_tipo] || ''}`.trim();
-  if (indice?.indexacion === 'USD') return 'Ajustado por dólar';
-  return 'ARS fijo';
-};
-
-// Formatea un monto en su moneda original (sin convertir): USD en dólares, CAC en
-// puntos de índice, ARS en pesos.
-const fmtMonedaNativa = (v, moneda) => {
-  if (v == null) return 's/d';
-  if (moneda === 'USD') return `USD ${Number(v).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  if (moneda === 'CAC') return `CAC ${Number(v).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  return formatCurrency(v);
-};
-
-const ConsolidadoCard = ({ consolidado }) => {
-  const {
-    nombre, indice, moneda_nativa,
-    presupuestado_nativo, ejecutado_nativo, saldo_nativo,
-    presupuestado_ars, ejecutado_ars, saldo_ars, techo, techo_ars,
-  } = consolidado;
-
-  // Si el grupo es homogéneo, mostramos su moneda original; si no (Nivel 2 mixto), ARS.
-  const nativa = moneda_nativa && presupuestado_nativo != null;
-  const mon = nativa ? moneda_nativa : 'ARS';
-  const pres = nativa ? presupuestado_nativo : presupuestado_ars;
-  const ejec = nativa ? ejecutado_nativo : ejecutado_ars;
-  const saldo = nativa ? saldo_nativo : saldo_ars;
-  const techoVal = techo_ars == null ? null : (nativa ? techo : techo_ars);
-
-  const base = techoVal != null && techoVal > 0 ? techoVal : pres;
-  const pct = base > 0 ? (ejec / base) * 100 : 0;
-
-  return (
-    <Card variant="outlined" sx={{ height: '100%' }}>
-      <CardContent sx={{ p: { xs: 1.5, md: 2 } }}>
-        <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1}>
-          <Typography variant="subtitle2" fontWeight={700} noWrap title={nombre}>{nombre}</Typography>
-          <Chip
-            label={consolidadoIndiceLabel(indice)}
-            size="small"
-            variant="outlined"
-            color={indice?.indexacion ? 'secondary' : 'default'}
-          />
-        </Stack>
-        <Typography variant="h5" fontWeight={700} sx={{ mt: 1, fontSize: { xs: '1.1rem', md: '1.5rem' } }} noWrap>
-          {fmtMonedaNativa(pres, mon)}
-        </Typography>
-        <Typography variant="caption" color="text.secondary">
-          Presupuestado{mon !== 'ARS' && presupuestado_ars != null ? ` · ≈ ${formatCurrency(presupuestado_ars)} hoy` : ''}
-        </Typography>
-
-        <LinearProgress
-          variant="determinate"
-          value={Math.min(Math.max(pct, 0), 100)}
-          color={pct > 100 ? 'error' : pct > 80 ? 'warning' : 'primary'}
-          sx={{ my: 1, height: 6, borderRadius: 3 }}
-        />
-        <Stack direction="row" justifyContent="space-between" spacing={1}>
-          <Typography variant="caption" color="text.secondary" noWrap>Gastado: {fmtMonedaNativa(ejec, mon)}</Typography>
-          <Typography variant="caption" fontWeight={600} color={(saldo ?? 0) >= 0 ? 'success.main' : 'error.main'} noWrap>
-            Saldo: {fmtMonedaNativa(saldo, mon)}
-          </Typography>
-        </Stack>
-        {techoVal != null && (
-          <Typography variant="caption" color="text.disabled" sx={{ display: 'block', mt: 0.5 }}>
-            Techo: {fmtMonedaNativa(techoVal, mon)}
-          </Typography>
-        )}
-      </CardContent>
-    </Card>
   );
 };
 
@@ -1260,6 +1207,55 @@ const ControlPresupuestosPage = () => {
   // Obtener el presupuesto general del proyecto
   const presupuestoGeneral = calcularSumas.general || 0;
 
+  // ─── Generales por moneda/índice (TAR-423) ─────────────────────────────────
+  // Cada moneda/índice tiene su propio "general" con Asignado (Σ específicos de esa
+  // unidad) y Sin asignar (General − Asignado). Todo en moneda nativa, sin mezclar.
+  // El ejecutado de cada unidad usa el techo (general si existe, si no la suma de hijos).
+  const gruposGeneralEgreso = useMemo(() => {
+    if (!resumen) return [];
+    const items = obtenerTodosLosItemsEgresos();
+    const map = new Map();
+    for (const it of items) {
+      const key = itemIndiceKey(it);
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(it);
+    }
+    return [...map.entries()]
+      .sort((a, b) => indiceKeyOrden(a[0]) - indiceKeyOrden(b[0]))
+      .map(([key, grupoItems]) => {
+        const generales = grupoItems.filter(itemEsGeneral);
+        const especificos = grupoItems.filter((i) => !itemEsGeneral(i));
+        // Puede haber más de un general por unidad: se suman todos (igual que el modelo viejo).
+        const general = generales[0] || null;
+        const generalMonto = generales.reduce((s, i) => s + (i.monto || 0), 0);
+        const asignado = especificos.reduce((s, i) => s + (i.monto || 0), 0);
+        const presupuestado = Math.max(generalMonto, asignado);
+        const ejecutado = generales.length > 0
+          ? generales.reduce((s, i) => s + (i.ejecutado || 0), 0)
+          : especificos.reduce((s, i) => s + (i.ejecutado || 0), 0);
+        const monedaNativa = indiceKeyMoneda(key);
+        const cacTipo = indiceKeyCacTipo(key);
+        const idxARS = monedaNativa === 'CAC' ? getCacIndice(cacTipo) : monedaNativa === 'USD' ? tipoCambio : 1;
+        return {
+          key,
+          label: indiceKeyLabel(key),
+          monedaNativa,
+          cacTipo,
+          indexacion: monedaNativa === 'CAC' ? 'CAC' : monedaNativa === 'USD' ? 'USD' : null,
+          general,
+          generalMonto,
+          asignado,
+          sinAsignar: generalMonto - asignado,
+          presupuestado,
+          ejecutado,
+          tieneGeneral: !!general,
+          tieneEspecificos: especificos.length > 0,
+          // Referencia en ARS de hoy (null si falta cotización).
+          idxARS: idxARS || null,
+        };
+      });
+  }, [resumen, tipoCambio, cacIndiceActual]);
+
   // Verificar si alguna suma de hijos excede el presupuesto general
   const verificarExcesoHijos = () => {
     if (presupuestoGeneral <= 0) return;
@@ -1302,6 +1298,28 @@ const ControlPresupuestosPage = () => {
     } catch (err) {
       setAlert({ open: true, message: 'Error al crear presupuesto', severity: 'error' });
     }
+  };
+
+  // Abre el drawer para definir/crear el presupuesto general de una moneda/índice.
+  // Prefilla la unidad y sugiere el monto ya asignado (en la unidad de entrada del drawer:
+  // ARS para CAC indexado, la moneda nativa para ARS/USD).
+  const abrirDefinirGeneral = (grupo) => {
+    const sugeridoNativo = grupo.asignado || 0;
+    const monto = grupo.monedaNativa === 'CAC'
+      ? (grupo.idxARS ? sugeridoNativo * grupo.idxARS : null)
+      : sugeridoNativo;
+    abrirDrawerCrear({
+      tipoDefault: 'egreso',
+      preFill: {
+        clasificaciones: [],
+        proveedores: [],
+        etapa: null,
+        monto: monto > 0 ? monto : null,
+        moneda: grupo.monedaNativa === 'USD' ? 'USD' : 'ARS',
+        indexacion: grupo.indexacion,
+        cac_tipo: grupo.cacTipo,
+      },
+    });
   };
 
   // Verificar exceso después de que cambie calcularSumas
@@ -1542,22 +1560,6 @@ const ControlPresupuestosPage = () => {
 
             {resumen && (
               <>
-                {/* Consolidados por índice (TAR-423): cada índice separado, sin mezclar */}
-                {resumen.consolidados?.egresos?.length > 0 && (
-                  <Box>
-                    <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1 }}>
-                      Consolidados por índice
-                    </Typography>
-                    <Grid container spacing={{ xs: 1.5, md: 2 }}>
-                      {resumen.consolidados.egresos.map((c) => (
-                        <Grid item xs={12} sm={6} md={4} key={`egr-${c.id}`}>
-                          <ConsolidadoCard consolidado={c} />
-                        </Grid>
-                      ))}
-                    </Grid>
-                  </Box>
-                )}
-
                 {/* Resumen General (convertido a la moneda de vista — modo opcional) */}
                 {(() => {
                   const totales = calcularTotales();
@@ -1907,127 +1909,96 @@ const ControlPresupuestosPage = () => {
                     <Tab value={2} icon={<StorefrontIcon sx={{ fontSize: { xs: 16, md: 20 } }} />} iconPosition="start" label="Proveedor" />
                   </Tabs>
                   
-                  {/* Resumen de asignación del tab activo */}
-                  <Box sx={{ mt: 2, p: { xs: 1.5, md: 2 }, bgcolor: 'grey.50', borderRadius: 1 }}>
-                    {/* Mobile: grid 2x2; Desktop: fila horizontal */}
-                    <Box sx={{ 
-                      display: 'grid', 
-                      gridTemplateColumns: { xs: '1fr 1fr', sm: 'auto auto auto auto 1fr' },
-                      gap: { xs: 1.5, md: 2 },
-                      alignItems: 'center'
-                    }}>
-                      <Box>
-                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.6rem', sm: '0.75rem' } }}>Presupuesto General</Typography>
-                        <Stack direction="row" alignItems="center" spacing={0.5} flexWrap="wrap" useFlexGap>
-                          {presupuestoGeneral > 0 ? (
-                            (() => {
-                              const gi = calcularSumas.generalItem;
-                              const esIdx = gi && !!gi.indexacion;
-                              const monedaItem = gi?.moneda || 'ARS';
-                              const cacTipoLbl = gi?.cac_tipo === 'mano_obra' ? ' MO' : gi?.cac_tipo === 'materiales' ? ' MAT' : '';
-                              const unidadIdx = gi?.indexacion === 'CAC' ? `CAC${cacTipoLbl}` : (gi?.indexacion === 'USD' ? 'USD' : '');
-                              const idxActual = gi?.indexacion === 'CAC' ? getCacIndice(gi?.cac_tipo) : (gi?.indexacion === 'USD' ? tipoCambio : null);
-                              const presEnARS = esIdx && idxActual ? gi.monto * idxActual : null;
-                              const fmtARS = (v) => v != null ? `$${Number(v).toLocaleString('es-AR', { maximumFractionDigits: 0 })}` : '';
-                              const fmtUnidad = (v) => `${Number(v).toLocaleString('es-AR', { maximumFractionDigits: 2 })} ${unidadIdx}`;
-                              return (
-                                <>
-                                  <Typography variant="h6" sx={{ fontSize: { xs: '0.95rem', md: '1.25rem' } }}>
-                                    {esIdx ? fmtUnidad(gi.monto) : formatMonto(presupuestoGeneral, moneda)}
-                                  </Typography>
-                                  {esIdx && presEnARS != null && (
-                                    <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.6rem', sm: '0.7rem' } }}>
-                                      ≈ {fmtARS(presEnARS)}
-                                    </Typography>
-                                  )}
-                                  {esIdx && (
-                                    <Chip label={`idx ${gi.indexacion}`} size="small" color="secondary" variant="outlined" sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }} />
-                                  )}
-                                  {gi?.base_calculo === 'subtotal' && (
-                                    <Chip label="neto" size="small" color="default" variant="outlined" sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }} />
-                                  )}
-                                  <Button 
-                                    size="small"
-                                    sx={{ minWidth: 'auto', px: 0.5, fontSize: '0.7rem' }}
-                                    onClick={() => {
-                                      const generalItem = obtenerTodosLosItemsEgresos().find(itemEsGeneral);
-                                      if (generalItem) abrirDrawerEditar(generalItem, 'General');
-                                    }}
-                                  >
-                                    Editar
-                                  </Button>
-                                  {calcularSumas.generalHistorial?.length > 0 && (
-                                    <Chip 
-                                      label={`${calcularSumas.generalHistorial.length}`} 
-                                      size="small" 
-                                      color="info" 
-                                      variant="outlined"
-                                      onClick={() => {
-                                        const generalItem = obtenerTodosLosItemsEgresos().find(itemEsGeneral);
-                                        if (generalItem) abrirDrawerEditar(generalItem, 'General');
-                                      }}
-                                      sx={{ cursor: 'pointer', height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }}
-                                    />
-                                  )}
-                                </>
-                              );
-                            })()
-                          ) : (
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              onClick={() => {
-                                // Sugerencia: monto = total asignado de la pestaña activa, así definir un techo
-                                // arranca desde lo que ya está distribuido en categorías/etapas/proveedores.
-                                const sugerido = tabActivo === 0
-                                  ? calcularSumas.porCategoria
-                                  : tabActivo === 1
-                                    ? calcularSumas.porEtapa
-                                    : calcularSumas.porProveedor;
-                                abrirDrawerCrear({
-                                  tipoDefault: 'egreso',
-                                  preFill: { clasificaciones: [], proveedores: [], etapa: null, monto: sugerido > 0 ? sugerido : null },
-                                });
-                              }}
-                              sx={{ fontSize: { xs: '0.7rem', md: '0.8rem' } }}
-                            >
-                              Definir
-                            </Button>
-                          )}
+                  {/* Presupuesto general por moneda/índice (TAR-423): cada unidad por separado */}
+                  <Stack spacing={1.5} sx={{ mt: 2 }}>
+                    {gruposGeneralEgreso.length === 0 && (
+                      <Box sx={{ p: { xs: 1.5, md: 2 }, bgcolor: 'grey.50', borderRadius: 1 }}>
+                        <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
+                          <Typography variant="body2" color="text.secondary">Todavía no hay presupuesto general</Typography>
+                          <Button size="small" variant="outlined"
+                            onClick={() => abrirDrawerCrear({ tipoDefault: 'egreso', preFill: { clasificaciones: [], proveedores: [], etapa: null } })}>
+                            Definir
+                          </Button>
                         </Stack>
                       </Box>
-                      <Box>
-                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.6rem', sm: '0.75rem' } }}>
-                          Asignado
-                        </Typography>
-                        <Typography variant="h6" sx={{ fontSize: { xs: '0.95rem', md: '1.25rem' } }} color={
-                          (tabActivo === 0 ? calcularSumas.porCategoria : tabActivo === 1 ? calcularSumas.porEtapa : calcularSumas.porProveedor) > presupuestoGeneral 
-                            ? 'error.main' 
-                            : 'text.primary'
-                        }>
-                          {formatMonto(tabActivo === 0 ? calcularSumas.porCategoria : tabActivo === 1 ? calcularSumas.porEtapa : calcularSumas.porProveedor, moneda)}
-                        </Typography>
-                      </Box>
-                      <Box>
-                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.6rem', sm: '0.75rem' } }}>Sin asignar</Typography>
-                        <Typography variant="h6" sx={{ fontSize: { xs: '0.95rem', md: '1.25rem' } }} color={
-                          presupuestoGeneral - (tabActivo === 0 ? calcularSumas.porCategoria : tabActivo === 1 ? calcularSumas.porEtapa : calcularSumas.porProveedor) < 0 
-                            ? 'error.main' 
-                            : 'success.main'
-                        }>
-                          {formatMonto(presupuestoGeneral - (tabActivo === 0 ? calcularSumas.porCategoria : tabActivo === 1 ? calcularSumas.porEtapa : calcularSumas.porProveedor), moneda)}
-                        </Typography>
-                      </Box>
-                      {presupuestoGeneral > 0 && (
-                        <Chip 
-                          label={`${(((tabActivo === 0 ? calcularSumas.porCategoria : tabActivo === 1 ? calcularSumas.porEtapa : calcularSumas.porProveedor) / presupuestoGeneral) * 100).toFixed(0)}%`}
-                          color={(tabActivo === 0 ? calcularSumas.porCategoria : tabActivo === 1 ? calcularSumas.porEtapa : calcularSumas.porProveedor) > presupuestoGeneral ? 'error' : 'primary'}
-                          size="small"
-                        />
-                      )}
-                    </Box>
-                  </Box>
-                  
+                    )}
+                    {gruposGeneralEgreso.map((g) => {
+                      const refARS = g.idxARS && g.monedaNativa !== 'ARS';
+                      const pct = g.generalMonto > 0 ? (g.asignado / g.generalMonto) * 100 : null;
+                      return (
+                        <Box key={g.key} sx={{ p: { xs: 1.5, md: 2 }, bgcolor: 'grey.50', borderRadius: 1 }}>
+                          <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
+                            <Chip label={g.label} size="small" variant="outlined"
+                              color={g.monedaNativa === 'ARS' ? 'default' : 'secondary'} />
+                            {pct != null && (
+                              <Chip size="small" label={`${pct.toFixed(0)}%`}
+                                color={g.asignado > g.generalMonto ? 'error' : 'primary'} />
+                            )}
+                          </Stack>
+                          <Box sx={{
+                            display: 'grid',
+                            gridTemplateColumns: { xs: '1fr 1fr', sm: 'auto auto auto' },
+                            gap: { xs: 1.5, md: 3 },
+                            alignItems: 'center',
+                          }}>
+                            <Box>
+                              <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.6rem', sm: '0.75rem' } }}>Presupuesto general</Typography>
+                              {g.tieneGeneral ? (
+                                <Stack direction="row" alignItems="baseline" spacing={0.75} flexWrap="wrap" useFlexGap>
+                                  <Typography variant="h6" sx={{ fontSize: { xs: '0.95rem', md: '1.25rem' } }}>
+                                    {fmtMontoNativo(g.generalMonto, g.monedaNativa)}
+                                  </Typography>
+                                  {refARS && (
+                                    <Typography variant="caption" color="text.secondary">
+                                      ≈ ${Number(g.generalMonto * g.idxARS).toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                                    </Typography>
+                                  )}
+                                  <Button size="small" sx={{ minWidth: 'auto', px: 0.5, fontSize: '0.7rem' }}
+                                    onClick={() => abrirDrawerEditar(g.general, 'General')}>
+                                    Editar
+                                  </Button>
+                                </Stack>
+                              ) : (
+                                <Box>
+                                  <Button size="small" variant="outlined" onClick={() => abrirDefinirGeneral(g)}
+                                    sx={{ fontSize: { xs: '0.7rem', md: '0.8rem' }, mt: 0.5 }}>
+                                    Definir
+                                  </Button>
+                                </Box>
+                              )}
+                            </Box>
+                            <Box>
+                              {/* Sin general, lo presupuestado en la unidad no es "asignado" (no hay techo del que repartir). */}
+                              <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.6rem', sm: '0.75rem' } }}>
+                                {g.tieneGeneral ? 'Asignado' : 'Presupuestado'}
+                              </Typography>
+                              <Typography variant="h6" sx={{ fontSize: { xs: '0.95rem', md: '1.25rem' } }}
+                                color={g.tieneGeneral && g.asignado > g.generalMonto ? 'error.main' : 'text.primary'}>
+                                {fmtMontoNativo(g.asignado, g.monedaNativa)}
+                              </Typography>
+                            </Box>
+                            {g.tieneGeneral && (
+                              <Box>
+                                <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.6rem', sm: '0.75rem' } }}>Sin asignar</Typography>
+                                <Typography variant="h6" sx={{ fontSize: { xs: '0.95rem', md: '1.25rem' } }}
+                                  color={g.sinAsignar < 0 ? 'error.main' : 'success.main'}>
+                                  {fmtMontoNativo(g.sinAsignar, g.monedaNativa)}
+                                </Typography>
+                              </Box>
+                            )}
+                          </Box>
+                          {!g.tieneGeneral && g.tieneEspecificos && (
+                            <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                              Hay presupuestos en {g.label} sin un general que los englobe.
+                              Podés <Box component="span" sx={{ color: 'primary.main', cursor: 'pointer', textDecoration: 'underline' }}
+                                onClick={() => abrirDefinirGeneral(g)}>crear el general de {g.label}</Box> o dejarlos sueltos.
+                            </Typography>
+                          )}
+                        </Box>
+                      );
+                    })}
+                  </Stack>
+
                   <Box sx={{ mt: 3 }}>
                     {/* Toggle modo selección múltiple */}
                     <Stack direction="row" justifyContent="flex-end" sx={{ mb: 1.5 }}>

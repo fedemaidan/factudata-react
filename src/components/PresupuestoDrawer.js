@@ -1,3 +1,5 @@
+// 📖 Doc del módulo de control de presupuestos (CAC, moneda/índice, recálculo):
+//    sorby_bot_wa/docs/control-presupuestos/
 import { useState, useEffect, Fragment, useRef } from 'react';
 import {
   Drawer,
@@ -66,7 +68,6 @@ import 'dayjs/locale/es';
 import presupuestoService from 'src/services/presupuestoService';
 import MonedasService from 'src/services/monedasService';
 import { formatCurrency } from 'src/utils/formatters';
-import { CAC_LABELS } from 'src/components/presupuestosProfesionales/monedaAjusteConfig';
 import {
   PRESUPUESTO_ADJUNTOS_MAX,
   validatePresupuestoAdjuntoFile,
@@ -282,49 +283,6 @@ const PresupuestoDrawer = ({
   const [cacTipo, setCacTipo] = useState('general'); // 'general' | 'mano_obra' | 'materiales'
   const [nuevoCacTipo, setNuevoCacTipo] = useState('general');
 
-  const getIndiceCategoria = (catName) => {
-    const cat = (categorias || []).find((c) => (typeof c === 'string' ? c : c?.name) === catName);
-    return cat && typeof cat === 'object' ? cat.indice || null : null;
-  };
-  const indiceKeyStr = (indice) => (indice && indice.indexacion ? `${indice.indexacion}:${indice.cac_tipo || 'general'}` : 'ARS');
-  const labelIndice = (indice) => {
-    if (!indice || !indice.indexacion) return 'ARS fijo';
-    if (indice.indexacion === 'USD') return 'USD';
-    return `CAC ${CAC_LABELS[indice.cac_tipo] || 'Promedio'}`;
-  };
-
-  // La categoría manda el índice (solo crear). Si las categorías comparten índice, lo
-  // aplica; si difieren, no toca nada y se bloquea la creación desde la UI.
-  const handleClasificacionesChange = (next) => {
-    setClasificacionesSel(next);
-    if (mode !== 'crear') return;
-    if (!Array.isArray(next) || next.length === 0) return;
-    const keys = [...new Set(next.map((c) => indiceKeyStr(getIndiceCategoria(c.categoria))))];
-    if (keys.length !== 1) return; // índices distintos → se bloquea en la UI
-    const indice = getIndiceCategoria(next[0].categoria);
-    setMoneda('ARS');
-    setIndexacion(indice?.indexacion || null);
-    if (indice?.indexacion === 'CAC') setCacTipo(indice.cac_tipo || 'general');
-  };
-
-  // Estado del índice según las categorías elegidas (TAR-423): la categoría manda.
-  const _catsSel = Array.isArray(clasificacionesSel) ? clasificacionesSel : [];
-  const _keysSel = [...new Set(_catsSel.map((c) => indiceKeyStr(getIndiceCategoria(c.categoria))))];
-  const indicePorCategoria = mode === 'crear' && _catsSel.length > 0;
-  const conflictoIndices = indicePorCategoria && _keysSel.length > 1;
-  const indiceUnico = indicePorCategoria && !conflictoIndices; // las categorías comparten índice
-  const indiceDerivado = indiceUnico ? getIndiceCategoria(_catsSel[0].categoria) : null; // null = ARS fijo
-  // Crear: la categoría manda el índice. Sincroniza el estado real (indexacion/cacTipo)
-  // con el índice derivado — cubre el form simplificado precargado por categoría (card),
-  // donde handleClasificacionesChange no se dispara.
-  const _indiceDerivadoKey = indiceUnico ? indiceKeyStr(indiceDerivado) : 'none';
-  useEffect(() => {
-    if (mode !== 'crear' || !indiceUnico) return;
-    setMoneda('ARS');
-    setIndexacion(indiceDerivado?.indexacion || null);
-    if (indiceDerivado?.indexacion === 'CAC') setCacTipo(indiceDerivado.cac_tipo || 'general');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, indiceUnico, _indiceDerivadoKey]);
   const [dolarRate, setDolarRate] = useState(null);
   const [cacIndice, setCacIndice] = useState(null);
   const [cacSubindices, setCacSubindices] = useState({ general: null, mano_obra: null, materiales: null });
@@ -473,9 +431,11 @@ const PresupuestoDrawer = ({
         // preFill.monto: sugerencia inicial del monto (ej: "Definir" presupuesto general
         // pre-llena con la suma ya asignada en hijos).
         setMonto(preFill?.monto != null && Number(preFill.monto) > 0 ? String(preFill.monto) : '');
-        setMoneda('ARS');
-        setIndexacion(null);
-        setCacTipo('general');
+        // Moneda/índice precargados (ej: "Definir" un general de una moneda/índice concreto).
+        // El usuario los puede cambiar libremente; es solo el punto de partida.
+        setMoneda(preFill?.moneda === 'USD' ? 'USD' : 'ARS');
+        setIndexacion(preFill?.moneda === 'USD' ? null : (preFill?.indexacion || null));
+        setCacTipo(preFill?.indexacion === 'CAC' ? (preFill?.cac_tipo || 'general') : 'general');
         setBaseCalculo('total');
         // Precarga del form en modo crear.
         // 1) preFill (multi-dimension, viene de la selección multi-card de control-presupuestos)
@@ -1181,7 +1141,6 @@ const PresupuestoDrawer = ({
                   <ToggleButtonGroup
                     value={moneda}
                     exclusive
-                    disabled={indicePorCategoria}
                     onChange={(e, val) => {
                       if (!val) return;
                       setMoneda(val);
@@ -1266,7 +1225,6 @@ const PresupuestoDrawer = ({
                   <ToggleButtonGroup
                     value={indexacion}
                     exclusive
-                    disabled={indicePorCategoria}
                     onChange={(e, val) => setIndexacion(val)}
                     size="small"
                     fullWidth
@@ -1286,13 +1244,6 @@ const PresupuestoDrawer = ({
                     </ToggleButton>
                   </ToggleButtonGroup>
 
-                  {/* TAR-423: el índice lo define la categoría elegida */}
-                  {indiceUnico && (
-                    <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-                      Índice definido por la categoría: <strong>{labelIndice(indiceDerivado)}</strong>. Para cambiarlo, cambiá el índice de la categoría o quitá la categoría.
-                    </Typography>
-                  )}
-
                   {/* Selector de tipo de CAC (solo cuando se elige CAC) */}
                   {indexacion === 'CAC' && (
                     <Box sx={{ mt: 1 }}>
@@ -1302,7 +1253,6 @@ const PresupuestoDrawer = ({
                       <ToggleButtonGroup
                         value={cacTipo}
                         exclusive
-                        disabled={indicePorCategoria}
                         onChange={(e, val) => val && setCacTipo(val)}
                         size="small"
                         fullWidth
@@ -1518,15 +1468,9 @@ const PresupuestoDrawer = ({
                             </Typography>
                             <ClasificacionesPicker
                               value={clasificacionesSel}
-                              onChange={handleClasificacionesChange}
+                              onChange={setClasificacionesSel}
                               categorias={categorias}
                             />
-                            {conflictoIndices && (
-                              <Alert severity="warning" variant="outlined" sx={{ mt: 1 }}>
-                                Elegiste categorías con índices distintos ({_keysSel.map((k) => k.split(':')[0] === 'ARS' ? 'ARS' : k.split(':')[0] === 'USD' ? 'USD' : 'CAC').filter((v, i, a) => a.indexOf(v) === i).join(', ')}).
-                                Un presupuesto usa un solo índice. Creá un presupuesto por índice (ej: uno para las categorías CAC y otro para las USD).
-                              </Alert>
-                            )}
                           </Box>
 
                           <Box>
@@ -2908,10 +2852,10 @@ const PresupuestoDrawer = ({
               variant="contained"
               fullWidth
               onClick={handleCrear}
-              disabled={loading || adjuntosBusy || !monto || parseFloat(monto) <= 0 || (showFullForm && !proyectoSel) || conflictoIndices}
+              disabled={loading || adjuntosBusy || !monto || parseFloat(monto) <= 0 || (showFullForm && !proyectoSel)}
               startIcon={loading || adjuntosBusy ? <CircularProgress size={16} color="inherit" /> : null}
             >
-              {loading || adjuntosBusy ? 'Creando...' : conflictoIndices ? 'Separá las categorías por índice' : tipo === 'ingreso' ? 'Crear control de cobros' : 'Crear control de gastos'}
+              {loading || adjuntosBusy ? 'Creando...' : tipo === 'ingreso' ? 'Crear control de cobros' : 'Crear control de gastos'}
             </Button>
           )}
 
