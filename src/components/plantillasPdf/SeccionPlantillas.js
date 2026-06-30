@@ -31,6 +31,8 @@ export default function SeccionPlantillas({
   titulo,
   descripcionDefault,
   sampleData,
+  buildSampleData = null,
+  sampleDataModes = [],
   defaultDocumentLoader,
   onNotify,
 }) {
@@ -143,6 +145,8 @@ export default function SeccionPlantillas({
           empresaId={empresaId}
           documentType={documentType}
           sampleData={sampleData}
+          buildSampleData={buildSampleData}
+          sampleDataModes={sampleDataModes}
           defaultDocumentLoader={defaultDocumentLoader}
           empresaNombre={empresaNombre}
           logos={logos}

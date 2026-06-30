@@ -81,6 +81,7 @@ import ClasificacionesPicker from 'src/components/ClasificacionesPicker';
 import ProveedoresMultiSelect from 'src/components/ProveedoresMultiSelect';
 import ExportarPdfMenu from 'src/components/plantillasPdf/ExportarPdfMenu';
 import { buildControlPresupuestoData } from 'src/utils/controlPresupuesto/buildControlPresupuestoData';
+import { calcPresupuestadoNominal } from 'src/utils/controlPresupuesto/presupuestoNominal';
 
 const loadDefaultControlPresupuestoDoc = () =>
   import('src/utils/controlPresupuesto/PdfControlPresupuestoDocument').then(
@@ -2638,6 +2639,12 @@ const PresupuestoDrawer = ({
                         defaultDocumentLoader={loadDefaultControlPresupuestoDoc}
                         tituloEditable
                         defaultTitulo={presupuesto.tipo === 'ingreso' ? 'RECIBO DE INGRESOS' : 'RECIBO DE PAGOS'}
+                        modosDisponibles={[
+                          'nominal',
+                          ...(presupuesto.indexacion === 'CAC' ? ['cac'] : []),
+                          ...(presupuesto.indexacion === 'USD' || presupuesto.moneda === 'USD' ? ['usd'] : []),
+                        ]}
+                        modoDefault="nominal"
                         buildData={(opts) => {
                           const obra = proyectos.find((p) => p.id === proyectoId)?.nombre || '';
                           const label = presupuesto.label || presupuesto.nombre || presupuesto.categoria || 'Presupuesto';
@@ -2646,6 +2653,8 @@ const PresupuestoDrawer = ({
                           return buildControlPresupuestoData({
                             movimientos: movimientosFiltrados,
                             titulo: opts?.titulo || (esIngreso ? 'RECIBO DE INGRESOS' : 'RECIBO DE PAGOS'),
+                            // El usuario elige el modo en el export; default pesos nominales (espeja la tabla del drawer).
+                            modo: opts?.modo || 'nominal',
                             presupuestoLabel: label,
                             contratista,
                             obra,
@@ -2656,6 +2665,7 @@ const PresupuestoDrawer = ({
                             cacTipo: presupuesto.cac_tipo || null,
                             baseCalculo: presupuesto.base_calculo || 'total',
                             presupuestadoNativo: Number(presupuesto.monto != null ? presupuesto.monto : presupuesto.monto_ingresado || 0),
+                            presupuestadoNominal: calcPresupuestadoNominal(presupuesto),
                             montoIngresado: presupuesto.monto_ingresado != null ? Number(presupuesto.monto_ingresado) : null,
                             cacIndiceActual: cacActualEfectivo || cacEfectivo,
                             tipoCambioActual: dolarEfectivo,

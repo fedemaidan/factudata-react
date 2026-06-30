@@ -13,6 +13,8 @@ import {
   Typography,
   Tooltip,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
 } from '@mui/material';
 import PictureAsPdfRoundedIcon from '@mui/icons-material/PictureAsPdfRounded';
 import DescriptionOutlinedIcon from '@mui/icons-material/DescriptionOutlined';
@@ -30,10 +32,15 @@ import { useExportarPdf } from './useExportarPdf';
  * - Si `tituloEditable`, muestra un campo de título (default `defaultTitulo`) cuyo
  *   valor se pasa al `buildData({ titulo })` → el usuario controla el encabezado del
  *   PDF desde el export (no depende de la plantilla del agente).
+ * - Si `modosDisponibles` trae más de una opción, muestra un selector de moneda
+ *   (Pesos nominales / CAC a hoy / USD) cuyo valor va en `buildData({ modo })`. El
+ *   modo controla los NÚMEROS (no la plantilla), por eso vive en el export.
  *
  * La lógica (listar + render) vive en el hook useExportarPdf, compartido con
  * ExportarPdfDialog. Genérico por `documentType`.
  */
+const MODO_LABELS = { nominal: 'Pesos nominales', cac: 'CAC a hoy', usd: 'USD' };
+
 export default function ExportarPdfMenu({
   empresaId,
   empresaNombre = '',
@@ -45,17 +52,23 @@ export default function ExportarPdfMenu({
   onError,
   tituloEditable = false,
   defaultTitulo = '',
+  modosDisponibles = [],
+  modoDefault = 'nominal',
 }) {
   const router = useRouter();
   const [anchorEl, setAnchorEl] = useState(null);
   const [titulo, setTitulo] = useState(defaultTitulo);
+  const [modo, setModo] = useState(modoDefault);
   const open = Boolean(anchorEl);
   const { plantillas, loadingList, generating, cargarOpciones, exportar } = useExportarPdf({
     empresaId, empresaNombre, documentType, buildData, defaultDocumentLoader, fileName, onError,
   });
 
-  // Mantener el título sincronizado con el default cuando cambia el contexto (ej. otro presupuesto).
+  // Mantener título y modo sincronizados con el default cuando cambia el contexto (ej. otro presupuesto).
   useEffect(() => { setTitulo(defaultTitulo); }, [defaultTitulo]);
+  useEffect(() => { setModo(modoDefault); }, [modoDefault]);
+
+  const mostrarSelectorModo = Array.isArray(modosDisponibles) && modosDisponibles.length > 1;
 
   const abrir = (e) => {
     setAnchorEl(e.currentTarget);
@@ -65,8 +78,11 @@ export default function ExportarPdfMenu({
 
   const handleExportar = (plantilla) => {
     cerrar();
-    const opts = tituloEditable ? { titulo: (titulo || '').trim() || defaultTitulo } : undefined;
-    exportar(plantilla, opts);
+    const opts = {
+      ...(tituloEditable ? { titulo: (titulo || '').trim() || defaultTitulo } : {}),
+      ...(mostrarSelectorModo ? { modo } : {}),
+    };
+    exportar(plantilla, Object.keys(opts).length ? opts : undefined);
   };
 
   return (
@@ -110,6 +126,31 @@ export default function ExportarPdfMenu({
               fullWidth
               variant="outlined"
             />
+          </Box>
+        )}
+
+        {mostrarSelectorModo && (
+          <Box
+            sx={{ px: 2, pt: 0.5, pb: 1 }}
+            onKeyDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+              Mostrar importes en
+            </Typography>
+            <ToggleButtonGroup
+              value={modo}
+              exclusive
+              size="small"
+              fullWidth
+              onChange={(e, v) => { if (v) setModo(v); }}
+            >
+              {modosDisponibles.map((m) => (
+                <ToggleButton key={m} value={m} sx={{ fontSize: '0.65rem', py: 0.4, textTransform: 'none' }}>
+                  {MODO_LABELS[m] || m}
+                </ToggleButton>
+              ))}
+            </ToggleButtonGroup>
           </Box>
         )}
 

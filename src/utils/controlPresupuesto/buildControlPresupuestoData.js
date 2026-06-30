@@ -5,17 +5,17 @@ import dayjs from 'dayjs';
  * (la default `PdfControlPresupuestoDocument` y las custom generadas con IA) a partir
  * de los movimientos que abrió un drawer + el contexto del presupuesto.
  *
- * MONEDA / INDEXACIÓN (espejo de PresupuestoItem y la pestaña Movimientos del
- * PresupuestoDrawer, que es la lógica ya validada):
- *  - Presupuesto indexado (CAC o dólar): la unidad NATIVA (CAC / USD) es la base de
- *    comparación coherente. Mostramos PESOS A HOY = nativo × índice actual, y la
- *    equivalencia en la unidad nativa al lado. Así presupuestado/ejecutado/saldo
- *    quedan SIEMPRE en la misma unidad (nunca pesos − CAC).
- *  - Presupuesto en dólares (nativo, sin indexar): solo dólares.
- *  - Presupuesto en pesos plano: solo pesos.
+ * MODO DE VISUALIZACIÓN (`modo`) — qué moneda se muestra, decidido por el usuario en
+ * el export (selector) y NO por la plantilla:
+ *  - 'nominal' (default): PESOS REALES del momento. Espeja la tabla de movimientos del
+ *    drawer. Presupuestado = nominal (monto_ingresado + adicionales a su snapshot),
+ *    ejecutado = Σ pesos pagados. Sin columna de equivalencia.
+ *  - 'cac': pesos "a hoy" = unidad nativa CAC × índice actual, con la unidad CAC al lado
+ *    como equivalencia (comparación coherente en pesos de hoy).
+ *  - 'usd': importes en dólares (equivalencia usd_blue de cada movimiento).
  *
  * Cada movimiento trae `equivalencias.total.{ars, usd_blue, cac}` (y `.subtotal` si
- * el presupuesto compara por neto). De ahí salen las equivalencias por fila.
+ * el presupuesto compara por neto). De ahí salen los valores por fila en cada modo.
  */
 
 const fechaSecs = (m) => m?.fecha_factura?._seconds || m?.fecha_factura?.seconds || 0;
@@ -35,17 +35,20 @@ const num = (v) => {
 const cacLabel = (cacTipo) =>
   cacTipo === 'mano_obra' ? 'CAC MO' : cacTipo === 'materiales' ? 'CAC MAT' : 'CAC';
 
+const MODO_LABEL = { nominal: 'Nominal', cac: 'CAC a hoy', usd: 'USD' };
+
 /**
  * @param {Object} opts
  * @param {Array}  opts.movimientos          Movimientos con shape de backend.
  * @param {string} opts.titulo               Título del documento (editable en el export).
+ * @param {string} [opts.modo]               'nominal' | 'cac' | 'usd' (default 'nominal').
  * @param {string} [opts.indexacion]         'CAC' | 'USD' | null (indexación del presupuesto en pesos).
  * @param {string} [opts.monedaPresupuesto]  Moneda nativa del presupuesto: 'ARS' | 'USD' | 'CAC'.
  * @param {string} [opts.cacTipo]            'general' | 'mano_obra' | 'materiales'.
- * @param {string} [opts.baseCalculo]        'total' | 'subtotal'.
  * @param {number} [opts.presupuestadoNativo] Monto presupuestado en unidad nativa (CAC units / USD / ARS).
+ * @param {number} [opts.presupuestadoNominal] Presupuestado nominal en pesos (calcPresupuestadoNominal).
  * @param {number} [opts.presupuestado]      Compat: monto ya en moneda de vista (export a nivel proyecto).
- * @param {number} [opts.montoIngresado]     Pesos originales (fallback si falta el nativo).
+ * @param {number} [opts.montoIngresado]     Pesos originales (fallback para nominal/derivados).
  * @param {number} [opts.cacIndiceActual]    Índice CAC de hoy (según cacTipo).
  * @param {number} [opts.tipoCambioActual]   Dólar de hoy.
  */
@@ -58,11 +61,13 @@ export function buildControlPresupuestoData({
   empresaNombre = '',
   domicilio = '',
   tipo = 'gastos',
+  modo = 'nominal',
   indexacion = null,
   monedaPresupuesto = null,
   cacTipo = null,
   baseCalculo = 'total',
   presupuestadoNativo = null,
+  presupuestadoNominal = null,
   presupuestado = 0,
   montoIngresado = null,
   cacIndiceActual = null,
@@ -72,40 +77,40 @@ export function buildControlPresupuestoData({
   const campo = baseCalculo === 'subtotal' ? 'subtotal' : 'total';
   const eqOf = (m) => (m?.equivalencias?.[campo] || m?.equivalencias?.total || {});
 
-  // Cotización vigente y clave de equivalencia según el tipo de presupuesto.
-  const cotiz = indexacion === 'CAC' ? num(cacIndiceActual)
-    : indexacion === 'USD' ? num(tipoCambioActual)
-      : null;
-  const indexado = (indexacion === 'CAC' || indexacion === 'USD') && cotiz > 0;
-  const usdNativo = !indexado && monedaPresupuesto === 'USD';
+  // Cotización vigente para los modos que reexpresan a "hoy".
+  const cotizCac = num(cacIndiceActual);
+  const cotizUsd = num(tipoCambioActual);
 
-  // Por movimiento: valor en la unidad PRIMARIA (lo que se muestra) y en la EQUIVALENTE.
-  let primaryOf;   // pesos a hoy (indexado/ARS) o USD (nativo)
-  let equivOf;     // unidad nativa CAC/USD (solo indexado) o null
+  // ── Estrategia por movimiento según el modo ──────────────────────────────────
+  // primaryOf: valor que se muestra; equivOf: unidad nativa al lado (o null).
+  let primaryOf;
+  let equivOf = null;
+  let moneda = 'ARS';
+  let equivLabel = '';
 
-  if (indexado) {
-    const equivKey = indexacion === 'CAC' ? 'cac' : 'usd_blue';
-    // nativo: equivalencia guardada; si falta, lo derivamos del valor en pesos.
+  if (modo === 'cac' && (indexacion === 'CAC') && cotizCac > 0) {
+    // Pesos a hoy = unidad CAC × índice actual; equivalencia en unidades CAC.
     equivOf = (m) => {
       const eq = eqOf(m);
-      if (eq[equivKey] != null) return num(eq[equivKey]);
+      if (eq.cac != null) return num(eq.cac);
       const pesos = num(eq.ars) || num(m.total);
-      return cotiz > 0 ? pesos / cotiz : 0;
+      return cotizCac > 0 ? pesos / cotizCac : 0;
     };
-    primaryOf = (m) => equivOf(m) * cotiz; // pesos a hoy
-  } else if (usdNativo) {
-    equivOf = null;
+    primaryOf = (m) => equivOf(m) * cotizCac;
+    equivLabel = cacLabel(cacTipo);
+  } else if (modo === 'usd') {
+    // Importes en dólares: usd_blue del movimiento (o total nativo si ya es USD).
+    moneda = 'USD';
     primaryOf = (m) => {
       const eq = eqOf(m);
       if ((m.moneda || 'ARS') === 'USD') return num(m.total);
       return num(eq.usd_blue);
     };
   } else {
-    // Pesos plano / fallback a nivel proyecto (presupuestos mixtos).
-    equivOf = null;
+    // 'nominal' (default y fallback): pesos reales del momento.
     primaryOf = (m) => {
       const eq = eqOf(m);
-      if ((m.moneda || 'ARS') === 'USD') return num(eq.ars) || num(m.total);
+      if (eq.ars != null) return num(eq.ars);
       return num(m.total);
     };
   }
@@ -130,33 +135,37 @@ export function buildControlPresupuestoData({
     };
   });
 
-  // ── Totales en unidad coherente ──────────────────────────────────────────────
-  const ejecutadoEquiv = equivOf ? acumEquiv : null;            // unidad nativa
-  const ejecutado = acumPrimary;                                // unidad primaria
+  const ejecutadoEquiv = equivOf ? acumEquiv : null;
+  const ejecutado = acumPrimary;
 
-  // Presupuestado nativo: provisto, o derivado de los pesos originales.
-  const nativo = presupuestadoNativo != null
-    ? num(presupuestadoNativo)
-    : (montoIngresado != null && cotiz > 0 ? num(montoIngresado) / cotiz : null);
-
+  // ── Presupuestado en la unidad primaria del modo ─────────────────────────────
   let presupuestadoPrimary;
-  let presupuestadoEquiv;
-  if (indexado) {
-    presupuestadoEquiv = nativo != null ? nativo : (ejecutadoEquiv || 0);
-    presupuestadoPrimary = presupuestadoEquiv * cotiz;          // pesos a hoy
+  let presupuestadoEquiv = null;
+  if (modo === 'cac' && indexacion === 'CAC' && cotizCac > 0) {
+    const nativo = presupuestadoNativo != null
+      ? num(presupuestadoNativo)
+      : (montoIngresado != null ? num(montoIngresado) / cotizCac : (ejecutadoEquiv || 0));
+    presupuestadoEquiv = nativo;
+    presupuestadoPrimary = nativo * cotizCac;
+  } else if (modo === 'usd') {
+    if (monedaPresupuesto === 'USD' && presupuestadoNativo != null) {
+      presupuestadoPrimary = num(presupuestadoNativo);
+    } else {
+      const nominalARS = presupuestadoNominal != null ? num(presupuestadoNominal)
+        : montoIngresado != null ? num(montoIngresado)
+          : num(presupuestadoNativo != null ? presupuestadoNativo : presupuestado);
+      presupuestadoPrimary = cotizUsd > 0 ? nominalARS / cotizUsd : 0;
+    }
   } else {
-    presupuestadoEquiv = null;
-    presupuestadoPrimary = presupuestadoNativo != null ? num(presupuestadoNativo) : num(presupuestado);
+    // nominal
+    presupuestadoPrimary = presupuestadoNominal != null ? num(presupuestadoNominal)
+      : montoIngresado != null ? num(montoIngresado)
+        : num(presupuestadoNativo != null ? presupuestadoNativo : presupuestado);
   }
 
   const saldo = presupuestadoPrimary - ejecutado;
   const saldoEquiv = equivOf ? (presupuestadoEquiv - ejecutadoEquiv) : null;
   const avance_pct = presupuestadoPrimary ? (ejecutado / presupuestadoPrimary) * 100 : 0;
-
-  const moneda = usdNativo ? 'USD' : 'ARS';
-  const equiv_label = indexacion === 'CAC' ? cacLabel(cacTipo)
-    : indexacion === 'USD' ? 'USD'
-      : '';
 
   return {
     titulo,
@@ -167,10 +176,12 @@ export function buildControlPresupuestoData({
     obra,
     presupuesto_label: presupuestoLabel,
     tipo,
+    modo,
+    modo_label: MODO_LABEL[modo] || MODO_LABEL.nominal,
     moneda,
-    indexacion: indexado ? indexacion : null,
+    indexacion: modo === 'cac' ? indexacion : null,
     mostrar_equiv: !!equivOf,
-    equiv_label,
+    equiv_label: equivLabel,
     presupuestado: presupuestadoPrimary,
     ejecutado,
     saldo,

@@ -9,7 +9,7 @@ const mov = (seconds, total, moneda, eq) => ({
 });
 
 describe('buildControlPresupuestoData', () => {
-  describe('presupuesto indexado por CAC', () => {
+  describe("modo 'cac' (pesos a hoy, presupuesto indexado por CAC)", () => {
     const movimientos = [
       mov(200, 700000, 'ARS', { ars: 700000, cac: 1400, usd_blue: 580 }),
       mov(100, 300000, 'ARS', { ars: 300000, cac: 600, usd_blue: 250 }),
@@ -17,6 +17,7 @@ describe('buildControlPresupuestoData', () => {
     const data = buildControlPresupuestoData({
       movimientos,
       titulo: 'RECIBO DE PAGOS',
+      modo: 'cac',
       indexacion: 'CAC',
       monedaPresupuesto: 'CAC',
       cacTipo: 'general',
@@ -25,6 +26,8 @@ describe('buildControlPresupuestoData', () => {
     });
 
     test('flags y moneda primaria', () => {
+      expect(data.modo).toBe('cac');
+      expect(data.modo_label).toBe('CAC a hoy');
       expect(data.moneda).toBe('ARS');
       expect(data.indexacion).toBe('CAC');
       expect(data.mostrar_equiv).toBe(true);
@@ -57,9 +60,62 @@ describe('buildControlPresupuestoData', () => {
     });
   });
 
-  test('regresión del bug: presupuestado pesos − ejecutado CAC daría basura', () => {
+  describe("modo 'nominal' (default, pesos reales)", () => {
+    const movimientos = [
+      mov(200, 700000, 'ARS', { ars: 700000, cac: 1400, usd_blue: 580 }),
+      mov(100, 300000, 'ARS', { ars: 300000, cac: 600, usd_blue: 250 }),
+    ];
+
+    test('es el modo por defecto cuando no se pasa modo', () => {
+      const data = buildControlPresupuestoData({ movimientos, indexacion: 'CAC' });
+      expect(data.modo).toBe('nominal');
+      expect(data.modo_label).toBe('Nominal');
+    });
+
+    test('presupuesto indexado por CAC mostrado en nominal: sin equivalencia, pesos reales', () => {
+      const data = buildControlPresupuestoData({
+        movimientos,
+        modo: 'nominal',
+        indexacion: 'CAC',
+        monedaPresupuesto: 'CAC',
+        presupuestadoNominal: 1200000,
+        cacIndiceActual: 500, // se ignora en nominal
+      });
+      expect(data.moneda).toBe('ARS');
+      expect(data.indexacion).toBe(null);
+      expect(data.mostrar_equiv).toBe(false);
+      expect(data.equiv_label).toBe('');
+      // ejecutado = Σ pesos reales (eq.ars), NO caquificado.
+      expect(data.ejecutado).toBe(1000000); // 300000 + 700000
+      expect(data.presupuestado).toBe(1200000); // nominal provisto
+      expect(data.saldo).toBe(200000);
+      expect(data.movimientos[0]).toMatchObject({ monto: 300000, monto_equiv: null });
+    });
+
+    test('nominal ≠ caquificado cuando el índice del momento ≠ el actual (raíz del ticket)', () => {
+      // Pago de $300.000 hecho con índice CAC del momento = 300 (cac = 1000),
+      // pero el índice actual es 500 → caquificado = 1000 × 500 = 500.000.
+      const movs = [mov(100, 300000, 'ARS', { ars: 300000, cac: 1000 })];
+      const args = {
+        movimientos: movs,
+        indexacion: 'CAC',
+        monedaPresupuesto: 'CAC',
+        presupuestadoNominal: 300000,
+        presupuestadoNativo: 1000,
+        cacIndiceActual: 500,
+      };
+      const nominal = buildControlPresupuestoData({ ...args, modo: 'nominal' });
+      const cac = buildControlPresupuestoData({ ...args, modo: 'cac' });
+      expect(nominal.ejecutado).toBe(300000); // pesos reales pagados
+      expect(cac.ejecutado).toBe(500000); // caquificado a hoy
+      expect(nominal.ejecutado).not.toBe(cac.ejecutado);
+    });
+  });
+
+  test('regresión: modo cac no mezcla pesos − CAC', () => {
     const data = buildControlPresupuestoData({
       movimientos: [mov(100, 0, 'ARS', { ars: 30000, cac: 60 })],
+      modo: 'cac',
       indexacion: 'CAC',
       monedaPresupuesto: 'CAC',
       presupuestadoNativo: 100, // CAC
@@ -71,9 +127,10 @@ describe('buildControlPresupuestoData', () => {
     expect(data.saldo).not.toBe(50000 - 60); // el bug viejo
   });
 
-  test('cac_tipo mano_obra → equiv_label "CAC MO"', () => {
+  test('modo cac + cac_tipo mano_obra → equiv_label "CAC MO"', () => {
     const data = buildControlPresupuestoData({
       movimientos: [mov(100, 0, 'ARS', { ars: 1000, cac: 2 })],
+      modo: 'cac',
       indexacion: 'CAC',
       cacTipo: 'mano_obra',
       presupuestadoNativo: 10,
@@ -82,23 +139,25 @@ describe('buildControlPresupuestoData', () => {
     expect(data.equiv_label).toBe('CAC MO');
   });
 
-  test('presupuesto en dólares nativo → solo USD, sin equivalencia', () => {
+  test("modo 'usd' → solo USD, sin equivalencia", () => {
     const data = buildControlPresupuestoData({
       movimientos: [
         mov(100, 200, 'USD', { ars: 250000, usd_blue: 200 }),
         mov(200, 300000, 'ARS', { ars: 300000, usd_blue: 250 }),
       ],
+      modo: 'usd',
       monedaPresupuesto: 'USD',
       presupuestadoNativo: 1000,
     });
     expect(data.moneda).toBe('USD');
+    expect(data.modo_label).toBe('USD');
     expect(data.mostrar_equiv).toBe(false);
     expect(data.ejecutado).toBe(450); // 200 (USD nativo) + 250 (eq.usd_blue del ARS)
     expect(data.presupuestado).toBe(1000);
     expect(data.saldo).toBe(550);
   });
 
-  test('presupuesto en pesos plano → solo pesos', () => {
+  test('presupuesto en pesos plano (nominal default) → solo pesos', () => {
     const data = buildControlPresupuestoData({
       movimientos: [
         mov(100, 300000, 'ARS', { ars: 300000 }),
