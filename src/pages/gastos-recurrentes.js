@@ -10,6 +10,7 @@ import { useAuthContext } from 'src/contexts/auth-context';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import proveedorService from 'src/services/proveedorService';
 import gastoRecurrenteService from 'src/services/gastoRecurrenteService';
+import { getProyectosByEmpresaId } from 'src/services/proyectosService';
 
 const PERIODICIDADES = ['semanal', 'quincenal', 'mensual', 'bimestral', 'trimestral', 'semestral', 'anual'];
 const fmtMoney = (n, m = 'ARS') => (n == null ? '—' : `${Number(n).toLocaleString('es-AR')} ${m}`);
@@ -23,7 +24,7 @@ const ESTADO = {
 };
 const FORM_VACIO = {
   concepto: '', nombre_proveedor: '', categoria: '', subcategoria: '', importe: '', moneda: 'ARS',
-  periodicidad: 'mensual', dia_vencimiento: 1, medio_pago: '', observaciones: '',
+  periodicidad: 'mensual', dia_vencimiento: 1, medio_pago: '', observaciones: '', proyecto_id: '',
   fecha_inicio: new Date().toISOString().slice(0, 10), activo: true,
 };
 
@@ -32,6 +33,7 @@ const GastosRecurrentes = () => {
   const [empresaId, setEmpresaId] = useState(null);
   const [categoriasEmpresa, setCategoriasEmpresa] = useState([]); // [{name, subcategorias:[]}]
   const [proveedoresEmpresa, setProveedoresEmpresa] = useState([]); // [string]
+  const [proyectos, setProyectos] = useState([]); // [{ id, nombre }] — cajas/proyectos de la empresa
   const [tab, setTab] = useState(0);
   const [aCargar, setACargar] = useState([]);
   const [defs, setDefs] = useState([]);
@@ -53,6 +55,10 @@ const GastosRecurrentes = () => {
     if (e?.id) {
       try { const provs = await proveedorService.getByEmpresa(e.id); setProveedoresEmpresa((provs || []).map((p) => p.nombre).filter(Boolean).sort()); }
       catch (err) { /* sin proveedores configurados */ }
+      try {
+        const proys = await getProyectosByEmpresaId(e.id);
+        setProyectos((proys || []).filter((p) => p && p.eliminado !== true).map((p) => ({ id: String(p._id || p.id), nombre: p.nombre })).filter((p) => p.id));
+      } catch (err) { /* sin proyectos */ }
     }
   })(); }, [user]);
 
@@ -84,12 +90,13 @@ const GastosRecurrentes = () => {
   useEffect(() => { if (tab === 2 && empresaId) cargarSugerencias(); /* eslint-disable-next-line */ }, [tab, empresaId]);
 
   // ── Registrar ──
-  const abrirRegistrar = (row) => setRegDialog({ row, importe: String(row.importe_estandar ?? ''), fecha: new Date().toISOString().slice(0, 10), estado: 'Pagado' });
+  const abrirRegistrar = (row) => setRegDialog({ row, importe: String(row.importe_estandar ?? ''), fecha: new Date().toISOString().slice(0, 10), estado: 'Pagado', proyecto_id: row.proyecto_id || '' });
   const confirmarRegistro = async () => {
     try {
       await gastoRecurrenteService.registrar(empresaId, regDialog.row.gasto_id, {
         periodo: regDialog.row.periodo, importe: Number(regDialog.importe) || 0,
         fecha: regDialog.fecha ? new Date(regDialog.fecha).toISOString() : undefined, estado: regDialog.estado,
+        proyecto_id: regDialog.proyecto_id || null,
       });
       setRegDialog(null); notify('Egreso registrado'); await cargar();
     } catch (e) { notify(e?.response?.data?.error || 'Error al registrar', 'error'); }
@@ -310,6 +317,14 @@ const GastosRecurrentes = () => {
                   onInputChange={(e, nv) => setF('nombre_proveedor', nv)}
                   renderInput={(p) => <TextField {...p} label="Proveedor" />} />
               </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField label="Proyecto / Caja" select size="small" fullWidth
+                  value={defDialog.form.proyecto_id || ''} onChange={(e) => setF('proyecto_id', e.target.value)}
+                  helperText="Caja donde se generará el egreso al registrarlo">
+                  <MenuItem value="">Sin asignar</MenuItem>
+                  {proyectos.map((p) => <MenuItem key={p.id} value={p.id}>{p.nombre}</MenuItem>)}
+                </TextField>
+              </Grid>
               <Grid item xs={6} sm={4}><TextField label="Importe" type="number" size="small" fullWidth value={defDialog.form.importe} onChange={(e) => setF('importe', e.target.value)} /></Grid>
               <Grid item xs={6} sm={4}><TextField label="Moneda" select size="small" fullWidth value={defDialog.form.moneda} onChange={(e) => setF('moneda', e.target.value)}><MenuItem value="ARS">ARS</MenuItem><MenuItem value="USD">USD</MenuItem></TextField></Grid>
               <Grid item xs={6} sm={4}><TextField label="Frecuencia" select size="small" fullWidth value={defDialog.form.periodicidad} onChange={(e) => setF('periodicidad', e.target.value)}>{PERIODICIDADES.map((p) => <MenuItem key={p} value={p}>{p}</MenuItem>)}</TextField></Grid>
@@ -348,6 +363,10 @@ const GastosRecurrentes = () => {
               <TextField label="Importe" type="number" size="small" fullWidth value={regDialog.importe} onChange={(e) => setRegDialog((p) => ({ ...p, importe: e.target.value }))} />
               <TextField label="Fecha" type="date" size="small" fullWidth InputLabelProps={{ shrink: true }} value={regDialog.fecha} onChange={(e) => setRegDialog((p) => ({ ...p, fecha: e.target.value }))} />
               <TextField label="Estado" select size="small" fullWidth value={regDialog.estado} onChange={(e) => setRegDialog((p) => ({ ...p, estado: e.target.value }))}><MenuItem value="Pagado">Pagado</MenuItem><MenuItem value="Pendiente">Pendiente (registrado, sin pagar)</MenuItem></TextField>
+              <TextField label="Proyecto / Caja" select size="small" fullWidth value={regDialog.proyecto_id || ''} onChange={(e) => setRegDialog((p) => ({ ...p, proyecto_id: e.target.value }))} helperText="Caja donde impacta el egreso">
+                <MenuItem value="">Sin asignar</MenuItem>
+                {proyectos.map((p) => <MenuItem key={p.id} value={p.id}>{p.nombre}</MenuItem>)}
+              </TextField>
             </Stack>
           </DialogContent>
           <DialogActions><Button onClick={() => setRegDialog(null)}>Cancelar</Button><Button variant="contained" onClick={confirmarRegistro}>Registrar</Button></DialogActions>
