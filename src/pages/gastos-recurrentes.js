@@ -14,14 +14,18 @@ import { getProyectosFromUser } from 'src/services/proyectosService';
 
 const PERIODICIDADES = ['semanal', 'quincenal', 'mensual', 'bimestral', 'trimestral', 'semestral', 'anual'];
 const fmtMoney = (n, m = 'ARS') => (n == null ? '—' : `${Number(n).toLocaleString('es-AR')} ${m}`);
-const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('es-AR') : '—');
+// Las fechas (vencimientos, pagos) se guardan como fecha-calendario en medianoche UTC.
+// Formateamos en UTC para no correrlas un día por el huso horario (AR = UTC-3).
+const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('es-AR', { timeZone: 'UTC' }) : '—');
 const ESTADO = {
   pendiente: { label: 'Pendiente', color: 'default' },
   proximo: { label: 'Próximo', color: 'info' },
   vencido: { label: 'Vencido', color: 'error' },
   registrado: { label: 'Registrado', color: 'warning' },
   pagado: { label: 'Pagado', color: 'success' },
+  omitido: { label: 'Omitido', color: 'default' },
 };
+const REALIZADOS = ['registrado', 'pagado', 'omitido'];
 const FORM_VACIO = {
   concepto: '', nombre_proveedor: '', categoria: '', subcategoria: '', importe: '', moneda: 'ARS',
   periodicidad: 'mensual', dia_vencimiento: 1, medio_pago: '', observaciones: '', proyecto_id: '',
@@ -45,6 +49,8 @@ const GastosRecurrentes = () => {
   const [regDialog, setRegDialog] = useState(null);   // { row, importe, fecha, estado }
   const [detalle, setDetalle] = useState(null);       // { tipo:'gasto'|'sugerencia', data, movimientos, loading }
   const [detallePage, setDetallePage] = useState(0);
+  const [verPausados, setVerPausados] = useState(false);
+  const [verRealizados, setVerRealizados] = useState(false);
 
   const notify = (message, severity = 'success') => setSnackbar({ open: true, message, severity });
 
@@ -66,6 +72,10 @@ const GastosRecurrentes = () => {
     }
   })(); }, [user]);
 
+  const nombreProyecto = (id) => (id ? (proyectos.find((p) => p.id === String(id))?.nombre || '—') : '—');
+  const defsVisibles = verPausados ? defs : defs.filter((d) => d.activo !== false);
+  const pausadosOcultos = defs.filter((d) => d.activo === false).length;
+
   const catOptions = categoriasEmpresa.map((c) => c?.name || c?.nombre || c).filter(Boolean);
   const subOptions = (() => {
     const catNom = defDialog?.form?.categoria;
@@ -78,12 +88,12 @@ const GastosRecurrentes = () => {
     try {
       setLoading(true);
       const [ac, df] = await Promise.all([
-        gastoRecurrenteService.aCargar(empresaId),
+        gastoRecurrenteService.aCargar(empresaId, { incluirRealizados: verRealizados }),
         gastoRecurrenteService.listar(empresaId, {}),
       ]);
       setACargar(ac); setDefs(df);
     } catch (e) { notify('Error al cargar', 'error'); } finally { setLoading(false); }
-  }, [empresaId]);
+  }, [empresaId, verRealizados]);
 
   useEffect(() => { cargar(); }, [cargar]);
 
@@ -213,18 +223,22 @@ const GastosRecurrentes = () => {
             {/* A CARGAR */}
             {tab === 0 && (
               <Card variant="outlined">
-                {Object.values(sel).some(Boolean) && (
-                  <Box sx={{ p: 1.5, borderBottom: '0.5px solid', borderColor: 'divider' }}>
+                <Box sx={{ p: 1.5, borderBottom: '0.5px solid', borderColor: 'divider', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
+                  <FormControlLabel
+                    control={<Switch size="small" checked={verRealizados} onChange={(e) => setVerRealizados(e.target.checked)} />}
+                    label="Ver ya realizados"
+                  />
+                  {Object.values(sel).some(Boolean) && (
                     <Button size="small" variant="contained" onClick={confirmarSeleccionados}>Confirmar seleccionados</Button>
-                  </Box>
-                )}
+                  )}
+                </Box>
                 <Table size="small">
                   <TableHead>
                     <TableRow>
                       <TableCell padding="checkbox" />
                       <TableCell>Concepto</TableCell>
                       <TableCell>Vence</TableCell>
-                      <TableCell align="right">Estimado</TableCell>
+                      <TableCell align="right">Importe</TableCell>
                       <TableCell>Estado</TableCell>
                       <TableCell />
                     </TableRow>
@@ -234,19 +248,24 @@ const GastosRecurrentes = () => {
                     {!loading && aCargar.map((r) => {
                       const key = `${r.gasto_id}|${r.periodo}`;
                       const chip = ESTADO[r.estado] || ESTADO.pendiente;
+                      const realizado = REALIZADOS.includes(r.estado);
                       return (
-                        <TableRow key={key} hover>
-                          <TableCell padding="checkbox"><Checkbox size="small" checked={!!sel[key]} onChange={(e) => setSel((s) => ({ ...s, [key]: e.target.checked }))} /></TableCell>
+                        <TableRow key={key} hover sx={realizado ? { opacity: 0.7 } : undefined}>
+                          <TableCell padding="checkbox">
+                            {!realizado && <Checkbox size="small" checked={!!sel[key]} onChange={(e) => setSel((s) => ({ ...s, [key]: e.target.checked }))} />}
+                          </TableCell>
                           <TableCell sx={{ cursor: 'pointer' }} onClick={() => abrirDetalleGasto(r.gasto_id)}>
                             <Typography variant="body2" sx={{ '&:hover': { textDecoration: 'underline' } }}>{r.concepto}</Typography>
                             <Typography variant="caption" color="text.secondary" display="block">{r.proveedor || ''}{r.periodo ? ` · ${r.periodo}` : ''}</Typography>
                           </TableCell>
-                          <TableCell>{fmtDate(r.fecha_vencimiento)}</TableCell>
-                          <TableCell align="right">{fmtMoney(r.importe_estandar, r.moneda)}</TableCell>
+                          <TableCell>{fmtDate(realizado && r.fecha_registrado ? r.fecha_registrado : r.fecha_vencimiento)}</TableCell>
+                          <TableCell align="right">{fmtMoney(realizado && r.importe_registrado != null ? r.importe_registrado : r.importe_estandar, r.moneda)}</TableCell>
                           <TableCell><Chip size="small" label={chip.label} color={chip.color} variant="outlined" /></TableCell>
                           <TableCell align="right" style={{ whiteSpace: 'nowrap' }}>
-                            <Button size="small" variant="contained" onClick={() => abrirRegistrar(r)}>Registrar</Button>{' '}
-                            <Button size="small" onClick={() => omitir(r)}>Omitir</Button>
+                            {!realizado && (<>
+                              <Button size="small" variant="contained" onClick={() => abrirRegistrar(r)}>Registrar</Button>{' '}
+                              <Button size="small" onClick={() => omitir(r)}>Omitir</Button>
+                            </>)}
                           </TableCell>
                         </TableRow>
                       );
@@ -260,13 +279,20 @@ const GastosRecurrentes = () => {
             {/* DEFINICIONES */}
             {tab === 1 && (
               <Card variant="outlined">
+                <Box sx={{ p: 1.5, borderBottom: '0.5px solid', borderColor: 'divider' }}>
+                  <FormControlLabel
+                    control={<Switch size="small" checked={verPausados} onChange={(e) => setVerPausados(e.target.checked)} />}
+                    label={`Ver pausados${pausadosOcultos && !verPausados ? ` (${pausadosOcultos})` : ''}`}
+                  />
+                </Box>
                 <Table size="small">
-                  <TableHead><TableRow><TableCell>Concepto</TableCell><TableCell>Proveedor</TableCell><TableCell>Frecuencia</TableCell><TableCell align="right">Importe</TableCell><TableCell>Estado</TableCell><TableCell /></TableRow></TableHead>
+                  <TableHead><TableRow><TableCell>Concepto</TableCell><TableCell>Proveedor</TableCell><TableCell>Caja</TableCell><TableCell>Frecuencia</TableCell><TableCell align="right">Importe</TableCell><TableCell>Estado</TableCell><TableCell /></TableRow></TableHead>
                   <TableBody>
-                    {!loading && defs.map((d) => (
+                    {!loading && defsVisibles.map((d) => (
                       <TableRow key={d._id} hover>
                         <TableCell>{d.concepto}</TableCell>
                         <TableCell>{d.nombre_proveedor || '—'}</TableCell>
+                        <TableCell>{nombreProyecto(d.proyecto_id)}</TableCell>
                         <TableCell>{d.periodicidad}</TableCell>
                         <TableCell align="right">{fmtMoney(d.importe, d.moneda)}</TableCell>
                         <TableCell>{d.activo ? <Chip size="small" label="Activo" color="success" variant="outlined" /> : <Chip size="small" label="Pausado" variant="outlined" />}</TableCell>
@@ -276,7 +302,7 @@ const GastosRecurrentes = () => {
                         </TableCell>
                       </TableRow>
                     ))}
-                    {!loading && !defs.length && <TableRow><TableCell colSpan={6} align="center" sx={{ py: 4 }}><Typography color="text.secondary">Sin gastos definidos.</Typography></TableCell></TableRow>}
+                    {!loading && !defsVisibles.length && <TableRow><TableCell colSpan={7} align="center" sx={{ py: 4 }}><Typography color="text.secondary">{defs.length ? 'No hay gastos activos.' : 'Sin gastos definidos.'}</Typography></TableCell></TableRow>}
                   </TableBody>
                 </Table>
               </Card>

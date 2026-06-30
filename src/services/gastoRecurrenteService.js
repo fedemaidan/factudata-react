@@ -29,8 +29,8 @@ const gastoRecurrenteService = {
     const { data } = await api.post(`${base(empresaId)}/${id}/omitir`, { periodo });
     return data;
   },
-  async aCargar(empresaId) {
-    const { data } = await api.get(`${base(empresaId)}/a-cargar`);
+  async aCargar(empresaId, { incluirRealizados = false } = {}) {
+    const { data } = await api.get(`${base(empresaId)}/a-cargar`, { params: incluirRealizados ? { incluirRealizados: true } : {} });
     return data;
   },
   async registrar(empresaId, id, payload) {
