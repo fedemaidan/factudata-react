@@ -60,6 +60,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
     tags_extra: false,
     dolar_referencia: false,
     impuestos: false,
+    subtotal: false,
   };
 
   const [ingresoInfo, setIngresoInfo] = useState({
