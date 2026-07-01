@@ -1,4 +1,4 @@
-// 📖 El toggle "CAC definitivo" y su disparo de recálculo están documentados en
+// 📖 CAC (índice por mes, variantes y recálculo) documentado en
 //    sorby_bot_wa/docs/control-presupuestos/ (funcional §4, técnico §6).
 import { useEffect, useState } from 'react';
 import Head from 'next/head';
@@ -6,7 +6,6 @@ import {
   Box, Container, Dialog, DialogActions, DialogContent, DialogTitle,
   IconButton, Paper, Snackbar, Alert, Stack, Table, TableBody, TableCell, TableHead,
   TableRow, TextField, Typography, Tab, Tabs, Button, InputAdornment,
-  Switch, FormControlLabel, Chip
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -55,7 +54,6 @@ const emptyCACForm = {
   general: '',
   materiales: '',
   mano_obra: '',
-  definitivo: false,
 };
 
 // ============== COMPONENTE TABLA DÓLAR ==============
@@ -296,10 +294,6 @@ function CACTab() {
   const [form, setForm] = useState(emptyCACForm);
   const [openDelete, setOpenDelete] = useState(false);
   const [toDelete, setToDelete] = useState(null);
-  // Estado definitivo original de la fila en edición (para saber si es una transición a definitivo).
-  const [editingEraDefinitivo, setEditingEraDefinitivo] = useState(false);
-  // Confirmación al marcar definitivo (dispara el recálculo del mes). Guarda el payload pendiente.
-  const [confirmDefinitivo, setConfirmDefinitivo] = useState({ open: false, payload: null });
 
   const closeAlert = () => setAlert(prev => ({ ...prev, open: false }));
 
@@ -324,25 +318,23 @@ function CACTab() {
 
   const handleOpenAdd = () => {
     setIsEdit(false);
-    setEditingEraDefinitivo(false);
     setForm({ ...emptyCACForm, fecha: ymLocal(new Date()) });
     setOpenForm(true);
   };
 
   const handleOpenEdit = (row) => {
     setIsEdit(true);
-    setEditingEraDefinitivo(row.definitivo !== false);
     setForm({
       fecha: row.fecha,
       general: row.general ?? '',
       materiales: row.materiales ?? '',
       mano_obra: row.mano_obra ?? '',
-      definitivo: row.definitivo !== false,
     });
     setOpenForm(true);
   };
 
-  // Persiste el índice CAC. El backend, si definitivo=true, recalcula presupuestos/movimientos del mes.
+  // Persiste el índice CAC. Al guardar, el backend recalcula los presupuestos/movimientos
+  // pendientes de ese mes (variantes estimado/automatico) y baja cac_pendiente.
   const persistCac = async (payload) => {
     try {
       if (isEdit) {
@@ -370,14 +362,7 @@ function CACTab() {
       general: parseFloat(form.general) || 0,
       materiales: parseFloat(form.materiales) || 0,
       mano_obra: parseFloat(form.mano_obra) || 0,
-      definitivo: !!form.definitivo,
     };
-    // Marcar como definitivo (transición) dispara el recálculo del mes → pedir confirmación.
-    const transicionADefinitivo = payload.definitivo && !editingEraDefinitivo;
-    if (transicionADefinitivo) {
-      setConfirmDefinitivo({ open: true, payload });
-      return;
-    }
     await persistCac(payload);
   };
 
@@ -425,7 +410,6 @@ function CACTab() {
               <TableCell align="right">General</TableCell>
               <TableCell align="right">Materiales</TableCell>
               <TableCell align="right">Mano de Obra</TableCell>
-              <TableCell align="center">Estado</TableCell>
               <TableCell align="right">Acciones</TableCell>
             </TableRow>
           </TableHead>
@@ -436,11 +420,6 @@ function CACTab() {
                 <TableCell align="right">{formatNumber(row.general)}</TableCell>
                 <TableCell align="right">{formatNumber(row.materiales)}</TableCell>
                 <TableCell align="right">{formatNumber(row.mano_obra)}</TableCell>
-                <TableCell align="center">
-                  {row.definitivo !== false
-                    ? <Chip label="Definitivo" size="small" color="success" variant="outlined" />
-                    : <Chip label="Provisorio" size="small" color="warning" variant="outlined" />}
-                </TableCell>
                 <TableCell align="right">
                   <IconButton size="small" color="primary" onClick={() => handleOpenEdit(row)}><EditIcon fontSize="small" /></IconButton>
                   <IconButton size="small" color="error" onClick={() => confirmDelete(row)}><DeleteIcon fontSize="small" /></IconButton>
@@ -449,7 +428,7 @@ function CACTab() {
             ))}
             {!loading && filteredRows.length === 0 && (
               <TableRow>
-                <TableCell colSpan={6}><Typography variant="body2">Sin resultados.</Typography></TableCell>
+                <TableCell colSpan={5}><Typography variant="body2">Sin resultados.</Typography></TableCell>
               </TableRow>
             )}
           </TableBody>
@@ -472,48 +451,14 @@ function CACTab() {
             <TextField label="Índice General" type="number" value={form.general} onChange={(e) => setForm({ ...form, general: e.target.value })} />
             <TextField label="Materiales" type="number" value={form.materiales} onChange={(e) => setForm({ ...form, materiales: e.target.value })} />
             <TextField label="Mano de Obra" type="number" value={form.mano_obra} onChange={(e) => setForm({ ...form, mano_obra: e.target.value })} />
-            <Box>
-              <FormControlLabel
-                control={<Switch checked={!!form.definitivo} onChange={(e) => setForm({ ...form, definitivo: e.target.checked })} />}
-                label="CAC definitivo del mes"
-              />
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                {form.definitivo
-                  ? 'Es el valor oficial. Al guardar, se ajustan los presupuestos y movimientos de ese mes que estaban estimados.'
-                  : 'Es un valor provisorio. No dispara ajustes; los presupuestos del mes siguen estimados hasta que cargues el definitivo.'}
-              </Typography>
-            </Box>
+            <Typography variant="caption" color="text.secondary">
+              Al guardar, se recalculan automáticamente los presupuestos y movimientos de ese mes que estaban pendientes de su CAC.
+            </Typography>
           </Stack>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenForm(false)}>Cancelar</Button>
           <Button variant="contained" onClick={save}>Guardar</Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Confirmación: marcar definitivo dispara el recálculo del mes */}
-      <Dialog open={confirmDefinitivo.open} onClose={() => setConfirmDefinitivo({ open: false, payload: null })} maxWidth="xs" fullWidth>
-        <DialogTitle>Marcar CAC como definitivo</DialogTitle>
-        <DialogContent>
-          <Typography variant="body2">
-            Vas a marcar el CAC de <strong>{confirmDefinitivo.payload?.fecha}</strong> como definitivo.
-            Al guardar se <strong>actualizan automáticamente todos los presupuestos y movimientos de ese mes</strong> que
-            estaban con el CAC estimado. Esta acción reescribe sus valores. ¿Continuar?
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setConfirmDefinitivo({ open: false, payload: null })}>Cancelar</Button>
-          <Button
-            variant="contained"
-            color="success"
-            onClick={async () => {
-              const payload = confirmDefinitivo.payload;
-              setConfirmDefinitivo({ open: false, payload: null });
-              if (payload) await persistCac(payload);
-            }}
-          >
-            Confirmar y actualizar
-          </Button>
         </DialogActions>
       </Dialog>
 

@@ -116,6 +116,7 @@ import dayjs from 'dayjs';
 import PresupuestoDrawer from 'src/components/PresupuestoDrawer';
 import ExportarPdfMenu from 'src/components/plantillasPdf/ExportarPdfMenu';
 import { buildControlPresupuestoData } from 'src/utils/controlPresupuesto/buildControlPresupuestoData';
+import { snapshotCacIndice } from 'src/utils/cac/pickCac';
 import Tooltip from '@mui/material/Tooltip';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import CloseIcon from '@mui/icons-material/Close';
@@ -798,6 +799,9 @@ const ControlPresupuestosPage = () => {
 
   // Helper: obtener el subíndice CAC correcto para un tipo dado
   const getCacIndice = (cacTipo) => cacIndicesActuales[cacTipo || 'general'] || cacIndicesActuales.general || null;
+
+  // Modo de CAC de la empresa (para elegir la variante del snapshot en lecturas locales).
+  const cacModo = empresa?.presupuesto_cac_modo || 'legacy';
 
   const convertir = (monto, monedaOriginal = 'ARS', cacTipoItem = null) => {
     // Si la moneda de visualización y la original son iguales, no convertir
@@ -1741,7 +1745,7 @@ const ControlPresupuestosPage = () => {
                               if (!esIdx) return m;
                               const snap = a?.cotizacion_snapshot || {};
                               if (item.indexacion === 'CAC') {
-                                const idx = snap.cac_indice ?? snap.cac_general ?? null;
+                                const idx = snapshotCacIndice(snap, item.cac_tipo, cacModo);
                                 return idx ? m * idx : 0;
                               }
                               if (item.indexacion === 'USD') {
@@ -2549,6 +2553,7 @@ const ControlPresupuestosPage = () => {
                     monedaPresupuesto: moneda,
                     presupuestadoNativo: presupuestado,
                     tipo: movDrawer.tipo === 'ingreso' ? 'ingresos' : 'gastos',
+                    cacModo,
                   });
                 }}
               />

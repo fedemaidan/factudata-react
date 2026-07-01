@@ -67,6 +67,7 @@ import dayjs from 'dayjs';
 import 'dayjs/locale/es';
 import presupuestoService from 'src/services/presupuestoService';
 import MonedasService from 'src/services/monedasService';
+import { snapshotCacIndice } from 'src/utils/cac/pickCac';
 import { formatCurrency } from 'src/utils/formatters';
 import {
   PRESUPUESTO_ADJUNTOS_MAX,
@@ -920,7 +921,7 @@ const PresupuestoDrawer = ({
     // Convertir de unidad de almacenamiento a pesos para mostrar en el input
     let montoEnPesos = adic.monto || 0;
     if (presupuesto?.indexacion === 'CAC') {
-      const cotiz = adic.cotizacion_snapshot?.cac_indice || cacEfectivo;
+      const cotiz = snapshotCacIndice(adic.cotizacion_snapshot, presupuesto?.cac_tipo, 'legacy') || cacEfectivo;
       if (cotiz) montoEnPesos = adic.monto * cotiz;
     } else if (presupuesto?.indexacion === 'USD') {
       const cotiz = adic.cotizacion_snapshot?.dolar_blue || dolarEfectivo;
@@ -1636,7 +1637,7 @@ const PresupuestoDrawer = ({
                           const totalAdicionales = (presupuesto.adicionales || []).reduce((s, a) => {
                             const monto = Number(a?.monto) || 0;
                             const snap = a?.cotizacion_snapshot || {};
-                            const idx = snap.cac_indice ?? snap.cac_general ?? null;
+                            const idx = snapshotCacIndice(snap, presupuesto?.cac_tipo, 'legacy');
                             return s + (idx ? monto * idx : 0);
                           }, 0);
                           const nominal = (Number(presupuesto.monto_ingresado) || 0) + totalAdicionales;
@@ -2444,7 +2445,7 @@ const PresupuestoDrawer = ({
                               // Tasa histórica del momento (snapshot del item del historial), con fallback a la actual.
                               const itemSnap = item.cotizacion_snapshot || {};
                               const rateHistorico = presupuesto.indexacion === 'CAC'
-                                ? (itemSnap.cac_indice ?? itemSnap.cac_general ?? rate)
+                                ? (snapshotCacIndice(itemSnap, presupuesto?.cac_tipo, 'legacy') ?? rate)
                                 : presupuesto.indexacion === 'USD'
                                   ? (itemSnap.dolar_blue ?? rate)
                                   : rate;
