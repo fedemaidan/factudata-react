@@ -37,6 +37,12 @@ export const ORDEN_DEFAULT = [
   "total_cac",
   "subtotal",
   "impuestos",
+  "total_cac_legacy",
+  "total_cac_automatico",
+  "total_cac_estimado",
+  "subtotal_cac_legacy",
+  "subtotal_cac_automatico",
+  "subtotal_cac_estimado",
 ];
 
 export const ORDEN_EXTRAS = [
@@ -113,6 +119,12 @@ export const LABEL_DEFAULT_POR_KEY = {
   total_cac: "total_cac",
   subtotal: "subtotal",
   impuestos: "impuestos",
+  total_cac_legacy: "CAC Legacy",
+  total_cac_automatico: "CAC Automatico",
+  total_cac_estimado: "CAC Estimado",
+  subtotal_cac_legacy: "Subtotal CAC Legacy",
+  subtotal_cac_automatico: "Subtotal CAC Automatico",
+  subtotal_cac_estimado: "Subtotal CAC Estimado",
   caja_chica: "caja_chica",
   caja_id: "caja_id",
   cliente: "cliente",
