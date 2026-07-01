@@ -175,7 +175,7 @@ export function PdfControlPresupuestoDocument({ data, logoDataUrl, empresaNombre
             <Text style={[styles.td, styles.cDetalle]}>{m.detalle || m.proveedor || '-'}</Text>
             <Text style={[styles.td, styles.cMonto]}>{fmtMoney(m.monto, moneda)}</Text>
             {mostrarEquiv ? <Text style={[styles.td, styles.cEquiv, styles.tdMuted]}>{m.monto_equiv != null ? fmtEquiv(m.monto_equiv, equivLabel) : '—'}</Text> : null}
-            <Text style={[styles.td, styles.cAcum]}>{fmtMoney(m.acumulado, moneda)}</Text>
+            <Text style={[styles.td, styles.cAcum]}>{mostrarEquiv ? fmtEquiv(m.acumulado_equiv, equivLabel) : fmtMoney(m.acumulado, moneda)}</Text>
           </View>
         ))}
 

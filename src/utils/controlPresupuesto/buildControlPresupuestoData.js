@@ -18,7 +18,17 @@ import dayjs from 'dayjs';
  * el presupuesto compara por neto). De ahí salen los valores por fila en cada modo.
  */
 
-const fechaSecs = (m) => m?.fecha_factura?._seconds || m?.fecha_factura?.seconds || 0;
+// Segundos epoch de fecha_factura. Soporta Firestore Timestamp ({_seconds}/{seconds})
+// y también Date/string ISO (Mongo) — si no, el sort cronológico no ordena y el
+// acumulado queda en el orden de entrada (del más nuevo al más viejo).
+const fechaSecs = (m) => {
+  const f = m?.fecha_factura;
+  if (!f) return 0;
+  if (typeof f._seconds === 'number') return f._seconds;
+  if (typeof f.seconds === 'number') return f.seconds;
+  const d = dayjs(f);
+  return d.isValid() ? d.unix() : 0;
+};
 
 const fechaStr = (m) => {
   const s = fechaSecs(m);

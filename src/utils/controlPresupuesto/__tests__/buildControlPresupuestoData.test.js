@@ -182,4 +182,50 @@ describe('buildControlPresupuestoData', () => {
     expect(data.ejecutado).toBe(500000);
     expect(data.saldo).toBe(300000);
   });
+
+  // Bug fix: con fechas de Mongo (Date / ISO) el sort cronológico debe ordenar del
+  // más viejo al más nuevo y acumular en ese orden (antes fechaSecs solo entendía el
+  // shape de Firestore → no ordenaba y el acumulado salía al revés).
+  describe('orden cronológico con fechas de Mongo (Date / ISO)', () => {
+    const movMongo = (fecha, total, eq) => ({
+      fecha_factura: fecha, total, moneda: 'ARS', nombre_proveedor: 'Proveedor',
+      equivalencias: eq ? { total: eq } : undefined,
+    });
+
+    test('ordena del más viejo al más nuevo y acumula en ese orden (ISO desordenado)', () => {
+      const data = buildControlPresupuestoData({
+        movimientos: [
+          movMongo('2026-06-29', 8335),    // más nuevo, llega primero
+          movMongo('2026-06-08', 6000000), // más viejo, llega último
+          movMongo('2026-06-20', 109350),
+        ],
+      });
+      expect(data.movimientos.map((m) => m.fecha)).toEqual(['8/6/2026', '20/6/2026', '29/6/2026']);
+      expect(data.movimientos.map((m) => m.numero)).toEqual([1, 2, 3]);
+      // acumulado crece del más viejo (su propio monto) al más nuevo (total).
+      expect(data.movimientos.map((m) => m.acumulado)).toEqual([6000000, 6109350, 6117685]);
+    });
+
+    test('acepta Date nativo', () => {
+      const data = buildControlPresupuestoData({
+        movimientos: [
+          movMongo(new Date('2026-06-29'), 100),
+          movMongo(new Date('2026-06-08'), 200),
+        ],
+      });
+      expect(data.movimientos.map((m) => m.acumulado)).toEqual([200, 300]);
+    });
+
+    test('cac: acumulado_equiv suma en CAC del más viejo al más nuevo', () => {
+      const data = buildControlPresupuestoData({
+        movimientos: [
+          movMongo('2026-06-29', 8335, { ars: 8335, cac: 0.41 }),
+          movMongo('2026-06-08', 6000000, { ars: 6000000, cac: 292.78 }),
+        ],
+        modo: 'cac', indexacion: 'CAC', monedaPresupuesto: 'CAC', cacIndiceActual: 20488,
+      });
+      // el más viejo (8/6) primero; acumulado_equiv en CAC, no en pesos.
+      expect(data.movimientos.map((m) => m.acumulado_equiv)).toEqual([292.78, 293.19]);
+    });
+  });
 });
