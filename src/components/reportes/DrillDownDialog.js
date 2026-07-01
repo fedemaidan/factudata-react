@@ -8,6 +8,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import ImageIcon from '@mui/icons-material/Image';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import { formatValue } from 'src/tools/reportEngine';
+import { pickCac } from 'src/utils/cac/pickCac';
 
 const MOVEMENT_CURRENCY_OPTS = { minimumFractionDigits: 2, maximumFractionDigits: 2 };
 
@@ -22,7 +23,7 @@ const formatDate = (d) => {
  * Dialog que muestra los movimientos que componen un cálculo (drill-down).
  * Se abre al clickear un valor en metric_cards, summary_table, o budget_vs_actual.
  */
-const DrillDownDialog = ({ open, onClose, movimientos = [], titulo = '', displayCurrency = 'ARS' }) => {
+const DrillDownDialog = ({ open, onClose, movimientos = [], titulo = '', displayCurrency = 'ARS', cacModo = 'legacy' }) => {
   const [page, setPage] = useState(0);
   const [imgPreview, setImgPreview] = useState({ open: false, url: null });
   const [showUsd, setShowUsd] = useState(false);
@@ -69,7 +70,8 @@ const DrillDownDialog = ({ open, onClose, movimientos = [], titulo = '', display
 
     if (currency === 'CAC') {
       if (monedaMov === 'CAC') return total;
-      if (eqTotal.cac != null && !isNaN(eqTotal.cac)) return Number(eqTotal.cac);
+      const cac = pickCac(eqTotal.cac, cacModo);
+      if (cac != null && !isNaN(cac)) return Number(cac);
       return null;
     }
 

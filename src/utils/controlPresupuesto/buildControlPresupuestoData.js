@@ -1,4 +1,5 @@
 import dayjs from 'dayjs';
+import { pickCac } from '../cac/pickCac';
 
 /**
  * Construye el objeto `data` que consumen las plantillas de Control de Presupuesto
@@ -82,6 +83,7 @@ export function buildControlPresupuestoData({
   montoIngresado = null,
   cacIndiceActual = null,
   tipoCambioActual = null,
+  cacModo = 'legacy',
 } = {}) {
   const orden = [...movimientos].sort((a, b) => fechaSecs(a) - fechaSecs(b));
   const campo = baseCalculo === 'subtotal' ? 'subtotal' : 'total';
@@ -100,9 +102,11 @@ export function buildControlPresupuestoData({
 
   if (modo === 'cac' && (indexacion === 'CAC') && cotizCac > 0) {
     // Pesos a hoy = unidad CAC × índice actual; equivalencia en unidades CAC.
+    // La equivalencia guardada es una variante {legacy,estimado,automatico} → se elige la del modo.
     equivOf = (m) => {
       const eq = eqOf(m);
-      if (eq.cac != null) return num(eq.cac);
+      const guardado = pickCac(eq.cac, cacModo);
+      if (guardado != null) return num(guardado);
       const pesos = num(eq.ars) || num(m.total);
       return cotizCac > 0 ? pesos / cotizCac : 0;
     };

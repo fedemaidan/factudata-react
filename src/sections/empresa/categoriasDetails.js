@@ -1,12 +1,16 @@
+// 📖 El "Ajuste por CAC" (3 modos) está documentado en
+//    sorby_bot_wa/docs/control-presupuestos/ (funcional §3, técnico §7.3).
 import React, { useEffect, useState } from 'react';
 import {
   Box,
   Button,
   Card,
+  CardActionArea,
   CardActions,
   CardContent,
   CardHeader,
   Divider,
+  Stack,
   TextField,
   Typography,
   IconButton,
@@ -21,8 +25,9 @@ import {
   DialogContent,
   DialogActions,
   Snackbar,
-  Alert
+  Alert,
 } from '@mui/material';
+import { alpha } from '@mui/material/styles';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
 import AddCircleIcon from '@mui/icons-material/AddCircle';
@@ -30,9 +35,38 @@ import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import SaveIcon from '@mui/icons-material/Save';
 import RestoreIcon from '@mui/icons-material/Restore';
+import HistoryIcon from '@mui/icons-material/History';
+import AutoModeIcon from '@mui/icons-material/AutoMode';
+import TrendingUpIcon from '@mui/icons-material/TrendingUp';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import { updateEmpresaDetails } from 'src/services/empresaService';
 import proveedorService from 'src/services/proveedorService';
 import Papa from 'papaparse';
+
+// Modo de CAC de la empresa (TAR-423): legacy / automatico / estimado.
+const CAC_MODO_OPCIONES = [
+  {
+    value: 'legacy',
+    titulo: 'Clásico',
+    resumen: 'CAC de 2 meses atrás, fijo',
+    help: 'Usa el CAC de 2 meses atrás y no se recalcula. Es el comportamiento histórico.',
+    Icon: HistoryIcon,
+  },
+  {
+    value: 'automatico',
+    titulo: 'Automático',
+    resumen: 'Último CAC y se ajusta solo',
+    help: 'Usa el último CAC disponible como estimación y, cuando se publica el CAC definitivo del mes, ajusta presupuestos y movimientos solos.',
+    Icon: AutoModeIcon,
+  },
+  {
+    value: 'estimado',
+    titulo: 'Estimado + ajuste',
+    resumen: 'Proyecta el CAC faltante',
+    help: 'Estima el CAC faltante proyectando la variación de los últimos meses y lo corrige cuando sale el definitivo.',
+    Icon: TrendingUpIcon,
+  },
+];
 
 //todo - borrar luego
 const categoriasDefault = [
@@ -107,6 +141,36 @@ export const CategoriasDetails = ({ empresa, refreshEmpresa }) => {
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [snackbarSeverity, setSnackbarSeverity] = useState('success');
+
+  // TAR-423: modo de CAC de la empresa (legacy por default para no romper prod).
+  const [cacModo, setCacModo] = useState(empresa?.presupuesto_cac_modo || 'legacy');
+  const [savingCacModo, setSavingCacModo] = useState(false);
+
+  useEffect(() => {
+    setCacModo(empresa?.presupuesto_cac_modo || 'legacy');
+  }, [empresa?.presupuesto_cac_modo]);
+
+  // Modo guardado en la empresa vs. el que el usuario tiene seleccionado (staged).
+  const cacModoGuardado = empresa?.presupuesto_cac_modo || 'legacy';
+  const cacModoDirty = cacModo !== cacModoGuardado;
+
+  const guardarCacModo = async () => {
+    if (!cacModoDirty || savingCacModo) return;
+    setSavingCacModo(true);
+    try {
+      await updateEmpresaDetails(empresa.id, { presupuesto_cac_modo: cacModo });
+      await refreshEmpresa?.();
+      const opt = CAC_MODO_OPCIONES.find((o) => o.value === cacModo);
+      setSnackbarMessage(`Ajuste por CAC actualizado a "${opt?.titulo || cacModo}"`);
+      setSnackbarSeverity('success');
+    } catch (e) {
+      setSnackbarMessage('No se pudo guardar el ajuste por CAC');
+      setSnackbarSeverity('error');
+    } finally {
+      setSavingCacModo(false);
+      setSnackbarOpen(true);
+    }
+  };
 
   const handleSnackbarClose = () => {
     setSnackbarOpen(false);
@@ -371,7 +435,10 @@ const handleImportarCSV = async (e) => {
 
   const startEditCategoria = (categoria) => {
     setEditingCategoria(categoria);
-    formik.setValues({ name: categoria.name, subcategoria: '' });
+    formik.setValues({
+      name: categoria.name,
+      subcategoria: '',
+    });
     setOpenModal(true);
   };
 
@@ -475,6 +542,136 @@ const handleImportarCSV = async (e) => {
             Restaurar Categorías por defecto
           </Button>
         </CardActions>
+      </Card>
+
+      <Card sx={{ mt: 3 }}>
+        <CardHeader
+          title="Ajuste por CAC"
+          subheader="Cómo se valúan los presupuestos y movimientos ajustados por CAC mientras todavía no salió el índice del mes."
+          action={
+            <Chip
+              size="small"
+              color="primary"
+              variant="outlined"
+              icon={<CheckCircleIcon />}
+              label={`Activo: ${CAC_MODO_OPCIONES.find((o) => o.value === cacModoGuardado)?.titulo || cacModoGuardado}`}
+              sx={{ mr: 1, mt: 1 }}
+            />
+          }
+        />
+        <Divider />
+        <CardContent>
+          <Box
+            sx={{
+              display: 'grid',
+              gap: 1.5,
+              gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, 1fr)' },
+            }}
+          >
+            {CAC_MODO_OPCIONES.map((opt) => {
+              const seleccionado = cacModo === opt.value;
+              const { Icon } = opt;
+              return (
+                <Card
+                  key={opt.value}
+                  variant="outlined"
+                  sx={{
+                    position: 'relative',
+                    borderColor: seleccionado ? 'primary.main' : 'divider',
+                    borderWidth: seleccionado ? 2 : 1,
+                    bgcolor: (t) => (seleccionado ? alpha(t.palette.primary.main, 0.06) : 'transparent'),
+                    transition: 'border-color .15s, background-color .15s, box-shadow .15s',
+                    boxShadow: seleccionado ? 3 : 0,
+                  }}
+                >
+                  <CardActionArea
+                    onClick={() => setCacModo(opt.value)}
+                    disabled={savingCacModo}
+                    sx={{ height: '100%', p: 2, alignItems: 'flex-start' }}
+                  >
+                    {seleccionado && (
+                      <CheckCircleIcon
+                        color="primary"
+                        fontSize="small"
+                        sx={{ position: 'absolute', top: 10, right: 10 }}
+                      />
+                    )}
+                    <Stack spacing={1}>
+                      <Box
+                        sx={{
+                          width: 40,
+                          height: 40,
+                          borderRadius: '50%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          bgcolor: (t) =>
+                            seleccionado ? 'primary.main' : alpha(t.palette.text.primary, 0.06),
+                          color: seleccionado ? 'primary.contrastText' : 'text.secondary',
+                        }}
+                      >
+                        <Icon fontSize="small" />
+                      </Box>
+                      <Box>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                          {opt.titulo}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {opt.resumen}
+                        </Typography>
+                      </Box>
+                      <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.4 }}>
+                        {opt.help}
+                      </Typography>
+                    </Stack>
+                  </CardActionArea>
+                </Card>
+              );
+            })}
+          </Box>
+
+          <Stack
+            direction={{ xs: 'column', sm: 'row' }}
+            spacing={1}
+            alignItems={{ xs: 'stretch', sm: 'center' }}
+            justifyContent="space-between"
+            sx={{ mt: 2 }}
+          >
+            <Typography variant="caption" color="text.secondary">
+              Se aplica a los nuevos presupuestos y movimientos. Los ya cargados se corrigen solos cuando sale el CAC definitivo de su mes.
+            </Typography>
+            {cacModoDirty ? (
+              <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>
+                <Button
+                  size="small"
+                  color="inherit"
+                  disabled={savingCacModo}
+                  onClick={() => setCacModo(cacModoGuardado)}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  variant="contained"
+                  size="small"
+                  startIcon={<SaveIcon />}
+                  disabled={savingCacModo}
+                  onClick={guardarCacModo}
+                >
+                  {savingCacModo ? 'Guardando…' : 'Guardar cambios'}
+                </Button>
+              </Stack>
+            ) : (
+              <Chip
+                size="small"
+                color="success"
+                variant="outlined"
+                icon={<CheckCircleIcon />}
+                label="Guardado"
+                sx={{ flexShrink: 0 }}
+              />
+            )}
+          </Stack>
+        </CardContent>
       </Card>
 
       <Dialog open={openModal} onClose={cancelarEdicion} aria-labelledby="form-dialog-title">

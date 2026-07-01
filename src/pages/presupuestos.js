@@ -43,6 +43,7 @@ import { Add, Delete } from '@mui/icons-material';
 import { useAuthContext } from 'src/contexts/auth-context';
 import presupuestoService from 'src/services/presupuestoService';
 import MonedasService from 'src/services/monedasService';
+import { snapshotCacIndice } from 'src/utils/cac/pickCac';
 import PresupuestoDrawer from 'src/components/PresupuestoDrawer';
 import { getEmpresaById, getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import proveedorService from 'src/services/proveedorService';
@@ -560,7 +561,7 @@ const PresupuestosPage = () => {
                               {tieneIndexacion && (() => {
                                 const snap = p.cotizacion_snapshot || {};
                                 const ingresado = p.monto_ingresado;
-                                const indiceCreacion = p.indexacion === 'CAC' ? snap.cac_indice : snap.dolar_blue;
+                                const indiceCreacion = p.indexacion === 'CAC' ? snapshotCacIndice(snap, p.cac_tipo, 'legacy') : snap.dolar_blue;
                                 const indiceActual = p.indexacion === 'CAC' ? cacIndice : dolarRate;
                                 const unidad = p.indexacion === 'CAC' ? 'CAC' : 'USD';
                                 const fmtNum = (v) => v != null ? Number(v).toLocaleString('es-AR', { maximumFractionDigits: 2 }) : '?';
