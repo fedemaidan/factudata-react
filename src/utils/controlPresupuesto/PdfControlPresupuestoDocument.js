@@ -89,6 +89,9 @@ export function PdfControlPresupuestoDocument({ data, logoDataUrl, empresaNombre
   const saldoNeg = Number(d.saldo) < 0;
   const barColor = sobre ? OVER : ACCENT;
   const equivSub = (v) => (mostrarEquiv && v != null ? fmtEquiv(v, equivLabel) : null);
+  // Etiqueta del modo de moneda (Nominal / CAC a hoy / USD). Se omite cuando ya hay
+  // columna de equivalencia, para no duplicar la referencia.
+  const modoNota = !mostrarEquiv && d.modo_label ? `(${d.modo_label})` : null;
 
   return (
     <Document>
@@ -135,17 +138,17 @@ export function PdfControlPresupuestoDocument({ data, logoDataUrl, empresaNombre
             <View style={styles.resumenCell}>
               <Text style={styles.resumenLabel}>PRESUPUESTADO</Text>
               <Text style={styles.resumenValue}>{fmtMoney(d.presupuestado, moneda)}</Text>
-              {equivSub(d.presupuestado_equiv) ? <Text style={styles.resumenEquiv}>{equivSub(d.presupuestado_equiv)}</Text> : null}
+              {equivSub(d.presupuestado_equiv) ? <Text style={styles.resumenEquiv}>{equivSub(d.presupuestado_equiv)}</Text> : modoNota ? <Text style={styles.resumenEquiv}>{modoNota}</Text> : null}
             </View>
             <View style={[styles.resumenCell, styles.resumenCellMid]}>
               <Text style={styles.resumenLabel}>{d.tipo === 'ingresos' ? 'INGRESADO' : 'EJECUTADO'}</Text>
               <Text style={styles.resumenValue}>{fmtMoney(d.ejecutado, moneda)}</Text>
-              {equivSub(d.ejecutado_equiv) ? <Text style={styles.resumenEquiv}>{equivSub(d.ejecutado_equiv)}</Text> : null}
+              {equivSub(d.ejecutado_equiv) ? <Text style={styles.resumenEquiv}>{equivSub(d.ejecutado_equiv)}</Text> : modoNota ? <Text style={styles.resumenEquiv}>{modoNota}</Text> : null}
             </View>
             <View style={styles.resumenCell}>
               <Text style={styles.resumenLabel}>SALDO</Text>
               <Text style={[styles.resumenValue, { color: saldoNeg ? OVER : INK }]}>{fmtMoney(d.saldo, moneda)}</Text>
-              {equivSub(d.saldo_equiv) ? <Text style={styles.resumenEquiv}>{equivSub(d.saldo_equiv)}</Text> : null}
+              {equivSub(d.saldo_equiv) ? <Text style={styles.resumenEquiv}>{equivSub(d.saldo_equiv)}</Text> : modoNota ? <Text style={styles.resumenEquiv}>{modoNota}</Text> : null}
             </View>
           </View>
           <View style={styles.barRow}>
@@ -172,7 +175,7 @@ export function PdfControlPresupuestoDocument({ data, logoDataUrl, empresaNombre
             <Text style={[styles.td, styles.cDetalle]}>{m.detalle || m.proveedor || '-'}</Text>
             <Text style={[styles.td, styles.cMonto]}>{fmtMoney(m.monto, moneda)}</Text>
             {mostrarEquiv ? <Text style={[styles.td, styles.cEquiv, styles.tdMuted]}>{m.monto_equiv != null ? fmtEquiv(m.monto_equiv, equivLabel) : '—'}</Text> : null}
-            <Text style={[styles.td, styles.cAcum]}>{fmtMoney(m.acumulado, moneda)}</Text>
+            <Text style={[styles.td, styles.cAcum]}>{mostrarEquiv ? fmtEquiv(m.acumulado_equiv, equivLabel) : fmtMoney(m.acumulado, moneda)}</Text>
           </View>
         ))}
 

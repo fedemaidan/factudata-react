@@ -4,7 +4,7 @@ import { keyframes } from '@emotion/react';
 import {
   Box, Button, Chip, CircularProgress, Dialog, DialogContent, DialogTitle, Divider,
   IconButton, InputBase, MenuItem, Paper, Stack, TextField,
-  Tooltip, Typography,
+  ToggleButton, ToggleButtonGroup, Tooltip, Typography,
 } from '@mui/material';
 import AddPhotoAlternateOutlinedIcon from '@mui/icons-material/AddPhotoAlternateOutlined';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
@@ -31,6 +31,8 @@ const PdfPlantillaPreviewInner = dynamic(() => import('./PdfPlantillaPreviewInne
 });
 
 const GREETING = '¡Hola! Diseñá tu plantilla describiendo lo que querés — por ejemplo "agregá el logo más grande", "colores sobrios", "una columna con el acumulado" — o adjuntá una imagen de referencia. Te muestro la vista previa en tiempo real.';
+
+const MODO_LABELS = { nominal: 'Pesos nominales', cac: 'CAC a hoy', usd: 'USD' };
 
 function readFileAsDataUrl(file) {
   return new Promise((resolve, reject) => {
@@ -89,12 +91,16 @@ export default function PdfPlantillaChatDialog({
   empresaId,
   documentType,
   sampleData,
+  buildSampleData = null,
+  sampleDataModes = [],
   defaultDocumentLoader,
   empresaNombre = '',
   logos = [],
   initialTemplate = null,
   onSaved,
 }) {
+  const mostrarSelectorModo = typeof buildSampleData === 'function' && sampleDataModes.length > 1;
+  const [modo, setModo] = useState(sampleDataModes[0] || 'nominal');
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -128,6 +134,7 @@ export default function PdfPlantillaChatDialog({
       return;
     }
     setMessages([{ role: 'assistant', content: GREETING }]);
+    setModo(sampleDataModes[0] || 'nominal');
     setTemplateName(initialTemplate?.nombre || '');
     setSelectedLogoId(initialTemplate?.logo_id || (logos[0]?._id ?? ''));
     if (isEdit) {
@@ -227,11 +234,15 @@ export default function PdfPlantillaChatDialog({
       documentType,
       currentCode: currentCode || null,
       referenceImageDataUrl: refImg,
+      modo,
+      modosDisponibles: sampleDataModes,
     });
     setLoading(false);
 
     if (result) {
       setMessages((prev) => [...prev, { role: 'assistant', content: result.message }]);
+      // La IA puede sugerir el modo de moneda (nominal/cac/usd); movemos el selector.
+      if (result.modo && sampleDataModes.includes(result.modo)) setModo(result.modo);
       if (result.code) {
         awaitingCorrectionRef.current = result.code; // disparará el corrector al renderizar
         setCurrentCode(result.code);
@@ -241,7 +252,7 @@ export default function PdfPlantillaChatDialog({
       setMessages((prev) => [...prev, { role: 'assistant', content: 'Hubo un error al contactar al asistente. Intentá de nuevo.' }]);
     }
     inputRef.current?.focus();
-  }, [input, loading, correcting, messages, empresaId, documentType, currentCode, handleCompile, referenceImage]);
+  }, [input, loading, correcting, messages, empresaId, documentType, currentCode, handleCompile, referenceImage, modo, sampleDataModes]);
 
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
@@ -283,7 +294,8 @@ export default function PdfPlantillaChatDialog({
   };
 
   const PreviewComponent = CompiledComponent || DefaultComponent;
-  const previewKey = useMemo(() => `preview-${previewVersion}-${selectedLogoId}-${logoDataUrl ? 1 : 0}`, [previewVersion, selectedLogoId, logoDataUrl]);
+  const previewData = buildSampleData ? buildSampleData(modo) : sampleData;
+  const previewKey = useMemo(() => `preview-${previewVersion}-${selectedLogoId}-${logoDataUrl ? 1 : 0}-${modo}`, [previewVersion, selectedLogoId, logoDataUrl, modo]);
   const busy = loading || correcting;
 
   return (
@@ -397,6 +409,21 @@ export default function PdfPlantillaChatDialog({
                 <Typography component="span" variant="caption" color="error.main" sx={{ ml: 1 }}>— Error: {compileError}</Typography>
               )}
             </Typography>
+            {mostrarSelectorModo && (
+              <Tooltip title="Moneda con la que se muestran los importes" arrow>
+                <ToggleButtonGroup
+                  value={modo}
+                  exclusive
+                  size="small"
+                  onChange={(e, v) => { if (v) setModo(v); }}
+                  sx={{ '& .MuiToggleButton-root': { fontSize: 10, py: 0.2, px: 1, textTransform: 'none' } }}
+                >
+                  {sampleDataModes.map((m) => (
+                    <ToggleButton key={m} value={m}>{MODO_LABELS[m] || m}</ToggleButton>
+                  ))}
+                </ToggleButtonGroup>
+              </Tooltip>
+            )}
             <Chip label={CompiledComponent ? 'Diseño personalizado' : 'Plantilla por defecto'} size="small" color={CompiledComponent ? 'primary' : 'default'} variant={CompiledComponent ? 'filled' : 'outlined'} sx={{ fontSize: 10, height: 20 }} />
           </Box>
           <Box sx={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
@@ -404,7 +431,7 @@ export default function PdfPlantillaChatDialog({
               <PdfPlantillaPreviewInner
                 key={previewKey}
                 PlantillaPDF={PreviewComponent}
-                data={sampleData}
+                data={previewData}
                 logoDataUrl={logoDataUrl}
                 empresaNombre={empresaNombre}
                 onImageReady={handlePreviewImageReady}

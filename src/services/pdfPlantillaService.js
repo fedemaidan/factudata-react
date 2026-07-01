@@ -58,8 +58,8 @@ const pdfPlantillaService = {
     }
   },
 
-  // Generador (pasada 1): { message, code }
-  aiChat: async ({ messages, empresaId, documentType, currentCode, referenceImageDataUrl }) => {
+  // Generador (pasada 1): { message, code, modo? }
+  aiChat: async ({ messages, empresaId, documentType, currentCode, referenceImageDataUrl, modo, modosDisponibles }) => {
     try {
       const res = await api.post('pdf-plantillas/ai-chat', {
         messages,
@@ -67,6 +67,8 @@ const pdfPlantillaService = {
         documentType,
         currentCode: currentCode || null,
         referenceImageDataUrl: referenceImageDataUrl || null,
+        modo: modo || null,
+        modosDisponibles: modosDisponibles || [],
       });
       return res.status === 200 ? res.data : null;
     } catch (e) {

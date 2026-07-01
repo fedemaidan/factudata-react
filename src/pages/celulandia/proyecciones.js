@@ -30,6 +30,7 @@ import ArrowDropDownIcon from "@mui/icons-material/ArrowDropDown";
 import { FileDownload as FileDownloadIcon } from "@mui/icons-material";
 import SearchIcon from "@mui/icons-material/Search";
 import VisibilityIcon from "@mui/icons-material/Visibility";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import { useQuery } from "@tanstack/react-query";
 import AgregarProyeccionModal from "src/components/celulandia/AgregarProyeccionModal";
 import AgregarPedidoModal from "src/components/celulandia/proyecciones/AgregarPedidoModal";
@@ -62,6 +63,15 @@ const INITIAL_SORT_OPTIONS = {
 };
 
 const ROWS_PER_PAGE_OPTIONS = [100, 200];
+
+// El botón "Copiar tabla" es una ayuda de desarrollo local; no se muestra en producción.
+const IS_LOCAL = process.env.NODE_ENV !== "production";
+
+const formatVariacionTexto = (pct) => {
+  const n = Number(pct);
+  if (!Number.isFinite(n)) return "";
+  return `${n > 0 ? "+" : ""}${n.toLocaleString("es-AR", { maximumFractionDigits: 1 })}%`;
+};
 
 const ProyeccionesV2Page = () => {
   const router = useRouter();
@@ -140,6 +150,7 @@ const ProyeccionesV2Page = () => {
       return result.data || [];
     },
     retry: false,
+    refetchOnWindowFocus: false,
   });
 
   const handleSortChange = useCallback((campo) => {
@@ -465,6 +476,42 @@ const ProyeccionesV2Page = () => {
     pagination: productosPagination,
   } = productosResponse ?? {};
 
+  const [tablaCopiada, setTablaCopiada] = useState(false);
+  // Copia los productos de la página actual como texto tabulado (TSV), respetando
+  // el modo ponderado, para pegar y compartir los datos sin captura de pantalla.
+  const handleCopiarTabla = useCallback(async () => {
+    const cols = [
+      ["Código", (it) => it?.codigo ?? ""],
+      ["Nombre", (it) => it?.nombre ?? ""],
+      ["Tags", (it) => (Array.isArray(it?.tags) ? it.tags.map((t) => t?.nombre ?? t).filter(Boolean).join(", ") : "")],
+      ["Stock actual", (it) => it?.stockActual ?? ""],
+      ["Ventas período", (it) => it?.ventasPeriodo ?? ""],
+      ["Ventas proyectadas (90 días)", (it) => getProjView(it).ventasProyectadas ?? ""],
+      ["Variación", (it) => formatVariacionTexto(it?.tendencia?.variacionPct)],
+      ["Días hasta agotar stock", (it) => getProjView(it).diasHastaAgotarStock ?? ""],
+      ["Stock proyectado (90 días)", (it) => getProjView(it).stockProyectado ?? ""],
+      ["Fecha agotamiento (Stock 0)", (it) => formatDateDDMMYYYY(getProjView(it).fechaAgotamientoStock) ?? ""],
+      ["Cant. a comprar (100 días)", (it) => getProjView(it).cantidadCompraSugerida ?? ""],
+      ["Fecha compra sugerida", (it) => formatDateDDMMYYYY(getProjView(it).fechaCompraSugerida) ?? ""],
+      ["Fecha ingreso", (it) => formatDateDDMMYYYY(it?.fechaIngreso) ?? ""],
+      ["Fecha cero", (it) => formatDateDDMMYYYY(it?.fechaCero) ?? ""],
+    ];
+    const sanitizar = (v) => String(v ?? "").replace(/[\t\n]+/g, " ").trim();
+    const filas = (Array.isArray(productos) ? productos : []).map((it) =>
+      cols.map((c) => sanitizar(c[1](it))).join("\t")
+    );
+    const texto = [cols.map((c) => c[0]).join("\t"), ...filas].join("\n");
+    try {
+      await navigator.clipboard.writeText(texto);
+      setTablaCopiada(true);
+      setTimeout(() => setTablaCopiada(false), 1500);
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error("No se pudo copiar la tabla:", error);
+      alert("No se pudo copiar la tabla");
+    }
+  }, [productos, getProjView]);
+
   const [proyeccionMeta, setProyeccionMeta] = useState(null);
   const [isLoadingProyeccionMeta, setIsLoadingProyeccionMeta] = useState(false);
   const [pendingProyeccionId, setPendingProyeccionId] = useState(null);
@@ -750,6 +797,18 @@ const ProyeccionesV2Page = () => {
               >
                 {isExporting ? "Exportando..." : "Exportar a Excel"}
               </Button>
+              {IS_LOCAL && (
+                <Button
+                  {...actionButtonProps}
+                  variant="outlined"
+                  color="info"
+                  startIcon={<ContentCopyIcon />}
+                  onClick={handleCopiarTabla}
+                  disabled={!Array.isArray(productos) || productos.length === 0}
+                >
+                  {tablaCopiada ? "¡Copiado!" : "Copiar tabla"}
+                </Button>
+              )}
               <Button
                 {...actionButtonProps}
                 variant="outlined"

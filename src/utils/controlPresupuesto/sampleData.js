@@ -2,42 +2,93 @@
  * Datos de muestra para previsualizar plantillas de Control de Presupuesto.
  * Mismo shape que el objeto `data` que produce `buildControlPresupuestoData`.
  *
- * Caso elegido: presupuesto en PESOS INDEXADO POR CAC → muestra la unidad primaria
- * (pesos a hoy) + la columna de equivalencia (CAC), el bloque resumen
- * Presupuestado/Ejecutado/Saldo y la barra de avance. Así el preview ejercita el
- * render dinámico completo.
+ * `buildSampleData(modo)` arma la muestra según el modo de moneda elegido en el
+ * editor, para que el preview refleje exactamente lo que verá el usuario:
+ *  - 'nominal' (default): pesos reales, sin columna de equivalencia.
+ *  - 'cac': pesos a hoy + columna de equivalencia en unidades CAC.
+ *  - 'usd': importes en dólares.
  */
-const CONTROL_PRESUPUESTO_SAMPLE_DATA = {
-  titulo: 'RECIBO DE PAGOS',
-  fecha_emision: '22/5/2026',
-  empresa_nombre: 'Tu empresa',
-  domicilio: 'Costa de Oro',
-  contratista: 'Rodrigo Soria',
-  obra: 'Casa Tatán',
-  presupuesto_label: 'Albañilería 1° etapa',
-  tipo: 'gastos',
-  moneda: 'ARS',
-  indexacion: 'CAC',
-  mostrar_equiv: true,
-  equiv_label: 'CAC',
-  presupuestado: 8750000,
-  ejecutado: 7250000,
-  saldo: 1500000,
-  avance_pct: 82.86,
-  presupuestado_equiv: 17500,
-  ejecutado_equiv: 14500,
-  saldo_equiv: 3000,
-  movimientos: [
-    { numero: 1, fecha: '27/3/2026', detalle: 'Entrega', proveedor: 'Rodrigo Soria', categoria: 'Albañilería', monto: 300000, acumulado: 300000, monto_equiv: 600, acumulado_equiv: 600 },
-    { numero: 2, fecha: '28/3/2026', detalle: 'Entrega', proveedor: 'Rodrigo Soria', categoria: 'Albañilería', monto: 400000, acumulado: 700000, monto_equiv: 800, acumulado_equiv: 1400 },
-    { numero: 3, fecha: '10/4/2026', detalle: 'Entrega', proveedor: 'Rodrigo Soria', categoria: 'Albañilería', monto: 1050000, acumulado: 1750000, monto_equiv: 2100, acumulado_equiv: 3500 },
-    { numero: 4, fecha: '17/4/2026', detalle: 'Entrega', proveedor: 'Rodrigo Soria', categoria: 'Albañilería', monto: 600000, acumulado: 2350000, monto_equiv: 1200, acumulado_equiv: 4700 },
-    { numero: 5, fecha: '24/4/2026', detalle: 'Entrega', proveedor: 'Rodrigo Soria', categoria: 'Albañilería', monto: 900000, acumulado: 3250000, monto_equiv: 1800, acumulado_equiv: 6500 },
-    { numero: 6, fecha: '30/4/2026', detalle: 'Entrega', proveedor: 'Rodrigo Soria', categoria: 'Albañilería', monto: 1000000, acumulado: 4250000, monto_equiv: 2000, acumulado_equiv: 8500 },
-    { numero: 7, fecha: '8/5/2026', detalle: 'Entrega', proveedor: 'Rodrigo Soria', categoria: 'Albañilería', monto: 1000000, acumulado: 5250000, monto_equiv: 2000, acumulado_equiv: 10500 },
-    { numero: 8, fecha: '15/5/2026', detalle: 'Entrega', proveedor: 'Rodrigo Soria', categoria: 'Albañilería', monto: 1000000, acumulado: 6250000, monto_equiv: 2000, acumulado_equiv: 12500 },
-    { numero: 9, fecha: '22/5/2026', detalle: 'Entrega', proveedor: 'Rodrigo Soria', categoria: 'Albañilería', monto: 1000000, acumulado: 7250000, monto_equiv: 2000, acumulado_equiv: 14500 },
-  ],
-};
+
+const INDICE_CAC = 500;   // pesos por unidad CAC (muestra)
+const DOLAR = 1250;       // pesos por USD (muestra)
+
+const ROWS = [
+  { fecha: '27/3/2026', ars: 300000 },
+  { fecha: '28/3/2026', ars: 400000 },
+  { fecha: '10/4/2026', ars: 1050000 },
+  { fecha: '17/4/2026', ars: 600000 },
+  { fecha: '24/4/2026', ars: 900000 },
+  { fecha: '30/4/2026', ars: 1000000 },
+  { fecha: '8/5/2026', ars: 1000000 },
+  { fecha: '15/5/2026', ars: 1000000 },
+  { fecha: '22/5/2026', ars: 1000000 },
+];
+
+const PRESUPUESTADO_ARS = 8750000;
+
+const MODO_LABEL = { nominal: 'Nominal', cac: 'CAC a hoy', usd: 'USD' };
+
+export function buildSampleData(modo = 'nominal') {
+  const esCac = modo === 'cac';
+  const esUsd = modo === 'usd';
+  const moneda = esUsd ? 'USD' : 'ARS';
+
+  const montoDe = (ars) => (esUsd ? Math.round(ars / DOLAR) : ars);
+  const equivDe = (ars) => ars / INDICE_CAC; // unidades CAC
+
+  let acum = 0;
+  let acumEquiv = 0;
+  const movimientos = ROWS.map((r, i) => {
+    const monto = montoDe(r.ars);
+    acum += monto;
+    const monto_equiv = esCac ? equivDe(r.ars) : null;
+    if (esCac) acumEquiv += monto_equiv;
+    return {
+      numero: i + 1,
+      fecha: r.fecha,
+      detalle: 'Entrega',
+      proveedor: 'Rodrigo Soria',
+      categoria: 'Albañilería',
+      monto,
+      acumulado: acum,
+      monto_equiv,
+      acumulado_equiv: esCac ? acumEquiv : null,
+    };
+  });
+
+  const presupuestado = montoDe(PRESUPUESTADO_ARS);
+  const ejecutado = acum;
+  const saldo = presupuestado - ejecutado;
+  const presupuestado_equiv = esCac ? equivDe(PRESUPUESTADO_ARS) : null;
+  const ejecutado_equiv = esCac ? acumEquiv : null;
+
+  return {
+    titulo: 'RECIBO DE PAGOS',
+    fecha_emision: '22/5/2026',
+    empresa_nombre: 'Tu empresa',
+    domicilio: 'Costa de Oro',
+    contratista: 'Rodrigo Soria',
+    obra: 'Casa Tatán',
+    presupuesto_label: 'Albañilería 1° etapa',
+    tipo: 'gastos',
+    modo,
+    modo_label: MODO_LABEL[modo] || MODO_LABEL.nominal,
+    moneda,
+    indexacion: esCac ? 'CAC' : null,
+    mostrar_equiv: esCac,
+    equiv_label: esCac ? 'CAC' : '',
+    presupuestado,
+    ejecutado,
+    saldo,
+    avance_pct: presupuestado ? (ejecutado / presupuestado) * 100 : 0,
+    presupuestado_equiv,
+    ejecutado_equiv,
+    saldo_equiv: esCac ? presupuestado_equiv - ejecutado_equiv : null,
+    movimientos,
+  };
+}
+
+// Compat: muestra por defecto (modo nominal).
+const CONTROL_PRESUPUESTO_SAMPLE_DATA = buildSampleData('nominal');
 
 export default CONTROL_PRESUPUESTO_SAMPLE_DATA;

@@ -646,6 +646,10 @@ export function applyBlockFilters(movimientos, block) {
 
   const fe = block.filtros_extra;
   if (fe) {
+    if (fe.proyectos?.length > 0) {
+      const set = new Set(fe.proyectos.map((id) => String(id)));
+      result = result.filter((m) => set.has(String(m.proyecto_id)));
+    }
     if (fe.categorias?.length > 0) {
       const set = toNormalizedSet(fe.categorias);
       result = result.filter((m) => set.has(normalizeCategoryFilterValue(m.categoria)));
@@ -992,6 +996,10 @@ export function processMetricCards(block, movimientos, presupuestos, currencies,
     // Filtros extra del metric card
     const fe = metrica.filtros_extra;
     if (fe) {
+      if (fe.proyectos?.length > 0) {
+        const set = new Set(fe.proyectos.map((id) => String(id)));
+        data = data.filter((m) => set.has(String(m.proyecto_id)));
+      }
       if (fe.categorias?.length > 0) {
         const set = toNormalizedSet(fe.categorias);
         data = data.filter((m) => set.has(normalizeCategoryFilterValue(m.categoria)));
@@ -1273,6 +1281,96 @@ export function processSubcategoryMonthlyEvolution(block, movimientos, _presupue
     displayCurrency,
     sinCotizacion,
     sinFecha,
+    mostrarSinCotizacion: block.mostrar_sin_cotizacion === true,
+  };
+}
+
+/**
+ * Procesa un bloque group_month_matrix — matriz cruzada: filas = grupo (categoría /
+ * proveedor / etapa / proyecto), columnas = meses. Emite la MISMA shape que
+ * summary_table ({ headers, rows, totals }) para reusar render/PDF/XLSX.
+ * @returns {{ headers, rows, totals, displayCurrency }}
+ */
+export function processGroupMonthMatrix(block, movimientos, _presupuestos, currencies, _cotizaciones, extraContext = {}) {
+  const data = applyBlockFilters(movimientos, block); // respeta filtro_tipo + filtros_extra
+  const agrupar = block.agrupar_por || 'categoria';
+  const campo = block.campo_monto || block.campo || 'total';
+  const displayCurrency = block.display_currency || currencies?.[0] || 'ARS';
+  const mesesN = Math.max(1, Number(block.meses_n) || 6);
+
+  const groupedEntries = agrupar === 'proyecto'
+    ? groupMovimientosByProject(data, extraContext)
+    : agrupar === 'usuario'
+      ? groupMovimientosByUsuario(data, extraContext)
+      : [...groupBy(data, agrupar).entries()];
+
+  // Meses presentes en los datos → tomar los últimos mesesN y mostrarlos del más nuevo al más viejo
+  const allMonths = [...new Set(
+    data.map((m) => getMes(m)).filter((mk) => mk && mk !== 'sin-fecha'),
+  )].sort();
+  const visibleMonths = allMonths.slice(-mesesN).reverse();
+  const visibleMonthSet = new Set(visibleMonths);
+
+  let sinCotizacion = 0;
+
+  const groupRows = groupedEntries.map(([label, items]) => {
+    const row = { grupo: label, _movimientos: [], _total: 0 };
+    for (const mk of visibleMonths) row[mk] = 0;
+    for (const mov of items) {
+      const mk = getMes(mov);
+      if (!visibleMonthSet.has(mk)) continue;
+      const conv = getReportAmountResult(mov, displayCurrency, campo);
+      if (conv.missingQuote || conv.value == null) { sinCotizacion += 1; continue; }
+      const amount = Math.abs(Number(conv.value) || 0);
+      row[mk] += amount;
+      row._total += amount;
+      row._movimientos.push(mov);
+    }
+    for (const mk of visibleMonths) row[mk] = round2(row[mk]);
+    row._total = round2(row._total);
+    return row;
+  }).filter((row) => row._total !== 0 || row._movimientos.length > 0);
+
+  groupRows.sort((a, b) => b._total - a._total);
+
+  // top_n: agrupa el resto en "Otras"
+  let rows = groupRows;
+  const topN = Number(block.top_n) || 0;
+  if (topN > 0 && groupRows.length > topN) {
+    const visible = groupRows.slice(0, topN);
+    const resto = groupRows.slice(topN);
+    const otras = { grupo: 'Otras', _movimientos: [], _total: 0 };
+    for (const mk of visibleMonths) otras[mk] = 0;
+    for (const r of resto) {
+      for (const mk of visibleMonths) otras[mk] = round2((otras[mk] || 0) + (r[mk] || 0));
+      otras._total = round2(otras._total + r._total);
+      otras._movimientos.push(...r._movimientos);
+    }
+    rows = [...visible, otras];
+  }
+
+  const headers = [
+    { id: 'grupo', titulo: capitalizar(agrupar), filtro_tipo: block.filtro_tipo || null },
+    ...visibleMonths.map((mk) => ({
+      id: mk, titulo: formatMonthKey(mk), formato: 'currency', currency: displayCurrency,
+      filtro_tipo: block.filtro_tipo || null,
+    })),
+    { id: '_total', titulo: 'Total', formato: 'currency', currency: displayCurrency, filtro_tipo: block.filtro_tipo || null },
+  ];
+
+  const totals = { grupo: 'TOTAL', _total: 0 };
+  for (const mk of visibleMonths) totals[mk] = 0;
+  for (const row of rows) {
+    for (const mk of visibleMonths) totals[mk] = round2((totals[mk] || 0) + (row[mk] || 0));
+    totals._total = round2(totals._total + (row._total || 0));
+  }
+
+  return {
+    headers,
+    rows,
+    totals: block.mostrar_total === false ? null : totals,
+    displayCurrency,
+    sinCotizacion,
     mostrarSinCotizacion: block.mostrar_sin_cotizacion === true,
   };
 }
@@ -3383,6 +3481,7 @@ const BLOCK_PROCESSORS = {
   balance_between_partners: processBalanceBetweenPartners,
   category_subcategory_accordion: processCategorySubcategoryAccordion,
   subcategory_monthly_evolution: processSubcategoryMonthlyEvolution,
+  group_month_matrix: processGroupMonthMatrix,
   collections_summary: processCollectionsSummary,
   collections_schedule: processCollectionsSchedule,
   collections_due_ranges: processCollectionsDueRanges,

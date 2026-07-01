@@ -115,6 +115,7 @@ const labelItem = (item, fallback = 'Ingreso general') => {
 import dayjs from 'dayjs';
 import PresupuestoDrawer from 'src/components/PresupuestoDrawer';
 import ExportarPdfMenu from 'src/components/plantillasPdf/ExportarPdfMenu';
+import ExportarExcelMenu from 'src/components/plantillasPdf/ExportarExcelMenu';
 import { buildControlPresupuestoData } from 'src/utils/controlPresupuesto/buildControlPresupuestoData';
 import { snapshotCacIndice } from 'src/utils/cac/pickCac';
 import Tooltip from '@mui/material/Tooltip';
@@ -2517,47 +2518,63 @@ const ControlPresupuestosPage = () => {
                 sx={{ cursor: 'pointer', fontSize: '0.65rem', height: 22, ml: 'auto' }}
               />
             </Tooltip>
-            {movDrawerData.length > 0 && (
-              <ExportarPdfMenu
-                empresaId={empresaId}
-                empresaNombre={empresa?.nombre || ''}
-                documentType="control_presupuesto"
-                fileName={`movimientos-${proyectoActual?.nombre || 'proyecto'}-${movDrawer.label}`}
-                defaultDocumentLoader={loadDefaultControlPresupuestoDoc}
-                onError={(message) => setAlert({ open: true, message, severity: 'error' })}
-                tituloEditable
-                defaultTitulo={
-                  movDrawer.tipo === 'egreso' ? 'RECIBO DE PAGOS'
-                    : movDrawer.tipo === 'ingreso' ? 'RECIBO DE INGRESOS'
-                      : 'ESTADO DE CUENTA'
-                }
-                buildData={(opts) => {
-                  const totales = calcularTotales();
-                  const presupuestado =
-                    movDrawer.tipo === 'egreso' ? totales.egresos.total
-                      : movDrawer.tipo === 'ingreso' ? totales.ingresos.total
-                        : 0;
-                  const titulo = opts?.titulo || (
-                    movDrawer.tipo === 'egreso' ? 'RECIBO DE PAGOS'
-                      : movDrawer.tipo === 'ingreso' ? 'RECIBO DE INGRESOS'
-                        : 'ESTADO DE CUENTA'
-                  );
-                  // Export a nivel proyecto: presupuestos mixtos, sin indexación única.
-                  // El builder cae al modo "moneda de vista" (sin columna de equivalencia).
-                  return buildControlPresupuestoData({
-                    movimientos: movDrawerData,
-                    titulo,
-                    presupuestoLabel: movDrawer.label,
-                    obra: proyectoActual?.nombre || '',
-                    empresaNombre: empresa?.nombre || '',
-                    monedaPresupuesto: moneda,
-                    presupuestadoNativo: presupuestado,
-                    tipo: movDrawer.tipo === 'ingreso' ? 'ingresos' : 'gastos',
-                    cacModo,
-                  });
-                }}
-              />
-            )}
+            {movDrawerData.length > 0 && (() => {
+              const fileNameExport = `movimientos-${proyectoActual?.nombre || 'proyecto'}-${movDrawer.label}`;
+              const modosExport = [
+                'nominal',
+                ...(movDrawerData.some((m) => (m.moneda || 'ARS') === 'USD') ? ['usd'] : []),
+              ];
+              const defaultTitulo =
+                movDrawer.tipo === 'egreso' ? 'RECIBO DE PAGOS'
+                  : movDrawer.tipo === 'ingreso' ? 'RECIBO DE INGRESOS'
+                    : 'ESTADO DE CUENTA';
+              // buildData compartido por el export a PDF y a Excel (mismo modo/datos).
+              const buildExportData = (opts) => {
+                const totales = calcularTotales();
+                const presupuestado =
+                  movDrawer.tipo === 'egreso' ? totales.egresos.total
+                    : movDrawer.tipo === 'ingreso' ? totales.ingresos.total
+                      : 0;
+                // Export a nivel proyecto: presupuestos mixtos, sin indexación única.
+                // Modo nominal (pesos reales) por default; USD si hay movimientos en dólares.
+                return buildControlPresupuestoData({
+                  movimientos: movDrawerData,
+                  titulo: opts?.titulo || defaultTitulo,
+                  modo: opts?.modo || 'nominal',
+                  presupuestoLabel: movDrawer.label,
+                  obra: proyectoActual?.nombre || '',
+                  empresaNombre: empresa?.nombre || '',
+                  monedaPresupuesto: moneda,
+                  presupuestadoNativo: presupuestado,
+                  tipo: movDrawer.tipo === 'ingreso' ? 'ingresos' : 'gastos',
+                  cacModo,
+                });
+              };
+              return (
+                <>
+                  <ExportarPdfMenu
+                    empresaId={empresaId}
+                    empresaNombre={empresa?.nombre || ''}
+                    documentType="control_presupuesto"
+                    fileName={fileNameExport}
+                    defaultDocumentLoader={loadDefaultControlPresupuestoDoc}
+                    onError={(message) => setAlert({ open: true, message, severity: 'error' })}
+                    tituloEditable
+                    defaultTitulo={defaultTitulo}
+                    modosDisponibles={modosExport}
+                    modoDefault="nominal"
+                    buildData={buildExportData}
+                  />
+                  <ExportarExcelMenu
+                    fileName={fileNameExport}
+                    modosDisponibles={modosExport}
+                    modoDefault="nominal"
+                    onError={(message) => setAlert({ open: true, message, severity: 'error' })}
+                    buildData={buildExportData}
+                  />
+                </>
+              );
+            })()}
           </Stack>
 
           {movDrawerLoading ? (

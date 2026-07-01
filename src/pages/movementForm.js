@@ -45,6 +45,7 @@ const loadDefaultComprobanteMovimientoDoc = () =>
   );
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import movimientosService from 'src/services/movimientosService';
+import gastoRecurrenteService from 'src/services/gastoRecurrenteService';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import { useAuthContext } from 'src/contexts/auth-context';
 import { useAlert } from 'src/contexts/alert-context';
@@ -1204,8 +1205,21 @@ const createdAtStr = (() => {
       case 'completarPago':
         setCompletarPagoDialogOpen(true);
         break;
+      case 'marcarRecurrente':
+        handleMarcarRecurrente();
+        break;
       default:
         break;
+    }
+  };
+
+  // Crea una definición de Gasto Recurrente a partir de este egreso (TAR-223).
+  const handleMarcarRecurrente = async () => {
+    try {
+      await gastoRecurrenteService.desdeMovimiento(empresa?.id, movimientoId);
+      setAlert({ open: true, message: 'Gasto recurrente creado. Configuralo en "Gastos recurrentes".', severity: 'success' });
+    } catch (err) {
+      setAlert({ open: true, message: err?.response?.data?.error || 'No se pudo marcar como recurrente', severity: 'error' });
     }
   };
 
@@ -1697,6 +1711,17 @@ const createdAtStr = (() => {
                       <DocumentTextIcon className="h-4 w-4 text-neutral-600" />
                       Ver auditoría
                     </button>
+                    {isEditMode && formik.values.type === 'egreso' && (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => handleAccionesMenuItemClick('marcarRecurrente')}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-neutral-50"
+                      >
+                        <ArrowTopRightOnSquareIcon className="h-4 w-4 text-neutral-600" />
+                        Marcar como recurrente
+                      </button>
+                    )}
                     {mostrarCompletarPago && (
                       <button
                         type="button"

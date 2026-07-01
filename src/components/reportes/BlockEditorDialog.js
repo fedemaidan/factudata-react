@@ -23,6 +23,7 @@ const BLOCK_TYPES = [
   { value: 'grouped_detail', label: 'Detalle por Grupo', desc: 'Muestra chips o mini-cards de grupos con tabla de movimientos filtrada al seleccionar.' },
   { value: 'category_subcategory_accordion', label: 'Categorías y Subcategorías', desc: 'Accordion de egresos por categoría con detalle clickeable por subcategoría.' },
   { value: 'subcategory_monthly_evolution', label: 'Evolución mensual por subcategoría', desc: 'Compara mes a mes cómo se distribuyen los egresos entre subcategorías.' },
+  { value: 'group_month_matrix', label: 'Matriz por grupo y mes', desc: 'Tabla cruzada: filas por categoría/proveedor/etapa/proyecto y columnas por mes, con el monto en cada celda.' },
   { value: 'balance_between_partners', label: 'Balance entre Socios', desc: 'Calcula saldo neto por socio (telefono), diferencia contra saldo ideal y deudas entre socios.' },
   { value: 'collections_summary', label: 'Cobranzas · KPIs', desc: 'Total a cobrar, cobrado, pendiente, vencido y próximo cobro según los planes de cobro.' },
   { value: 'collections_schedule', label: 'Cobranzas · Proyección por mes', desc: 'Cobros esperados a futuro agrupados por mes de vencimiento de las cuotas.' },
@@ -329,6 +330,17 @@ function defaultBlock(type) {
         show_summary_cards: true,
         socios_telefonos: [],
       };
+    case 'group_month_matrix':
+      return {
+        ...base,
+        titulo: 'Por categoría y mes',
+        agrupar_por: 'categoria',
+        filtro_tipo: 'egreso',
+        meses_n: 6,
+        campo_monto: 'total',
+        top_n: null,
+        mostrar_total: true,
+      };
     default:
       return base;
   }
@@ -491,7 +503,10 @@ const BlockEditorDialog = ({
 
           {/* Config específica por tipo */}
           {block.type === 'metric_cards' && (
-            <MetricCardsConfig block={block} onChange={updateBlock} />
+            <MetricCardsConfig block={block} onChange={updateBlock} proyectos={proyectos} />
+          )}
+          {block.type === 'group_month_matrix' && (
+            <GroupMonthMatrixConfig block={block} onChange={updateBlock} />
           )}
           {block.type === 'summary_table' && (
             <SummaryTableConfig block={block} onChange={updateBlock} excludeOptions={excludeOptions} />
@@ -550,7 +565,53 @@ const BlockEditorDialog = ({
 //  Configuradores por tipo de bloque
 // ═══════════════════════════════════════════
 
-function MetricCardsConfig({ block, onChange }) {
+/**
+ * Selector múltiple de proyectos/cajas. Persiste IDs (cae al nombre si no hay id).
+ * value = array de ids/nombres; onChange(nuevoArray).
+ */
+function ProyectoMultiSelect({ value = [], onChange, proyectos = [], label = 'Proyectos (cajas)', helperText }) {
+  const selectedCount = (value || []).length;
+  return (
+    <Autocomplete
+      multiple
+      size="small"
+      options={proyectos || []}
+      getOptionLabel={(o) => (typeof o === 'string' ? o : o.nombre || o.id || '')}
+      value={(value || [])
+        .map((selectedId) => proyectos.find((p) => {
+          const pId = typeof p === 'string' ? p : (p.id || p);
+          const pName = typeof p === 'string' ? p : (p.nombre || '');
+          return String(pId) === String(selectedId) || String(pName) === String(selectedId);
+        }) || selectedId)
+        .filter(Boolean)}
+      onChange={(_, val) => onChange(val.map((v) => {
+        if (typeof v === 'string') return v;
+        return String(v.id || '').trim() || String(v.nombre || '').trim();
+      }))}
+      renderTags={(vals, getTagProps) =>
+        vals.map((option, index) => {
+          let lbl = typeof option === 'string' ? option : option.nombre || option.id || '';
+          if (typeof option === 'string') {
+            const proyecto = proyectos.find((p) => String(typeof p === 'string' ? p : (p.id || p)) === String(option));
+            if (proyecto) lbl = typeof proyecto === 'string' ? proyecto : (proyecto.nombre || proyecto.id);
+          }
+          return <Chip key={index} label={lbl} size="small" {...getTagProps({ index })} />;
+        })
+      }
+      renderInput={(params) => (
+        <TextField
+          {...params}
+          label={label}
+          helperText={helperText || (selectedCount === 0
+            ? 'Dejar vacío = todas las cajas/proyectos'
+            : `${selectedCount} caja(s) seleccionada(s)`)}
+        />
+      )}
+    />
+  );
+}
+
+function MetricCardsConfig({ block, onChange, proyectos = [] }) {
   const metricas = block.metricas || [];
 
   const updateMetrica = (idx, field, value) => {
@@ -713,6 +774,16 @@ function MetricCardsConfig({ block, onChange }) {
                 </Select>
               </FormControl>
             </Stack>
+            {proyectos.length > 0 && (
+              <ProyectoMultiSelect
+                proyectos={proyectos}
+                value={m.filtros_extra?.proyectos || []}
+                onChange={(val) => updateMetricaFilter(idx, 'proyectos', val)}
+                helperText={(m.filtros_extra?.proyectos || []).length === 0
+                  ? 'Esta tarjeta suma TODAS las cajas. Elegí una/s para acotarla.'
+                  : `${(m.filtros_extra.proyectos).length} caja(s) seleccionada(s)`}
+              />
+            )}
           </Stack>
         </Box>
       ))}
@@ -722,6 +793,83 @@ function MetricCardsConfig({ block, onChange }) {
           Agregar métrica
         </Button>
       )}
+    </Stack>
+  );
+}
+
+const MATRIZ_AGRUPAR_POR = [
+  { value: 'categoria', label: 'Categoría' },
+  { value: 'proveedor', label: 'Proveedor' },
+  { value: 'etapa', label: 'Etapa' },
+  { value: 'proyecto', label: 'Proyecto' },
+];
+
+function GroupMonthMatrixConfig({ block, onChange }) {
+  return (
+    <Stack spacing={2}>
+      <Alert severity="info" variant="outlined" sx={{ py: 0.5 }}>
+        Tabla cruzada: filas por el grupo que elijas, columnas por mes. Para ver ingresos y egresos
+        por separado armá dos bloques (uno de cada tipo); con "Todos" se suman en la misma celda.
+      </Alert>
+
+      <FormControl size="small" fullWidth>
+        <InputLabel>Agrupar filas por</InputLabel>
+        <Select
+          value={block.agrupar_por || 'categoria'}
+          label="Agrupar filas por"
+          onChange={(e) => onChange('agrupar_por', e.target.value)}
+        >
+          {MATRIZ_AGRUPAR_POR.map((a) => (
+            <MenuItem key={a.value} value={a.value}>{a.label}</MenuItem>
+          ))}
+        </Select>
+      </FormControl>
+
+      <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+        <TextField
+          label="Cantidad de meses"
+          type="number"
+          value={block.meses_n ?? 6}
+          onChange={(e) => onChange('meses_n', Math.max(1, Number(e.target.value) || 6))}
+          size="small"
+          fullWidth
+          inputProps={{ min: 1, max: 36 }}
+          helperText="Columnas, del más nuevo al más viejo"
+        />
+        <FormControl size="small" fullWidth>
+          <InputLabel>Campo de monto</InputLabel>
+          <Select
+            value={block.campo_monto || 'total'}
+            label="Campo de monto"
+            onChange={(e) => onChange('campo_monto', e.target.value)}
+          >
+            {CAMPOS.map((c) => (
+              <MenuItem key={c.value} value={c.value}>{c.label}</MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+      </Stack>
+
+      <TextField
+        label="Máximo de filas (top N)"
+        type="number"
+        value={block.top_n ?? ''}
+        onChange={(e) => onChange('top_n', e.target.value === '' ? null : Math.max(1, Number(e.target.value) || 1))}
+        size="small"
+        fullWidth
+        inputProps={{ min: 1 }}
+        helperText="Vacío = todas. El resto se agrupa en 'Otras'."
+      />
+
+      <FormControlLabel
+        control={
+          <Switch
+            checked={block.mostrar_total !== false}
+            onChange={(e) => onChange('mostrar_total', e.target.checked)}
+          />
+        }
+        label="Mostrar fila de totales"
+      />
     </Stack>
   );
 }

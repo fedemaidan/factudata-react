@@ -83,7 +83,9 @@ import {
 import ClasificacionesPicker from 'src/components/ClasificacionesPicker';
 import ProveedoresMultiSelect from 'src/components/ProveedoresMultiSelect';
 import ExportarPdfMenu from 'src/components/plantillasPdf/ExportarPdfMenu';
+import ExportarExcelMenu from 'src/components/plantillasPdf/ExportarExcelMenu';
 import { buildControlPresupuestoData } from 'src/utils/controlPresupuesto/buildControlPresupuestoData';
+import { calcPresupuestadoNominal } from 'src/utils/controlPresupuesto/presupuestoNominal';
 
 const loadDefaultControlPresupuestoDoc = () =>
   import('src/utils/controlPresupuesto/PdfControlPresupuestoDocument').then(
@@ -2632,41 +2634,64 @@ const PresupuestoDrawer = ({
                         />
                       </Tooltip>
                     )}
-                    {presupuesto?.id && movimientosFiltrados.length > 0 && (
-                      <ExportarPdfMenu
-                        empresaId={empresaId}
-                        empresaNombre={empresaNombre}
-                        documentType="control_presupuesto"
-                        fileName={`control-presupuesto-${presupuesto.nombre || presupuesto.categoria || presupuesto.id}`}
-                        defaultDocumentLoader={loadDefaultControlPresupuestoDoc}
-                        tituloEditable
-                        defaultTitulo={presupuesto.tipo === 'ingreso' ? 'RECIBO DE INGRESOS' : 'RECIBO DE PAGOS'}
-                        buildData={(opts) => {
-                          const obra = proyectos.find((p) => p.id === proyectoId)?.nombre || '';
-                          const label = presupuesto.label || presupuesto.nombre || presupuesto.categoria || 'Presupuesto';
-                          const contratista = presupuesto.proveedores?.[0]?.nombre || presupuesto.categoria || '';
-                          const esIngreso = presupuesto.tipo === 'ingreso';
-                          return buildControlPresupuestoData({
-                            movimientos: movimientosFiltrados,
-                            titulo: opts?.titulo || (esIngreso ? 'RECIBO DE INGRESOS' : 'RECIBO DE PAGOS'),
-                            presupuestoLabel: label,
-                            contratista,
-                            obra,
-                            empresaNombre,
-                            // Contexto del presupuesto → moneda/indexación dinámica en el PDF.
-                            indexacion: presupuesto.indexacion || null,
-                            monedaPresupuesto: presupuesto.moneda || 'ARS',
-                            cacTipo: presupuesto.cac_tipo || null,
-                            baseCalculo: presupuesto.base_calculo || 'total',
-                            presupuestadoNativo: Number(presupuesto.monto != null ? presupuesto.monto : presupuesto.monto_ingresado || 0),
-                            montoIngresado: presupuesto.monto_ingresado != null ? Number(presupuesto.monto_ingresado) : null,
-                            cacIndiceActual: cacActualEfectivo || cacEfectivo,
-                            tipoCambioActual: dolarEfectivo,
-                            tipo: esIngreso ? 'ingresos' : 'gastos',
-                          });
-                        }}
-                      />
-                    )}
+                    {presupuesto?.id && movimientosFiltrados.length > 0 && (() => {
+                      const fileNameExport = `control-presupuesto-${presupuesto.nombre || presupuesto.categoria || presupuesto.id}`;
+                      const modosExport = [
+                        'nominal',
+                        ...(presupuesto.indexacion === 'CAC' ? ['cac'] : []),
+                        ...(presupuesto.indexacion === 'USD' || presupuesto.moneda === 'USD' ? ['usd'] : []),
+                      ];
+                      // buildData compartido por el export a PDF y a Excel (mismo modo/datos).
+                      const buildExportData = (opts) => {
+                        const obra = proyectos.find((p) => p.id === proyectoId)?.nombre || '';
+                        const label = presupuesto.label || presupuesto.nombre || presupuesto.categoria || 'Presupuesto';
+                        const contratista = presupuesto.proveedores?.[0]?.nombre || presupuesto.categoria || '';
+                        const esIngreso = presupuesto.tipo === 'ingreso';
+                        return buildControlPresupuestoData({
+                          movimientos: movimientosFiltrados,
+                          titulo: opts?.titulo || (esIngreso ? 'RECIBO DE INGRESOS' : 'RECIBO DE PAGOS'),
+                          // El usuario elige el modo en el export; default pesos nominales (espeja la tabla del drawer).
+                          modo: opts?.modo || 'nominal',
+                          presupuestoLabel: label,
+                          contratista,
+                          obra,
+                          empresaNombre,
+                          // Contexto del presupuesto → moneda/indexación dinámica en el PDF.
+                          indexacion: presupuesto.indexacion || null,
+                          monedaPresupuesto: presupuesto.moneda || 'ARS',
+                          cacTipo: presupuesto.cac_tipo || null,
+                          baseCalculo: presupuesto.base_calculo || 'total',
+                          presupuestadoNativo: Number(presupuesto.monto != null ? presupuesto.monto : presupuesto.monto_ingresado || 0),
+                          presupuestadoNominal: calcPresupuestadoNominal(presupuesto),
+                          montoIngresado: presupuesto.monto_ingresado != null ? Number(presupuesto.monto_ingresado) : null,
+                          cacIndiceActual: cacActualEfectivo || cacEfectivo,
+                          tipoCambioActual: dolarEfectivo,
+                          tipo: esIngreso ? 'ingresos' : 'gastos',
+                        });
+                      };
+                      return (
+                        <>
+                          <ExportarPdfMenu
+                            empresaId={empresaId}
+                            empresaNombre={empresaNombre}
+                            documentType="control_presupuesto"
+                            fileName={fileNameExport}
+                            defaultDocumentLoader={loadDefaultControlPresupuestoDoc}
+                            tituloEditable
+                            defaultTitulo={presupuesto.tipo === 'ingreso' ? 'RECIBO DE INGRESOS' : 'RECIBO DE PAGOS'}
+                            modosDisponibles={modosExport}
+                            modoDefault="nominal"
+                            buildData={buildExportData}
+                          />
+                          <ExportarExcelMenu
+                            fileName={fileNameExport}
+                            modosDisponibles={modosExport}
+                            modoDefault="nominal"
+                            buildData={buildExportData}
+                          />
+                        </>
+                      );
+                    })()}
                   </Stack>
 
                   {movimientosLoading ? (
