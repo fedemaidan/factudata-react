@@ -144,14 +144,18 @@ export const CategoriasDetails = ({ empresa, refreshEmpresa }) => {
 
   // TAR-423: modo de CAC de la empresa (legacy por default para no romper prod).
   const [cacModo, setCacModo] = useState(empresa?.presupuesto_cac_modo || 'legacy');
+  // Baseline local del modo guardado: se actualiza al guardar con éxito (no depende de que
+  // el prop `empresa` se refresque a tiempo) y se re-sincroniza si el prop cambia desde afuera.
+  const [cacModoGuardado, setCacModoGuardado] = useState(empresa?.presupuesto_cac_modo || 'legacy');
   const [savingCacModo, setSavingCacModo] = useState(false);
 
   useEffect(() => {
-    setCacModo(empresa?.presupuesto_cac_modo || 'legacy');
+    const modo = empresa?.presupuesto_cac_modo || 'legacy';
+    setCacModo(modo);
+    setCacModoGuardado(modo);
   }, [empresa?.presupuesto_cac_modo]);
 
-  // Modo guardado en la empresa vs. el que el usuario tiene seleccionado (staged).
-  const cacModoGuardado = empresa?.presupuesto_cac_modo || 'legacy';
+  // Modo guardado vs. el que el usuario tiene seleccionado (staged).
   const cacModoDirty = cacModo !== cacModoGuardado;
 
   const guardarCacModo = async () => {
@@ -159,6 +163,7 @@ export const CategoriasDetails = ({ empresa, refreshEmpresa }) => {
     setSavingCacModo(true);
     try {
       await updateEmpresaDetails(empresa.id, { presupuesto_cac_modo: cacModo });
+      setCacModoGuardado(cacModo);
       await refreshEmpresa?.();
       const opt = CAC_MODO_OPCIONES.find((o) => o.value === cacModo);
       setSnackbarMessage(`Ajuste por CAC actualizado a "${opt?.titulo || cacModo}"`);
