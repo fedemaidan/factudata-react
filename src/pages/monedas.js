@@ -452,7 +452,7 @@ function CACTab() {
             <TextField label="Materiales" type="number" value={form.materiales} onChange={(e) => setForm({ ...form, materiales: e.target.value })} />
             <TextField label="Mano de Obra" type="number" value={form.mano_obra} onChange={(e) => setForm({ ...form, mano_obra: e.target.value })} />
             <Typography variant="caption" color="text.secondary">
-              Al guardar, se recalculan automáticamente los presupuestos y movimientos de ese mes que estaban pendientes de su CAC.
+              Los presupuestos y movimientos de ese mes que estaban pendientes de su CAC se actualizan automáticamente esa noche.
             </Typography>
           </Stack>
         </DialogContent>
