@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import {
+  Autocomplete,
   Box,
   Button,
   Chip,
@@ -43,6 +44,7 @@ import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useAuthContext } from 'src/contexts/auth-context';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import { getProyectosFromUser } from 'src/services/proyectosService';
+import clienteService from 'src/services/clienteService';
 import PresupuestoService from 'src/services/presupuestoService';
 import planCobroService from 'src/services/planCobroService';
 import { CuotasTableEdit } from 'src/components/planCobro/CuotasTable';
@@ -98,6 +100,10 @@ const NuevoPlanPage = () => {
   const [empresaId, setEmpresaId] = useState(null);
   const [proyectos, setProyectos] = useState([]);
   const [presupuestos, setPresupuestos] = useState([]);
+  const [clientes, setClientes] = useState([]);
+  const [clienteSel, setClienteSel] = useState(null); // {_id, nombre} o {nombre} nuevo
+  const [plantillas, setPlantillas] = useState([]); // plantillas de configuración (localStorage)
+  const [nombrePlantilla, setNombrePlantilla] = useState('');
   const [planData, setPlanData] = useState(defaultPlan);
   const [cuotas, setCuotas] = useState([]);
   const [errors, setErrors] = useState({});
@@ -111,7 +117,8 @@ const NuevoPlanPage = () => {
   const [usdLoading, setUsdLoading] = useState(false);
 
   // Generador de cuotas
-  const [generador, setGenerador] = useState({ cantidad: '', frecuencia: 'mensual', fecha_inicio: '', monto_cuota: '', custom_meses: '2' });
+  // Bloques componibles: anticipo / refuerzos / ajuste manual, activables por separado.
+  const [generador, setGenerador] = useState({ cantidad: '', frecuencia: 'mensual', fecha_inicio: '', monto_cuota: '', custom_meses: '2', usarAnticipo: false, usarRefuerzo: false, usarAjusteManual: false, anticipo_pct: '20', refuerzo_pct: '15', intervalo_meses: '6', refuerzo_modo: 'sumar' });
   const [modoDistribucion, setModoDistribucion] = useState('iguales'); // 'iguales' | 'personalizados'
   const [cantPersonalizados, setCantPersonalizados] = useState('');
   const [usaPorcentaje, setUsaPorcentaje] = useState(false);
@@ -122,6 +129,7 @@ const NuevoPlanPage = () => {
     getEmpresaDetailsFromUser(user).then((empresa) => {
       if (empresa?.id) {
         setEmpresaId(empresa.id);
+        clienteService.getByEmpresa(empresa.id).then((list) => setClientes(list || [])).catch(() => {});
         PresupuestoService.listarPresupuestos(empresa.id)
           .then((response) => {
             const lista = Array.isArray(response)
@@ -208,33 +216,100 @@ const NuevoPlanPage = () => {
     }));
   };
 
-  const handleGenerar = () => {
+  // Plantillas de plan (persistidas en localStorage por empresa).
+  const PLANTILLAS_KEY = 'cobros_plantillas';
+  useEffect(() => {
+    try {
+      const raw = typeof window !== 'undefined' ? window.localStorage.getItem(PLANTILLAS_KEY) : null;
+      if (raw) setPlantillas(JSON.parse(raw));
+    } catch { /* ignore */ }
+  }, []);
+  const persistirPlantillas = (lista) => {
+    setPlantillas(lista);
+    try { window.localStorage.setItem(PLANTILLAS_KEY, JSON.stringify(lista)); } catch { /* ignore */ }
+  };
+  const guardarPlantilla = () => {
+    const nombre = nombrePlantilla.trim();
+    if (!nombre) return;
+    const cfg = {
+      nombre,
+      generador: { ...generador, cantidad: generador.cantidad, fecha_inicio: '' },
+      indexacion: planData.indexacion,
+      cac_tipo: planData.cac_tipo,
+      moneda: planData.moneda,
+    };
+    persistirPlantillas([...plantillas.filter((p) => p.nombre !== nombre), cfg]);
+    setNombrePlantilla('');
+  };
+  const cargarPlantilla = (p) => {
+    setGenerador((g) => ({ ...g, ...p.generador, fecha_inicio: g.fecha_inicio }));
+    setPlanData((d) => ({ ...d, indexacion: p.indexacion ?? d.indexacion, cac_tipo: p.cac_tipo ?? d.cac_tipo, moneda: p.moneda ?? d.moneda }));
+  };
+  const borrarPlantilla = (nombre) => persistirPlantillas(plantillas.filter((p) => p.nombre !== nombre));
+
+  // Genera la lista de cuotas a partir de la config actual (pura, sin efectos).
+  // La usa tanto la vista previa en vivo como el commit al avanzar de paso.
+  const buildCuotas = () => {
     const cant = parseInt(generador.cantidad, 10);
-    if (!cant || cant < 1) return;
+    if (!cant || cant < 1) return [];
     const freq = FRECUENCIAS.find((f) => f.value === generador.frecuencia);
     const mesesEfectivos = freq.value === 'custom' ? parseInt(generador.custom_meses, 10) || 1 : freq.meses;
-    if (mesesEfectivos !== null && !generador.fecha_inicio) return;
-    const montoTotal = Number(planData.monto_total) || 0;
-    const montoCuota = generador.monto_cuota
-      ? Number(generador.monto_cuota)
-      : montoTotal > 0
-        ? Math.round((montoTotal / cant) * 100) / 100
-        : 0;
+    if (mesesEfectivos !== null && !generador.fecha_inicio) return [];
+    const montoT = Number(planData.monto_total) || 0;
+    const inicio = generador.fecha_inicio;
+    const fechaDe = (i) => (mesesEfectivos !== null && inicio ? addMonths(inicio, mesesEfectivos * i) : '');
+    const r2 = (n) => Math.round(n * 100) / 100;
 
-    const nuevas = Array.from({ length: cant }, (_, i) => ({
-      fecha_vencimiento: mesesEfectivos !== null && generador.fecha_inicio
-        ? addMonths(generador.fecha_inicio, mesesEfectivos * i)
-        : '',
+    const usarAnticipo = !!generador.usarAnticipo && montoT > 0;
+    const usarRefuerzo = !!generador.usarRefuerzo && montoT > 0;
+    const intervalo = Math.max(1, parseInt(generador.intervalo_meses, 10) || 6);
+    const anticipo = usarAnticipo ? r2(montoT * (Number(generador.anticipo_pct) || 0) / 100) : 0;
+    const refuerzo = usarRefuerzo ? r2(montoT * (Number(generador.refuerzo_pct) || 0) / 100) : 0;
+    const nRefuerzos = usarRefuerzo
+      ? Array.from({ length: cant }, (_, i) => i + 1).filter((m) => m % intervalo === 0).length
+      : 0;
+
+    if (montoT > 0) {
+      // 'reemplazar': el refuerzo ocupa el lugar de la cuota de ese mes (no se suma),
+      // así que la base se reparte solo entre las cuotas que NO son refuerzo.
+      const reemplaza = usarRefuerzo && generador.refuerzo_modo === 'reemplazar';
+      const resto = r2(montoT - anticipo - refuerzo * nRefuerzos);
+      const baseDiv = reemplaza ? Math.max(1, cant - nRefuerzos) : cant;
+      // Nunca generar cuotas negativas: si anticipo + refuerzos superan el total,
+      // la base queda en 0 (la UI avisa la sobre-asignación para que se corrija).
+      const base = Math.max(0, r2(resto / baseDiv));
+      return [
+        ...(usarAnticipo ? [{ fecha_vencimiento: inicio || '', monto: String(anticipo), descripcion: 'Anticipo' }] : []),
+        ...Array.from({ length: cant }, (_, i) => {
+          const mes = i + 1;
+          const esRefuerzo = usarRefuerzo && mes % intervalo === 0;
+          const monto = esRefuerzo ? (reemplaza ? refuerzo : r2(base + refuerzo)) : base;
+          return {
+            fecha_vencimiento: fechaDe(usarAnticipo ? mes : i),
+            monto: String(monto),
+            descripcion: esRefuerzo ? (reemplaza ? `Refuerzo ${mes}` : `Cuota ${mes} + refuerzo`) : `Cuota ${mes}`,
+          };
+        }),
+      ];
+    }
+    const montoCuota = generador.monto_cuota ? Number(generador.monto_cuota) : 0;
+    return Array.from({ length: cant }, (_, i) => ({
+      fecha_vencimiento: fechaDe(i),
       monto: montoCuota > 0 ? String(montoCuota) : '',
       descripcion: `Cuota ${i + 1}`,
     }));
-    setCuotas(nuevas);
   };
+
+  const handleGenerar = () => setCuotas(buildCuotas());
 
   const sumaCuotas = useMemo(
     () => cuotas.reduce((s, c) => s + (Number(c.monto) || 0), 0),
     [cuotas]
   );
+
+  // Vista previa en vivo de las cuotas según la config (sin tocar `cuotas`).
+  const previewCuotas = useMemo(buildCuotas, [generador, planData.monto_total]); // eslint-disable-line react-hooks/exhaustive-deps
+  const previewSuma = previewCuotas.reduce((s, c) => s + (Number(c.monto) || 0), 0);
 
   const montoTotal = Number(planData.monto_total) || 0;
   const usdIndiceEfectivo = (() => {
@@ -262,16 +337,17 @@ const NuevoPlanPage = () => {
     if (!planData.nombre.trim()) errs.nombre = 'El nombre es requerido';
     if (!planData.moneda) errs.moneda = 'La moneda es requerida';
     if (!montoTotal || montoTotal <= 0) errs.monto_total = 'El monto total debe ser mayor a 0';
-    if (planData.indexacion && !planData.fecha_base)
+    if (planData.indexacion && planData.indexacion !== 'manual' && !planData.fecha_base)
       errs.fecha_base = 'La fecha base es requerida para planes indexados';
     return errs;
   };
 
   const validarStep2 = () => {
     const errs = {};
-    if (modoDistribucion === 'iguales') {
-      if (!generador.cantidad || parseInt(generador.cantidad, 10) < 1)
-        errs.generador = 'Ingresá la cantidad de cuotas';
+    // La cantidad no es obligatoria para avanzar: si no la cargás, pasás al paso
+    // siguiente con la tabla vacía y armás las cuotas a mano. Solo si cargaste una
+    // cantidad válida pedimos la fecha (para poder fechar las cuotas generadas).
+    if (modoDistribucion === 'iguales' && generador.cantidad && parseInt(generador.cantidad, 10) >= 1) {
       const freq = FRECUENCIAS.find((f) => f.value === generador.frecuencia);
       const mesesEff = freq?.value === 'custom' ? parseInt(generador.custom_meses, 10) || 1 : freq?.meses;
       if (mesesEff !== null && !generador.fecha_inicio)
@@ -336,14 +412,41 @@ const NuevoPlanPage = () => {
 
     setSaving(true);
     try {
+      // La modalidad "ajuste manual" implica un plan de indexación 'manual'
+      // (se ajusta con aplicarAjusteManual después de crearlo).
+      const indexacionEfectiva = planData.indexacion || null;
+      const modalidadDerivada = modoDistribucion !== 'iguales'
+        ? 'cuotas'
+        : generador.usarAnticipo && generador.usarRefuerzo
+          ? 'anticipo_refuerzo'
+          : generador.usarAnticipo
+            ? 'anticipo_cuotas'
+            : 'cuotas';
+
+      // Cliente: usar el elegido o dar de alta uno "ocasional" al vuelo.
+      let clienteId = clienteSel && clienteSel._id ? clienteSel._id : null;
+      const clienteNombre = clienteSel?.nombre || null;
+      if (!clienteId && clienteNombre) {
+        try {
+          const nuevo = await clienteService.crear(empresaId, { nombre: clienteNombre, ocasional: true });
+          clienteId = nuevo?._id || nuevo?.id || null;
+        } catch { /* si falla el alta, se guarda solo el nombre */ }
+      }
+
       const payload = {
         empresa_id: empresaId,
         nombre: planData.nombre.trim(),
         proyecto_id: planData.proyecto_id || undefined,
         presupuesto_id: planData.presupuesto_id || undefined,
+        cliente_id: clienteId || undefined,
+        cliente_nombre: clienteNombre || undefined,
         monto_total: montoTotal || undefined,
         moneda: planData.moneda,
-        indexacion: planData.indexacion || null,
+        indexacion: indexacionEfectiva,
+        modalidad: modalidadDerivada,
+        anticipo_pct: generador.usarAnticipo ? Number(generador.anticipo_pct) || null : null,
+        refuerzo_pct: generador.usarRefuerzo ? Number(generador.refuerzo_pct) || null : null,
+        intervalo_meses: generador.usarRefuerzo ? Number(generador.intervalo_meses) || null : null,
         cac_tipo: planData.indexacion === 'CAC' ? planData.cac_tipo : null,
         usd_fuente: planData.indexacion === 'USD' ? planData.usd_fuente : null,
         cotizacion_snapshot: planData.indexacion === 'USD' && usdIndiceEfectivo
@@ -440,6 +543,18 @@ const NuevoPlanPage = () => {
                       {errors.proyecto_id && <FormHelperText>{errors.proyecto_id}</FormHelperText>}
                     </FormControl>
 
+                    <Autocomplete
+                      freeSolo
+                      options={clientes}
+                      getOptionLabel={(o) => (typeof o === 'string' ? o : (o?.nombre || ''))}
+                      value={clienteSel}
+                      onChange={(_, v) => setClienteSel(v)}
+                      onInputChange={(_, v, reason) => { if (reason === 'input') setClienteSel(v ? { nombre: v } : null); }}
+                      renderInput={(params) => (
+                        <TextField {...params} label="Cliente (opcional)" helperText="Elegí uno o escribí uno nuevo (se crea al guardar)" fullWidth />
+                      )}
+                    />
+
                     {presupuestos.length > 0 && (
                       <Box>
                         <FormControl fullWidth disabled={!planData.proyecto_id}>
@@ -522,6 +637,26 @@ const NuevoPlanPage = () => {
                       />
                     </Stack>
 
+                    {/* CAC manual: ingresar el total directamente en unidades CAC (TAR-445) */}
+                    {planData.indexacion === 'CAC' && cacPreview?.cac_indice && (
+                      <TextField
+                        label="…o ingresá el total en CAC"
+                        value={montoTotalEnCAC ? String(Math.round(montoTotalEnCAC * 100) / 100) : ''}
+                        onChange={(e) => {
+                          const raw = e.target.value.replace(/[^\d.,]/g, '').replace(',', '.');
+                          const units = parseFloat(raw);
+                          const pesos = !isNaN(units) ? Math.round(units * cacPreview.cac_indice * 100) / 100 : '';
+                          setPlanData((prev) => ({ ...prev, monto_total: pesos === '' ? '' : String(pesos) }));
+                        }}
+                        size="small"
+                        sx={{ mt: 1.5 }}
+                        inputProps={{ inputMode: 'decimal' }}
+                        InputProps={{ endAdornment: <InputAdornment position="end">CAC</InputAdornment> }}
+                        helperText={`Se convierte a pesos con el índice base ${cacPreview.cac_indice.toLocaleString('es-AR')}`}
+                        fullWidth
+                      />
+                    )}
+
                     <TextField
                       label="Notas"
                       value={planData.notas}
@@ -561,6 +696,7 @@ const NuevoPlanPage = () => {
                             { value: '', label: 'Sin ajuste (pesos fijos)' },
                             { value: 'CAC', label: 'CAC (Cámara de la Construcción)' },
                             { value: 'USD', label: 'Dólar (indexado a tipo de cambio)' },
+                            { value: 'manual', label: 'Ajuste manual (lo ajustás vos cada tanto)' },
                           ].map((opt) => (
                             <Paper
                               key={opt.value}
@@ -804,147 +940,203 @@ const NuevoPlanPage = () => {
           {/* ─── PASO 1: DISTRIBUCIÓN ─── */}
           <Fade in={step === 1} mountOnEnter unmountOnExit>
             <Box sx={{ display: step === 1 ? 'block' : 'none' }}>
-              <Typography variant="h6" fontWeight={600} mb={1}>
-                ¿Cómo distribuir los pagos?
-              </Typography>
-              <Typography variant="body2" color="text.secondary" mb={3}>
-                Total a cobrar: <strong>{formatCurrency(montoTotal, monedaDisplay)}</strong>
-              </Typography>
-
-              {/* Tarjetas de modo */}
-              <Grid container spacing={3} mb={4}>
-                {[
-                  {
-                    value: 'iguales',
-                    icon: <GridViewIcon sx={{ fontSize: 36 }} />,
-                    title: 'Cuotas iguales',
-                    desc: 'Dividí el total en N cuotas del mismo monto, con frecuencia fija.',
-                  },
-                  {
-                    value: 'personalizados',
-                    icon: <ViewListIcon sx={{ fontSize: 36 }} />,
-                    title: 'Montos personalizados',
-                    desc: 'Definí cada cuota a mano con el monto y la fecha que quieras.',
-                  },
-                ].map((modo) => (
-                  <Grid item xs={12} sm={6} key={modo.value}>
-                    <Paper
-                      variant="outlined"
-                      onClick={() => setModoDistribucion(modo.value)}
-                      sx={{
-                        p: 3,
-                        cursor: 'pointer',
-                        textAlign: 'center',
-                        borderColor: modoDistribucion === modo.value ? 'primary.main' : 'divider',
-                        borderWidth: modoDistribucion === modo.value ? 2 : 1,
-                        bgcolor: modoDistribucion === modo.value ? 'primary.50' : 'background.paper',
-                        transition: 'all 0.15s',
-                        '&:hover': { borderColor: 'primary.light', bgcolor: 'grey.50' },
-                      }}
-                    >
-                      <Box sx={{ color: modoDistribucion === modo.value ? 'primary.main' : 'text.secondary', mb: 1 }}>
-                        {modo.icon}
-                      </Box>
-                      <Typography variant="subtitle1" fontWeight={600}>
-                        {modo.title}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary" mt={0.5}>
-                        {modo.desc}
-                      </Typography>
-                    </Paper>
-                  </Grid>
-                ))}
-              </Grid>
+              <Stack direction="row" justifyContent="space-between" alignItems="baseline" mb={3} flexWrap="wrap" useFlexGap>
+                <Box>
+                  <Typography variant="h6" fontWeight={600} mb={0.5}>
+                    {modoDistribucion === 'personalizados' ? 'Definí tus cuotas' : '¿Cómo distribuir los pagos?'}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Total a cobrar: <strong>{formatCurrency(montoTotal, monedaDisplay)}</strong>
+                  </Typography>
+                </Box>
+                {/* Montos personalizados como excepción, no como card gigante */}
+                <Button
+                  variant="text"
+                  size="small"
+                  startIcon={modoDistribucion === 'iguales' ? <ViewListIcon /> : <GridViewIcon />}
+                  onClick={() => setModoDistribucion(modoDistribucion === 'iguales' ? 'personalizados' : 'iguales')}
+                  sx={{ textTransform: 'none' }}
+                >
+                  {modoDistribucion === 'iguales' ? 'Prefiero cargar montos personalizados' : 'Volver a cuotas iguales'}
+                </Button>
+              </Stack>
 
               <Grid container spacing={3}>
                 <Grid item xs={12} xl={8}>
                   {modoDistribucion === 'iguales' && (
                     <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}>
                       <Stack spacing={2}>
-                        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="flex-end" flexWrap="wrap">
-                          <TextField
-                            label="Cantidad de cuotas"
-                            type="number"
-                            size="small"
-                            value={generador.cantidad}
-                            onChange={(e) => setGenerador((g) => ({ ...g, cantidad: e.target.value }))}
-                            error={!!errors.generador}
-                            sx={{ width: 140 }}
-                            inputProps={{ min: 1 }}
-                          />
-                          <Stack spacing={0.5}>
-                            <Typography variant="caption" color="text.secondary">Frecuencia</Typography>
-                            <Stack direction="row" spacing={1} flexWrap="wrap">
-                              {FRECUENCIAS.map((f) => (
-                                <Button
-                                  key={f.value}
-                                  variant={generador.frecuencia === f.value ? 'contained' : 'outlined'}
-                                  size="small"
-                                  onClick={() => setGenerador((g) => ({ ...g, frecuencia: f.value }))}
-                                  sx={{ borderRadius: 2, textTransform: 'none', minWidth: 0 }}
-                                >
-                                  {f.label}
-                                </Button>
-                              ))}
-                            </Stack>
+                        {/* Plantillas (Fase D.2) */}
+                        <Stack spacing={0.75}>
+                          <Typography variant="caption" color="text.secondary">Plantillas</Typography>
+                          <Stack direction="row" spacing={1} flexWrap="wrap" alignItems="center">
+                            {plantillas.length === 0 && (
+                              <Typography variant="caption" color="text.disabled">Sin plantillas guardadas</Typography>
+                            )}
+                            {plantillas.map((p) => (
+                              <Chip
+                                key={p.nombre}
+                                label={p.nombre}
+                                size="small"
+                                onClick={() => cargarPlantilla(p)}
+                                onDelete={() => borrarPlantilla(p.nombre)}
+                                variant="outlined"
+                              />
+                            ))}
                           </Stack>
-                          {generador.frecuencia === 'custom' && (
+                          <Stack direction="row" spacing={1}>
                             <TextField
-                              label="Cada cuántos meses"
-                              type="number"
-                              size="small"
-                              value={generador.custom_meses}
-                              onChange={(e) => setGenerador((g) => ({ ...g, custom_meses: e.target.value }))}
-                              sx={{ width: 130 }}
-                              inputProps={{ min: 1, max: 24 }}
+                              label="Guardar config. como plantilla" size="small"
+                              value={nombrePlantilla}
+                              onChange={(e) => setNombrePlantilla(e.target.value)}
+                              sx={{ flex: 1, maxWidth: 320 }}
                             />
-                          )}
-                          {generador.frecuencia !== 'avance_obra' && (
-                            <TextField
-                              label="Fecha primera cuota"
-                              type="date"
-                              size="small"
-                              value={generador.fecha_inicio}
-                              onChange={(e) => setGenerador((g) => ({ ...g, fecha_inicio: e.target.value }))}
-                              InputLabelProps={{ shrink: true }}
-                              sx={{ width: 180 }}
-                            />
-                          )}
+                            <Button size="small" variant="outlined" onClick={guardarPlantilla} disabled={!nombrePlantilla.trim()}>
+                              Guardar
+                            </Button>
+                          </Stack>
                         </Stack>
-                        {errors.generador && (
-                          <Typography color="error" variant="caption">{errors.generador}</Typography>
-                        )}
-                        {generador.cantidad && (generador.frecuencia === 'avance_obra' || generador.fecha_inicio) && montoTotal > 0 && (() => {
-                          const freq = FRECUENCIAS.find((f) => f.value === generador.frecuencia);
-                          const mesesEff = freq?.value === 'custom' ? parseInt(generador.custom_meses, 10) || 1 : freq?.meses;
-                          const cant = parseInt(generador.cantidad, 10);
-                          return (
-                            <Paper sx={{ p: 2, bgcolor: '#F0FAF7', border: '1px solid #B2DFDB', borderRadius: 1.5 }}>
-                              <Stack direction="row" alignItems="center" spacing={1}>
-                                <CalendarTodayIcon sx={{ fontSize: 18, color: '#1B9E85' }} />
-                                <Typography variant="body2">
-                                  <strong>{cant} cuotas</strong>
-                                  {freq?.value === 'custom'
-                                    ? <> cada <strong>{mesesEff} mes{mesesEff !== 1 ? 'es' : ''}</strong></>
-                                    : <> {FRECUENCIA_LABELS[generador.frecuencia] || generador.frecuencia}</>}
-                                  {' '}de <strong>{formatCurrency(Math.round((montoTotal / cant) * 100) / 100, monedaDisplay)}</strong>
-                                  {generador.fecha_inicio && (
-                                    <>{' '}desde el <strong>{new Date(generador.fecha_inicio + 'T12:00:00').toLocaleDateString('es-AR')}</strong></>
-                                  )}
-                                </Typography>
+
+                        {/* Bloque 1 — Cuotas base (siempre) */}
+                        <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+                          <Typography variant="subtitle2" fontWeight={700}>Cuotas</Typography>
+                          <Typography variant="caption" color="text.secondary">La base del plan: en cuántas cuotas se reparte y con qué frecuencia.</Typography>
+                          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="flex-start" flexWrap="wrap" mt={1.5}>
+                            <TextField
+                              label="Cantidad de cuotas" type="number" size="small"
+                              value={generador.cantidad}
+                              onChange={(e) => setGenerador((g) => ({ ...g, cantidad: e.target.value }))}
+                              error={!!errors.generador}
+                              sx={{ width: 140 }} inputProps={{ min: 1 }}
+                            />
+                            <Stack spacing={0.5}>
+                              <Typography variant="caption" color="text.secondary">Frecuencia</Typography>
+                              <Stack direction="row" spacing={1} flexWrap="wrap">
+                                {FRECUENCIAS.map((f) => (
+                                  <Button
+                                    key={f.value}
+                                    variant={generador.frecuencia === f.value ? 'contained' : 'outlined'}
+                                    size="small"
+                                    onClick={() => setGenerador((g) => ({ ...g, frecuencia: f.value }))}
+                                    sx={{ borderRadius: 2, textTransform: 'none', minWidth: 0 }}
+                                  >
+                                    {f.label}
+                                  </Button>
+                                ))}
                               </Stack>
+                            </Stack>
+                            {generador.frecuencia === 'custom' && (
+                              <TextField
+                                label="Cada cuántos meses" type="number" size="small"
+                                value={generador.custom_meses}
+                                onChange={(e) => setGenerador((g) => ({ ...g, custom_meses: e.target.value }))}
+                                sx={{ width: 150 }} inputProps={{ min: 1, max: 24 }}
+                              />
+                            )}
+                            {generador.frecuencia !== 'avance_obra' && (
+                              <TextField
+                                label="Fecha primera cuota" type="date" size="small"
+                                value={generador.fecha_inicio}
+                                onChange={(e) => setGenerador((g) => ({ ...g, fecha_inicio: e.target.value }))}
+                                InputLabelProps={{ shrink: true }}
+                                sx={{ width: 180 }}
+                              />
+                            )}
+                          </Stack>
+                        </Paper>
+
+                        {/* Bloque 2 — Anticipo (opcional) */}
+                        {(() => {
+                          const activo = generador.usarAnticipo;
+                          return (
+                            <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, borderColor: activo ? 'primary.main' : 'divider' }}>
+                              <FormControlLabel
+                                control={<Switch checked={!!activo} onChange={() => setGenerador((g) => ({ ...g, usarAnticipo: !g.usarAnticipo }))} />}
+                                label={<Typography variant="subtitle2" fontWeight={700}>Anticipo</Typography>}
+                              />
+                              <Typography variant="caption" color="text.secondary" display="block">Un pago inicial al arrancar, antes de las cuotas.</Typography>
+                              {activo && (
+                                <TextField
+                                  label="Anticipo (%)" type="number" size="small"
+                                  value={generador.anticipo_pct}
+                                  onChange={(e) => setGenerador((g) => ({ ...g, anticipo_pct: e.target.value }))}
+                                  sx={{ width: 180, mt: 1.5 }} inputProps={{ min: 0, max: 100 }}
+                                  helperText={montoTotal > 0 ? `= ${formatCurrency(Math.round(montoTotal * (Number(generador.anticipo_pct) || 0) / 100), monedaDisplay)} del total` : ' '}
+                                />
+                              )}
                             </Paper>
                           );
                         })()}
-                        <Button
-                          variant="contained"
-                          onClick={handleGenerar}
-                          disabled={!generador.cantidad || (!generador.fecha_inicio && generador.frecuencia !== 'avance_obra')}
-                          startIcon={<AutorenewIcon />}
-                          sx={{ alignSelf: 'flex-start', textTransform: 'none', borderRadius: 2 }}
-                        >
-                          Generar cuotas
-                        </Button>
+
+                        {/* Bloque 3 — Refuerzos (opcional) */}
+                        {(() => {
+                          const activo = generador.usarRefuerzo;
+                          return (
+                            <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, borderColor: activo ? 'primary.main' : 'divider' }}>
+                              <FormControlLabel
+                                control={<Switch checked={!!activo} onChange={() => setGenerador((g) => ({ ...g, usarRefuerzo: !g.usarRefuerzo }))} />}
+                                label={<Typography variant="subtitle2" fontWeight={700}>Refuerzos</Typography>}
+                              />
+                              <Typography variant="caption" color="text.secondary" display="block">Pagos extra cada cierto tiempo (ej. cada 6 meses), además de las cuotas.</Typography>
+                              {activo && (
+                                <Stack spacing={1.5} mt={1.5}>
+                                  <Stack direction="row" spacing={2} flexWrap="wrap">
+                                    <TextField
+                                      label="Refuerzo (%)" type="number" size="small"
+                                      value={generador.refuerzo_pct}
+                                      onChange={(e) => setGenerador((g) => ({ ...g, refuerzo_pct: e.target.value }))}
+                                      sx={{ width: 160 }} inputProps={{ min: 0, max: 100 }}
+                                      helperText={montoTotal > 0 ? `= ${formatCurrency(Math.round(montoTotal * (Number(generador.refuerzo_pct) || 0) / 100), monedaDisplay)} c/u` : ' '}
+                                    />
+                                    <TextField
+                                      label="Cada (meses)" type="number" size="small"
+                                      value={generador.intervalo_meses}
+                                      onChange={(e) => setGenerador((g) => ({ ...g, intervalo_meses: e.target.value }))}
+                                      sx={{ width: 130 }} inputProps={{ min: 1 }}
+                                    />
+                                  </Stack>
+                                  <Box>
+                                    <Typography variant="caption" color="text.secondary" display="block" mb={0.5}>En el mes del refuerzo</Typography>
+                                    <ToggleButtonGroup
+                                      value={generador.refuerzo_modo}
+                                      exclusive size="small"
+                                      onChange={(_, v) => { if (v) setGenerador((g) => ({ ...g, refuerzo_modo: v })); }}
+                                    >
+                                      <ToggleButton value="sumar">Se suma a la cuota</ToggleButton>
+                                      <ToggleButton value="reemplazar">Reemplaza la cuota</ToggleButton>
+                                    </ToggleButtonGroup>
+                                  </Box>
+                                </Stack>
+                              )}
+                            </Paper>
+                          );
+                        })()}
+
+                        {/* Aviso de sobre-asignación (#4 bug) */}
+                        {(() => {
+                          const cant = parseInt(generador.cantidad, 10) || 0;
+                          if (!cant || montoTotal <= 0) return null;
+                          const intervalo = Math.max(1, parseInt(generador.intervalo_meses, 10) || 6);
+                          const nRef = generador.usarRefuerzo ? Array.from({ length: cant }, (_, i) => i + 1).filter((m) => m % intervalo === 0).length : 0;
+                          const pctComprometido = (generador.usarAnticipo ? Number(generador.anticipo_pct) || 0 : 0) + nRef * (generador.usarRefuerzo ? Number(generador.refuerzo_pct) || 0 : 0);
+                          if (pctComprometido <= 100) return null;
+                          return (
+                            <Paper sx={{ p: 1.5, bgcolor: '#FFF5F5', border: '1px solid #F2B8B5', borderRadius: 1.5 }}>
+                              <Typography variant="caption" color="error.main">
+                                ⚠ El anticipo + los refuerzos suman <strong>{Math.round(pctComprometido)}%</strong> del total (más de 100%).
+                                Las cuotas base quedarían en 0. Bajá el % de refuerzo, la cantidad de refuerzos o el anticipo.
+                              </Typography>
+                            </Paper>
+                          );
+                        })()}
+
+                        {errors.generador && (
+                          <Typography color="error" variant="caption">{errors.generador}</Typography>
+                        )}
+                        <Stack direction="row" alignItems="center" spacing={1} sx={{ color: 'text.secondary' }}>
+                          <AutorenewIcon sx={{ fontSize: 18 }} />
+                          <Typography variant="caption">Las cuotas se arman solas — mirá la vista previa. Podrás ajustarlas en el paso siguiente.</Typography>
+                        </Stack>
                       </Stack>
                     </Paper>
                   )}
@@ -1080,22 +1272,74 @@ const NuevoPlanPage = () => {
                       <Divider sx={{ my: 0.5 }} />
 
                       {modoDistribucion === 'iguales' ? (
-                        <>
-                          <Typography variant="body2" fontWeight={600}>Generación automática</Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            Definís cantidad, frecuencia y fecha inicial. Después en el siguiente paso podés corregir monto, CAC o fecha cuota por cuota.
-                          </Typography>
-                          {generador.cantidad && (
-                            <Typography variant="caption" color="text.secondary">
-                              Se generarán {generador.cantidad} cuota{parseInt(generador.cantidad, 10) !== 1 ? 's' : ''}
-                              {generador.frecuencia !== 'avance_obra' && generador.fecha_inicio
-                                ? ` desde ${new Date(generador.fecha_inicio + 'T12:00:00').toLocaleDateString('es-AR')}`
-                                : generador.frecuencia === 'avance_obra'
-                                  ? ' por avance de obra'
-                                  : ''}.
-                            </Typography>
-                          )}
-                        </>
+                        (() => {
+                          const cant = parseInt(generador.cantidad, 10) || 0;
+                          const antMonto = generador.usarAnticipo ? Math.round(montoTotal * (Number(generador.anticipo_pct) || 0) / 100) : 0;
+                          const intervalo = Math.max(1, parseInt(generador.intervalo_meses, 10) || 6);
+                          const nRef = generador.usarRefuerzo ? Array.from({ length: cant }, (_, i) => i + 1).filter((m) => m % intervalo === 0).length : 0;
+                          const refMonto = generador.usarRefuerzo ? Math.round(montoTotal * (Number(generador.refuerzo_pct) || 0) / 100) : 0;
+                          const refTotal = refMonto * nRef;
+                          const cuotasTotal = Math.max(0, montoTotal - antMonto - refTotal);
+                          const pct = (n) => (montoTotal > 0 ? Math.round(n / montoTotal * 100) : 0);
+                          const freqLabel = generador.frecuencia === 'custom' ? `cada ${generador.custom_meses} meses` : (FRECUENCIA_LABELS[generador.frecuencia] || generador.frecuencia);
+                          return (
+                            <>
+                              {/* Resumen en lenguaje natural (#2) */}
+                              <Typography variant="body2">
+                                {generador.usarAnticipo && <><strong>{generador.anticipo_pct}%</strong> de anticipo ({formatCurrency(antMonto, monedaDisplay)}) + </>}
+                                <strong>{cant || '—'}</strong> cuota{cant !== 1 ? 's' : ''} {freqLabel}
+                                {cant > 0 && <> de ~{formatCurrency(Math.round(cuotasTotal / cant), monedaDisplay)}</>}
+                                {generador.usarRefuerzo && <>, con refuerzo del <strong>{generador.refuerzo_pct}%</strong> cada {intervalo} meses ({generador.refuerzo_modo === 'reemplazar' ? 'reemplaza esa cuota' : 'se suma'})</>}
+                                {generador.fecha_inicio && <> desde el {new Date(generador.fecha_inicio + 'T12:00:00').toLocaleDateString('es-AR')}</>}
+                                {planData.indexacion === 'manual' && <> · ajuste manual</>}.
+                              </Typography>
+
+                              {/* Barra de composición (#4) */}
+                              {montoTotal > 0 && (
+                                <Box>
+                                  <Box sx={{ display: 'flex', height: 10, borderRadius: 5, overflow: 'hidden', bgcolor: 'grey.200' }}>
+                                    {antMonto > 0 && <Box sx={{ width: `${pct(antMonto)}%`, bgcolor: '#7E57C2' }} />}
+                                    <Box sx={{ width: `${pct(cuotasTotal)}%`, bgcolor: '#42A5F5' }} />
+                                    {refTotal > 0 && <Box sx={{ width: `${pct(refTotal)}%`, bgcolor: '#26A69A' }} />}
+                                  </Box>
+                                  <Stack direction="row" spacing={1.5} mt={0.5} flexWrap="wrap">
+                                    {antMonto > 0 && <Typography variant="caption" sx={{ color: '#7E57C2' }}>Anticipo {pct(antMonto)}%</Typography>}
+                                    <Typography variant="caption" sx={{ color: '#42A5F5' }}>Cuotas {pct(cuotasTotal)}%</Typography>
+                                    {refTotal > 0 && <Typography variant="caption" sx={{ color: '#26A69A' }}>Refuerzos {pct(refTotal)}%</Typography>}
+                                  </Stack>
+                                </Box>
+                              )}
+
+                              {/* Vista previa en vivo (#1) */}
+                              <Divider sx={{ my: 0.5 }} />
+                              <Typography variant="caption" color="text.secondary">Vista previa ({previewCuotas.length} cuota{previewCuotas.length !== 1 ? 's' : ''})</Typography>
+                              {previewCuotas.length === 0 ? (
+                                <Typography variant="caption" color="text.disabled">Completá cantidad y fecha para ver el detalle.</Typography>
+                              ) : (
+                                <Stack spacing={0.25} sx={{ maxHeight: 220, overflowY: 'auto' }}>
+                                  {previewCuotas.slice(0, 12).map((c, i) => (
+                                    <Stack key={i} direction="row" justifyContent="space-between">
+                                      <Typography variant="caption" color="text.secondary" noWrap sx={{ maxWidth: 140 }}>
+                                        {c.descripcion}{c.fecha_vencimiento ? ` · ${new Date(c.fecha_vencimiento + 'T12:00:00').toLocaleDateString('es-AR')}` : ''}
+                                      </Typography>
+                                      <Typography variant="caption" fontWeight={600}>{formatCurrency(Number(c.monto) || 0, monedaDisplay)}</Typography>
+                                    </Stack>
+                                  ))}
+                                  {previewCuotas.length > 12 && (
+                                    <Typography variant="caption" color="text.disabled">…y {previewCuotas.length - 12} más</Typography>
+                                  )}
+                                  <Divider sx={{ my: 0.5 }} />
+                                  <Stack direction="row" justifyContent="space-between">
+                                    <Typography variant="caption" fontWeight={700}>Suma</Typography>
+                                    <Typography variant="caption" fontWeight={700} color={Math.abs(previewSuma - montoTotal) < 1 || montoTotal === 0 ? 'success.main' : 'warning.main'}>
+                                      {formatCurrency(previewSuma, monedaDisplay)}{montoTotal > 0 && Math.abs(previewSuma - montoTotal) >= 1 ? ` (total ${formatCurrency(montoTotal, monedaDisplay)})` : ''}
+                                    </Typography>
+                                  </Stack>
+                                </Stack>
+                              )}
+                            </>
+                          );
+                        })()
                       ) : (
                         <>
                           <Typography variant="body2" fontWeight={600}>Edición manual</Typography>

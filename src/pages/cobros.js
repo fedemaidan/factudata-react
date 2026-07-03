@@ -22,7 +22,19 @@ import {
   Typography,
   Snackbar,
   Alert,
+  ToggleButton,
+  ToggleButtonGroup,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
+  Chip,
+  LinearProgress,
+  Paper,
 } from '@mui/material';
+import { BarChart } from '@mui/x-charts/BarChart';
+import { LineChart } from '@mui/x-charts/LineChart';
 import AddIcon from '@mui/icons-material/Add';
 import SearchIcon from '@mui/icons-material/Search';
 import InboxIcon from '@mui/icons-material/Inbox';
@@ -65,6 +77,12 @@ const CobrosList = () => {
   const [filtroProyecto, setFiltroProyecto] = useState('');
   const [busqueda, setBusqueda] = useState('');
   const [sortBy, setSortBy] = useState('reciente');
+  const [vista, setVista] = useState('tabla'); // 'cards' | 'tabla'
+  const [seccion, setSeccion] = useState('planes'); // 'planes' | 'cashflow'
+  const [cashflow, setCashflow] = useState({ meses: [], esperado: [], cobrado: [], acumulado: [], kpis: {}, vencido: { monto: 0, cuotas: 0 }, realizado_anterior: 0 });
+  const [cfGranularidad, setCfGranularidad] = useState('adaptativo'); // 'mes' | 'semana' | 'adaptativo'
+  const [cfVista, setCfVista] = useState('grafico'); // 'grafico' | 'tabla'
+  const [cfHistorico, setCfHistorico] = useState(false);
   const [proyectos, setProyectos] = useState([]);
   const [alert, setAlert] = useState({ open: false, message: '', severity: 'info' });
   const [confirmEliminar, setConfirmEliminar] = useState(null); // plan object or null
@@ -76,6 +94,13 @@ const CobrosList = () => {
     });
     getProyectosFromUser(user).then((list) => setProyectos(list || []));
   }, [user]);
+
+  useEffect(() => {
+    if (!empresaId) return;
+    planCobroService.getCashflow(empresaId, filtroProyecto || null, cfGranularidad, { incluirHistorico: cfHistorico })
+      .then((res) => setCashflow(res?.data?.data || {}))
+      .catch(() => setCashflow({ meses: [], esperado: [], cobrado: [] }));
+  }, [empresaId, filtroProyecto, cfGranularidad, cfHistorico]);
 
   const filterParams = filtroEstado ? { estado: filtroEstado } : {};
   const { planes, loading, error, refresh } = usePlanesCobroList(empresaId, filterParams);
@@ -133,6 +158,143 @@ const CobrosList = () => {
             </Button>
           </Stack>
 
+          {/* KPIs de situación — siempre visibles, en cualquier tab */}
+          {(() => {
+            const k = cashflow.kpis || {};
+            const venc = cashflow.vencido || { monto: 0, cuotas: 0 };
+            const money = (n) => (n || 0).toLocaleString('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 });
+            const items = [
+              { label: 'Vencido', value: money(venc.monto), border: '#D32F2F', danger: true, sub: venc.cuotas ? `${venc.cuotas} cuota${venc.cuotas > 1 ? 's' : ''}` : 'al día' },
+              { label: 'A cobrar este mes', value: money(k.periodo_actual), border: '#1976D2' },
+              { label: 'Próximos 90 días', value: money(k.proximos_90), border: '#2E7D32' },
+            ];
+            return (
+              <Grid container spacing={2} mb={3}>
+                {items.map((m) => (
+                  <Grid item xs={12} sm={4} key={m.label}>
+                    <Paper variant="outlined" sx={{ p: 1.5, borderTop: `3px solid ${m.border}`, bgcolor: m.danger && venc.monto > 0 ? '#FFF5F5' : 'background.paper' }}>
+                      <Typography variant="overline" color="text.secondary" display="block">{m.label}</Typography>
+                      <Typography variant="h6" fontWeight={700} color={m.danger && venc.monto > 0 ? 'error.main' : 'text.primary'}>{m.value}</Typography>
+                      {m.sub && <Typography variant="caption" color="text.secondary">{m.sub}</Typography>}
+                    </Paper>
+                  </Grid>
+                ))}
+              </Grid>
+            );
+          })()}
+
+          <ToggleButtonGroup
+            value={seccion}
+            exclusive
+            size="small"
+            onChange={(_, v) => v && setSeccion(v)}
+            sx={{ mb: 3 }}
+          >
+            <ToggleButton value="planes">Planes</ToggleButton>
+            <ToggleButton value="cashflow">Cashflow</ToggleButton>
+          </ToggleButtonGroup>
+
+          {seccion === 'cashflow' && (() => {
+            const money = (n) => (n || 0).toLocaleString('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 });
+            const k = cashflow.kpis || {};
+            const venc = cashflow.vencido || { monto: 0, cuotas: 0 };
+            const periodoLabel = cfGranularidad === 'semana' ? 'semana' : cfGranularidad === 'adaptativo' ? 'período' : 'mes';
+            return (
+            <Box sx={{ mb: 3 }}>
+              <Stack direction="row" spacing={2} mb={2} flexWrap="wrap" alignItems="center" useFlexGap>
+                <ToggleButtonGroup value={cfGranularidad} exclusive size="small" onChange={(_, v) => v && setCfGranularidad(v)}>
+                  <ToggleButton value="adaptativo">Auto</ToggleButton>
+                  <ToggleButton value="mes">Mes</ToggleButton>
+                  <ToggleButton value="semana">Semana</ToggleButton>
+                </ToggleButtonGroup>
+                <ToggleButtonGroup value={cfVista} exclusive size="small" onChange={(_, v) => v && setCfVista(v)}>
+                  <ToggleButton value="grafico">Gráfico</ToggleButton>
+                  <ToggleButton value="tabla">Tabla</ToggleButton>
+                </ToggleButtonGroup>
+                <ToggleButton
+                  value="hist"
+                  selected={cfHistorico}
+                  size="small"
+                  onChange={() => setCfHistorico((v) => !v)}
+                >
+                  {cfHistorico ? 'Ocultar histórico' : 'Ver histórico'}
+                </ToggleButton>
+                {cfGranularidad === 'adaptativo' && (
+                  <Typography variant="caption" color="text.secondary">Próximas 8 semanas al detalle, luego por mes</Typography>
+                )}
+              </Stack>
+
+              {(cashflow.meses || []).length === 0 ? (
+                <Typography variant="body2" color="text.secondary">Sin cobros proyectados en la ventana. Probá "Ver histórico".</Typography>
+              ) : (
+                <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+                  {!cfHistorico && cashflow.realizado_anterior > 0 && (
+                    <Typography variant="caption" color="text.secondary" display="block" mb={1}>
+                      Realizado antes de la ventana: {money(cashflow.realizado_anterior)} (colapsado)
+                    </Typography>
+                  )}
+                  {cfVista === 'grafico' ? (
+                    <Box sx={{ overflowX: 'auto' }}>
+                      <BarChart
+                        height={280}
+                        xAxis={[{ scaleType: 'band', data: cashflow.meses }]}
+                        series={[
+                          { data: cashflow.esperado, label: 'Esperado', color: '#90A4D4' },
+                          { data: cashflow.cobrado, label: 'Cobrado', color: '#2E7D32' },
+                        ]}
+                      />
+                      {/* Curva de saldo acumulado (#4) */}
+                      <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>Saldo acumulado proyectado</Typography>
+                      <LineChart
+                        height={200}
+                        xAxis={[{ scaleType: 'point', data: cashflow.meses }]}
+                        series={[{ data: cashflow.acumulado || [], label: 'Acumulado', color: '#1976D2', area: true, showMark: false }]}
+                      />
+                    </Box>
+                  ) : (
+                    <Box sx={{ overflowX: 'auto' }}>
+                      <Table size="small">
+                        <TableHead>
+                          <TableRow>
+                            <TableCell>{periodoLabel === 'semana' ? 'Semana' : periodoLabel === 'período' ? 'Período' : 'Mes'}</TableCell>
+                            <TableCell align="right">Esperado</TableCell>
+                            <TableCell align="right">Cobrado</TableCell>
+                            <TableCell align="right">Total período</TableCell>
+                            <TableCell align="right">Acumulado</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {cashflow.meses.map((m, i) => {
+                            const esp = cashflow.esperado[i] || 0;
+                            const cob = cashflow.cobrado[i] || 0;
+                            return (
+                              <TableRow key={m}>
+                                <TableCell>{m}</TableCell>
+                                <TableCell align="right">{money(esp)}</TableCell>
+                                <TableCell align="right" sx={{ color: 'success.main' }}>{money(cob)}</TableCell>
+                                <TableCell align="right" sx={{ fontWeight: 700 }}>{money(esp + cob)}</TableCell>
+                                <TableCell align="right" sx={{ color: 'primary.main' }}>{money((cashflow.acumulado || [])[i])}</TableCell>
+                              </TableRow>
+                            );
+                          })}
+                          <TableRow>
+                            <TableCell sx={{ fontWeight: 700 }}>Total ventana</TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 700 }}>{money((cashflow.esperado || []).reduce((a, b) => a + b, 0))}</TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 700, color: 'success.main' }}>{money((cashflow.cobrado || []).reduce((a, b) => a + b, 0))}</TableCell>
+                            <TableCell colSpan={2} />
+                          </TableRow>
+                        </TableBody>
+                      </Table>
+                    </Box>
+                  )}
+                </Paper>
+              )}
+            </Box>
+            );
+          })()}
+
+          {seccion === 'planes' && (
+          <>
           <Stack direction="row" spacing={2} mb={3} alignItems="center" flexWrap="wrap" useFlexGap>
             <TextField
               size="small"
@@ -190,6 +352,15 @@ const CobrosList = () => {
                 ))}
               </Select>
             </FormControl>
+            <ToggleButtonGroup
+              value={vista}
+              exclusive
+              size="small"
+              onChange={(_, v) => v && setVista(v)}
+            >
+              <ToggleButton value="cards">Tarjetas</ToggleButton>
+              <ToggleButton value="tabla">Tabla</ToggleButton>
+            </ToggleButtonGroup>
           </Stack>
 
           {/* Skeleton loading */}
@@ -229,7 +400,7 @@ const CobrosList = () => {
             </Box>
           )}
 
-          {!loading && planesFiltrados.length > 0 && (
+          {!loading && planesFiltrados.length > 0 && vista === 'cards' && (
             <Grid container spacing={2}>
               {planesFiltrados.map((plan) => (
                 <Grid item xs={12} sm={6} md={4} lg={3} key={plan._id}>
@@ -241,6 +412,66 @@ const CobrosList = () => {
                 </Grid>
               ))}
             </Grid>
+          )}
+
+          {!loading && planesFiltrados.length > 0 && vista === 'tabla' && (
+            <Box sx={{ overflowX: 'auto', border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+              <Table size="small" stickyHeader>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Plan</TableCell>
+                    <TableCell>Cliente</TableCell>
+                    <TableCell>Proyecto</TableCell>
+                    <TableCell align="right">Total</TableCell>
+                    <TableCell align="right">Cobrado</TableCell>
+                    <TableCell align="right">Pendiente</TableCell>
+                    <TableCell align="center">Avance</TableCell>
+                    <TableCell>Próxima</TableCell>
+                    <TableCell align="center">Estado</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {planesFiltrados.map((plan) => {
+                    const r = plan.resumen || {};
+                    const pct = r.total ? Math.round((r.cobrado || 0) / r.total * 100) : 0;
+                    const money = (n) => (n || 0).toLocaleString('es-AR', { style: 'currency', currency: plan.moneda === 'USD' ? 'USD' : 'ARS', maximumFractionDigits: 0 });
+                    return (
+                      <TableRow
+                        key={plan._id}
+                        hover
+                        sx={{ cursor: 'pointer' }}
+                        onClick={() => router.push(`/cobros/${plan._id}`)}
+                      >
+                        <TableCell>{plan.nombre}</TableCell>
+                        <TableCell>{plan.cliente_nombre || '—'}</TableCell>
+                        <TableCell>{plan.proyecto_nombre || '—'}</TableCell>
+                        <TableCell align="right">{money(r.total)}</TableCell>
+                        <TableCell align="right">{money(r.cobrado)}</TableCell>
+                        <TableCell align="right">{money(r.pendiente)}</TableCell>
+                        <TableCell align="center" sx={{ minWidth: 90 }}>
+                          <LinearProgress variant="determinate" value={pct} sx={{ height: 6, borderRadius: 3 }} />
+                          <Typography variant="caption" color="text.secondary">{pct}%</Typography>
+                        </TableCell>
+                        <TableCell>
+                          {r.proxima_cuota?.fecha_vencimiento
+                            ? new Date(r.proxima_cuota.fecha_vencimiento).toLocaleDateString('es-AR')
+                            : '—'}
+                        </TableCell>
+                        <TableCell align="center">
+                          <Chip
+                            size="small"
+                            label={plan.estado}
+                            color={plan.estado === 'completado' ? 'success' : plan.estado === 'activo' ? 'primary' : 'default'}
+                          />
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </Box>
+          )}
+          </>
           )}
         </Container>
       </Box>

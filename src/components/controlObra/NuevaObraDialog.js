@@ -47,6 +47,12 @@ export default function NuevaObraDialog({ open, onClose, empresaId, proyectoId: 
         if (!ppId) throw new Error('Elegí un presupuesto profesional');
         return ControlObraService.crearObra({ empresa_id: empresaId, proyecto_id: proyectoId, perfil, origen: { tipo: 'pp', ref_id: ppId } });
       }
+      if (origen === 'categorias') {
+        if (!titulo) throw new Error('Ingresá un título');
+        return ControlObraService.crearObra({
+          empresa_id: empresaId, proyecto_id: proyectoId, titulo, perfil, origen: { tipo: 'categorias' },
+        });
+      }
       return ControlObraService.crearObra({
         empresa_id: empresaId, proyecto_id: proyectoId, titulo, perfil, origen: { tipo: 'manual' },
         rubros: rubros.map((r) => ({ nombre: r.nombre, subrubros: r.subrubros.filter((s) => s.nombre && s.monto).map((s) => ({ nombre: s.nombre, monto: Number(s.monto) })) })),
@@ -70,10 +76,16 @@ export default function NuevaObraDialog({ open, onClose, empresaId, proyectoId: 
       )}
     >
       <Stack spacing={2}>
-          <ToggleButtonGroup exclusive size="small" value={origen} onChange={(_, v) => v && setOrigen(v)}>
+          <ToggleButtonGroup exclusive size="small" value={origen} onChange={(_, v) => v && setOrigen(v)} sx={{ flexWrap: 'wrap' }}>
             <ToggleButton value="pp">Desde presupuesto profesional</ToggleButton>
+            <ToggleButton value="categorias">Desde categorías</ToggleButton>
             <ToggleButton value="manual">Carga manual</ToggleButton>
           </ToggleButtonGroup>
+          {origen === 'categorias' && (
+            <Typography variant="caption" color="text.secondary">
+              Arma la estructura desde las categorías/subcategorías de la empresa y suma los presupuestos del proyecto. Después podés borrar los rubros que no apliquen.
+            </Typography>
+          )}
 
           <Box>
             <Typography variant="caption" color="text.secondary">Perfil de obra — define indexación CAC, retención y anticipo</Typography>
@@ -112,6 +124,10 @@ export default function NuevaObraDialog({ open, onClose, empresaId, proyectoId: 
             >
               {pps.map((p) => <MenuItem key={p._id} value={p._id}>{p.titulo || '(sin título)'} · {(p.total_neto || 0).toLocaleString('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 })}</MenuItem>)}
             </TextField>
+          )}
+
+          {origen === 'categorias' && (
+            <TextField label="Título" value={titulo} onChange={(e) => setTitulo(e.target.value)} fullWidth />
           )}
 
           {origen === 'manual' && (

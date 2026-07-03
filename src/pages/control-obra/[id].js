@@ -10,6 +10,7 @@ import { useAuthContext } from 'src/contexts/auth-context';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import ControlObraService from 'src/services/controlObra/controlObraService';
 import CertificadosTab from 'src/components/controlObra/CertificadosTab';
+import CobrosObraTab from 'src/components/controlObra/CobrosObraTab';
 import EjecucionTab from 'src/components/controlObra/EjecucionTab';
 import CronogramaTab from 'src/components/controlObra/CronogramaTab';
 import ManoObraTab from 'src/components/controlObra/ManoObraTab';
@@ -77,6 +78,7 @@ function ObraDetallePage() {
               <Tab label="Ejecución" />
               <Tab label="Cronograma" />
               <Tab label="Certificados" />
+              <Tab label="Cobros" />
               <Tab label="Mano de obra" />
               <Tab label="Reportes" />
             </Tabs>
@@ -89,8 +91,9 @@ function ObraDetallePage() {
 
             {tab === 3 && <CertificadosTab obra={obra} certs={certsQ.data || []} empresaId={empresaId} />}
 
-            {tab === 4 && <ManoObraTab obra={obra} empresaId={empresaId} />}
-            {tab === 5 && <ReportesTab obra={obra} empresaId={empresaId} />}
+            {tab === 4 && <CobrosObraTab obra={obra} empresaId={empresaId} />}
+            {tab === 5 && <ManoObraTab obra={obra} empresaId={empresaId} />}
+            {tab === 6 && <ReportesTab obra={obra} empresaId={empresaId} />}
           </Stack>
         )}
       </Container>
