@@ -19,7 +19,7 @@ import TrabajadorService from "src/services/dhn/TrabajadorService";
 import { getUser } from "src/utils/celulandia/currentUser";
 import useModalAlert from "src/hooks/useModalAlert";
 
-const EditarTrabajadorModal = ({ open, onClose, onSave, trabajador }) => {
+const EditarTrabajadorModal = ({ open, onClose, onSave, trabajador, readOnly = false }) => {
   const { alert, showAlert, closeAlert } = useModalAlert(open);
 
   const [isLoading, setIsLoading] = useState(false);
@@ -157,6 +157,7 @@ const EditarTrabajadorModal = ({ open, onClose, onSave, trabajador }) => {
                 value={formData.nombre}
                 onChange={(e) => handleInputChange("nombre", e.target.value)}
                 margin="normal"
+                disabled={readOnly}
                 required
               />
             </Grid>
@@ -167,6 +168,7 @@ const EditarTrabajadorModal = ({ open, onClose, onSave, trabajador }) => {
                 value={formData.apellido}
                 onChange={(e) => handleInputChange("apellido", e.target.value)}
                 margin="normal"
+                disabled={readOnly}
                 required
               />
             </Grid>
@@ -177,6 +179,7 @@ const EditarTrabajadorModal = ({ open, onClose, onSave, trabajador }) => {
                 value={formData.dni}
                 onChange={(e) => handleInputChange("dni", e.target.value)}
                 margin="normal"
+                disabled={readOnly}
                 required
               />
             </Grid>
@@ -189,6 +192,7 @@ const EditarTrabajadorModal = ({ open, onClose, onSave, trabajador }) => {
                 onChange={(e) => handleInputChange("desde", e.target.value)}
                 margin="normal"
                 InputLabelProps={{ shrink: true }}
+                disabled={readOnly}
                 required
               />
             </Grid>
@@ -201,6 +205,7 @@ const EditarTrabajadorModal = ({ open, onClose, onSave, trabajador }) => {
                 onChange={(e) => handleInputChange("hasta", e.target.value)}
                 margin="normal"
                 InputLabelProps={{ shrink: true }}
+                disabled={readOnly}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -211,6 +216,7 @@ const EditarTrabajadorModal = ({ open, onClose, onSave, trabajador }) => {
                       checked={formData.active}
                       onChange={(e) => handleInputChange("active", e.target.checked)}
                       color="primary"
+                      disabled={readOnly}
                     />
                   }
                   label="Activo"
@@ -222,13 +228,13 @@ const EditarTrabajadorModal = ({ open, onClose, onSave, trabajador }) => {
       </DialogContent>
       <DialogActions>
         <Button onClick={handleCloseModal} color="inherit" disabled={isLoading}>
-          Cancelar
+          {readOnly ? "Cerrar" : "Cancelar"}
         </Button>
-        <Button 
-          onClick={handleSave} 
-          color="primary" 
+        <Button
+          onClick={handleSave}
+          color="primary"
           variant="contained"
-          disabled={isLoading}
+          disabled={isLoading || readOnly}
           startIcon={isLoading ? <CircularProgress size={16} /> : null}
         >
           {isLoading ? "Guardando..." : "Guardar"}

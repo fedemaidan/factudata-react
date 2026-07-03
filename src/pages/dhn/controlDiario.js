@@ -19,9 +19,11 @@ import useTrabajoDiarioPage from 'src/hooks/dhn/useTrabajoDiarioPage';
 import ImagenModal from 'src/components/ImagenModal';
 import TrabajosDetectadosList from 'src/components/dhn/TrabajosDetectadosList';
 import { parseDDMMYYYYAnyToISO, formatDateDDMMYYYY } from 'src/utils/handleDates';
+import useDhnSoloLectura from 'src/hooks/dhn/useDhnSoloLectura';
 
 const ControlDiarioPage = () => {
   const router = useRouter();
+  const soloLectura = useDhnSoloLectura();
   const diaParam = useMemo(() => {
     const raw = Array.isArray(router.query.dia) ? router.query.dia[0] : router.query.dia;
     return raw ? String(raw) : null;
@@ -210,6 +212,7 @@ const ControlDiarioPage = () => {
         onFormHorasChange={setFormHoras}
         selectionLoading={savingEdit}
         onSave={handleSaveTrabajoDiario}
+        readOnly={soloLectura}
       />
 
       <HistorialModal

@@ -20,6 +20,7 @@ import TrabajosDetectadosList from 'src/components/dhn/TrabajosDetectadosList';
 import HistorialModal from 'src/components/dhn/HistorialModal';
 import HorasRawModal from 'src/components/dhn/HorasRawModal';
 import { formatDateDDMMYYYY } from 'src/utils/handleDates';
+import useDhnSoloLectura from 'src/hooks/dhn/useDhnSoloLectura';
 
 const DEFAULT_MES = dayjs().format('YYYY-MM');
 
@@ -34,6 +35,7 @@ const parseMesParam = (raw) => {
 
 const TrabajadorPage = () => {
   const router = useRouter();
+  const soloLectura = useDhnSoloLectura();
   const { trabajadorId } = router.query;
   const mesParam = useMemo(() => {
     const raw = Array.isArray(router.query.mes) ? router.query.mes[0] : router.query.mes;
@@ -246,6 +248,7 @@ const TrabajadorPage = () => {
         onFormHorasChange={setFormHoras}
         selectionLoading={savingEdit}
         onSave={handleSaveTrabajoDiario}
+        readOnly={soloLectura}
       />
 
       <HistorialModal

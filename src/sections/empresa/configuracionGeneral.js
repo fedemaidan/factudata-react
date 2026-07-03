@@ -243,6 +243,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
 
   const dhnAcciones = [
     "DHN_SYNC_DRIVE",
+    "DHN_SOLO_LECTURA",
   ]
 
   const celulandiaAcciones = [
