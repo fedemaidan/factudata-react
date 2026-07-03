@@ -44,6 +44,11 @@ export const SideNavDHN = ({
   const lgUp = useMediaQuery((theme) => theme.breakpoints.up("lg"), { noSsr: true });
   const { user, isSpying } = useAuthContext();
 
+  // Solo lectura: el usuario ve únicamente Trabajadores, Control Diario y Control
+  // Quincenal (los admin siguen viendo todo).
+  const soloLectura = !user?.admin && (permisos || []).includes("DHN_SOLO_LECTURA");
+  const pathsSoloLectura = ["/dhn/trabajador", "/dhn/controlDiario", "/dhn/controlQuincenal", "/account"];
+
   const paperSx = {
     backgroundColor: isSpying() ? "neutral.600" : "neutral.800",
     color: "common.white",
@@ -120,6 +125,10 @@ export const SideNavDHN = ({
     });
   }
 
+  const visibleItems = soloLectura
+    ? items.filter((item) => pathsSoloLectura.includes(item.path))
+    : items;
+
   const content = (
     <Scrollbar
       sx={{
@@ -149,7 +158,7 @@ export const SideNavDHN = ({
         {/* Navegación */}
         <Box component="nav" sx={{ flexGrow: 1, px: 1, py: 1 }}>
           <Stack component="ul" spacing={0.25} sx={{ listStyle: "none", p: 0, m: 0 }}>
-            {items.map((item) => {
+            {visibleItems.map((item) => {
               const active = item.path ? pathname === item.path : false;
               const node = (
                 <SideNavItem

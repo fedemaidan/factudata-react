@@ -23,9 +23,11 @@ import { useRouter } from 'next/router';
 import AgregarTrabajadorModal from 'src/components/dhn/AgregarTrabajadorModal';
 import EditarTrabajadorModal from 'src/components/dhn/EditarTrabajadorModal';
 import HistorialModal from 'src/components/dhn/HistorialModal';
+import useDhnSoloLectura from 'src/hooks/dhn/useDhnSoloLectura';
 
 const TrabajadoresPage = () => {
   const router = useRouter();
+  const soloLectura = useDhnSoloLectura();
   const {
     trabajadores,
     pagination,
@@ -197,22 +199,24 @@ const TrabajadoresPage = () => {
               ),
             }}
           />
-          <Button
-            size="small"
-            variant="contained"
-            color="primary"
-            startIcon={<AddIcon />}
-            onClick={() => setAgregarModalOpen(true)}
-            sx={{
-              borderRadius: 2,
-              px: 3,
-              py: 1,
-              boxShadow: 2,
-              '&:hover': { boxShadow: 4 },
-            }}
-          >
-            Agregar Trabajador
-          </Button>
+          {!soloLectura && (
+            <Button
+              size="small"
+              variant="contained"
+              color="primary"
+              startIcon={<AddIcon />}
+              onClick={() => setAgregarModalOpen(true)}
+              sx={{
+                borderRadius: 2,
+                px: 3,
+                py: 1,
+                boxShadow: 2,
+                '&:hover': { boxShadow: 4 },
+              }}
+            >
+              Agregar Trabajador
+            </Button>
+          )}
         </Box>
 
         {isError && (
@@ -242,6 +246,7 @@ const TrabajadoresPage = () => {
         onClose={() => setEditarModalOpen(false)}
         onSave={handleSaveEdit}
         trabajador={trabajadorSeleccionado}
+        readOnly={soloLectura}
       />
 
       <HistorialModal

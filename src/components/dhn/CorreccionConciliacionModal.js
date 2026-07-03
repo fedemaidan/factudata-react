@@ -127,6 +127,7 @@ const CorreccionConciliacionModal = ({
   onSelectSistema,
   selectionLoading,
   onSave,
+  readOnly = false,
 }) => {
   const theme = useTheme();
   const isMdDown = useMediaQuery(theme.breakpoints.down("md"));
@@ -558,7 +559,7 @@ const CorreccionConciliacionModal = ({
                     variant="outlined"
                     size="small"
                     onClick={handleSelectSistemaClick}
-                    disabled={selectionLoading}
+                    disabled={selectionLoading || readOnly}
                     sx={{ textTransform: "none" }}
                   >
                     Horas Sistema
@@ -567,7 +568,7 @@ const CorreccionConciliacionModal = ({
                     variant="contained"
                     size="small"
                     onClick={handleSelectExcelClick}
-                    disabled={selectionLoading}
+                    disabled={selectionLoading || readOnly}
                     sx={{ textTransform: "none" }}
                   >
                     Horas NASA
@@ -597,6 +598,7 @@ const CorreccionConciliacionModal = ({
                       value={formHoras?.[field.key] ?? ""}
                       onChange={(event) => handleHorasFieldChange(field.key, event.target.value)}
                       size="small"
+                      disabled={readOnly}
                       sx={{
                         maxWidth: 140,
                       }}
@@ -611,6 +613,7 @@ const CorreccionConciliacionModal = ({
                     value={licenciaValue}
                     onChange={handleLicenciaChange}
                     size="small"
+                    disabled={readOnly}
                     sx={{ maxWidth: 240 }}
                   >
                     <MenuItem value="">Sin licencia</MenuItem>
@@ -705,9 +708,9 @@ const CorreccionConciliacionModal = ({
             )}
             <Box sx={{ display: "flex", gap: 1 }}>
               <Button variant="text" onClick={onClose}>
-                Cancelar
+                {readOnly ? "Cerrar" : "Cancelar"}
               </Button>
-              <Button variant="contained" onClick={handleGuardar} disabled={selectionLoading}>
+              <Button variant="contained" onClick={handleGuardar} disabled={selectionLoading || readOnly}>
                 Guardar
               </Button>
             </Box>

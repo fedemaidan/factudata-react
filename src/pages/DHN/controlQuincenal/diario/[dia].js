@@ -14,9 +14,11 @@ import TrabajosDetectadosList from 'src/components/dhn/TrabajosDetectadosList';
 import ClearIcon from '@mui/icons-material/Clear';
 import CorreccionConciliacionModal from 'src/components/dhn/CorreccionConciliacionModal';
 import useEditarTrabajoDiario from 'src/hooks/dhn/useEditarTrabajoDiario';
+import useDhnSoloLectura from 'src/hooks/dhn/useDhnSoloLectura';
 
 const ControlDiaPage = () => {
   const router = useRouter();
+  const soloLectura = useDhnSoloLectura();
   const { dia: diaParam } = router.query;
 
   const diaFormatoParam = Array.isArray(diaParam) ? diaParam[0] : diaParam;
@@ -198,6 +200,7 @@ const ControlDiaPage = () => {
         onFormHorasChange={setFormHoras}
         selectionLoading={savingEdit}
         onSave={handleSaveTrabajoDiario}
+        readOnly={soloLectura}
       />
     </DashboardLayout>
   );
