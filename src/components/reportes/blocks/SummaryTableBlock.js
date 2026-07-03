@@ -12,6 +12,12 @@ const SummaryTableBlock = ({ data, displayCurrency, onDrillDown }) => {
   const hasColumnWidths = headers.some((header) => header.width);
 
   const getColumnTone = (header) => {
+    if (header?.highlight === 'info') {
+      return {
+        color: 'info.dark',
+        backgroundColor: 'rgba(3, 169, 244, 0.08)',
+      };
+    }
     const title = String(header?.titulo || '').toLowerCase();
     if (header?.filtro_tipo === 'egreso' || title.includes('egreso')) {
       return {
@@ -39,6 +45,20 @@ const SummaryTableBlock = ({ data, displayCurrency, onDrillDown }) => {
     }
   };
 
+  const getAlign = (header) => header.align || (header.id === 'grupo' ? 'left' : 'right');
+
+  const getRowToneSx = (row) => {
+    if (row?._rowTone === 'paid') {
+      return {
+        backgroundColor: 'rgba(3, 169, 244, 0.08)',
+        '&:hover': {
+          backgroundColor: 'rgba(3, 169, 244, 0.14)',
+        },
+      };
+    }
+    return {};
+  };
+
   return (
     <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 500 }}>
       <Table
@@ -54,11 +74,12 @@ const SummaryTableBlock = ({ data, displayCurrency, onDrillDown }) => {
                 sx={{
                   fontWeight: 700,
                   backgroundColor: 'grey.100',
+                  ...(getColumnTone(h)?.backgroundColor ? { backgroundColor: getColumnTone(h).backgroundColor } : {}),
                   color: getColumnTone(h)?.color || 'text.primary',
                   whiteSpace: 'nowrap',
                   width: h.width,
                 }}
-                align={h.id === 'grupo' ? 'left' : 'right'}
+                align={getAlign(h)}
               >
                 {h.titulo}
               </TableCell>
@@ -71,13 +92,19 @@ const SummaryTableBlock = ({ data, displayCurrency, onDrillDown }) => {
               key={idx}
               hover
               onClick={() => handleRowClick(row)}
-              sx={{ cursor: row._movimientos?.length > 0 ? 'pointer' : 'default' }}
+              sx={{
+                cursor: row._movimientos?.length > 0 ? 'pointer' : 'default',
+                ...getRowToneSx(row),
+              }}
             >
               {headers.map((h) => (
                 <TableCell
                   key={h.id}
-                  align={h.id === 'grupo' ? 'left' : 'right'}
-                  sx={{ whiteSpace: 'nowrap' }}
+                  align={getAlign(h)}
+                  sx={{
+                    whiteSpace: 'nowrap',
+                    ...(getColumnTone(h)?.backgroundColor ? { backgroundColor: getColumnTone(h).backgroundColor } : {}),
+                  }}
                 >
                   {h.id === 'grupo' ? (
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -117,13 +144,14 @@ const SummaryTableBlock = ({ data, displayCurrency, onDrillDown }) => {
                   ) : (
                     (() => {
                       const tone = getValueTone(h, row[h.id]);
+                      const displayKey = `${h.id}_display`;
                       return (
                     <Typography
                       variant="body2"
                       color={tone?.color || 'text.primary'}
                       fontWeight={tone ? 700 : 400}
                     >
-                      {formatValue(
+                      {Object.prototype.hasOwnProperty.call(row, displayKey) ? row[displayKey] : formatValue(
                         row[h.id],
                         h.formato || 'currency',
                         h.currency || displayCurrency,
@@ -143,12 +171,13 @@ const SummaryTableBlock = ({ data, displayCurrency, onDrillDown }) => {
               {headers.map((h) => (
                 <TableCell
                   key={h.id}
-                  align={h.id === 'grupo' ? 'left' : 'right'}
+                  align={getAlign(h)}
                   sx={{
                     fontWeight: 700,
                     borderTop: 2,
                     borderColor: 'divider',
                     color: getColumnTone(h)?.color || 'text.primary',
+                    ...(getColumnTone(h)?.backgroundColor ? { backgroundColor: getColumnTone(h).backgroundColor } : {}),
                   }}
                 >
                   {h.id === 'grupo' ? (
@@ -160,6 +189,7 @@ const SummaryTableBlock = ({ data, displayCurrency, onDrillDown }) => {
                   ) : (
                     (() => {
                       const tone = getValueTone(h, totals[h.id]);
+                      const displayKey = `${h.id}_display`;
                       return (
                         <Typography
                           component="span"
@@ -167,7 +197,9 @@ const SummaryTableBlock = ({ data, displayCurrency, onDrillDown }) => {
                           color={tone?.color || 'inherit'}
                           fontWeight={700}
                         >
-                          {formatValue(totals[h.id], h.formato || 'currency', h.currency || displayCurrency)}
+                          {Object.prototype.hasOwnProperty.call(totals, displayKey)
+                            ? totals[displayKey]
+                            : formatValue(totals[h.id], h.formato || 'currency', h.currency || displayCurrency)}
                         </Typography>
                       );
                     })()

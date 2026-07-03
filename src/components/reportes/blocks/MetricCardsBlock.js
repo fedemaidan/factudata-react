@@ -20,10 +20,18 @@ const CARD_FORMAT_OPTS = { maximumFractionDigits: 0 };
 const VALUE_FONT_SIZE = 'clamp(0.9rem, 11cqi, 1.4rem)';
 const SECONDARY_FONT_SIZE = 'clamp(0.8rem, 8cqi, 1rem)';
 
+const DETAIL_ICON = {
+  ARS: '🇦🇷',
+  USD: '🇺🇸',
+};
+
 const MetricCardsBlock = ({ data, displayCurrency, displayCurrencies, onDrillDown }) => {
   if (!data || data.length === 0) return null;
 
   const isMulti = displayCurrencies && displayCurrencies.length > 1;
+  const formatMetricDetail = (detail, metric) => (
+    formatValue(detail.valor, metric.formato, detail.currency || displayCurrency, CARD_FORMAT_OPTS)
+  );
 
   const handleClick = (metric) => {
     if (onDrillDown && metric._movimientos?.length > 0) {
@@ -34,7 +42,7 @@ const MetricCardsBlock = ({ data, displayCurrency, displayCurrencies, onDrillDow
   return (
     <Grid container spacing={2}>
       {data.map((metric) => (
-        <Grid item xs={12} sm={6} md={3} key={metric.id}>
+        <Grid item xs={12} sm={6} md={data.length === 5 ? 2.4 : 3} key={metric.id}>
           {(() => {
             const metricCurrency = metric.display_currency || displayCurrency;
             const renderSingleValue = !isMulti || metric.display_currency;
@@ -79,6 +87,80 @@ const MetricCardsBlock = ({ data, displayCurrency, displayCurrencies, onDrillDow
                       </Typography>
                     </Box>
                   ))}
+                </Box>
+              ) : metric.detalles ? (
+                <Box sx={{ mt: 1.25, minWidth: 0 }}>
+                  {metric.detalles.length > 0 ? metric.detalles.map((detail) => (
+                    <Box
+                      key={detail.id || detail.label}
+                      sx={{
+                        display: 'grid',
+                        gridTemplateColumns: '34px minmax(0, 1fr)',
+                        alignItems: 'center',
+                        columnGap: 1.25,
+                        py: 0.75,
+                        borderTop: '1px solid',
+                        borderColor: 'divider',
+                        '&:first-of-type': { borderTop: 0, pt: 0 },
+                      }}
+                    >
+                      <Box
+                        sx={{
+                          width: 28,
+                          height: 28,
+                          borderRadius: '50%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          bgcolor: 'transparent',
+                          fontSize: '1.15rem',
+                          fontWeight: 800,
+                          color: 'text.secondary',
+                        }}
+                      >
+                        {DETAIL_ICON[detail.id] || detail.label}
+                      </Box>
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography
+                          variant="caption"
+                          sx={{
+                            display: 'block',
+                            color: 'text.secondary',
+                            fontWeight: 700,
+                            textTransform: 'uppercase',
+                            whiteSpace: 'nowrap',
+                            fontSize: '0.68rem',
+                            lineHeight: 1.1,
+                          }}
+                        >
+                          {detail.label}
+                        </Typography>
+                        <Typography
+                          sx={{
+                            fontWeight: 800,
+                            color: COLOR_MAP[metric.color] || COLOR_MAP.default,
+                            fontSize: 'clamp(0.78rem, 8cqi, 1.16rem)',
+                            lineHeight: 1.15,
+                            whiteSpace: 'nowrap',
+                            letterSpacing: 0,
+                          }}
+                        >
+                          {formatMetricDetail(detail, metric)}
+                        </Typography>
+                      </Box>
+                    </Box>
+                  )) : (
+                    <Typography
+                      sx={{
+                        mt: 1,
+                        fontWeight: 700,
+                        color: COLOR_MAP[metric.color] || COLOR_MAP.default,
+                        fontSize: VALUE_FONT_SIZE,
+                      }}
+                    >
+                      {formatValue(0, metric.formato, displayCurrency, CARD_FORMAT_OPTS)}
+                    </Typography>
+                  )}
                 </Box>
               ) : (
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mt: 1, minWidth: 0, flexWrap: 'wrap' }}>
