@@ -151,11 +151,14 @@ export const useProductos = ({
           .join(", ");
       };
 
-      // Mismo formato que la celda de Variación en la tabla (es-AR, signo + y "%").
-      const formatVariacion = (item) => {
+      // La variación se exporta como número (fracción) para que Excel la trate como
+      // porcentaje real y permita filtrar/ordenar por "mayor/menor que X%". El formato
+      // de celda (más abajo) la muestra como "+12,5%". variacionPct viene en % (12.5),
+      // así que se divide por 100 porque el formato % de Excel espera la fracción.
+      const variacionFraccion = (item) => {
         const n = Number(item?.tendencia?.variacionPct);
         if (!Number.isFinite(n)) return "";
-        return `${n > 0 ? "+" : ""}${n.toLocaleString("es-AR", { maximumFractionDigits: 1 })}%`;
+        return n / 100;
       };
 
       const data = allProductos.map((item) => {
@@ -181,7 +184,7 @@ export const useProductos = ({
           "Ventas período": Number(item?.ventasPeriodo ?? 0),
           "Ventas proyectadas": Number(item?.ventasProyectadas ?? 0),
           // La variación es propia de la tendencia: solo se exporta con el modo ponderado activo.
-          ...(usarPonderado ? { Variación: formatVariacion(item) } : {}),
+          ...(usarPonderado ? { Variación: variacionFraccion(item) } : {}),
           "Días p/agotar": diasValue,
           "Stock proyectado (90 días)": Number(item?.stockProyectado ?? 0),
           "Fecha agotamiento": formatDateDDMMYYYY(item?.fechaAgotamientoStock),
@@ -258,6 +261,19 @@ export const useProductos = ({
           }
         }
       });
+
+      // Formato de porcentaje con signo (+12,5% / -8,0%). El valor guardado es la
+      // fracción, así el usuario puede filtrar "mayor/menor que X%" en Excel.
+      const variacionColIdx = headers.findIndex((h) => h === "Variación");
+      if (variacionColIdx >= 0) {
+        for (let r = 1; r <= data.length; r++) {
+          const addr = XLSX.utils.encode_cell({ c: variacionColIdx, r });
+          const cell = ws[addr];
+          if (cell && typeof cell.v === "number") {
+            cell.z = "+0.0%;-0.0%;0.0%";
+          }
+        }
+      }
 
       XLSX.utils.book_append_sheet(wb, ws, "Proyecciones");
 
