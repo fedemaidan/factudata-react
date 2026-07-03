@@ -33,6 +33,7 @@ const BLOCK_TYPE_LABELS = {
   subcategory_monthly_evolution: 'Evolución mensual por subcategoría',
   balance_between_partners: 'Balance entre Socios',
   collections_due_ranges: 'Vencimientos por Plazo',
+  collections_payment_plan: 'Plan de Cuotas',
 };
 
 const FILTRO_FIELDS = [
@@ -305,6 +306,9 @@ const ReportEditor = ({
         break;
       case 'balance_between_partners':
         detail = 'Movimientos por telefono · reparto equitativo · resumen de deudas';
+        break;
+      case 'collections_payment_plan':
+        detail = 'Cuotas · ' + (block.cuotas_estado || 'pendientes') + ' · ' + (block.tipo_indexacion || 'auto');
         break;
       default:
         detail = '';

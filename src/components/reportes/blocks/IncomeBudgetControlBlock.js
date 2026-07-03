@@ -1,7 +1,9 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Box,
   Chip,
+  Collapse,
+  IconButton,
   Paper,
   Stack,
   Table,
@@ -13,6 +15,8 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
+import KeyboardArrowRightIcon from '@mui/icons-material/KeyboardArrowRight';
 import { formatValue } from 'src/tools/reportEngine';
 
 const formatDate = (value) => {
@@ -28,13 +32,14 @@ const numberFmt = (value, digits = 2) => (
   })
 );
 
-const HeaderCell = ({ children, align = 'left' }) => (
+const HeaderCell = ({ children, align = 'left', sx = {} }) => (
   <TableCell
     align={align}
     sx={{
       fontWeight: 700,
       bgcolor: 'grey.100',
       whiteSpace: 'nowrap',
+      ...sx,
     }}
   >
     {children}
@@ -55,6 +60,15 @@ const TotalCell = ({ children, align = 'right', color = 'secondary.lighter' }) =
     {children}
   </TableCell>
 );
+
+const PRESUPUESTO_COL_WIDTHS = {
+  nro: 84,
+  concepto: '34%',
+  fecha: '18%',
+  icac: '14%',
+  subtotal: '18%',
+  ucac: '16%',
+};
 
 const CacValueWithTooltip = ({
   value,
@@ -100,13 +114,52 @@ const CacValueWithTooltip = ({
 };
 
 const IncomeBudgetControlBlock = ({ data, onDrillDown }) => {
-  if (!data) return null;
+  const [adicionalesOpen, setAdicionalesOpen] = useState(false);
+  const presupuestoRows = data?.presupuesto?.rows || [];
+  const presupuestoTotals = data?.presupuesto?.totals || {};
+  const recibidoRows = data?.recibidos?.rows || [];
+  const recibidoTotals = data?.recibidos?.totals || {};
+  const saldo = data?.saldo || {};
+  const { inicialRows, adicionalesRows, adicionalesTotals } = useMemo(() => {
+    const iniciales = presupuestoRows.filter((row) => row.tipo !== 'adicional');
+    const adicionales = presupuestoRows.filter((row) => row.tipo === 'adicional');
+    return {
+      inicialRows: iniciales,
+      adicionalesRows: adicionales,
+      adicionalesTotals: {
+        subtotal_neto: adicionales.reduce((sum, row) => sum + (Number(row.subtotal_neto) || 0), 0),
+        cac_equivalente: adicionales.reduce((sum, row) => sum + (Number(row.cac_equivalente) || 0), 0),
+      },
+    };
+  }, [presupuestoRows]);
 
-  const presupuestoRows = data.presupuesto?.rows || [];
-  const presupuestoTotals = data.presupuesto?.totals || {};
-  const recibidoRows = data.recibidos?.rows || [];
-  const recibidoTotals = data.recibidos?.totals || {};
-  const saldo = data.saldo || {};
+  const renderPresupuestoRow = (row) => (
+    <TableRow key={`${row.presupuesto_id}_${row.nro}_${row.concepto}`}>
+      <TableCell align="center" sx={{ width: PRESUPUESTO_COL_WIDTHS.nro }}>{row.nro}</TableCell>
+      <TableCell sx={{ width: PRESUPUESTO_COL_WIDTHS.concepto }}>
+        <Stack direction="row" spacing={1} alignItems="center">
+          <Typography variant="body2">{row.concepto}</Typography>
+          {row.tipo === 'adicional' && (
+            <Chip size="small" label="Adicional" color="success" variant="outlined" />
+          )}
+        </Stack>
+      </TableCell>
+      <TableCell sx={{ width: PRESUPUESTO_COL_WIDTHS.fecha }}>{formatDate(row.fecha)}</TableCell>
+      <TableCell align="right" sx={{ width: PRESUPUESTO_COL_WIDTHS.icac }}>{row.icac ? numberFmt(row.icac, 1) : ''}</TableCell>
+      <TableCell align="right" sx={{ width: PRESUPUESTO_COL_WIDTHS.subtotal }}>{formatValue(row.subtotal_neto, 'currency', 'ARS')}</TableCell>
+      <TableCell align="right" sx={{ width: PRESUPUESTO_COL_WIDTHS.ucac }}>
+        <CacValueWithTooltip
+          value={row.cac_equivalente}
+          cacHoy={data.cac_hoy}
+          nominalArs={row.subtotal_neto}
+          includeNominal
+          calculationValue={row.cac_equivalente}
+        />
+      </TableCell>
+    </TableRow>
+  );
+
+  if (!data) return null;
 
   return (
     <Stack spacing={3}>
@@ -115,43 +168,62 @@ const IncomeBudgetControlBlock = ({ data, onDrillDown }) => {
           Resumen presupuestos
         </Typography>
         <TableContainer component={Paper} variant="outlined">
-          <Table size="small">
+          <Table size="small" sx={{ tableLayout: 'fixed' }}>
             <TableHead>
               <TableRow>
-                <HeaderCell align="right">N°</HeaderCell>
-                <HeaderCell>Concepto</HeaderCell>
-                <HeaderCell>Fecha</HeaderCell>
-                <HeaderCell align="right">I.CAC</HeaderCell>
-                <HeaderCell align="right">Subtotal neto</HeaderCell>
-                <HeaderCell align="right">U.CAC</HeaderCell>
+                <HeaderCell align="center" sx={{ width: PRESUPUESTO_COL_WIDTHS.nro }}>N°</HeaderCell>
+                <HeaderCell sx={{ width: PRESUPUESTO_COL_WIDTHS.concepto }}>Concepto</HeaderCell>
+                <HeaderCell sx={{ width: PRESUPUESTO_COL_WIDTHS.fecha }}>Fecha</HeaderCell>
+                <HeaderCell align="right" sx={{ width: PRESUPUESTO_COL_WIDTHS.icac }}>I.CAC</HeaderCell>
+                <HeaderCell align="right" sx={{ width: PRESUPUESTO_COL_WIDTHS.subtotal }}>Subtotal neto</HeaderCell>
+                <HeaderCell align="right" sx={{ width: PRESUPUESTO_COL_WIDTHS.ucac }}>U.CAC</HeaderCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {presupuestoRows.map((row) => (
-                <TableRow key={`${row.presupuesto_id}_${row.nro}_${row.concepto}`}>
-                  <TableCell align="right">{row.nro}</TableCell>
-                  <TableCell>
-                    <Stack direction="row" spacing={1} alignItems="center">
-                      <Typography variant="body2">{row.concepto}</Typography>
-                      {row.tipo === 'adicional' && (
-                        <Chip size="small" label="Adicional" color="success" variant="outlined" />
-                      )}
-                    </Stack>
-                  </TableCell>
-                  <TableCell>{formatDate(row.fecha)}</TableCell>
-                  <TableCell align="right">{row.icac ? numberFmt(row.icac, 1) : ''}</TableCell>
-                  <TableCell align="right">{formatValue(row.subtotal_neto, 'currency', 'ARS')}</TableCell>
-                  <TableCell align="right">
-                    <CacValueWithTooltip
-                      value={row.cac_equivalente}
-                      cacHoy={data.cac_hoy}
-                      nominalArs={row.subtotal_neto}
-                      includeNominal
-                      calculationValue={row.cac_equivalente}
-                    />
-                  </TableCell>
-                </TableRow>
-              ))}
+              {inicialRows.map(renderPresupuestoRow)}
+
+              {adicionalesRows.length > 0 && (
+                <>
+                  <TableRow hover sx={{ cursor: 'pointer' }} onClick={() => setAdicionalesOpen((v) => !v)}>
+                    <TableCell align="center" sx={{ width: PRESUPUESTO_COL_WIDTHS.nro }}>
+                      <IconButton size="small" sx={{ p: 0.25 }}>
+                        {adicionalesOpen ? <KeyboardArrowDownIcon fontSize="small" /> : <KeyboardArrowRightIcon fontSize="small" />}
+                      </IconButton>
+                    </TableCell>
+                    <TableCell sx={{ width: PRESUPUESTO_COL_WIDTHS.concepto }}>
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        <Typography variant="body2">Adicionales</Typography>
+                        <Chip size="small" label={`${adicionalesRows.length}`} color="success" variant="outlined" />
+                      </Stack>
+                    </TableCell>
+                    <TableCell sx={{ width: PRESUPUESTO_COL_WIDTHS.fecha }} />
+                    <TableCell sx={{ width: PRESUPUESTO_COL_WIDTHS.icac }} />
+                    <TableCell align="right" sx={{ width: PRESUPUESTO_COL_WIDTHS.subtotal }}>
+                      {formatValue(adicionalesTotals.subtotal_neto, 'currency', 'ARS')}
+                    </TableCell>
+                    <TableCell align="right" sx={{ width: PRESUPUESTO_COL_WIDTHS.ucac }}>
+                      <CacValueWithTooltip
+                        value={adicionalesTotals.cac_equivalente}
+                        cacHoy={data.cac_hoy}
+                        nominalArs={adicionalesTotals.subtotal_neto}
+                        includeNominal
+                        calculationValue={adicionalesTotals.cac_equivalente}
+                      />
+                    </TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell colSpan={6} sx={{ p: 0, borderBottom: adicionalesOpen ? 1 : 0, borderColor: 'divider' }}>
+                      <Collapse in={adicionalesOpen} timeout="auto" unmountOnExit>
+                        <Table size="small" sx={{ tableLayout: 'fixed' }}>
+                          <TableBody>
+                            {adicionalesRows.map(renderPresupuestoRow)}
+                          </TableBody>
+                        </Table>
+                      </Collapse>
+                    </TableCell>
+                  </TableRow>
+                </>
+              )}
 
               {presupuestoRows.length === 0 && (
                 <TableRow>
@@ -192,7 +264,7 @@ const IncomeBudgetControlBlock = ({ data, onDrillDown }) => {
           <Table size="small">
             <TableHead>
               <TableRow>
-                <HeaderCell align="right">N°</HeaderCell>
+                <HeaderCell align="center" sx={{ width: 84 }}>N°</HeaderCell>
                 <HeaderCell>Fecha de pagos recibidos</HeaderCell>
                 <HeaderCell align="right">I.CAC a la fecha</HeaderCell>
                 <HeaderCell align="right">Pago neto ARS recibidos</HeaderCell>
@@ -210,7 +282,7 @@ const IncomeBudgetControlBlock = ({ data, onDrillDown }) => {
                   }}
                   sx={{ cursor: onDrillDown ? 'pointer' : 'default' }}
                 >
-                  <TableCell align="right">{row.nro}</TableCell>
+                  <TableCell align="center" sx={{ width: 84 }}>{row.nro}</TableCell>
                   <TableCell>{formatDate(row.fecha)}</TableCell>
                   <TableCell align="right">{row.icac ? numberFmt(row.icac, 1) : ''}</TableCell>
                   <TableCell align="right">{formatValue(row.pago_neto_ars, 'currency', 'ARS')}</TableCell>
