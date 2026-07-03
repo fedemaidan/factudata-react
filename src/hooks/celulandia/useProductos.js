@@ -161,6 +161,17 @@ export const useProductos = ({
         return n / 100;
       };
 
+      // Devuelve un Date real (mediodía local) para que Excel lo exporte como fecha y
+      // permita filtros de fecha. Usa los mismos componentes locales que muestra la tabla
+      // (dayjs, igual que formatDateDDMMYYYY) para no arrastrar el off-by-one por timezone.
+      // "" si no hay fecha.
+      const excelDate = (value) => {
+        if (!value) return "";
+        const dj = dayjs(value);
+        if (!dj.isValid()) return "";
+        return new Date(dj.year(), dj.month(), dj.date(), 12, 0, 0, 0);
+      };
+
       const data = allProductos.map((item) => {
         const dias = getDiasHastaAgotar(item);
         const diasValue =
@@ -195,6 +206,7 @@ export const useProductos = ({
           "Contenedor": contenedores,
           "Nro pedido": nroPedidos,
           Notas: getNotasString(item?.notas),
+          "Fecha alta": excelDate(item?.fechaAlta),
           "Fecha ingreso": formatDateDDMMYYYY(item?.fechaIngreso),
           "Fecha cero": formatDateDDMMYYYY(item?.fechaCero),
         };
@@ -215,6 +227,7 @@ export const useProductos = ({
           String(h).length,
           ...data.map((row) => {
             const v = row[h];
+            if (v instanceof Date) return 10; // "dd/mm/yyyy"
             if (typeof v === "number") return prettyNum(v, 0).length;
             return String(v ?? "").length;
           })
@@ -271,6 +284,18 @@ export const useProductos = ({
           const cell = ws[addr];
           if (cell && typeof cell.v === "number") {
             cell.z = "+0.0%;-0.0%;0.0%";
+          }
+        }
+      }
+
+      // Fecha alta como fecha real de Excel (dd/mm/yyyy) para habilitar filtros de fecha.
+      const fechaAltaColIdx = headers.findIndex((h) => h === "Fecha alta");
+      if (fechaAltaColIdx >= 0) {
+        for (let r = 1; r <= data.length; r++) {
+          const addr = XLSX.utils.encode_cell({ c: fechaAltaColIdx, r });
+          const cell = ws[addr];
+          if (cell && typeof cell.v === "number") {
+            cell.z = "dd/mm/yyyy";
           }
         }
       }
