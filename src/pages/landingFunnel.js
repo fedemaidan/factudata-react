@@ -365,7 +365,7 @@ function parseAttributionBreakdown(extraSteps, prefix /* 'src' | 'camp' */) {
     return buckets;
 }
 
-function AtribucionTabla({ extraSteps, prefix, title, dimLabel }) {
+function AtribucionTabla({ extraSteps, prefix, title, dimLabel, dimLabels }) {
     const buckets = parseAttributionBreakdown(extraSteps, prefix);
     const rows = Object.entries(buckets)
         .map(([dim, pasos]) => ({ dim, ...pasos }))
@@ -407,7 +407,7 @@ function AtribucionTabla({ extraSteps, prefix, title, dimLabel }) {
                                 return (
                                     <TableRow key={r.dim} sx={{ '&:hover': { bgcolor: 'action.hover' } }}>
                                         <TableCell>
-                                            <Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 600 }}>{r.dim}</Typography>
+                                            <Typography variant="body2" sx={{ fontFamily: dimLabels?.[r.dim] ? 'inherit' : 'monospace', fontWeight: 600 }}>{dimLabels?.[r.dim] || r.dim}</Typography>
                                         </TableCell>
                                         {METRICAS.map((m, i) => {
                                             const val = r[m.key] || 0;
@@ -1089,6 +1089,11 @@ const LandingFunnelPage = () => {
                                 prefix="flow"
                                 title="🔀 A/B de flujo (WhatsApp vs Web directa)"
                                 dimLabel="flujo"
+                                dimLabels={{
+                                    wa: 'WhatsApp',
+                                    web: 'Web directa',
+                                    wa_sin_atribuir: '⚠️ WhatsApp sin atribuir',
+                                }}
                             />
                             <AtribucionTabla
                                 extraSteps={totales.extraSteps}
