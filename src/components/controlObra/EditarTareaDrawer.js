@@ -18,6 +18,16 @@ function tareasDeObra(obra, exceptoUid) {
 // solas en el backend (el inicio lo calcula la predecesora).
 export default function EditarTareaDrawer({ obra, subrubro, empresaId, onClose, onDone }) {
   const opciones = useMemo(() => tareasDeObra(obra, subrubro.uid), [obra, subrubro.uid]);
+  // Opciones de categoría/subcategoría a partir de la estructura de la obra (que
+  // viene del catálogo de la empresa cuando el origen es "categorías").
+  const categoriaOpciones = useMemo(() => {
+    const set = new Set();
+    (obra?.rubros || []).forEach((r) => {
+      if (r.categoria) set.add(r.categoria);
+      (r.subrubros || []).forEach((s) => { if (s.categoria) set.add(s.categoria); });
+    });
+    return [...set];
+  }, [obra]);
   const depUids = (subrubro.dependencias || []).map((d) => d.uid);
   // Inicio mostrado = el deseado (inicio_plan). Si la tarea está en modo automático
   // por dependencia, queda vacío (= arranca al terminar la anterior).
@@ -31,9 +41,20 @@ export default function EditarTareaDrawer({ obra, subrubro, empresaId, onClose, 
     fecha_fin: toInput(subrubro.fecha_fin),
     duracion_dias: subrubro.duracion_dias ?? '',
     dependencias: opciones.filter((o) => depUids.includes(o.uid)),
+    categoria: subrubro.categoria || '',
+    subcategoria: subrubro.subcategoria || '',
   });
   const [error, setError] = useState(null);
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  // Subcategorías sugeridas: las de la categoría elegida dentro de la obra.
+  const subcategoriaOpciones = useMemo(() => {
+    const set2 = new Set();
+    (obra?.rubros || []).forEach((r) => (r.subrubros || []).forEach((s) => {
+      if (s.subcategoria && (!form.categoria || s.categoria === form.categoria)) set2.add(s.subcategoria);
+    }));
+    return [...set2];
+  }, [obra, form.categoria]);
 
   const tieneDeps = form.dependencias.length > 0;
   const tieneDuracion = form.duracion_dias !== '' && Number(form.duracion_dias) > 0;
@@ -51,6 +72,8 @@ export default function EditarTareaDrawer({ obra, subrubro, empresaId, onClose, 
       // Vacío → arranca al terminar la predecesora. Fin sólo si no hay duración.
       fecha_inicio: form.fecha_inicio || null,
       fecha_fin: tieneDuracion ? undefined : (form.fecha_fin || null),
+      categoria: form.categoria || null,
+      subcategoria: form.subcategoria || null,
     }),
     onSuccess: onDone,
     onError: (e) => setError(e?.response?.data?.error?.message || e.message),
@@ -72,6 +95,28 @@ export default function EditarTareaDrawer({ obra, subrubro, empresaId, onClose, 
         <Stack direction="row" spacing={1}>
           <TextField label="Unidad" value={form.unidad} onChange={(e) => set('unidad', e.target.value)} size="small" sx={{ flex: 1 }} />
           <TextField label="Cantidad" type="number" value={form.cantidad} onChange={(e) => set('cantidad', e.target.value)} size="small" sx={{ flex: 1 }} />
+        </Stack>
+        <Stack direction="row" spacing={1}>
+          <Autocomplete
+            freeSolo
+            options={categoriaOpciones}
+            value={form.categoria}
+            onInputChange={(_, v) => set('categoria', v)}
+            sx={{ flex: 1 }}
+            renderInput={(params) => (
+              <TextField {...params} label="Categoría" size="small" helperText="Para auto-imputar gastos del bot" />
+            )}
+          />
+          <Autocomplete
+            freeSolo
+            options={subcategoriaOpciones}
+            value={form.subcategoria}
+            onInputChange={(_, v) => set('subcategoria', v)}
+            sx={{ flex: 1 }}
+            renderInput={(params) => (
+              <TextField {...params} label="Subcategoría" size="small" />
+            )}
+          />
         </Stack>
 
         <Typography variant="caption" color="text.secondary" sx={{ pt: 0.5 }}>Cronograma</Typography>

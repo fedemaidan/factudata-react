@@ -6,6 +6,7 @@ import {
   Button,
   Chip,
   CircularProgress,
+  Collapse,
   Container,
   Dialog,
   DialogActions,
@@ -23,6 +24,7 @@ import {
   TextField,
   ToggleButton,
   ToggleButtonGroup,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
@@ -35,6 +37,7 @@ import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import FolderIcon from '@mui/icons-material/Folder';
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useAuthContext } from 'src/contexts/auth-context';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
@@ -58,11 +61,16 @@ const DetallePlanPage = () => {
   const [reverting, setReverting] = useState(null);
   const [tipoCobro, setTipoCobro] = useState('total'); // 'total' | 'parcial'
   const [montoParcial, setMontoParcial] = useState('');
+  const [modoCobro, setModoCobro] = useState('nuevo'); // 'nuevo' | 'vincular' | 'solo_estado'
+  const [movVinculables, setMovVinculables] = useState([]);
+  const [movSel, setMovSel] = useState(null);
 
   // Edit cuota dialog
   const [editCuota, setEditCuota] = useState(null); // cuota object or null
   const [editForm, setEditForm] = useState({ monto: '', fecha_vencimiento: '', descripcion: '' });
   const [editCacInput, setEditCacInput] = useState(''); // CAC units input para planes indexados
+  const [editCacRef, setEditCacRef] = useState(null); // override del índice de referencia (cac_indice_ref)
+  const [editCacRefMes, setEditCacRefMes] = useState(''); // mes YYYY-MM para buscar el índice publicado
 
   // Delete cuota dialog
   const [deleteCuota, setDeleteCuota] = useState(null);
@@ -71,9 +79,23 @@ const DetallePlanPage = () => {
   // Add cuota dialog
   const [showAddCuota, setShowAddCuota] = useState(false);
   const [addForm, setAddForm] = useState({ monto: '', fecha_vencimiento: '', descripcion: '' });
+  const [addUnidades, setAddUnidades] = useState(''); // unidades CAC/USD en el diálogo de agregar (planes indexados)
   // CAC actual para planes indexados — se usa para calcular el valor en pesos ajustado
   const [cacActual, setCacActual] = useState(null);
   const [usdActual, setUsdActual] = useState(null);
+  // A2 (TAR-466 pt.1): desplegar el detalle de cuotas que componen el total cobrado
+  const [showCobradoDetail, setShowCobradoDetail] = useState(false);
+  // Fase 4 — edición de total y saldo sin asignar
+  const [showEditTotal, setShowEditTotal] = useState(false);
+  const [editTotalValue, setEditTotalValue] = useState('');
+  const [showAsignarSaldo, setShowAsignarSaldo] = useState(false);
+  const [savingSaldo, setSavingSaldo] = useState(false);
+  // Fase 5 — ajuste manual periódico
+  const [showAjuste, setShowAjuste] = useState(false);
+  const [ajustePct, setAjustePct] = useState('');
+  // Anexos (Fase 6 ronda 2)
+  const [showAnexo, setShowAnexo] = useState(false);
+  const [anexoForm, setAnexoForm] = useState({ monto: '', motivo: '', modo: 'prorratear' });
 
   useEffect(() => {
     if (!user) return;
@@ -123,11 +145,27 @@ const DetallePlanPage = () => {
     return cuota.monto || 0;
   };
 
+  // A3 (TAR-466 pt.2): para cuotas ya cobradas mostramos el monto REAL cobrado,
+  // no el valor ajustado al índice de hoy (que confunde: parece cobrado de más).
+  const getMontoDisplay = (cuota) => {
+    if (!cuota) return 0;
+    if (cuota.estado === 'cobrada') return cuota.monto_cobrado || 0;
+    return getMontoCuota(cuota);
+  };
+  // ¿La cuota cobrada tiene un valor "actualizado a hoy" distinto al real? (para tooltip)
+  const getValorActualizado = (cuota) => (cuota?.estado === 'cobrada' ? getMontoCuota(cuota) : null);
+
   const handleCobrarClick = (cuotaId) => {
     const cuota = (plan.cuotas || []).find((c) => c._id === cuotaId);
     setConfirmCobrar(cuota || { _id: cuotaId });
     setTipoCobro('total');
     setMontoParcial('');
+    setModoCobro('nuevo');
+    setMovSel(null);
+    // Precargar movimientos vinculables (por si el usuario elige "vincular")
+    planCobroService.listarMovimientosVinculables(empresaId, plan?.proyecto_id)
+      .then((res) => setMovVinculables(res?.data?.data || []))
+      .catch(() => setMovVinculables([]));
   };
 
   const handleCobrarConfirm = async () => {
@@ -135,20 +173,30 @@ const DetallePlanPage = () => {
     const cuotaId = confirmCobrar._id;
     const parcial = tipoCobro === 'parcial' ? parseNumberInput(montoParcial) : null;
     if (tipoCobro === 'parcial' && (!parcial || Number(parcial) <= 0)) return;
+    if (modoCobro === 'vincular' && !movSel) {
+      setAlert({ open: true, message: 'Elegí un movimiento para vincular', severity: 'warning' });
+      return;
+    }
     setConfirmCobrar(null);
     setCobrandoId(cuotaId);
     try {
       await marcarCobrada(cuotaId, {
         fecha_cobrado: new Date().toISOString().split('T')[0],
         monto_parcial: parcial ? Number(parcial) : undefined,
+        modo: modoCobro,
+        movimiento_id: modoCobro === 'vincular' ? movSel?._id : undefined,
       });
       await refresh();
-      const msg = tipoCobro === 'parcial'
-        ? 'Pago parcial registrado.'
-        : 'Cuota cobrada. Movimiento de caja registrado.';
+      const msg = modoCobro === 'vincular'
+        ? 'Cuota cobrada vinculando el movimiento existente.'
+        : modoCobro === 'solo_estado'
+          ? 'Cuota marcada como cobrada (sin movimiento de caja).'
+          : tipoCobro === 'parcial'
+            ? 'Pago parcial registrado.'
+            : 'Cuota cobrada. Movimiento de caja registrado.';
       setAlert({ open: true, message: msg, severity: 'success' });
     } catch (err) {
-      setAlert({ open: true, message: err.message || 'Error al marcar cuota', severity: 'error' });
+      setAlert({ open: true, message: err?.response?.data?.error || err.message || 'Error al marcar cuota', severity: 'error' });
     } finally {
       setCobrandoId(null);
     }
@@ -169,17 +217,38 @@ const DetallePlanPage = () => {
 
   const handleEditClick = (cuota) => {
     setEditCuota(cuota);
-    // Para planes CAC usamos el monto ajustado al índice actual; si no cargó aún, usamos nominal
+    // El monto persistido (cuota.monto) es el nominal al índice BASE del plan
+    // (monto_cac × cac_indice_base). Editamos contra esa base, no contra el índice de hoy,
+    // para que las unidades CAC queden consistentes con la creación del plan.
     const esCac = plan?.indexacion === 'CAC' && cuota.monto_cac;
-    const montoArs = esCac ? getMontoCuota(cuota) : (cuota.monto || 0);
     setEditForm({
-      monto: String(montoArs),
+      monto: String(cuota.monto || 0),
       fecha_vencimiento: cuota.fecha_vencimiento
         ? new Date(cuota.fecha_vencimiento).toISOString().split('T')[0]
         : '',
       descripcion: cuota.descripcion || '',
     });
     setEditCacInput(esCac ? String(Math.round(cuota.monto_cac * 100) / 100) : '');
+    setEditCacRef(cuota.cac_indice_ref || null);
+    setEditCacRefMes('');
+  };
+
+  // Al elegir un mes, busca el índice CAC publicado y lo fija como referencia de la cuota.
+  const handleEditCacRefMes = async (mes) => {
+    setEditCacRefMes(mes);
+    if (!mes) { setEditCacRef(null); return; }
+    try {
+      const res = await planCobroService.previewCAC(`${mes}-01`, plan?.cac_tipo || 'general');
+      const idx = res?.data?.data?.cac_indice || null;
+      if (idx) {
+        setEditCacRef(idx);
+        // Mantiene los pesos pactados y recalcula las unidades contra la nueva referencia.
+        const pesos = parseFloat(parseNumberInput(editForm.monto));
+        if (!isNaN(pesos)) setEditCacInput(String(Math.round((pesos / idx) * 100) / 100));
+      }
+    } catch {
+      /* si falla el preview, se mantiene la referencia base */
+    }
   };
 
   const handleEditConfirm = async () => {
@@ -192,6 +261,7 @@ const DetallePlanPage = () => {
       await editarCuota(editCuota._id, {
         monto: Number(montoNum),
         ...(esCacPlan && cacNum > 0 ? { monto_cac: cacNum } : {}),
+        ...(esCacPlan ? { cac_indice_ref: editCacRef || null } : {}),
         fecha_vencimiento: editForm.fecha_vencimiento || undefined,
         descripcion: editForm.descripcion || undefined,
       });
@@ -199,6 +269,76 @@ const DetallePlanPage = () => {
       setAlert({ open: true, message: 'Cuota actualizada', severity: 'success' });
     } catch (err) {
       setAlert({ open: true, message: err.message || 'Error al editar cuota', severity: 'error' });
+    }
+  };
+
+  // ─── Fase 4: total + saldo sin asignar ───────────────────────────────────────
+  const handleEditTotalConfirm = async () => {
+    const val = parseNumberInput(editTotalValue);
+    if (!val || Number(val) <= 0) return;
+    setSavingSaldo(true);
+    try {
+      await planCobroService.editarPlan(id, { empresa_id: empresaId, monto_total: Number(val) });
+      setShowEditTotal(false);
+      await refresh();
+      setAlert({ open: true, message: 'Total del plan actualizado', severity: 'success' });
+    } catch (err) {
+      setAlert({ open: true, message: err?.response?.data?.error || 'Error al editar total', severity: 'error' });
+    } finally {
+      setSavingSaldo(false);
+    }
+  };
+
+  const runSaldoAction = async (fn, okMsg) => {
+    setSavingSaldo(true);
+    try {
+      await fn();
+      setShowAsignarSaldo(false);
+      await refresh();
+      setAlert({ open: true, message: okMsg, severity: 'success' });
+    } catch (err) {
+      setAlert({ open: true, message: err?.response?.data?.error || 'Error al resolver el saldo', severity: 'error' });
+    } finally {
+      setSavingSaldo(false);
+    }
+  };
+
+  const handleAplicarAjuste = async () => {
+    const pct = parseFloat(String(ajustePct).replace(',', '.'));
+    if (isNaN(pct)) return;
+    setSavingSaldo(true);
+    try {
+      await planCobroService.aplicarAjusteManual(id, { empresa_id: empresaId, pct });
+      setShowAjuste(false);
+      setAjustePct('');
+      await refresh();
+      setAlert({ open: true, message: 'Ajuste aplicado a las cuotas pendientes', severity: 'success' });
+    } catch (err) {
+      setAlert({ open: true, message: err?.response?.data?.error || 'Error al aplicar el ajuste', severity: 'error' });
+    } finally {
+      setSavingSaldo(false);
+    }
+  };
+
+  const handleAnexoConfirm = async () => {
+    const montoNum = parseFloat(parseNumberInput(anexoForm.monto));
+    if (!montoNum) return;
+    setSavingSaldo(true);
+    try {
+      await planCobroService.agregarAnexo(id, {
+        empresa_id: empresaId,
+        monto: montoNum,
+        motivo: anexoForm.motivo || undefined,
+        modo: anexoForm.modo,
+      });
+      setShowAnexo(false);
+      setAnexoForm({ monto: '', motivo: '', modo: 'prorratear' });
+      await refresh();
+      setAlert({ open: true, message: 'Anexo aplicado', severity: 'success' });
+    } catch (err) {
+      setAlert({ open: true, message: err?.response?.data?.error || 'Error al aplicar el anexo', severity: 'error' });
+    } finally {
+      setSavingSaldo(false);
     }
   };
 
@@ -216,14 +356,17 @@ const DetallePlanPage = () => {
   const handleAddConfirm = async () => {
     const montoNum = parseNumberInput(addForm.monto);
     if (!montoNum || Number(montoNum) <= 0) return;
+    const cacNum = plan?.indexacion === 'CAC' ? parseFloat(String(addUnidades).replace(',', '.')) : null;
     try {
       await agregarCuota({
         monto: Number(montoNum),
+        ...(cacNum > 0 ? { monto_cac: cacNum } : {}),
         fecha_vencimiento: addForm.fecha_vencimiento || undefined,
         descripcion: addForm.descripcion || undefined,
       });
       setShowAddCuota(false);
       setAddForm({ monto: '', fecha_vencimiento: '', descripcion: '' });
+      setAddUnidades('');
       setAlert({ open: true, message: 'Cuota agregada', severity: 'success' });
     } catch (err) {
       setAlert({ open: true, message: err.message || 'Error al agregar cuota', severity: 'error' });
@@ -307,6 +450,10 @@ const DetallePlanPage = () => {
     resumen.total > 0 ? Math.round(((resumen.cobrado || 0) / resumen.total) * 100) : 0;
   const showCAC = !!plan.indexacion;
   const cacIndiceBase = plan.cotizacion_snapshot?.cac_indice || null;
+  const usdIndiceBase = plan.cotizacion_snapshot?.dolar_indice || null;
+  // Índice base efectivo para el diálogo de agregar cuota (CAC o USD).
+  const addIndiceBase = plan.indexacion === 'CAC' ? cacIndiceBase : plan.indexacion === 'USD' ? usdIndiceBase : null;
+  const addUnidadLabel = plan.indexacion === 'CAC' ? 'CAC' : 'USD';
   const isCuotaVencida = (cuota) => cuota?.estado_ui === 'vencida' || cuota?.estado_ui === 'cobrada_parcial_vencida';
   const cuotasOrdenadas = [...allCuotas].sort((a, b) => {
     const numeroA = Number(a?.numero || 0);
@@ -332,12 +479,14 @@ const DetallePlanPage = () => {
       (plan.indexacion === 'USD' && !!usdActual) ||
       (plan.indexacion !== 'USD' && !!cacActual)
     );
-  const totalAjustado = hasIndiceActual
-    ? allCuotas.reduce((acc, c) => acc + getMontoCuota(c), 0)
-    : null;
+  // Pendiente = lo que resta cobrar de cuotas no saldadas, a valor actualizado.
   const pendienteAjustado = hasIndiceActual
-    ? allCuotas.filter((c) => c.estado !== 'cobrada').reduce((acc, c) => acc + getMontoCuota(c), 0)
+    ? allCuotas
+        .filter((c) => c.estado !== 'cobrada')
+        .reduce((acc, c) => acc + Math.max(0, getMontoCuota(c) - (c.monto_cobrado || 0)), 0)
     : null;
+  // Total = cobrado REAL + pendiente actualizado (no reajusta lo ya cobrado a valor de hoy).
+  const totalAjustado = hasIndiceActual ? (resumen.cobrado || 0) + pendienteAjustado : null;
 
   return (
     <>
@@ -406,6 +555,26 @@ const DetallePlanPage = () => {
               >
                 Exportar PDF
               </Button>
+              {plan.estado === 'activo' && (
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={<EditIcon />}
+                  onClick={() => { setEditTotalValue(String(plan.monto_total || resumen.total || '')); setShowEditTotal(true); }}
+                >
+                  Editar total
+                </Button>
+              )}
+              {plan.estado === 'activo' && plan.indexacion === 'manual' && (
+                <Button variant="outlined" size="small" onClick={() => setShowAjuste(true)}>
+                  Aplicar ajuste
+                </Button>
+              )}
+              {plan.estado === 'activo' && (
+                <Button variant="outlined" size="small" onClick={() => setShowAnexo(true)}>
+                  Agregar anexo
+                </Button>
+              )}
               {plan.estado === 'borrador' && (
                 <>
                   <Button
@@ -455,6 +624,7 @@ const DetallePlanPage = () => {
                 value: formatCurrency(resumen.cobrado || 0, monedaDisplay),
                 borderColor: '#2E7D32',
                 subtitle: `${cuotasCobradas} de ${totalCuotas} cuotas`,
+                expandable: cuotasCobradas > 0,
               },
               {
                 label: 'PENDIENTE',
@@ -466,10 +636,13 @@ const DetallePlanPage = () => {
               <Grid item xs={12} sm={4} key={m.label}>
                 <Paper
                   variant="outlined"
+                  onClick={m.expandable ? () => setShowCobradoDetail((v) => !v) : undefined}
                   sx={{
                     p: 2,
                     textAlign: 'center',
                     borderTop: `3px solid ${m.borderColor}`,
+                    cursor: m.expandable ? 'pointer' : 'default',
+                    '&:hover': m.expandable ? { bgcolor: 'grey.50' } : undefined,
                   }}
                 >
                   <Typography variant="overline" color="text.secondary" display="block">
@@ -483,10 +656,165 @@ const DetallePlanPage = () => {
                       {m.subtitle}
                     </Typography>
                   )}
+                  {m.expandable && (
+                    <Stack direction="row" spacing={0.5} justifyContent="center" alignItems="center" mt={0.5}>
+                      <Typography variant="caption" color="success.main" fontWeight={600}>
+                        {showCobradoDetail ? 'Ocultar detalle' : 'Ver detalle'}
+                      </Typography>
+                      <KeyboardArrowDownIcon
+                        sx={{
+                          fontSize: 16,
+                          color: 'success.main',
+                          transition: 'transform 0.2s',
+                          transform: showCobradoDetail ? 'rotate(180deg)' : 'none',
+                        }}
+                      />
+                    </Stack>
+                  )}
                 </Paper>
               </Grid>
             ))}
           </Grid>
+
+          {/* A2: detalle de cuotas cobradas que componen el total */}
+          <Collapse in={showCobradoDetail} unmountOnExit>
+            <Paper variant="outlined" sx={{ p: 2, mb: 3, borderRadius: 2 }}>
+              <Typography variant="subtitle2" fontWeight={700} mb={1}>
+                Detalle de lo cobrado
+              </Typography>
+              <Stack spacing={0.75}>
+                {allCuotas
+                  .filter((c) => c.monto_cobrado > 0)
+                  .sort((a, b) => new Date(a.fecha_cobrado || 0) - new Date(b.fecha_cobrado || 0))
+                  .map((c) => {
+                    const actualizado = getValorActualizado(c);
+                    const mostrarActualizado =
+                      actualizado != null && Math.abs(actualizado - (c.monto_cobrado || 0)) > 1;
+                    return (
+                      <Stack
+                        key={c._id}
+                        direction="row"
+                        justifyContent="space-between"
+                        alignItems="center"
+                        sx={{ py: 0.5, borderBottom: '1px solid', borderColor: 'divider' }}
+                      >
+                        <Box>
+                          <Typography variant="body2" fontWeight={600}>
+                            Cuota {c.numero}
+                            {c.estado === 'cobrada_parcial' ? ' (parcial)' : ''}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {c.fecha_cobrado
+                              ? `Cobrada: ${new Date(c.fecha_cobrado).toLocaleDateString('es-AR')}`
+                              : 'Sin fecha de cobro'}
+                            {c.descripcion ? ` · ${c.descripcion}` : ''}
+                          </Typography>
+                        </Box>
+                        <Stack alignItems="flex-end">
+                          <Typography variant="body2" fontWeight={700}>
+                            {formatCurrency(c.monto_cobrado || 0, monedaDisplay)}
+                          </Typography>
+                          {mostrarActualizado && (
+                            <Typography variant="caption" color="text.secondary">
+                              Valor actualizado hoy: {formatCurrency(actualizado, monedaDisplay)}
+                            </Typography>
+                          )}
+                          {(c.movimientos || []).map((m) => (
+                            <Typography key={m._id} variant="caption" color="text.secondary">
+                              {m.codigo_operacion ? `#${m.codigo_operacion} · ` : ''}
+                              {m.fecha ? new Date(m.fecha).toLocaleDateString('es-AR') : 's/f'}
+                              {' · '}
+                              {formatCurrency(m.monto || 0, m.moneda || monedaDisplay)}
+                              {m.proyecto_nombre ? ` · ${m.proyecto_nombre}` : ''}
+                            </Typography>
+                          ))}
+                        </Stack>
+                      </Stack>
+                    );
+                  })}
+                <Stack direction="row" justifyContent="space-between" sx={{ pt: 0.5 }}>
+                  <Typography variant="body2" fontWeight={700}>Total cobrado</Typography>
+                  <Typography variant="body2" fontWeight={700} color="success.main">
+                    {formatCurrency(resumen.cobrado || 0, monedaDisplay)}
+                  </Typography>
+                </Stack>
+              </Stack>
+            </Paper>
+          </Collapse>
+
+          {/* Fase 4: saldo sin asignar (solo plan activo) */}
+          {plan.estado === 'activo' && resumen.hay_saldo && (
+            <Paper
+              variant="outlined"
+              sx={{ p: 2, mb: 3, borderRadius: 2, borderColor: '#FFB74D', bgcolor: '#FFF8E1' }}
+            >
+              <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ sm: 'center' }} spacing={1.5}>
+                <Box>
+                  <Typography variant="subtitle2" fontWeight={700}>
+                    Saldo sin asignar: {formatCurrency(resumen.saldo_sin_asignar, monedaDisplay)}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {resumen.saldo_sin_asignar > 0
+                      ? 'El total del plan es mayor a lo distribuido en cuotas.'
+                      : 'Las cuotas suman más que el total del plan.'}
+                  </Typography>
+                </Box>
+                <Stack direction="row" spacing={1} flexWrap="wrap">
+                  <Button size="small" variant="outlined" onClick={() => setShowAsignarSaldo(true)}>
+                    Asignar a una cuota
+                  </Button>
+                  {resumen.saldo_sin_asignar > 0 && (
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      disabled={savingSaldo}
+                      onClick={() => runSaldoAction(
+                        () => planCobroService.agregarCuotaDesdeSaldo(id, { empresa_id: empresaId }),
+                        'Cuota creada con el saldo',
+                      )}
+                    >
+                      Crear cuota nueva
+                    </Button>
+                  )}
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    color="warning"
+                    disabled={savingSaldo}
+                    onClick={() => runSaldoAction(
+                      () => planCobroService.ajustarTotalAlDistribuido(id, empresaId),
+                      'Total ajustado a lo distribuido',
+                    )}
+                  >
+                    Achicar plan al distribuido
+                  </Button>
+                </Stack>
+              </Stack>
+            </Paper>
+          )}
+
+          {/* Historial de anexos */}
+          {(plan.anexos || []).length > 0 && (
+            <Paper variant="outlined" sx={{ p: 2, mb: 3, borderRadius: 2 }}>
+              <Typography variant="subtitle2" fontWeight={700} mb={1}>Anexos</Typography>
+              <Stack spacing={0.5}>
+                {(plan.anexos || []).map((a) => (
+                  <Stack key={a.id} direction="row" justifyContent="space-between" alignItems="center"
+                    sx={{ py: 0.5, borderBottom: '1px solid', borderColor: 'divider' }}>
+                    <Box>
+                      <Typography variant="body2">{a.motivo || 'Anexo'}</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {a.fecha ? new Date(a.fecha).toLocaleDateString('es-AR') : ''} · {a.modo === 'nueva_cuota' ? 'cuota nueva' : 'prorrateado'}
+                      </Typography>
+                    </Box>
+                    <Typography variant="body2" fontWeight={700} color={a.monto >= 0 ? 'success.main' : 'error.main'}>
+                      {a.monto >= 0 ? '+' : ''}{formatCurrency(a.monto, monedaDisplay)}
+                    </Typography>
+                  </Stack>
+                ))}
+              </Stack>
+            </Paper>
+          )}
 
           {/* Barra de progreso */}
           <Box mb={4}>
@@ -750,9 +1078,21 @@ const DetallePlanPage = () => {
                           </Typography>
                         </Box>
                         <Stack alignItems={{ xs: 'flex-start', sm: 'flex-end' }} spacing={0.75}>
-                          <Typography variant="body2" fontWeight={700}>
-                            {formatCurrency(getMontoCuota(cuota), monedaDisplay)}
-                          </Typography>
+                          {(() => {
+                            const actualizado = getValorActualizado(cuota);
+                            const mostrarTooltip =
+                              actualizado != null && Math.abs(actualizado - (cuota.monto_cobrado || 0)) > 1;
+                            const montoTxt = (
+                              <Typography variant="body2" fontWeight={700}>
+                                {formatCurrency(getMontoDisplay(cuota), monedaDisplay)}
+                              </Typography>
+                            );
+                            return mostrarTooltip ? (
+                              <Tooltip title={`Valor actualizado a hoy: ${formatCurrency(actualizado, monedaDisplay)}`}>
+                                {montoTxt}
+                              </Tooltip>
+                            ) : montoTxt;
+                          })()}
                           {plan.estado === 'activo' && (
                             <Stack direction="row" spacing={1} flexWrap="wrap" justifyContent={{ sm: 'flex-end' }}>
                               {esCobrada || esParcial ? (
@@ -854,8 +1194,57 @@ const DetallePlanPage = () => {
                   />
                 )}
 
+                {/* Modo: crear ingreso, vincular uno existente, o solo estado */}
+                <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 2 }}>
+                  ¿Cómo lo registramos?
+                </Typography>
+                <ToggleButtonGroup
+                  value={modoCobro}
+                  exclusive
+                  onChange={(_, val) => { if (val) { setModoCobro(val); setMovSel(null); } }}
+                  size="small"
+                  sx={{ mt: 0.5, flexWrap: 'wrap' }}
+                >
+                  <ToggleButton value="nuevo">Nuevo ingreso</ToggleButton>
+                  <ToggleButton value="vincular">Vincular pago existente</ToggleButton>
+                  <ToggleButton value="solo_estado">Solo marcar</ToggleButton>
+                </ToggleButtonGroup>
+
+                {modoCobro === 'vincular' && (
+                  <Box sx={{ mt: 1.5, maxHeight: 200, overflowY: 'auto', border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                    {movVinculables.length === 0 ? (
+                      <Typography variant="body2" color="text.secondary" sx={{ p: 1.5 }}>
+                        No hay ingresos sin vincular.
+                      </Typography>
+                    ) : movVinculables.map((m) => (
+                      <Stack
+                        key={m._id}
+                        direction="row"
+                        justifyContent="space-between"
+                        alignItems="center"
+                        onClick={() => setMovSel(m)}
+                        sx={{ px: 1.5, py: 1, cursor: 'pointer', bgcolor: movSel?._id === m._id ? 'primary.50' : 'transparent', borderBottom: '1px solid', borderColor: 'divider' }}
+                      >
+                        <Box>
+                          <Typography variant="body2" fontWeight={movSel?._id === m._id ? 700 : 500}>
+                            {m.codigo_operacion ? `#${m.codigo_operacion} · ` : ''}{formatCurrency(m.monto || 0, m.moneda || monedaDisplay)}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {m.fecha ? new Date(m.fecha).toLocaleDateString('es-AR') : 's/f'}{m.detalle ? ` · ${m.detalle}` : ''}
+                          </Typography>
+                        </Box>
+                        {movSel?._id === m._id && <CheckCircleIcon color="primary" fontSize="small" />}
+                      </Stack>
+                    ))}
+                  </Box>
+                )}
+
                 <Typography variant="body2" color="text.secondary" mt={2}>
-                  Se registrará un movimiento de caja automáticamente.
+                  {modoCobro === 'nuevo'
+                    ? 'Se registrará un movimiento de caja automáticamente.'
+                    : modoCobro === 'vincular'
+                      ? 'Se vinculará el pago ya cargado, sin duplicar el ingreso.'
+                      : 'Se marcará como cobrada sin generar movimiento de caja.'}
                 </Typography>
               </>
             );
@@ -867,9 +1256,12 @@ const DetallePlanPage = () => {
             color="success"
             variant="contained"
             onClick={handleCobrarConfirm}
-            disabled={tipoCobro === 'parcial' && (!montoParcial || Number(montoParcial) <= 0)}
+            disabled={
+              (tipoCobro === 'parcial' && (!montoParcial || Number(montoParcial) <= 0)) ||
+              (modoCobro === 'vincular' && !movSel)
+            }
           >
-            {tipoCobro === 'parcial' ? 'Cobrar parcial' : 'Confirmar cobro'}
+            {modoCobro === 'solo_estado' ? 'Marcar cobrada' : tipoCobro === 'parcial' ? 'Cobrar parcial' : 'Confirmar cobro'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -940,6 +1332,9 @@ const DetallePlanPage = () => {
 
           <Stack spacing={2}>
             {plan?.indexacion === 'CAC' && editCuota?.monto_cac ? (
+              (() => {
+                const refEfectivo = editCacRef || cacIndiceBase;
+                return (
               <Stack spacing={1.5}>
                 <TextField
                   label="Unidades CAC *"
@@ -948,8 +1343,8 @@ const DetallePlanPage = () => {
                     const raw = e.target.value.replace(/[^\d.,]/g, '');
                     setEditCacInput(raw);
                     const num = parseFloat(raw.replace(',', '.'));
-                    if (!isNaN(num) && cacActual) {
-                      setEditForm((f) => ({ ...f, monto: String(Math.round(num * cacActual * 100) / 100) }));
+                    if (!isNaN(num) && refEfectivo) {
+                      setEditForm((f) => ({ ...f, monto: String(Math.round(num * refEfectivo * 100) / 100) }));
                     }
                   }}
                   fullWidth
@@ -958,23 +1353,44 @@ const DetallePlanPage = () => {
                   InputProps={{ endAdornment: <InputAdornment position="end">CAC</InputAdornment> }}
                 />
                 <TextField
-                  label={cacActual ? 'Equivalente en ARS (índice actual)' : 'Equivalente en ARS (nominal)'}
+                  label="Equivalente en ARS"
                   value={formatNumberInput(editForm.monto)}
                   onChange={(e) => {
                     const raw = parseNumberInput(e.target.value);
                     setEditForm((f) => ({ ...f, monto: raw }));
                     const num = parseFloat(raw);
-                    if (!isNaN(num) && cacActual) {
-                      setEditCacInput(String(Math.round((num / cacActual) * 100) / 100));
+                    if (!isNaN(num) && refEfectivo) {
+                      setEditCacInput(String(Math.round((num / refEfectivo) * 100) / 100));
                     }
                   }}
                   fullWidth
                   size="small"
                   inputProps={{ inputMode: 'decimal' }}
                   InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment> }}
-                  helperText={cacActual ? `Índice CAC actual: ${cacActual.toLocaleString('es-AR')}` : 'Índice CAC no cargado'}
+                  helperText={
+                    refEfectivo
+                      ? `Índice CAC de referencia: ${refEfectivo.toLocaleString('es-AR')}${editCacRef ? ' (personalizado)' : ' (base del plan)'}`
+                      : 'Índice CAC base no disponible'
+                  }
                 />
+                <TextField
+                  label="Fijar índice por mes (opcional)"
+                  type="month"
+                  value={editCacRefMes}
+                  onChange={(e) => handleEditCacRefMes(e.target.value)}
+                  fullWidth
+                  size="small"
+                  InputLabelProps={{ shrink: true }}
+                  helperText="Usa el valor de CAC publicado de ese mes como referencia de la cuota"
+                />
+                {editCacRef && (
+                  <Button size="small" onClick={() => { setEditCacRef(null); setEditCacRefMes(''); const p = parseFloat(parseNumberInput(editForm.monto)); if (!isNaN(p) && cacIndiceBase) setEditCacInput(String(Math.round((p / cacIndiceBase) * 100) / 100)); }}>
+                    Volver al índice base del plan
+                  </Button>
+                )}
               </Stack>
+                );
+              })()
             ) : (
               <TextField
                 label="Monto *"
@@ -1050,15 +1466,49 @@ const DetallePlanPage = () => {
         <DialogTitle>Agregar cuota</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
-            <TextField
-              label="Monto *"
-              value={formatNumberInput(addForm.monto)}
-              onChange={(e) => setAddForm((f) => ({ ...f, monto: parseNumberInput(e.target.value) }))}
-              fullWidth
-              size="small"
-              inputProps={{ inputMode: 'decimal' }}
-              InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment> }}
-            />
+            {addIndiceBase ? (
+              <>
+                <TextField
+                  label={`Unidades ${addUnidadLabel}`}
+                  value={addUnidades}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/[^\d.,]/g, '');
+                    setAddUnidades(raw);
+                    const num = parseFloat(raw.replace(',', '.'));
+                    if (!isNaN(num)) setAddForm((f) => ({ ...f, monto: String(Math.round(num * addIndiceBase * 100) / 100) }));
+                  }}
+                  fullWidth
+                  size="small"
+                  inputProps={{ inputMode: 'decimal' }}
+                  InputProps={{ endAdornment: <InputAdornment position="end">{addUnidadLabel}</InputAdornment> }}
+                />
+                <TextField
+                  label="Equivalente en ARS (índice base)"
+                  value={formatNumberInput(addForm.monto)}
+                  onChange={(e) => {
+                    const raw = parseNumberInput(e.target.value);
+                    setAddForm((f) => ({ ...f, monto: raw }));
+                    const num = parseFloat(raw);
+                    if (!isNaN(num)) setAddUnidades(String(Math.round((num / addIndiceBase) * 100) / 100));
+                  }}
+                  fullWidth
+                  size="small"
+                  inputProps={{ inputMode: 'decimal' }}
+                  InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment> }}
+                  helperText={`Índice base del plan: ${addIndiceBase.toLocaleString('es-AR')}. En la lista se muestra el equivalente al índice de hoy.`}
+                />
+              </>
+            ) : (
+              <TextField
+                label="Monto *"
+                value={formatNumberInput(addForm.monto)}
+                onChange={(e) => setAddForm((f) => ({ ...f, monto: parseNumberInput(e.target.value) }))}
+                fullWidth
+                size="small"
+                inputProps={{ inputMode: 'decimal' }}
+                InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment> }}
+              />
+            )}
             <TextField
               label="Fecha de vencimiento"
               type="date"
@@ -1110,6 +1560,138 @@ const DetallePlanPage = () => {
           <Button color="error" variant="contained" onClick={handleEliminar}>
             Eliminar
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Fase 4: editar total del plan activo */}
+      <Dialog open={showEditTotal} onClose={() => setShowEditTotal(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Editar total del plan</DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ mb: 2 }}>
+            La diferencia con lo ya distribuido en cuotas quedará como <strong>saldo sin asignar</strong>.
+            Las cuotas ya cobradas no se modifican.
+          </DialogContentText>
+          <TextField
+            label="Nuevo total"
+            value={formatNumberInput(editTotalValue)}
+            onChange={(e) => setEditTotalValue(parseNumberInput(e.target.value))}
+            fullWidth
+            size="small"
+            autoFocus
+            inputProps={{ inputMode: 'decimal' }}
+            InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment> }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowEditTotal(false)}>Cancelar</Button>
+          <Button variant="contained" onClick={handleEditTotalConfirm} disabled={savingSaldo || !editTotalValue}>
+            Guardar
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Anexo: agregado con recálculo */}
+      <Dialog open={showAnexo} onClose={() => setShowAnexo(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Agregar anexo</DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ mb: 2 }}>
+            Un anexo suma (o resta) al total del plan y queda en el historial. Elegí cómo distribuirlo.
+          </DialogContentText>
+          <Stack spacing={2}>
+            <TextField
+              label="Monto del anexo"
+              value={formatNumberInput(anexoForm.monto)}
+              onChange={(e) => setAnexoForm((f) => ({ ...f, monto: parseNumberInput(e.target.value) }))}
+              fullWidth size="small" autoFocus
+              inputProps={{ inputMode: 'decimal' }}
+              InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment> }}
+              helperText="Podés usar negativos para reducir el alcance."
+            />
+            <ToggleButtonGroup
+              value={anexoForm.modo}
+              exclusive
+              size="small"
+              onChange={(_, v) => { if (v) setAnexoForm((f) => ({ ...f, modo: v })); }}
+            >
+              <ToggleButton value="prorratear">Prorratear en pendientes</ToggleButton>
+              <ToggleButton value="nueva_cuota">Crear cuota nueva</ToggleButton>
+            </ToggleButtonGroup>
+            <TextField
+              label="Motivo"
+              value={anexoForm.motivo}
+              onChange={(e) => setAnexoForm((f) => ({ ...f, motivo: e.target.value }))}
+              fullWidth size="small"
+              placeholder="Ej: ampliación de obra"
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowAnexo(false)}>Cancelar</Button>
+          <Button variant="contained" onClick={handleAnexoConfirm} disabled={savingSaldo || !anexoForm.monto}>
+            Aplicar anexo
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Fase 5: aplicar ajuste manual a las cuotas pendientes */}
+      <Dialog open={showAjuste} onClose={() => setShowAjuste(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Aplicar ajuste a cuotas pendientes</DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ mb: 2 }}>
+            Se reajustan solo las cuotas pendientes por el porcentaje indicado. Las cuotas cobradas no se tocan.
+          </DialogContentText>
+          <TextField
+            label="Porcentaje de ajuste"
+            value={ajustePct}
+            onChange={(e) => setAjustePct(e.target.value.replace(/[^\d.,-]/g, ''))}
+            fullWidth
+            size="small"
+            autoFocus
+            inputProps={{ inputMode: 'decimal' }}
+            InputProps={{ endAdornment: <InputAdornment position="end">%</InputAdornment> }}
+            helperText="Ej.: 10 para +10%. Podés usar negativos."
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowAjuste(false)}>Cancelar</Button>
+          <Button variant="contained" onClick={handleAplicarAjuste} disabled={savingSaldo || ajustePct === ''}>
+            Aplicar
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Fase 4: asignar el saldo a una cuota pendiente */}
+      <Dialog open={showAsignarSaldo} onClose={() => setShowAsignarSaldo(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Asignar saldo a una cuota</DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ mb: 2 }}>
+            Se sumará el saldo ({formatCurrency(resumen.saldo_sin_asignar || 0, monedaDisplay)}) al monto de la cuota elegida.
+          </DialogContentText>
+          <Stack spacing={1}>
+            {(plan.cuotas || [])
+              .filter((c) => c.estado !== 'cobrada' && c.estado !== 'cobrada_parcial')
+              .map((c) => (
+                <Button
+                  key={c._id}
+                  variant="outlined"
+                  disabled={savingSaldo}
+                  onClick={() => runSaldoAction(
+                    () => planCobroService.asignarSaldoACuota(id, c._id, empresaId),
+                    'Saldo asignado a la cuota',
+                  )}
+                  sx={{ justifyContent: 'space-between' }}
+                >
+                  <span>Cuota {c.numero}</span>
+                  <span>{formatCurrency(getMontoCuota(c), monedaDisplay)}</span>
+                </Button>
+              ))}
+            {(plan.cuotas || []).filter((c) => c.estado !== 'cobrada' && c.estado !== 'cobrada_parcial').length === 0 && (
+              <Typography variant="body2" color="text.secondary">No hay cuotas pendientes para asignar.</Typography>
+            )}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowAsignarSaldo(false)}>Cerrar</Button>
         </DialogActions>
       </Dialog>
 
