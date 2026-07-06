@@ -32,6 +32,7 @@ const BLOCK_TYPES = [
   { value: 'collections_aging', label: 'Cobranzas · Antigüedad (aging)', desc: 'Saldo pendiente clasificado por antigüedad: por vencer, 1-30, 31-60, 61-90 y 90+ días.' },
   { value: 'collections_plans', label: 'Cobranzas · Planes', desc: 'Una fila por plan de cobro: total, cobrado, pendiente, avance, próxima cuota y estado.' },
   { value: 'collections_installments', label: 'Cobranzas · Cuotas', desc: 'Detalle de cuotas pendientes con vencimiento, monto, cobrado y saldo.' },
+  { value: 'collections_payment_plan', label: 'Cobranzas · Plan de cuotas', desc: 'Plan de pagos con monto histórico, índice, unidades CAC/USD y actualizado a hoy.' },
 ];
 
 const OPERACIONES = [
@@ -340,6 +341,17 @@ function defaultBlock(type) {
         campo_monto: 'total',
         top_n: null,
         mostrar_total: true,
+      };
+    case 'collections_payment_plan':
+      return {
+        ...base,
+        titulo: 'Plan de cuotas',
+        plan_estados: ['activo'],
+        cuotas_estado: 'pendientes',
+        tipo_indexacion: 'auto',
+        valuar_a_hoy: true,
+        mostrar_indices: true,
+        page_size: 100,
       };
     default:
       return base;
@@ -1780,7 +1792,8 @@ function CollectionsConfig({ block, onChange }) {
   const estados = Array.isArray(block.plan_estados) && block.plan_estados.length ? block.plan_estados : ['activo'];
   const esChart = block.type === 'collections_chart';
   const muestraVencidas = block.type === 'collections_schedule' || block.type === 'collections_aging' || esChart;
-  const esCuotas = block.type === 'collections_installments';
+  const esCuotas = block.type === 'collections_installments' || block.type === 'collections_payment_plan';
+  const esPlanCuotas = block.type === 'collections_payment_plan';
 
   return (
     <Stack spacing={2}>
@@ -1826,6 +1839,49 @@ function CollectionsConfig({ block, onChange }) {
         />
       )}
 
+      {esPlanCuotas && (
+        <>
+          <FormControl size="small" fullWidth>
+            <InputLabel>Cuotas a mostrar</InputLabel>
+            <Select
+              value={block.cuotas_estado || 'pendientes'}
+              label="Cuotas a mostrar"
+              onChange={(e) => onChange('cuotas_estado', e.target.value)}
+            >
+              <MenuItem value="pendientes">Pendientes</MenuItem>
+              <MenuItem value="todas">Todas</MenuItem>
+              <MenuItem value="cobradas">Cobradas</MenuItem>
+              <MenuItem value="vencidas">Vencidas</MenuItem>
+            </Select>
+          </FormControl>
+
+          <FormControl size="small" fullWidth>
+            <InputLabel>Indexación a mostrar</InputLabel>
+            <Select
+              value={block.tipo_indexacion || 'auto'}
+              label="Indexación a mostrar"
+              onChange={(e) => onChange('tipo_indexacion', e.target.value)}
+            >
+              <MenuItem value="auto">Automática según el plan</MenuItem>
+              <MenuItem value="ninguna">Sin indexación / ARS</MenuItem>
+              <MenuItem value="CAC">CAC</MenuItem>
+              <MenuItem value="USD">USD</MenuItem>
+            </Select>
+          </FormControl>
+
+          <FormControlLabel
+            control={
+              <Switch
+                checked={block.mostrar_indices !== false}
+                onChange={(e) => onChange('mostrar_indices', e.target.checked)}
+              />
+            }
+            label={<Typography variant="body2">Mostrar índice base y unidades CAC/USD</Typography>}
+          />
+
+        </>
+      )}
+
       <Autocomplete
         multiple
         size="small"
@@ -1841,8 +1897,8 @@ function CollectionsConfig({ block, onChange }) {
           size="small"
           type="number"
           label="Máximo de cuotas a listar"
-          value={block.page_size || 50}
-          onChange={(e) => onChange('page_size', Number(e.target.value) || 50)}
+          value={block.page_size || (esPlanCuotas ? 100 : 50)}
+          onChange={(e) => onChange('page_size', Number(e.target.value) || (esPlanCuotas ? 100 : 50))}
         />
       )}
     </Stack>

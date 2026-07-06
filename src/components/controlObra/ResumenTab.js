@@ -1,5 +1,5 @@
-import { useQuery } from '@tanstack/react-query';
-import { Box, Divider, Paper, Stack, Typography } from '@mui/material';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Box, Divider, Paper, Stack, Typography, ToggleButton, ToggleButtonGroup } from '@mui/material';
 import { BarChart } from '@mui/x-charts/BarChart';
 import { LineChart } from '@mui/x-charts/LineChart';
 import DashboardIcon from '@mui/icons-material/Dashboard';
@@ -13,6 +13,11 @@ import { KpiCard, fmt, fmtM } from 'src/components/controlObra/ui';
 
 // Tablero de la obra (cockpit): snapshot financiero + qué necesita atención + circuito de plata.
 export default function ResumenTab({ obra, ejec, certs = [], empresaId }) {
+  const queryClient = useQueryClient();
+  const modoCobroMut = useMutation({
+    mutationFn: (modo) => ControlObraService.setModoCobro(obra._id, empresaId, modo),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['control-obra'] }),
+  });
   const carteraQ = useQuery({
     queryKey: ['control-obra', 'cartera', empresaId],
     queryFn: () => ControlObraService.resumenCartera(empresaId),
@@ -53,6 +58,26 @@ export default function ResumenTab({ obra, ejec, certs = [], empresaId }) {
 
   return (
     <Box>
+      {/* Fase F: cómo se cobra la obra */}
+      <Stack direction="row" alignItems="center" spacing={1.5} mb={2} flexWrap="wrap">
+        <Typography variant="body2" color="text.secondary">Cobro de la obra:</Typography>
+        <ToggleButtonGroup
+          size="small"
+          exclusive
+          value={obra.modo_cobro || 'certificados'}
+          onChange={(_, v) => { if (v) modoCobroMut.mutate(v); }}
+          disabled={modoCobroMut.isPending}
+        >
+          <ToggleButton value="certificados">Por certificados</ToggleButton>
+          <ToggleButton value="plan">Por plan de cobro</ToggleButton>
+        </ToggleButtonGroup>
+        {(obra.modo_cobro === 'plan') && (
+          <Typography variant="caption" color="text.secondary">
+            Los certificados registran avance pero no generan cuotas; el cobro va por el cronograma del plan.
+          </Typography>
+        )}
+      </Stack>
+
       <Stack direction="row" spacing={2} flexWrap="wrap" mb={3} useFlexGap>
         <KpiCard label="Contrato" value={fmtM(total)} sub="presupuesto total" />
         <KpiCard label="Avance físico" value={`${avance.toFixed(1)}%`} sub="ponderado por monto" />

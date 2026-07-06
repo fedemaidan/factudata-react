@@ -71,6 +71,7 @@ export function exportReportToXLSX(reportConfig, results, movimientos = [], disp
       case 'collections_aging':
       case 'collections_plans':
       case 'collections_installments':
+      case 'collections_payment_plan':
         exportSummaryTable(wb, sheetName, block.data, displayCurrency);
         break;
       default:

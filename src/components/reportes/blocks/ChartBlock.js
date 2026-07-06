@@ -10,7 +10,7 @@ const Chart = dynamic(() => import('react-apexcharts'), { ssr: false });
  * Bloque de gráfico — renderiza datos de summary_table como chart
  * Soporta: bar, pie, donut, line, area
  */
-const ChartBlock = ({ data, displayCurrency, displayCurrencies, onDrillDown }) => {
+const SingleChart = ({ data, displayCurrency, displayCurrencies, onDrillDown, title }) => {
   const theme = useTheme();
   const { chartType = 'bar', rows = [], headers = [] } = data || {};
   const currencies = displayCurrencies || [displayCurrency || 'ARS'];
@@ -140,6 +140,11 @@ const ChartBlock = ({ data, displayCurrency, displayCurrencies, onDrillDown }) =
 
   return (
     <Box sx={{ width: '100%', '& .apexcharts-canvas': { mx: 'auto' } }}>
+      {title && (
+        <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 700 }}>
+          {title}
+        </Typography>
+      )}
       {data?.mostrarSinCotizacion === true && data.sinCotizacion > 0 && (
         <Alert severity="warning" variant="outlined" sx={{ mb: 1 }}>
           {data.sinCotizacion} movimiento{data.sinCotizacion === 1 ? '' : 's'} sin cotización no se incluyen en la evolución.
@@ -153,6 +158,38 @@ const ChartBlock = ({ data, displayCurrency, displayCurrencies, onDrillDown }) =
         width="100%"
       />
     </Box>
+  );
+};
+
+const ChartBlock = ({ data, displayCurrency, displayCurrencies, onDrillDown }) => {
+  if (Array.isArray(data?.charts) && data.charts.length > 0) {
+    return (
+      <Box sx={{ display: 'grid', gap: 3 }}>
+        {data.charts.map((chart, index) => (
+          <SingleChart
+            key={chart.titulo || index}
+            data={{
+              ...chart,
+              chartType: chart.chartType || data.chartType,
+              chartOptions: chart.chartOptions || data.chartOptions,
+            }}
+            displayCurrency={chart.displayCurrency || displayCurrency}
+            displayCurrencies={displayCurrencies}
+            onDrillDown={onDrillDown}
+            title={chart.titulo}
+          />
+        ))}
+      </Box>
+    );
+  }
+
+  return (
+    <SingleChart
+      data={data}
+      displayCurrency={displayCurrency}
+      displayCurrencies={displayCurrencies}
+      onDrillDown={onDrillDown}
+    />
   );
 };
 

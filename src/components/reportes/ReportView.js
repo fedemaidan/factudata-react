@@ -39,6 +39,7 @@ const BLOCK_COMPONENTS = {
   collections_aging: SummaryTableBlock,
   collections_plans: SummaryTableBlock,
   collections_installments: SummaryTableBlock,
+  collections_payment_plan: SummaryTableBlock,
 };
 
 /**

@@ -41,6 +41,32 @@ const planCobroService = {
 
   agregarCuota: (planId, data) =>
     api.post(`/cobros/${planId}/cuotas`, data),
+
+  // Saldo sin asignar (Fase 4)
+  asignarSaldoACuota: (planId, cuotaId, empresaId) =>
+    api.post(`/cobros/${planId}/cuotas/${cuotaId}/asignar-saldo`, { empresa_id: empresaId }),
+
+  agregarCuotaDesdeSaldo: (planId, data) =>
+    api.post(`/cobros/${planId}/saldo/nueva-cuota`, data),
+
+  ajustarTotalAlDistribuido: (planId, empresaId) =>
+    api.post(`/cobros/${planId}/saldo/ajustar-total`, { empresa_id: empresaId }),
+
+  // Ajuste manual periódico (Fase 5)
+  aplicarAjusteManual: (planId, data) =>
+    api.post(`/cobros/${planId}/ajuste-manual`, data),
+
+  // Movimientos de ingreso no vinculados (para cobro por "vincular existente")
+  listarMovimientosVinculables: (empresaId, proyectoId = null) =>
+    api.get('/cobros/movimientos-vinculables', { params: { empresa_id: empresaId, proyecto_id: proyectoId || undefined } }),
+
+  // Anexos / agregados (Fase 6 ronda 2)
+  agregarAnexo: (planId, data) =>
+    api.post(`/cobros/${planId}/anexos`, data),
+
+  // Cashflow proyectado agregado (Fase G)
+  getCashflow: (empresaId, proyectoId = null, granularidad = 'mes', { incluirHistorico = false } = {}) =>
+    api.get('/cobros/cashflow', { params: { empresa_id: empresaId, proyecto_id: proyectoId || undefined, granularidad, incluir_historico: incluirHistorico || undefined } }),
 };
 
 export default planCobroService;
