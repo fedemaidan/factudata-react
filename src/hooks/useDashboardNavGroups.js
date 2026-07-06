@@ -340,7 +340,9 @@ export function useDashboardNavGroups() {
         return;
       }
 
-      if (permisosUsuario.includes("MOCK_DHN")) {
+      // DHN_SOLO_LECTURA dispara el sidenav DHN por sí solo (sin MOCK_DHN),
+      // así el rol solo-lectura ve las pantallas filtradas sin necesitar acceso completo.
+      if (permisosUsuario.includes("MOCK_DHN") || permisosUsuario.includes("DHN_SOLO_LECTURA")) {
         setState({
           loading: false,
           empresa: emp,
