@@ -165,7 +165,7 @@ const CategorySubcategoryAccordionBlock = ({ data, displayCurrency, onDrillDown 
                             }}
                           />
                           <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'right' }}>
-                            {percentage.toFixed(0)}%
+                            {percentage.toFixed(1)}%
                           </Typography>
                         </Box>
                       </Stack>

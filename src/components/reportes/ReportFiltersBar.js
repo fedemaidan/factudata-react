@@ -317,7 +317,7 @@ const ReportFiltersBar = ({
           )}
 
           {/* Moneda equivalente (en qué moneda VER los valores) */}
-          {filtrosSchema.moneda_equivalente?.enabled !== false && (
+          {filtrosSchema.moneda_equivalente?.enabled === true && (
             <Box>
               <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
                 Ver valores en
