@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import api from 'src/services/axiosConfig';
+import { useAuthContext } from 'src/contexts/auth-context';
 
 const DEBUG_TRACE_KEY = 'sorby:agentDebugTrace';
 
@@ -118,12 +119,15 @@ function extractErrorMessage(err) {
 export function useAgentChat() {
   const [state, dispatch] = useReducer(reducer, initialState);
   const inFlightRef = useRef(false);
+  const { user } = useAuthContext();
+  const userIdRef = useRef(null);
+  userIdRef.current = user?.user_id || null;
 
   const loadHistory = useCallback(async () => {
     if (state.hasLoadedHistory || state.isLoadingHistory) return;
     dispatch({ type: 'load:start' });
     try {
-      const { data } = await api.get('/agent/conversation');
+      const { data } = await api.get('/agent/conversation', { params: { user_id: userIdRef.current } });
       dispatch({ type: 'load:success', payload: data });
     } catch (err) {
       dispatch({ type: 'load:error', payload: extractErrorMessage(err) });
@@ -148,13 +152,14 @@ export function useAgentChat() {
       if (fileList.length > 0) {
         const form = new FormData();
         if (trimmed) form.append('message', trimmed);
+        if (userIdRef.current) form.append('user_id', userIdRef.current);
         fileList.forEach((file) => form.append('archivos', file));
         // No seteamos Content-Type: el browser agrega el boundary del multipart.
         ({ data } = await api.post('/agent/chat', form, {
           headers: { 'Content-Type': 'multipart/form-data' },
         }));
       } else {
-        ({ data } = await api.post('/agent/chat', { message: trimmed }));
+        ({ data } = await api.post('/agent/chat', { message: trimmed, user_id: userIdRef.current }));
       }
       dispatch({
         type: 'send:success',
@@ -189,7 +194,7 @@ export function useAgentChat() {
     inFlightRef.current = true;
     dispatch({ type: 'editSession:start' });
     try {
-      const { data } = await api.post(`/agent/report/${reportId}/edit-session`);
+      const { data } = await api.post(`/agent/report/${reportId}/edit-session`, { user_id: userIdRef.current });
       dispatch({
         type: 'editSession:success',
         payload: {
@@ -212,7 +217,7 @@ export function useAgentChat() {
 
   const reset = useCallback(async () => {
     try {
-      await api.post('/agent/reset');
+      await api.post('/agent/reset', { user_id: userIdRef.current });
       dispatch({ type: 'reset' });
     } catch (err) {
       dispatch({ type: 'load:error', payload: extractErrorMessage(err) });
