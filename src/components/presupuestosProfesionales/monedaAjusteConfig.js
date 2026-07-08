@@ -16,6 +16,19 @@ export const CAC_LABELS = {
   [CAC_TIPOS.MATERIALES]: 'Materiales',
 };
 
+// Estado de un presupuesto CAC respecto al índice del mes real (TAR-423 Ticket 2).
+// 'estimado' = el CAC del mes aún no se publicó, se usa el último disponible.
+// 'definitivo' = el CAC oficial del mes ya está aplicado.
+export const CAC_ESTADOS = {
+  ESTIMADO: 'estimado',
+  DEFINITIVO: 'definitivo',
+};
+
+export const CAC_ESTADO_LABELS = {
+  [CAC_ESTADOS.ESTIMADO]: 'Estimado',
+  [CAC_ESTADOS.DEFINITIVO]: 'Definitivo',
+};
+
 export const USD_FUENTES = {
   OFICIAL: 'oficial',
   BLUE: 'blue',
