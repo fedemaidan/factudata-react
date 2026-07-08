@@ -185,6 +185,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
     "CREAR_EGRESO_PRORATEADO",
     "CREAR_EGRESOS_MASIVO",
     "CREAR_INGRESO",
+    "CREAR_INGRESO_IMAGEN",
     "VER_CAJAS",
     "AJUSTAR_CAJAS",
     "TRANSFERIR_ENTRE_CAJAS",
