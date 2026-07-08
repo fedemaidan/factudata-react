@@ -69,6 +69,7 @@ import ProrrateoDialog from 'src/components/ProrrateoDialog';
 import ConfirmarPagoDialog from 'src/components/pagos/ConfirmarPagoDialog';
 import TransferenciaInternaDialog from 'src/components/TransferenciaInternaDialog';
 import EgresoConCajaPagadoraDialog from 'src/components/EgresoConCajaPagadoraDialog';
+import { accionRecortadaEnObra } from 'src/utils/permisos/accionesPorProyecto';
 import PagoEntreCajasInfo from 'src/components/PagoEntreCajasInfo';
 import MovimientoLogsPanel from 'src/components/movimientos/MovimientoLogsPanel';
 import ComprobanteModal from 'src/components/celulandia/ComprobanteModal';
@@ -295,6 +296,18 @@ const MovementFormPage = () => {
   // En edit mode, priorizar datos del movimiento sobre query params; luego fallback a selección manual.
   const effectiveProyectoId = (isEditMode && movimiento?.proyecto_id) || proyectoId || proyectoManual?.id || null;
   const effectiveProyectoName = (isEditMode && movimiento?.proyecto) || proyectoName || proyectoManual?.nombre || null;
+
+  // Recortes de acciones por obra (TAR-393): gating visual. Solo refleja lo que el admin
+  // quitó en esta obra (no restringe a quien no tiene la acción a nivel global → B0-safe).
+  const recorteObra = useMemo(
+    () => ({
+      egreso: accionRecortadaEnObra(user, effectiveProyectoId, 'CREAR_EGRESO'),
+      ingreso: accionRecortadaEnObra(user, effectiveProyectoId, 'CREAR_INGRESO'),
+      prorrateo: accionRecortadaEnObra(user, effectiveProyectoId, 'CREAR_EGRESO_PRORATEADO'),
+      cajaPagadora: accionRecortadaEnObra(user, effectiveProyectoId, 'CREAR_EGRESO'),
+    }),
+    [user, effectiveProyectoId]
+  );
 
   // Reserva de Obra del proyecto: habilita marcar el egreso como gasto de la reserva.
   const [reservaProyecto, setReservaProyecto] = useState(null);
@@ -882,6 +895,17 @@ const createdAtStr = (() => {
       return;
     }
 
+    // Gate por-obra (TAR-393): bloquear el guardado si la acción está recortada en esta obra.
+    const tipoActual = formik.values.type;
+    if ((tipoActual === 'egreso' && recorteObra.egreso) || (tipoActual === 'ingreso' && recorteObra.ingreso)) {
+      setAlert({
+        open: true,
+        message: `No tenés permiso para cargar ${tipoActual === 'ingreso' ? 'ingresos' : 'egresos'} en esta obra.`,
+        severity: 'error',
+      });
+      return;
+    }
+
     await formik.submitForm();
   };
 
@@ -1161,13 +1185,11 @@ const createdAtStr = (() => {
   };
 
   const handleOpenEgresoConCajaPagadora = () => {
-    console.log('Debug - Estado para pago entre cajas:', {
-      proyectoId: effectiveProyectoId,
-      total: formik.values.total,
-      type: formik.values.type,
-      proyectosLength: proyectos.length,
-      isEditMode
-    });
+    // Gate por-obra (TAR-393): la caja pagadora carga un egreso en la obra del gasto.
+    if (recorteObra.cajaPagadora) {
+      setAlert({ open: true, message: 'No tenés permiso para cargar egresos en esta obra.', severity: 'error' });
+      return;
+    }
     setOpenEgresoConCajaPagadora(true);
   };
 
@@ -1789,7 +1811,8 @@ const createdAtStr = (() => {
                 <button
                   type="button"
                   onClick={() => setProrrateoOpen(true)}
-                  disabled={isLoading || !formik.values.total}
+                  disabled={isLoading || !formik.values.total || recorteObra.prorrateo}
+                  title={recorteObra.prorrateo ? 'No tenés permiso para prorratear egresos en esta obra.' : undefined}
                   className="inline-flex items-center justify-center gap-1 rounded-lg bg-primary-main px-4 py-1.5 text-sm font-semibold text-white shadow hover:bg-primary-dark disabled:opacity-50"
                 >
                   <ChartPieIcon className="h-4 w-4" aria-hidden />

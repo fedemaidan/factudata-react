@@ -21,6 +21,7 @@ import AssignmentReturnIcon from "@mui/icons-material/AssignmentReturn";
 import MoveToInboxIcon from "@mui/icons-material/MoveToInbox";
 import { useAuthContext } from "src/contexts/auth-context";
 import { getProyectosFromUser } from "src/services/proyectosService";
+import { modoLecturaEnProyecto } from "src/utils/permisos/accionesPorProyecto";
 import { getEmpresaDetailsFromUser } from "src/services/empresaService";
 
 const icon = (Icon) => (
@@ -199,7 +200,12 @@ async function buildDefaultGroups({ user, empresa, permisosUsuario }) {
   // ——— OBRAS ———
   if (esAdmin) {
     let proys = await getProyectosFromUser(user);
-    proys = (proys || []).filter((p) => p.activo);
+    // Read-gating por obra (TAR-393): ocultar del sidenav las obras donde la lectura quedó
+    // bloqueada por override (VER_CAJAS/LISTAR quitados y sin VER_MIS). B0-safe: sin override → 'todo'.
+    const userLect = { ...user, empresa: { acciones: empresa?.acciones || [] } };
+    proys = (proys || []).filter(
+      (p) => p.activo && modoLecturaEnProyecto(userLect, p.id) !== "bloqueado"
+    );
     if (proys.length > 0) {
       const finGroup = groups.find((g) => g.id === "finanzas");
       if (finGroup) {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Chip,
   Box,
@@ -18,6 +18,13 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  Drawer,
+  InputAdornment,
+  Tooltip,
+  Checkbox,
+  FormControlLabel,
+  Avatar,
+  Stack,
   Select,
   MenuItem,
   FormControl,
@@ -26,23 +33,114 @@ import {
   Typography,
   Snackbar,
   Alert,
-  Autocomplete,
-  Checkbox,
-  FormControlLabel,
-  FormGroup
+  Autocomplete
 } from '@mui/material';
+import { alpha } from '@mui/material/styles';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
 import EditIcon from '@mui/icons-material/Edit';
 import SaveIcon from '@mui/icons-material/Save';
 import AddCircleIcon from '@mui/icons-material/AddCircle';
+import CloseIcon from '@mui/icons-material/Close';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import DriveFileRenameOutlineIcon from '@mui/icons-material/DriveFileRenameOutline';
+import LinkIcon from '@mui/icons-material/Link';
+import TuneIcon from '@mui/icons-material/Tune';
+import AccountTreeOutlinedIcon from '@mui/icons-material/AccountTreeOutlined';
+import GroupsOutlinedIcon from '@mui/icons-material/GroupsOutlined';
+import SearchIcon from '@mui/icons-material/Search';
+import FolderOpenOutlinedIcon from '@mui/icons-material/FolderOpenOutlined';
+import TableChartOutlinedIcon from '@mui/icons-material/TableChartOutlined';
 import { getProyectosByEmpresa, getProyectosFromUser, hasPermission, updateProyecto, crearProyecto, subirCSVProyecto, otorgarPermisosDriveProyecto, softDeleteMovimientosByProyectoId } from 'src/services/proyectosService';
 import { getEmpresaById } from 'src/services/empresaService';
 import { FIREBASE_CLIENT_EMAIL } from 'src/config/env';
 import { useRouter } from 'next/router';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
-import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import profileService from 'src/services/profileService';
+
+// ── Permisos por acción por usuario × obra (TAR-393) ──
+// NOTA: por ahora esto es SOLO visual (frontend). El backend todavía guarda la
+// membresía como antes (array de ids en profile.proyectos); las acciones
+// quitadas por obra no se persisten hasta implementar la capa de backend
+// (profile.permisosOcultosPorProyecto). Modelo = blacklist: por default el
+// usuario hereda TODAS las acciones en la obra; se guarda lo que se le QUITÓ.
+// Cada ítem del checklist puede agrupar varias acciones reales del backend,
+// para simplificarle la decisión al admin (ej. "Cargar egreso" cubre egreso
+// simple, prorrateado y en lote). Lo que se persiste sigue siendo la lista de
+// acciones reales quitadas por obra.
+// Catálogo MAESTRO de todo lo configurable por obra. En el drawer se filtra por
+// las acciones que la empresa realmente activó (empresa.acciones): un ítem solo
+// aparece si la empresa tiene al menos una de sus acciones reales.
+const ACCIONES_OBRA_CATALOGO = [
+  { key: 'cargar_egreso',  label: 'Cargar egreso',  grupo: 'Cargar',      acciones: ['CREAR_EGRESO', 'CREAR_EGRESO_SIMPLIFICADO', 'CREAR_EGRESO_PRORATEADO', 'CREAR_EGRESOS_MASIVO'] },
+  { key: 'cargar_ingreso', label: 'Cargar ingreso',                                          grupo: 'Cargar',      acciones: ['CREAR_INGRESO'] },
+  { key: 'ver_obra',       label: 'Ver la obra',    hint: 'saldos y todos los movimientos',  grupo: 'Ver',         acciones: ['VER_CAJAS', 'LISTAR_MOVIMIENTOS'] },
+  { key: 'ver_propios',    label: 'Ver solo lo suyo', hint: 'solo los movimientos que cargó él', grupo: 'Ver',     acciones: ['VER_MIS_MOVIMIENTOS'] },
+  { key: 'gestionar',      label: 'Editar o eliminar movimientos',                           grupo: 'Operaciones', acciones: ['GESTIONAR_MOVIMIENTO'] },
+  { key: 'ajustar',        label: 'Ajustar cajas',                                           grupo: 'Operaciones', acciones: ['AJUSTAR_CAJAS'] },
+  { key: 'dolares',        label: 'Comprar y vender dólares',                                grupo: 'Operaciones', acciones: ['COMPRAR_DOLARES', 'VENDER_DOLARES'] },
+];
+const ORDEN_GRUPOS = ['Cargar', 'Ver', 'Operaciones'];
+
+// Filtra el catálogo maestro a lo que la empresa tiene activado. Cada ítem
+// conserva solo sus acciones reales presentes en empresaAcciones, y se descarta
+// si no le queda ninguna.
+const construirAccionesObra = (empresaAcciones = []) => {
+  const activas = new Set(empresaAcciones);
+  return ACCIONES_OBRA_CATALOGO
+    .map((item) => ({ ...item, acciones: item.acciones.filter((k) => activas.has(k)) }))
+    .filter((item) => item.acciones.length > 0);
+};
+
+// Colores de marca para los accesos directos (mismo azul que ya se usa en la lista de proyectos).
+const DRIVE_BLUE = '#1a73e8';
+const SHEET_GREEN = '#0f9d58';
+
+// Link compacto y secundario para abrir una carpeta de Drive o un Google Sheet
+// en una pestaña nueva. Más chico que el input y alineado a la derecha.
+const AbrirLink = ({ href, icon: LinkIco, label, accent }) => (
+  <Button
+    component="a"
+    href={href}
+    target="_blank"
+    rel="noopener noreferrer"
+    size="small"
+    variant="text"
+    startIcon={<LinkIco sx={{ fontSize: 15 }} />}
+    endIcon={<OpenInNewIcon sx={{ fontSize: 13 }} />}
+    sx={{
+      alignSelf: 'flex-end',
+      textTransform: 'none',
+      fontWeight: 600,
+      fontSize: 12.5,
+      lineHeight: 1.4,
+      py: 0.25,
+      px: 1,
+      minWidth: 0,
+      color: accent,
+      '&:hover': { bgcolor: alpha(accent, 0.1) },
+    }}
+  >
+    {label}
+  </Button>
+);
+
+// Encabezado de sección reutilizable dentro del Drawer.
+const Seccion = ({ icon: SeccionIcon, title, hint, action, children }) => (
+  <Box>
+    <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: hint ? 0.5 : 1.5 }}>
+      <SeccionIcon sx={{ fontSize: 20, color: 'primary.main' }} />
+      <Typography variant="subtitle2" sx={{ fontWeight: 700, flexGrow: 1 }}>{title}</Typography>
+      {action}
+    </Stack>
+    {hint && (
+      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5, lineHeight: 1.5 }}>
+        {hint}
+      </Typography>
+    )}
+    {children}
+  </Box>
+);
 
 export const ProyectosDetails = ({ empresa, refreshEmpresa }) => {
   const router = useRouter();
@@ -63,6 +161,10 @@ export const ProyectosDetails = ({ empresa, refreshEmpresa }) => {
   const [proyectoAEliminar, setProyectoAEliminar] = useState(null);
   const [restableciendoId, setRestableciendoId] = useState(null);
   const [usuariosEmpresa, setUsuariosEmpresa] = useState([]);
+  // Nivel de acceso por usuario (visual). Map { [userId]: 'sin_acceso'|'solo_cargar'|'ver_cargar' }
+  // { [userId]: [accionKeys quitadas en esta obra] }. Vacío = hereda todo. (visual)
+  const [ocultasPorUsuario, setOcultasPorUsuario] = useState({});
+  const [userSearch, setUserSearch] = useState('');
 
   const handleSnackbarClose = () => {
     setSnackbarOpen(false);
@@ -235,23 +337,29 @@ export const ProyectosDetails = ({ empresa, refreshEmpresa }) => {
             const currentProjects = usuario.proyectosData?.map(p => p?.id).filter(Boolean) || [];
             const tieneProyecto = currentProjects.includes(proyectoId);
             const deberíaTener = usuariosSeleccionados.includes(usuario.id);
-            
-            console.log(`Usuario ${usuario.id} (${usuario.firstName}): tiene=${tieneProyecto}, debería=${deberíaTener}`);
-            
-            if (deberíaTener && !tieneProyecto) {
-              // Agregar proyecto al usuario
-              console.log(`  -> AGREGANDO proyecto a ${usuario.firstName}`);
-              return profileService.updateProfile(usuario.id, {
-                proyectos: [...currentProjects, proyectoId]
-              });
-            } else if (!deberíaTener && tieneProyecto) {
-              // Quitar proyecto del usuario
-              console.log(`  -> QUITANDO proyecto de ${usuario.firstName}`);
-              return profileService.updateProfile(usuario.id, {
-                proyectos: currentProjects.filter(id => id !== proyectoId)
-              });
-            }
-            return null;
+
+            // Membresía deseada
+            let nuevosProyectos = currentProjects;
+            if (deberíaTener && !tieneProyecto) nuevosProyectos = [...currentProjects, proyectoId];
+            else if (!deberíaTener && tieneProyecto) nuevosProyectos = currentProjects.filter((id) => id !== proyectoId);
+
+            // Checklist por-obra (TAR-393): blacklist de acciones quitadas SOLO en esta obra.
+            // Se preservan las keys de otras obras; si el usuario deja de ser miembro, se borra la key.
+            const mapaActual = usuario.permisosOcultosPorProyecto || {};
+            const nuevoMapa = { ...mapaActual };
+            const ocultas = getOcultasUsuario(usuario.id);
+            if (deberíaTener && ocultas.length > 0) nuevoMapa[proyectoId] = ocultas;
+            else delete nuevoMapa[proyectoId];
+
+            const cambioMembership = nuevosProyectos !== currentProjects;
+            const cambioOcultas =
+              JSON.stringify(nuevoMapa[proyectoId] || []) !== JSON.stringify(mapaActual[proyectoId] || []);
+            if (!cambioMembership && !cambioOcultas) return null;
+
+            return profileService.updateProfile(usuario.id, {
+              proyectos: nuevosProyectos,
+              permisosOcultosPorProyecto: nuevoMapa,
+            });
           });
           await Promise.all(updatePromises);
           
@@ -327,6 +435,13 @@ export const ProyectosDetails = ({ empresa, refreshEmpresa }) => {
             setSnackbarOpen(true);
             setIsLoading(false);
             
+            // Acciones quitadas por usuario para esta obra (visual). Vacío = hereda todo.
+            const ocultasIniciales = {};
+            usuariosConProyectos.forEach((u) => {
+              const raw = u.permisosOcultosPorProyecto?.[proyectoCreado.id];
+              ocultasIniciales[u.id] = Array.isArray(raw) ? raw : [];
+            });
+
             // Usar setTimeout para dar tiempo al React de procesar los cambios
             setTimeout(() => {
               console.log('Abriendo modal de edición...');
@@ -335,6 +450,8 @@ export const ProyectosDetails = ({ empresa, refreshEmpresa }) => {
                 ...proyectoCreado,
                 usuariosAsignados: usuariosConEsteProyecto
               });
+              setOcultasPorUsuario(ocultasIniciales);
+              setUserSearch('');
               setOpenModal(true);
             }, 300);
             
@@ -364,31 +481,124 @@ export const ProyectosDetails = ({ empresa, refreshEmpresa }) => {
   });
  
 
+  // ── Helpers de permisos por acción por usuario × obra (visual) ──
+  // Al abrir una obra, cada usuario arranca con las acciones que tenga guardadas
+  // como quitadas para esa obra (o vacío = hereda todo).
+  const buildOcultasDesdeUsuarios = (proyectoId) => {
+    const map = {};
+    usuariosEmpresa.forEach((u) => {
+      const raw = u.permisosOcultosPorProyecto?.[proyectoId];
+      map[u.id] = Array.isArray(raw) ? raw : [];
+    });
+    return map;
+  };
+
+  // Acceso a la obra = membresía (lo que hoy persiste el backend en profile.proyectos).
+  const tieneAcceso = (userId) => (formik.values.usuariosAsignados || []).includes(userId);
+
+  const setAcceso = (userId, on) => {
+    const asignados = formik.values.usuariosAsignados || [];
+    if (on) {
+      if (!asignados.includes(userId)) formik.setFieldValue('usuariosAsignados', [...asignados, userId]);
+    } else {
+      formik.setFieldValue('usuariosAsignados', asignados.filter((id) => id !== userId));
+    }
+  };
+
+  const setAccesoTodos = (on) => {
+    formik.setFieldValue('usuariosAsignados', on ? usuariosEmpresa.map((u) => u.id) : []);
+  };
+
+  const getOcultasUsuario = (userId) => ocultasPorUsuario[userId] || [];
+
+  // Checklist filtrado a lo que la empresa activó en configuración general
+  // (empresa.acciones). Si la empresa no tiene "Cargar ingreso", ese ítem no
+  // aparece; ídem el resto.
+  const accionesObra = useMemo(() => construirAccionesObra(empresa?.acciones || []), [empresa]);
+  const accionesObraKeys = useMemo(() => accionesObra.flatMap((a) => a.acciones), [accionesObra]);
+  const gruposAcciones = useMemo(
+    () =>
+      ORDEN_GRUPOS.map((label) => ({ label, items: accionesObra.filter((a) => a.grupo === label) })).filter(
+        (g) => g.items.length > 0
+      ),
+    [accionesObra]
+  );
+
+  // Un ítem agrupa varias acciones reales. Deshabilitado si TODAS sus acciones
+  // ya están quitadas a nivel empresa (permisosOcultos global): no se pueden
+  // re-otorgar por obra, la resta global gana.
+  const itemGlobalOff = (usuario, item) =>
+    item.acciones.every((k) => (usuario?.permisosOcultos || []).includes(k));
+
+  // "Tildado" = alguna de sus acciones otorgables (no oculta global) sigue concedida.
+  const itemChecked = (usuario, item) => {
+    const globalOcultas = usuario?.permisosOcultos || [];
+    const ocultas = getOcultasUsuario(usuario.id);
+    return item.acciones.some((k) => !globalOcultas.includes(k) && !ocultas.includes(k));
+  };
+
+  // Al destildar, se quitan TODAS las acciones del ítem para esa obra; al tildar, se devuelven.
+  const toggleItem = (userId, item) => {
+    setOcultasPorUsuario((prev) => {
+      const cur = prev[userId] || [];
+      const encendido = item.acciones.some((k) => !cur.includes(k));
+      const next = encendido
+        ? Array.from(new Set([...cur, ...item.acciones]))
+        : cur.filter((k) => !item.acciones.includes(k));
+      return { ...prev, [userId]: next };
+    });
+  };
+
+  const setTodasAcciones = (userId, marcar) => {
+    setOcultasPorUsuario((prev) => ({ ...prev, [userId]: marcar ? [] : [...accionesObraKeys] }));
+  };
+
+  // Ítems recortados (apagados) de un usuario, sin contar los ya bloqueados por empresa.
+  const itemsOffUsuario = (usuario) =>
+    accionesObra.filter((item) => !itemGlobalOff(usuario, item) && !itemChecked(usuario, item)).length;
+
+  const conAccesoCount = (formik.values.usuariosAsignados || []).length;
+  const recortadosCount = usuariosEmpresa.filter(
+    (u) => tieneAcceso(u.id) && itemsOffUsuario(u) > 0
+  ).length;
+
+  const usuariosFiltrados = usuariosEmpresa.filter((u) => {
+    const q = userSearch.trim().toLowerCase();
+    if (!q) return true;
+    return `${u.firstName || ''} ${u.lastName || ''} ${u.email || ''}`.toLowerCase().includes(q);
+  });
+
   const iniciarEdicionProyecto = (proyecto) => {
     setEditingProyecto(proyecto);
-    
+
     // Encontrar usuarios que ya tienen este proyecto asignado (usando proyectosData)
     const usuariosConProyecto = usuariosEmpresa.filter(usuario => {
       const proyectosUsuario = usuario.proyectosData?.map(p => p?.id).filter(Boolean) || [];
       return proyectosUsuario.includes(proyecto.id);
     }).map(u => u.id);
-    
+
     formik.setValues({
       ...proyecto,
       usuariosAsignados: usuariosConProyecto
     });
+    setOcultasPorUsuario(buildOcultasDesdeUsuarios(proyecto.id));
+    setUserSearch('');
     setOpenModal(true);
   };
 
   const iniciarCreacionProyecto = () => {
     setEditingProyecto(null);
     formik.resetForm();
+    setOcultasPorUsuario({});
+    setUserSearch('');
     setOpenModal(true);
   };
 
   const cancelarEdicion = () => {
     setEditingProyecto(null);
     formik.resetForm();
+    setOcultasPorUsuario({});
+    setUserSearch('');
     setOpenModal(false);
   };
 
@@ -702,330 +912,545 @@ export const ProyectosDetails = ({ empresa, refreshEmpresa }) => {
           </Button>
         </CardActions>
       </Card>
-      <Dialog open={openModal} onClose={cancelarEdicion} aria-labelledby="form-dialog-title">
-        <form autoComplete="off" noValidate onSubmit={formik.handleSubmit}>
-          <DialogTitle id="form-dialog-title">{editingProyecto ? 'Editar Proyecto' : 'Agregar Proyecto'}</DialogTitle>
-          <DialogContent>
-            <TextField
-              fullWidth
-              name="nombre"
-              label="Nombre del Proyecto"
-              value={formik.values.nombre}
-              onChange={formik.handleChange}
-              error={formik.touched.nombre && Boolean(formik.errors.nombre)}
-              helperText={formik.touched.nombre && formik.errors.nombre}
-            />
-            <TextField
-              fullWidth
-              name="carpetaRef"
-              label="Carpeta de Referencia"
-              value={formik.values.carpetaRef}
-              onChange={event => {
-                handleCarpetaRefChange(event);
-                formik.handleChange(event);
-              }}
-              error={formik.touched.carpetaRef && (Boolean(formik.errors.carpetaRef) || folderPermissionError)}
-              helperText={formik.touched.carpetaRef && (formik.errors.carpetaRef || (folderPermissionError && "La carpeta no está configurada para que podamos editarla. Asegúrate de que el id esté bien escrito y de darle permisos de edición a " + FIREBASE_CLIENT_EMAIL))}
-              style={{ marginTop: '1rem' }}
-            />
-            <FormControl fullWidth style={{ marginTop: '1rem' }}>
-              <InputLabel id="proyecto-default-label">Caja central</InputLabel>
-              <Select
-                labelId="proyecto-default-label"
-                name="proyecto_default_id"
-                value={formik.values.proyecto_default_id}
-                onChange={formik.handleChange}
-                error={formik.touched.proyecto_default_id && Boolean(formik.errors.proyecto_default_id)}
-              >
-                <MenuItem value="">
-                  Sin caja central
-                </MenuItem>
-                {proyectos.map((proyecto) => (
-                  <MenuItem key={proyecto.id} value={proyecto.id}>
-                    {proyecto.nombre}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            <TextField
-              fullWidth
-              name="sheetWithClient"
-              label="ID de Google Sheet"
-              value={formik.values.sheetWithClient}
-              onChange={async (event) => {
-                await handleSheetWithClientChange(event);
-                formik.handleChange(event);
-              }}
-              error={formik.touched.sheetWithClient && (Boolean(formik.errors.sheetWithClient) || sheetPermissionError)}
-              helperText={formik.touched.sheetWithClient && (formik.errors.sheetWithClient || (sheetPermissionError && "El google sheet no está configurado para que podamos editarlo. Asegúrate de que el id esté bien escrito y de darle permisos de edición a " + FIREBASE_CLIENT_EMAIL))}
-              style={{ marginTop: '1rem' }}
-            />
-            <TextField
-              fullWidth
-              name="datos_facturacion_cliente"
-              label="Datos de facturación del cliente"
-              value={formik.values.datos_facturacion_cliente}
-              onChange={formik.handleChange}
-              multiline
-              rows={3}
-              style={{ marginTop: '1rem' }}
-              helperText="Razón social, CUIT u otros datos del cliente que ayuden al bot a identificar si una factura es del cliente de este proyecto."
-            />
-            <Box sx={{ mt: 2 }}>
-  <Typography variant="subtitle1">Google Sheets Adicionales</Typography>
-  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
-    {formik.values.extraSheets?.map((sheetId, index) => (
-      <Chip
-        key={index}
-        label={`Sheet ${index + 1}`}
-        onClick={() => window.open(`https://docs.google.com/spreadsheets/d/${sheetId}`, '_blank')}
-        onDelete={() => handleRemoveExtraSheet(sheetId)}
-        sx={{
-          cursor: 'pointer',
-          backgroundColor: sheetsPermissions[sheetId] ? 'green' : 'red',
-          color: 'white'
-        }}
-      />
-    ))}
-  </Box>
-  <Box sx={{ mt: 3 }}>
-  <Typography variant="subtitle1" gutterBottom>
-    Subproyectos
-  </Typography>
-  {formik.values.subproyectos?.map((sp, idx) => (
-    <Box
-      key={idx}
-      sx={{
-        border: '1px solid #ccc',
-        borderRadius: 2,
-        p: 2,
-        mb: 2,
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 1,
-        backgroundColor: '#fafafa'
-      }}
-    >
-      <Autocomplete
-  multiple
-  freeSolo
-  options={[]} // no hay opciones predefinidas
-  value={sp.path || []}
-  onChange={(_, newValue) => {
-    const updated = [...formik.values.subproyectos];
-    updated[idx].path = newValue;
-    formik.setFieldValue('subproyectos', updated);
-  }}
-  renderTags={(value, getTagProps) =>
-    value.map((option, index) => (
-      <Chip
-        variant="outlined"
-        label={option}
-        {...getTagProps({ index })}
-        key={index}
-      />
-    ))
-  }
-  renderInput={(params) => (
-    <TextField
-      {...params}
-      variant="outlined"
-      label="Path (jerarquía)"
-      placeholder="Ej: Edificio 1, Unidad 2"
-    />
-  )}
-/>
-
-      <TextField
-        label="Nombre"
-        value={sp.nombre}
-        onChange={(e) => {
-          const updated = [...formik.values.subproyectos];
-          updated[idx].nombre = e.target.value;
-          formik.setFieldValue('subproyectos', updated);
-        }}
-        fullWidth
-      />
-      <FormControl fullWidth>
-        <InputLabel>Estado</InputLabel>
-        <Select
-          value={sp.estado}
-          label="Estado"
-          onChange={(e) => {
-            const updated = [...formik.values.subproyectos];
-            updated[idx].estado = e.target.value;
-            // Limpiar meses si ya no es alquilado
-            if (e.target.value !== 'alquilado') updated[idx].meses = '';
-            formik.setFieldValue('subproyectos', updated);
-          }}
+      <Drawer
+        anchor="right"
+        open={openModal}
+        onClose={cancelarEdicion}
+        PaperProps={{ sx: { width: { xs: '100%', sm: 560 }, maxWidth: '100%' } }}
+      >
+        <Box
+          component="form"
+          autoComplete="off"
+          noValidate
+          onSubmit={formik.handleSubmit}
+          sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}
         >
-          <MenuItem value="Disponible">Disponible</MenuItem>
-          <MenuItem value="Vendido">Vendido</MenuItem>
-          <MenuItem value="alquilado">Alquilado</MenuItem>
-        </Select>
-      </FormControl>
-      <TextField
-        label="Valor"
-        type="number"
-        value={sp.valor}
-        onChange={(e) => {
-          const updated = [...formik.values.subproyectos];
-          updated[idx].valor = e.target.value;
-          formik.setFieldValue('subproyectos', updated);
-        }}
-        fullWidth
-      />
-      {sp.estado === 'alquilado' && (
-        <TextField
-          label="Meses de alquiler"
-          type="number"
-          value={sp.meses || ''}
-          onChange={(e) => {
-            const updated = [...formik.values.subproyectos];
-            updated[idx].meses = e.target.value;
-            formik.setFieldValue('subproyectos', updated);
-          }}
-          fullWidth
-        />
-      )}
-      <Button
-        variant="outlined"
-        color="error"
-        onClick={() => {
-          const updated = formik.values.subproyectos.filter((_, i) => i !== idx);
-          formik.setFieldValue('subproyectos', updated);
-        }}
-      >
-        Eliminar
-      </Button>
-    </Box>
-  ))}
+          {/* ── Header ── */}
+          <Box
+            sx={{
+              px: 3,
+              pt: 2.5,
+              pb: 2,
+              borderBottom: 1,
+              borderColor: 'divider',
+              background: (t) =>
+                `linear-gradient(180deg, ${alpha(t.palette.primary.main, 0.06)}, ${t.palette.background.paper})`,
+            }}
+          >
+            <Stack direction="row" alignItems="flex-start" justifyContent="space-between" spacing={2}>
+              <Box sx={{ minWidth: 0 }}>
+                <Typography variant="overline" sx={{ color: 'primary.main', fontWeight: 700, letterSpacing: '0.1em' }}>
+                  {editingProyecto ? 'Editar proyecto' : 'Nuevo proyecto'}
+                </Typography>
+                <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.2, mt: 0.25 }} noWrap>
+                  {formik.values.nombre || (editingProyecto ? 'Proyecto' : 'Sin nombre')}
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
+                  Datos, integraciones y permisos de la obra.
+                </Typography>
+              </Box>
+              <IconButton onClick={cancelarEdicion} size="small" sx={{ mt: -0.5 }} aria-label="Cerrar">
+                <CloseIcon />
+              </IconButton>
+            </Stack>
+          </Box>
 
+          {isLoading && <LinearProgress />}
 
-
-  <Button
-    variant="outlined"
-    onClick={() =>
-      formik.setFieldValue('subproyectos', [
-        ...formik.values.subproyectos,
-        { nombre: '', estado: 'Disponible', valor: '', meses: '' }
-      ])
-    }
-  >
-    Agregar Subproyecto
-  </Button>
-</Box>
-
-
-  <TextField
-    fullWidth
-    label="Agregar ID de Google Sheet"
-    variant="outlined"
-    size="small"
-    onKeyDown={handleAddExtraSheet}
-    sx={{ mt: 1 }}
-  />
-
-  {/* Solo mostrar sección de usuarios al EDITAR, no al crear */}
-  {editingProyecto && (
-  <Box sx={{ mt: 3 }}>
-    <Typography variant="subtitle1" gutterBottom>
-      <PersonAddIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
-      Asignar Usuarios al Proyecto
-    </Typography>
-    <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
-      <Button
-        size="small"
-        variant="outlined"
-        onClick={() => formik.setFieldValue('usuariosAsignados', usuariosEmpresa.map(u => u.id))}
-      >
-        Marcar todos
-      </Button>
-      <Button
-        size="small"
-        variant="outlined"
-        color="secondary"
-        onClick={() => formik.setFieldValue('usuariosAsignados', [])}
-      >
-        Desmarcar todos
-      </Button>
-    </Box>
-    <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
-      {formik.values.usuariosAsignados?.length || 0} de {usuariosEmpresa.length} usuarios seleccionados
-    </Typography>
-    <Box 
-      sx={{ 
-        maxHeight: 200, 
-        overflowY: 'auto', 
-        border: '1px solid #ccc', 
-        borderRadius: 1, 
-        p: 1,
-        backgroundColor: '#fafafa'
-      }}
-    >
-      <FormGroup>
-        {usuariosEmpresa.map((usuario) => {
-          const nombre = usuario.firstName || usuario.nombre || '';
-          const apellido = usuario.lastName || usuario.apellido || '';
-          const email = usuario.email || '';
-          const label = `${nombre} ${apellido}`.trim() || email;
-          const isChecked = formik.values.usuariosAsignados?.includes(usuario.id) || false;
-          
-          return (
-            <FormControlLabel
-              key={usuario.id}
-              control={
-                <Checkbox
-                  checked={isChecked}
-                  onChange={(e) => {
-                    const currentSelected = formik.values.usuariosAsignados || [];
-                    if (e.target.checked) {
-                      formik.setFieldValue('usuariosAsignados', [...currentSelected, usuario.id]);
-                    } else {
-                      formik.setFieldValue('usuariosAsignados', currentSelected.filter(id => id !== usuario.id));
-                    }
-                  }}
-                  size="small"
+          {/* ── Body (scroll) ── */}
+          <Box sx={{ flex: 1, overflowY: 'auto', px: 3, py: 2.5 }}>
+            <Stack spacing={3.5}>
+              {/* Nombre del proyecto */}
+              <Seccion icon={DriveFileRenameOutlineIcon} title="Nombre del proyecto">
+                <TextField
+                  fullWidth
+                  name="nombre"
+                  placeholder="Ej: Torre Palermo"
+                  value={formik.values.nombre}
+                  onChange={formik.handleChange}
+                  error={formik.touched.nombre && Boolean(formik.errors.nombre)}
+                  helperText={formik.touched.nombre && formik.errors.nombre}
                 />
-              }
-              label={
-                <Box>
-                  <Typography variant="body2">{label}</Typography>
-                  {email && nombre && <Typography variant="caption" color="text.secondary">{email}</Typography>}
-                </Box>
-              }
-              sx={{ 
-                width: '100%', 
-                m: 0, 
-                py: 0.5,
-                '&:hover': { backgroundColor: '#f0f0f0' },
-                borderRadius: 1
-              }}
-            />
-          );
-        })}
-      </FormGroup>
-    </Box>
-  </Box>
-  )}
-</Box>
+              </Seccion>
 
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={cancelarEdicion} color="primary">
+              {/* Integraciones */}
+              <Seccion
+                icon={LinkIcon}
+                title="Integraciones"
+                hint="Guardá los IDs para que el bot los use. Cuando el ID está cargado, tocá el botón para abrir la carpeta o el sheet en una pestaña nueva."
+              >
+                <Stack spacing={2.5}>
+                  <Stack spacing={0.75}>
+                    {formik.values.carpetaRef && (
+                      <AbrirLink
+                        href={`https://drive.google.com/drive/folders/${formik.values.carpetaRef}`}
+                        icon={FolderOpenOutlinedIcon}
+                        label="Abrir carpeta en Drive"
+                        accent={DRIVE_BLUE}
+                      />
+                    )}
+                    <TextField
+                      fullWidth
+                      name="carpetaRef"
+                      label="Carpeta de Referencia (ID)"
+                      value={formik.values.carpetaRef}
+                      onChange={(event) => {
+                        handleCarpetaRefChange(event);
+                        formik.handleChange(event);
+                      }}
+                      error={formik.touched.carpetaRef && (Boolean(formik.errors.carpetaRef) || folderPermissionError)}
+                      helperText={formik.touched.carpetaRef && (formik.errors.carpetaRef || (folderPermissionError && "La carpeta no está configurada para que podamos editarla. Asegúrate de que el id esté bien escrito y de darle permisos de edición a " + FIREBASE_CLIENT_EMAIL))}
+                      InputProps={{
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <FolderOpenOutlinedIcon fontSize="small" sx={{ color: 'text.disabled' }} />
+                          </InputAdornment>
+                        ),
+                      }}
+                    />
+                  </Stack>
+
+                  <Stack spacing={0.75}>
+                    {formik.values.sheetWithClient && (
+                      <AbrirLink
+                        href={`https://docs.google.com/spreadsheets/d/${formik.values.sheetWithClient}`}
+                        icon={TableChartOutlinedIcon}
+                        label="Abrir Google Sheet"
+                        accent={SHEET_GREEN}
+                      />
+                    )}
+                    <TextField
+                      fullWidth
+                      name="sheetWithClient"
+                      label="ID de Google Sheet"
+                      value={formik.values.sheetWithClient}
+                      onChange={async (event) => {
+                        await handleSheetWithClientChange(event);
+                        formik.handleChange(event);
+                      }}
+                      error={formik.touched.sheetWithClient && (Boolean(formik.errors.sheetWithClient) || sheetPermissionError)}
+                      helperText={formik.touched.sheetWithClient && (formik.errors.sheetWithClient || (sheetPermissionError && "El google sheet no está configurado para que podamos editarlo. Asegúrate de que el id esté bien escrito y de darle permisos de edición a " + FIREBASE_CLIENT_EMAIL))}
+                      InputProps={{
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <TableChartOutlinedIcon fontSize="small" sx={{ color: 'text.disabled' }} />
+                          </InputAdornment>
+                        ),
+                      }}
+                    />
+                  </Stack>
+
+                  <Box>
+                    <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', display: 'block', mb: 0.75 }}>
+                      Google Sheets adicionales
+                    </Typography>
+                    {formik.values.extraSheets?.length > 0 && (
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mb: 1 }}>
+                        {formik.values.extraSheets?.map((sheetId, index) => (
+                          <Chip
+                            key={index}
+                            size="small"
+                            icon={<OpenInNewIcon sx={{ fontSize: 14 }} />}
+                            label={`Sheet ${index + 1}`}
+                            onClick={() => window.open(`https://docs.google.com/spreadsheets/d/${sheetId}`, '_blank', 'noopener,noreferrer')}
+                            onDelete={() => handleRemoveExtraSheet(sheetId)}
+                            color={sheetsPermissions[sheetId] === false ? 'error' : 'success'}
+                            variant="outlined"
+                            sx={{ cursor: 'pointer' }}
+                          />
+                        ))}
+                      </Box>
+                    )}
+                    <TextField
+                      fullWidth
+                      label="Agregar ID de Google Sheet"
+                      placeholder="Pegá el ID y presioná Enter"
+                      variant="outlined"
+                      size="small"
+                      onKeyDown={handleAddExtraSheet}
+                    />
+                  </Box>
+                </Stack>
+              </Seccion>
+
+              {/* Configuración */}
+              <Seccion icon={TuneIcon} title="Configuración">
+                <Stack spacing={2}>
+                  <FormControl fullWidth>
+                    <InputLabel id="proyecto-default-label">Caja central</InputLabel>
+                    <Select
+                      labelId="proyecto-default-label"
+                      label="Caja central"
+                      name="proyecto_default_id"
+                      value={formik.values.proyecto_default_id}
+                      onChange={formik.handleChange}
+                      error={formik.touched.proyecto_default_id && Boolean(formik.errors.proyecto_default_id)}
+                    >
+                      <MenuItem value="">Sin caja central</MenuItem>
+                      {proyectos.map((proyecto) => (
+                        <MenuItem key={proyecto.id} value={proyecto.id}>
+                          {proyecto.nombre}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  <TextField
+                    fullWidth
+                    name="datos_facturacion_cliente"
+                    label="Datos de facturación del cliente"
+                    value={formik.values.datos_facturacion_cliente}
+                    onChange={formik.handleChange}
+                    multiline
+                    rows={3}
+                    helperText="Razón social, CUIT u otros datos del cliente que ayuden al bot a identificar si una factura es del cliente de este proyecto."
+                  />
+                </Stack>
+              </Seccion>
+
+              {/* Subproyectos */}
+              <Seccion icon={AccountTreeOutlinedIcon} title="Subproyectos">
+                <Stack spacing={2}>
+                  {formik.values.subproyectos?.map((sp, idx) => (
+                    <Box
+                      key={idx}
+                      sx={{
+                        border: 1,
+                        borderColor: 'divider',
+                        borderRadius: 2,
+                        p: 2,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 1.5,
+                        bgcolor: 'background.default',
+                      }}
+                    >
+                      <Autocomplete
+                        multiple
+                        freeSolo
+                        options={[]}
+                        value={sp.path || []}
+                        onChange={(_, newValue) => {
+                          const updated = [...formik.values.subproyectos];
+                          updated[idx].path = newValue;
+                          formik.setFieldValue('subproyectos', updated);
+                        }}
+                        renderTags={(value, getTagProps) =>
+                          value.map((option, index) => (
+                            <Chip variant="outlined" label={option} {...getTagProps({ index })} key={index} />
+                          ))
+                        }
+                        renderInput={(params) => (
+                          <TextField {...params} variant="outlined" label="Path (jerarquía)" placeholder="Ej: Edificio 1, Unidad 2" />
+                        )}
+                      />
+                      <TextField
+                        label="Nombre"
+                        value={sp.nombre}
+                        onChange={(e) => {
+                          const updated = [...formik.values.subproyectos];
+                          updated[idx].nombre = e.target.value;
+                          formik.setFieldValue('subproyectos', updated);
+                        }}
+                        fullWidth
+                      />
+                      <FormControl fullWidth>
+                        <InputLabel>Estado</InputLabel>
+                        <Select
+                          value={sp.estado}
+                          label="Estado"
+                          onChange={(e) => {
+                            const updated = [...formik.values.subproyectos];
+                            updated[idx].estado = e.target.value;
+                            if (e.target.value !== 'alquilado') updated[idx].meses = '';
+                            formik.setFieldValue('subproyectos', updated);
+                          }}
+                        >
+                          <MenuItem value="Disponible">Disponible</MenuItem>
+                          <MenuItem value="Vendido">Vendido</MenuItem>
+                          <MenuItem value="alquilado">Alquilado</MenuItem>
+                        </Select>
+                      </FormControl>
+                      <TextField
+                        label="Valor"
+                        type="number"
+                        value={sp.valor}
+                        onChange={(e) => {
+                          const updated = [...formik.values.subproyectos];
+                          updated[idx].valor = e.target.value;
+                          formik.setFieldValue('subproyectos', updated);
+                        }}
+                        fullWidth
+                      />
+                      {sp.estado === 'alquilado' && (
+                        <TextField
+                          label="Meses de alquiler"
+                          type="number"
+                          value={sp.meses || ''}
+                          onChange={(e) => {
+                            const updated = [...formik.values.subproyectos];
+                            updated[idx].meses = e.target.value;
+                            formik.setFieldValue('subproyectos', updated);
+                          }}
+                          fullWidth
+                        />
+                      )}
+                      <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                        <Button
+                          variant="text"
+                          color="error"
+                          size="small"
+                          onClick={() => {
+                            const updated = formik.values.subproyectos.filter((_, i) => i !== idx);
+                            formik.setFieldValue('subproyectos', updated);
+                          }}
+                        >
+                          Eliminar subproyecto
+                        </Button>
+                      </Box>
+                    </Box>
+                  ))}
+                  <Button
+                    variant="outlined"
+                    startIcon={<AddCircleIcon />}
+                    onClick={() =>
+                      formik.setFieldValue('subproyectos', [
+                        ...formik.values.subproyectos,
+                        { nombre: '', estado: 'Disponible', valor: '', meses: '' },
+                      ])
+                    }
+                    sx={{ alignSelf: 'flex-start' }}
+                  >
+                    Agregar subproyecto
+                  </Button>
+                </Stack>
+              </Seccion>
+
+              {/* Usuarios y permisos — solo al editar */}
+              {editingProyecto && (
+                <Seccion
+                  icon={GroupsOutlinedIcon}
+                  title="Usuarios y permisos"
+                  hint="Quien tiene acceso hereda todas las acciones en esta obra. Destildá las que no quieras que pueda hacer acá."
+                >
+                  <Stack spacing={1.5}>
+                    <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+                      <Chip
+                        size="small"
+                        label={`${conAccesoCount} con acceso`}
+                        sx={{ fontWeight: 600, color: 'success.main', bgcolor: (t) => alpha(t.palette.success.main, 0.12) }}
+                      />
+                      <Chip
+                        size="small"
+                        label={`${usuariosEmpresa.length - conAccesoCount} sin acceso`}
+                        sx={{ fontWeight: 600, color: 'text.secondary', bgcolor: 'action.selected' }}
+                      />
+                      {recortadosCount > 0 && (
+                        <Chip
+                          size="small"
+                          label={`${recortadosCount} con permisos recortados`}
+                          sx={{ fontWeight: 600, color: 'warning.main', bgcolor: (t) => alpha(t.palette.warning.main, 0.14) }}
+                        />
+                      )}
+                    </Stack>
+
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <TextField
+                        size="small"
+                        fullWidth
+                        placeholder="Buscar usuario…"
+                        value={userSearch}
+                        onChange={(e) => setUserSearch(e.target.value)}
+                        InputProps={{
+                          startAdornment: (
+                            <InputAdornment position="start">
+                              <SearchIcon fontSize="small" sx={{ color: 'text.disabled' }} />
+                            </InputAdornment>
+                          ),
+                        }}
+                      />
+                      <Tooltip title="Dar acceso a todos">
+                        <Button size="small" variant="text" onClick={() => setAccesoTodos(true)} sx={{ whiteSpace: 'nowrap' }}>
+                          Todos
+                        </Button>
+                      </Tooltip>
+                      <Tooltip title="Quitar acceso a todos">
+                        <Button size="small" variant="text" color="inherit" onClick={() => setAccesoTodos(false)} sx={{ whiteSpace: 'nowrap', color: 'text.secondary' }}>
+                          Ninguno
+                        </Button>
+                      </Tooltip>
+                    </Stack>
+
+                    <Box sx={{ maxHeight: 440, overflowY: 'auto', pr: 0.5, mx: -0.5 }}>
+                      <Stack spacing={1} sx={{ px: 0.5 }}>
+                        {usuariosFiltrados.length === 0 && (
+                          <Typography variant="body2" color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
+                            No hay usuarios que coincidan con la búsqueda.
+                          </Typography>
+                        )}
+                        {usuariosFiltrados.map((usuario) => {
+                          const nombre = usuario.firstName || usuario.nombre || '';
+                          const apellido = usuario.lastName || usuario.apellido || '';
+                          const email = usuario.email || '';
+                          const label = `${nombre} ${apellido}`.trim() || email;
+                          const initial = (nombre[0] || email[0] || '?').toUpperCase();
+                          const acceso = tieneAcceso(usuario.id);
+                          const nOff = itemsOffUsuario(usuario);
+                          const recortado = acceso && nOff > 0;
+
+                          return (
+                            <Box
+                              key={usuario.id}
+                              sx={{
+                                border: 1,
+                                borderColor: recortado ? (t) => alpha(t.palette.warning.main, 0.4) : 'divider',
+                                borderRadius: 1.5,
+                                p: 1.25,
+                                bgcolor: 'background.paper',
+                              }}
+                            >
+                              <Stack direction="row" alignItems="center" spacing={1.25}>
+                                <Avatar
+                                  sx={{
+                                    width: 34, height: 34, fontSize: 14, fontWeight: 700,
+                                    bgcolor: acceso ? (t) => alpha(t.palette.success.main, 0.16) : 'action.selected',
+                                    color: acceso ? 'success.main' : 'text.secondary',
+                                  }}
+                                >
+                                  {initial}
+                                </Avatar>
+                                <Box sx={{ minWidth: 0, flexGrow: 1 }}>
+                                  <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap>{label}</Typography>
+                                  {email && (
+                                    <Typography variant="caption" color="text.secondary" noWrap sx={{ display: 'block' }}>
+                                      {email}
+                                    </Typography>
+                                  )}
+                                </Box>
+                                <Stack direction="row" alignItems="center" spacing={0.5}>
+                                  <Typography variant="caption" sx={{ fontWeight: 600, color: acceso ? 'success.main' : 'text.secondary' }}>
+                                    {acceso ? 'Con acceso' : 'Sin acceso'}
+                                  </Typography>
+                                  <Switch
+                                    size="small"
+                                    color="success"
+                                    checked={acceso}
+                                    onChange={(e) => setAcceso(usuario.id, e.target.checked)}
+                                    inputProps={{ 'aria-label': `Acceso de ${label} a la obra` }}
+                                  />
+                                </Stack>
+                              </Stack>
+
+                              {acceso ? (
+                                <Box sx={{ mt: 1 }}>
+                                  <Divider sx={{ mb: 1 }} />
+                                  <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 0.5 }}>
+                                    <Typography variant="caption" sx={{ fontWeight: 600, color: 'warning.main' }}>
+                                      {recortado ? `${nOff} ${nOff === 1 ? 'acción quitada' : 'acciones quitadas'}` : ''}
+                                    </Typography>
+                                    <Box>
+                                      <Button size="small" variant="text" onClick={() => setTodasAcciones(usuario.id, true)} sx={{ minWidth: 0, px: 0.75, fontSize: 11.5 }}>
+                                        Todas
+                                      </Button>
+                                      <Button size="small" variant="text" color="inherit" onClick={() => setTodasAcciones(usuario.id, false)} sx={{ minWidth: 0, px: 0.75, fontSize: 11.5, color: 'text.secondary' }}>
+                                        Ninguna
+                                      </Button>
+                                    </Box>
+                                  </Stack>
+                                  <Stack spacing={0.5}>
+                                    {gruposAcciones.map((grupo) => (
+                                      <Box key={grupo.label}>
+                                        <Typography variant="overline" sx={{ color: 'text.disabled', fontWeight: 700, letterSpacing: '.06em', fontSize: 10, lineHeight: 2 }}>
+                                          {grupo.label}
+                                        </Typography>
+                                        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, columnGap: 1 }}>
+                                          {grupo.items.map((item) => {
+                                            const globalOff = itemGlobalOff(usuario, item);
+                                            const checked = itemChecked(usuario, item);
+                                            return (
+                                              <Tooltip
+                                                key={item.key}
+                                                title={globalOff ? 'Quitada a nivel empresa' : ''}
+                                                placement="top"
+                                                arrow
+                                                disableHoverListener={!globalOff}
+                                                disableFocusListener={!globalOff}
+                                                disableTouchListener={!globalOff}
+                                              >
+                                                <FormControlLabel
+                                                  sx={{ m: 0, py: 0.1, alignItems: 'flex-start', '& .MuiFormControlLabel-label': { pt: 0.35 } }}
+                                                  control={
+                                                    <Checkbox
+                                                      size="small"
+                                                      checked={checked}
+                                                      disabled={globalOff}
+                                                      onChange={() => toggleItem(usuario.id, item)}
+                                                      sx={{ py: 0.25, color: 'text.disabled', '&.Mui-checked': { color: 'success.main' } }}
+                                                    />
+                                                  }
+                                                  label={
+                                                    <Box>
+                                                      <Stack direction="row" alignItems="center" spacing={0.5}>
+                                                        <Typography component="span" sx={{ fontSize: 13, color: globalOff ? 'text.disabled' : 'text.primary' }}>
+                                                          {item.label}
+                                                        </Typography>
+                                                        {globalOff && (
+                                                          <Chip label="empresa" size="small" sx={{ height: 15, fontSize: 9, '& .MuiChip-label': { px: 0.5 } }} />
+                                                        )}
+                                                      </Stack>
+                                                      {item.hint && (
+                                                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', fontSize: 11, lineHeight: 1.2 }}>
+                                                          {item.hint}
+                                                        </Typography>
+                                                      )}
+                                                    </Box>
+                                                  }
+                                                />
+                                              </Tooltip>
+                                            );
+                                          })}
+                                        </Box>
+                                      </Box>
+                                    ))}
+                                  </Stack>
+                                </Box>
+                              ) : (
+                                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.75, pl: 0.25 }}>
+                                  No aparece para esta persona en el bot ni en la web.
+                                </Typography>
+                              )}
+                            </Box>
+                          );
+                        })}
+                      </Stack>
+                    </Box>
+                  </Stack>
+                </Seccion>
+              )}
+            </Stack>
+          </Box>
+
+          {/* ── Footer ── */}
+          <Box
+            sx={{
+              px: 3,
+              py: 2,
+              borderTop: 1,
+              borderColor: 'divider',
+              bgcolor: 'background.paper',
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: 1.5,
+            }}
+          >
+            <Button onClick={cancelarEdicion} color="inherit" sx={{ color: 'text.secondary' }}>
               Cancelar
             </Button>
-            <Button
-              variant="contained"
-              startIcon={<SaveIcon />}
-              type="submit"
-              sx={{ ml: 2 }}
-            >
-              {editingProyecto ? 'Guardar Cambios' : 'Crear Proyecto'}
+            <Button variant="contained" startIcon={<SaveIcon />} type="submit" disabled={isLoading}>
+              {editingProyecto ? 'Guardar cambios' : 'Crear proyecto'}
             </Button>
-          </DialogActions>
-        </form>
-      </Dialog>
+          </Box>
+        </Box>
+      </Drawer>
       <Dialog
   open={!!proyectoAEliminar}
   onClose={() => setProyectoAEliminar(null)}

@@ -57,6 +57,7 @@ import ErrorBoundary from 'src/components/ErrorBoundary';
 import AsistenteFlotanteProyecto from 'src/components/asistenteFlotanteProyecto';
 import TransferenciaInternaDialog from 'src/components/TransferenciaInternaDialog';
 import IntercambioMonedaDialog from 'src/components/IntercambioMonedaDialog';
+import { accionRecortadaEnObra, modoLecturaEnProyecto } from 'src/utils/permisos/accionesPorProyecto';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import CurrencyExchangeIcon from '@mui/icons-material/CurrencyExchange';
 import BulkEditDialog from 'src/components/BulkEditDialog';
@@ -821,6 +822,25 @@ const CajasPage = () => {
     return `${selectedProjects.length} proyectos seleccionados`;
   }, [activeProject, projectScopeMode, selectedProjects.length]);
   const canUseProjectActions = Boolean(activeProject?.id);
+
+  // Recortes de acciones por obra (TAR-393) para el gating visual de los diálogos de operación.
+  const recorteActiva = useMemo(
+    () => ({
+      dolares:
+        accionRecortadaEnObra(user, activeProject?.id, 'VENDER_DOLARES')
+        && accionRecortadaEnObra(user, activeProject?.id, 'COMPRAR_DOLARES'),
+      transferencia: accionRecortadaEnObra(user, activeProject?.id, 'CREAR_EGRESO'),
+      masiva: accionRecortadaEnObra(user, activeProject?.id, 'CREAR_EGRESOS_MASIVO'),
+    }),
+    [user, activeProject?.id]
+  );
+
+  // Read-gating por obra (TAR-393): si se entra directo a una obra con lectura bloqueada
+  // (VER_CAJAS/LISTAR quitados y sin VER_MIS), no mostrar saldos ni movimientos.
+  const lecturaBloqueada = useMemo(
+    () => Boolean(activeProject?.id) && modoLecturaEnProyecto(user, activeProject.id) === 'bloqueado',
+    [user, activeProject?.id]
+  );
 
   // Reserva de Obra del proyecto activo (solo con un proyecto seleccionado).
   // Alimenta el desglose Reservado/Disponible y la columna "Reserva" de la tabla.
@@ -2555,6 +2575,24 @@ useEffect(() => {
     return 'Cuenta suspendida. Contacte al administrador.';
   }
 
+  if (lecturaBloqueada) {
+    return (
+      <DashboardLayout title={tituloConCodigo}>
+        <Head><title>{tituloConCodigo}</title></Head>
+        <Box component="main" sx={{ flexGrow: 1, py: 8, display: 'flex', justifyContent: 'center' }}>
+          <Container maxWidth="sm">
+            <Paper variant="outlined" sx={{ p: 4, borderRadius: 4, textAlign: 'center' }}>
+              <Typography variant="h6" sx={{ mb: 1 }}>🔒 No tenés acceso a esta obra</Typography>
+              <Typography variant="body2" color="text.secondary">
+                No tenés permiso para ver los movimientos y saldos de {activeProject?.nombre || 'esta obra'}.
+              </Typography>
+            </Paper>
+          </Container>
+        </Box>
+      </DashboardLayout>
+    );
+  }
+
   return (
     <DashboardLayout title={tituloConCodigo}>
       <Head>
@@ -3635,7 +3673,7 @@ useEffect(() => {
       { label: 'CSV para análisis', icon: <DownloadIcon fontSize="small" />, onClick: () => { handleOpenExportCsvDialog(); closeAllMenus(); } },
     ],
     importar: [
-      { label: 'Carga masiva', icon: <DownloadIcon fontSize="small" />, onClick: () => { setCargaMasivaOpen(true); closeAllMenus(); } },
+      { label: 'Carga masiva', icon: <DownloadIcon fontSize="small" />, disabled: recorteActiva.masiva, onClick: () => { setCargaMasivaOpen(true); closeAllMenus(); } },
       { label: 'Importar CSV (actualizar)', icon: <DownloadIcon fontSize="small" />, onClick: () => { setOpenImportDialog(true); closeAllMenus(); } },
     ],
   };
@@ -3652,10 +3690,10 @@ useEffect(() => {
         <MenuOption sx={itemSx} onClick={() => handleMenuOptionClick('registrarMovimiento')}>
           <AddCircleIcon fontSize="small" /> Registrar movimiento
         </MenuOption>
-        <MenuOption sx={itemSx} onClick={() => { handleOpenTransferencia(); closeAllMenus(); }}>
+        <MenuOption sx={itemSx} onClick={() => { handleOpenTransferencia(); closeAllMenus(); }} disabled={recorteActiva.transferencia}>
           <SwapHorizIcon fontSize="small" /> Transferencia interna
         </MenuOption>
-        <MenuOption sx={itemSx} onClick={() => { handleOpenIntercambio(); closeAllMenus(); }} disabled={!canUseProjectActions}>
+        <MenuOption sx={itemSx} onClick={() => { handleOpenIntercambio(); closeAllMenus(); }} disabled={!canUseProjectActions || recorteActiva.dolares}>
           <CurrencyExchangeIcon fontSize="small" /> Compra/Venta moneda
         </MenuOption>
 

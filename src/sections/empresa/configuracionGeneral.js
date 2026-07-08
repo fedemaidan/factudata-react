@@ -206,6 +206,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
     "VER_RESERVAS_OBRA",
     "GESTIONAR_RESERVAS_OBRA",
     "LISTAR_MOVIMIENTOS",
+    "VER_MIS_MOVIMIENTOS",
     "ADMIN_USUARIOS",
     "CREAR_ACOPIO",
     "CREAR_PRESUPUESTO",
