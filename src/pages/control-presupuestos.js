@@ -1,3 +1,5 @@
+// 📖 Doc del módulo de control de presupuestos (funcional + técnico, incluye CAC y
+//    agrupación por moneda/índice): sorby_bot_wa/docs/control-presupuestos/
 import { useEffect, useState, useMemo, Fragment } from 'react';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import Head from 'next/head';
@@ -64,6 +66,7 @@ import proveedorService from 'src/services/proveedorService';
 import { getProyectosFromUser } from 'src/services/proyectosService';
 import { formatCurrency, formatTimestamp } from 'src/utils/formatters';
 import { getClasificacionesEfectivas, formatClasificacionesText } from 'src/utils/presupuestoLegacy';
+import { CAC_LABELS } from 'src/components/presupuestosProfesionales/monedaAjusteConfig';
 
 // ─── Helpers de item de presupuesto (multi-categoría / multi-proveedor) ──────
 const itemTieneCategorias = (item) =>
@@ -72,6 +75,29 @@ const itemTieneProveedores = (item) =>
   Array.isArray(item?.proveedores) && item.proveedores.length > 0;
 const itemEsGeneral = (item) =>
   !itemTieneCategorias(item) && !item?.etapa && !itemTieneProveedores(item);
+
+// ─── Identidad de moneda/índice de un presupuesto (TAR-423) ──────────────────
+// Cada presupuesto vive en una moneda/índice (ARS fijo, USD, o CAC por subíndice).
+// El control no mezcla unidades distintas en un mismo número: se agrupa por esta clave.
+const itemIndiceKey = (item) => {
+  const m = item?.moneda || 'ARS';
+  return m === 'CAC' ? `CAC:${item?.cac_tipo || 'general'}` : m;
+};
+const indiceKeyMoneda = (key) => (key.startsWith('CAC') ? 'CAC' : key);
+const indiceKeyCacTipo = (key) => (key.startsWith('CAC:') ? key.slice(4) : null);
+const indiceKeyLabel = (key) => {
+  if (key === 'ARS') return 'Pesos (ARS)';
+  if (key === 'USD') return 'Dólares (USD)';
+  return `CAC ${CAC_LABELS[indiceKeyCacTipo(key)] || 'Promedio'}`;
+};
+const indiceKeyOrden = (key) => (key === 'ARS' ? 0 : key === 'USD' ? 1 : 2);
+// Formatea un monto en su moneda nativa (sin convertir): USD/CAC con su sufijo, ARS con $.
+const fmtMontoNativo = (v, monedaNativa) => {
+  const n = Number(v || 0).toLocaleString('es-AR', { maximumFractionDigits: 2 });
+  if (monedaNativa === 'USD') return `USD ${n}`;
+  if (monedaNativa === 'CAC') return `${n} CAC`;
+  return `$${Number(v || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`;
+};
 const itemMatcheaCategoria = (item, cat) =>
   (item?.clasificaciones || []).some((c) => c.categoria === cat);
 const itemMatcheaProveedor = (item, nombre) =>
@@ -91,6 +117,7 @@ import PresupuestoDrawer from 'src/components/PresupuestoDrawer';
 import ExportarPdfMenu from 'src/components/plantillasPdf/ExportarPdfMenu';
 import ExportarExcelMenu from 'src/components/plantillasPdf/ExportarExcelMenu';
 import { buildControlPresupuestoData } from 'src/utils/controlPresupuesto/buildControlPresupuestoData';
+import { snapshotCacIndice } from 'src/utils/cac/pickCac';
 import Tooltip from '@mui/material/Tooltip';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import CloseIcon from '@mui/icons-material/Close';
@@ -269,7 +296,7 @@ const ProyectoCard = ({ proyecto, resumen, onSelect, formatMonto, tipoCambio, mo
 const PresupuestoItem = ({
   label, presupuesto, ejecutado, formatMonto, onEditar, onCrear, onToggleSeleccion, seleccionada = false,
   historial, moneda, indexacion, baseCalculo, cotizacionSnapshot, montoIngresado,
-  cacIndiceActual: cacIdx, tipoCambioActual, cacTipo,
+  cacIndiceActual: cacIdx, tipoCambioActual, cacTipo, cacEstado,
   modoSeleccion = false,
 }) => {
   const tienePresupuesto = presupuesto !== null && presupuesto !== undefined;
@@ -278,16 +305,22 @@ const PresupuestoItem = ({
   const tieneHistorial = historial && historial.length > 0;
   const monedaItem = moneda || 'ARS';
   const esIndexado = !!indexacion;
-  const indiceActual = indexacion === 'CAC' ? cacIdx : (indexacion === 'USD' ? tipoCambioActual : null);
   const cacTipoLabel = cacTipo === 'mano_obra' ? 'MO' : cacTipo === 'materiales' ? 'MAT' : '';
-  const unidadIdx = indexacion === 'CAC' ? `CAC${cacTipoLabel ? ' ' + cacTipoLabel : ''}` : (indexacion === 'USD' ? 'USD' : '');
+  // Mostramos en unidad NATIVA (con su equivalente en pesos a hoy) tanto cuando hay
+  // indexación (CAC/USD) como cuando la moneda nativa es USD/CAC. Solo el peso plano
+  // (ARS sin indexar) usa formatMonto (que sigue el toggle de moneda de la página).
+  const esCAClike = indexacion === 'CAC' || (!esIndexado && monedaItem === 'CAC');
+  const esUSDlike = indexacion === 'USD' || (!esIndexado && monedaItem === 'USD');
+  const unidadIdx = esCAClike ? `CAC${cacTipoLabel ? ' ' + cacTipoLabel : ''}` : (esUSDlike ? 'USD' : '');
+  const mostrarUnidad = unidadIdx !== '';
+  const indiceActual = esCAClike ? cacIdx : (esUSDlike ? tipoCambioActual : null);
 
   // Para indexados: mostrar equivalencia ARS hoy
   const fmtARS = (v) => v != null ? `$${Number(v).toLocaleString('es-AR', { maximumFractionDigits: 0 })}` : '';
   const fmtUnidad = (v) => `${Number(v || 0).toLocaleString('es-AR', { maximumFractionDigits: 2 })} ${unidadIdx}`;
-  const presEnARS = esIndexado && indiceActual && presupuesto ? presupuesto * indiceActual : null;
-  const ejEnARS = esIndexado && indiceActual && ejec ? ejec * indiceActual : null;
-  const saldoEnARS = esIndexado && indiceActual ? (presupuesto - ejec) * indiceActual : null;
+  const presEnARS = mostrarUnidad && indiceActual && presupuesto ? presupuesto * indiceActual : null;
+  const ejEnARS = mostrarUnidad && indiceActual && ejec ? ejec * indiceActual : null;
+  const saldoEnARS = mostrarUnidad && indiceActual ? (presupuesto - ejec) * indiceActual : null;
 
   const stylesSeleccion = seleccionada
     ? { borderColor: 'primary.main', borderWidth: 2, bgcolor: 'action.selected' }
@@ -365,6 +398,11 @@ const PresupuestoItem = ({
         {esIndexado && (
           <Chip label={`idx ${unidadIdx}`} size="small" color="secondary" variant="outlined" sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }} />
         )}
+        {indexacion === 'CAC' && cacEstado === 'estimado' && (
+          <Tooltip title="Usa el último CAC disponible; se actualiza solo cuando se publique el CAC oficial del mes" arrow>
+            <Chip label="Estimado" size="small" color="warning" variant="outlined" sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }} />
+          </Tooltip>
+        )}
         {baseCalculo === 'subtotal' && (
           <Chip label="neto" size="small" color="default" variant="outlined" sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }} />
         )}
@@ -374,7 +412,7 @@ const PresupuestoItem = ({
       </Stack>
       {/* Fila de montos: presupuesto y ejecutado */}
       <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" useFlexGap>
-        {esIndexado ? (
+        {mostrarUnidad ? (
           <>
             <Tooltip title={presEnARS != null ? `Hoy: ${fmtARS(presEnARS)}` : ''} arrow>
               <Chip label={`Pres: ${fmtUnidad(presupuesto)}`} size="small" variant="outlined" />
@@ -401,11 +439,11 @@ const PresupuestoItem = ({
       <Stack direction="row" justifyContent="space-between" sx={{ mt: 0.75 }}>
         <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.6rem', sm: '0.75rem' } }}>
           {porcentaje.toFixed(1)}% ejecutado
-          {esIndexado && ejEnARS != null && ` · ${fmtARS(ejEnARS)} ARS`}
+          {mostrarUnidad && ejEnARS != null && ` · ${fmtARS(ejEnARS)} ARS`}
         </Typography>
         <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.6rem', sm: '0.75rem' } }}>
-          Saldo: {esIndexado ? `${fmtUnidad(presupuesto - ejec)}` : formatMonto(presupuesto - ejec, monedaItem)}
-          {esIndexado && saldoEnARS != null && ` · ${fmtARS(saldoEnARS)} ARS`}
+          Saldo: {mostrarUnidad ? `${fmtUnidad(presupuesto - ejec)}` : formatMonto(presupuesto - ejec, monedaItem)}
+          {mostrarUnidad && saldoEnARS != null && ` · ${fmtARS(saldoEnARS)} ARS`}
         </Typography>
       </Stack>
     </Paper>
@@ -568,7 +606,10 @@ const ControlPresupuestosPage = () => {
         if (router.query.empresaId) {
           empresaData = await getEmpresaById(router.query.empresaId);
         } else {
-          empresaData = await getEmpresaDetailsFromUser(user);
+          const fromUser = await getEmpresaDetailsFromUser(user);
+          // user.empresaData es un snapshot del login y puede no traer la config más
+          // nueva (ej. el índice por categoría de TAR-423). Releemos fresco por id.
+          empresaData = fromUser?.id ? await getEmpresaById(fromUser.id) : fromUser;
         }
 
         setEmpresa(empresaData);
@@ -760,6 +801,9 @@ const ControlPresupuestosPage = () => {
   // Helper: obtener el subíndice CAC correcto para un tipo dado
   const getCacIndice = (cacTipo) => cacIndicesActuales[cacTipo || 'general'] || cacIndicesActuales.general || null;
 
+  // Modo de CAC de la empresa (para elegir la variante del snapshot en lecturas locales).
+  const cacModo = empresa?.presupuesto_cac_modo || 'legacy';
+
   const convertir = (monto, monedaOriginal = 'ARS', cacTipoItem = null) => {
     // Si la moneda de visualización y la original son iguales, no convertir
     if (moneda === monedaOriginal) return monto;
@@ -814,13 +858,25 @@ const ControlPresupuestosPage = () => {
       return `$${Number(valor).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`;
     };
 
+    // El backend (egresosPorMoneda.total) suma general + categorías; como los específicos
+    // son asignaciones DENTRO del general, eso doble-cuenta. Recalculamos por moneda con el
+    // general como techo, igual que calcularTotales, así la composición cierra con el total.
+    const totalesNativos = (items = []) => {
+      const generales = items.filter(itemEsGeneral);
+      const especificos = items.filter((i) => !itemEsGeneral(i));
+      const sum = (arr, campo) => arr.reduce((s, i) => s + (i[campo] || 0), 0);
+      if (generales.length > 0) {
+        return { total: Math.max(sum(generales, 'monto'), sum(especificos, 'monto')), ejecutado: sum(generales, 'ejecutado') };
+      }
+      return { total: sum(items, 'monto'), ejecutado: sum(items, 'ejecutado') };
+    };
+
     return (
       <Box sx={{ fontSize: '0.75rem', lineHeight: 1.8 }}>
         <strong>Composición ({tipo}):</strong>
         {monedas.map(mon => {
           const data = porMoneda[mon];
-          const totalNativo = data.total || 0;
-          const ejecutadoNativo = data.ejecutado || 0;
+          const { total: totalNativo, ejecutado: ejecutadoNativo } = totalesNativos(data.items);
           return (
             <Box key={mon}>
               {mon}: Pres. {fmtNativo(totalNativo, mon)} · Ejec. {fmtNativo(ejecutadoNativo, mon)}
@@ -910,6 +966,7 @@ const ControlPresupuestosPage = () => {
         base_calculo: item.base_calculo || 'total',
         cotizacion_snapshot: item.cotizacion_snapshot || null,
         cac_tipo: item.cac_tipo || null,
+        cac_estado: item.cac_estado || null,
         fecha_presupuesto: item.fecha_presupuesto || null,
         tipo: item.tipo || 'egreso',
         proveedores: Array.isArray(item.proveedores) ? item.proveedores : [],
@@ -1013,6 +1070,7 @@ const ControlPresupuestosPage = () => {
         ejecutado: item.ejecutado || 0,
         cotizacion_snapshot: item.cotizacion_snapshot || null,
         cac_tipo: item.cac_tipo || null,
+        cac_estado: item.cac_estado || null,
         fecha_presupuesto: item.fecha_presupuesto || null,
         proveedores: Array.isArray(item.proveedores) ? item.proveedores : [],
         clasificaciones: getClasificacionesEfectivas(item),
@@ -1039,6 +1097,7 @@ const ControlPresupuestosPage = () => {
     ejecutado: item.ejecutado || 0,
     cotizacion_snapshot: item.cotizacion_snapshot || null,
     cac_tipo: item.cac_tipo || null,
+    cac_estado: item.cac_estado || null,
     fecha_presupuesto: item.fecha_presupuesto || null,
     proveedores: Array.isArray(item.proveedores) ? item.proveedores : [],
     clasificaciones: getClasificacionesEfectivas(item),
@@ -1171,6 +1230,55 @@ const ControlPresupuestosPage = () => {
   // Obtener el presupuesto general del proyecto
   const presupuestoGeneral = calcularSumas.general || 0;
 
+  // ─── Generales por moneda/índice (TAR-423) ─────────────────────────────────
+  // Cada moneda/índice tiene su propio "general" con Asignado (Σ específicos de esa
+  // unidad) y Sin asignar (General − Asignado). Todo en moneda nativa, sin mezclar.
+  // El ejecutado de cada unidad usa el techo (general si existe, si no la suma de hijos).
+  const gruposGeneralEgreso = useMemo(() => {
+    if (!resumen) return [];
+    const items = obtenerTodosLosItemsEgresos();
+    const map = new Map();
+    for (const it of items) {
+      const key = itemIndiceKey(it);
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(it);
+    }
+    return [...map.entries()]
+      .sort((a, b) => indiceKeyOrden(a[0]) - indiceKeyOrden(b[0]))
+      .map(([key, grupoItems]) => {
+        const generales = grupoItems.filter(itemEsGeneral);
+        const especificos = grupoItems.filter((i) => !itemEsGeneral(i));
+        // Puede haber más de un general por unidad: se suman todos (igual que el modelo viejo).
+        const general = generales[0] || null;
+        const generalMonto = generales.reduce((s, i) => s + (i.monto || 0), 0);
+        const asignado = especificos.reduce((s, i) => s + (i.monto || 0), 0);
+        const presupuestado = Math.max(generalMonto, asignado);
+        const ejecutado = generales.length > 0
+          ? generales.reduce((s, i) => s + (i.ejecutado || 0), 0)
+          : especificos.reduce((s, i) => s + (i.ejecutado || 0), 0);
+        const monedaNativa = indiceKeyMoneda(key);
+        const cacTipo = indiceKeyCacTipo(key);
+        const idxARS = monedaNativa === 'CAC' ? getCacIndice(cacTipo) : monedaNativa === 'USD' ? tipoCambio : 1;
+        return {
+          key,
+          label: indiceKeyLabel(key),
+          monedaNativa,
+          cacTipo,
+          indexacion: monedaNativa === 'CAC' ? 'CAC' : monedaNativa === 'USD' ? 'USD' : null,
+          general,
+          generalMonto,
+          asignado,
+          sinAsignar: generalMonto - asignado,
+          presupuestado,
+          ejecutado,
+          tieneGeneral: !!general,
+          tieneEspecificos: especificos.length > 0,
+          // Referencia en ARS de hoy (null si falta cotización).
+          idxARS: idxARS || null,
+        };
+      });
+  }, [resumen, tipoCambio, cacIndiceActual]);
+
   // Verificar si alguna suma de hijos excede el presupuesto general
   const verificarExcesoHijos = () => {
     if (presupuestoGeneral <= 0) return;
@@ -1213,6 +1321,28 @@ const ControlPresupuestosPage = () => {
     } catch (err) {
       setAlert({ open: true, message: 'Error al crear presupuesto', severity: 'error' });
     }
+  };
+
+  // Abre el drawer para definir/crear el presupuesto general de una moneda/índice.
+  // Prefilla la unidad y sugiere el monto ya asignado (en la unidad de entrada del drawer:
+  // ARS para CAC indexado, la moneda nativa para ARS/USD).
+  const abrirDefinirGeneral = (grupo) => {
+    const sugeridoNativo = grupo.asignado || 0;
+    const monto = grupo.monedaNativa === 'CAC'
+      ? (grupo.idxARS ? sugeridoNativo * grupo.idxARS : null)
+      : sugeridoNativo;
+    abrirDrawerCrear({
+      tipoDefault: 'egreso',
+      preFill: {
+        clasificaciones: [],
+        proveedores: [],
+        etapa: null,
+        monto: monto > 0 ? monto : null,
+        moneda: grupo.monedaNativa === 'USD' ? 'USD' : 'ARS',
+        indexacion: grupo.indexacion,
+        cac_tipo: grupo.cacTipo,
+      },
+    });
   };
 
   // Verificar exceso después de que cambie calcularSumas
@@ -1453,10 +1583,14 @@ const ControlPresupuestosPage = () => {
 
             {resumen && (
               <>
-                {/* Resumen General */}
+                {/* Resumen General (convertido a la moneda de vista — modo opcional) */}
                 {(() => {
                   const totales = calcularTotales();
                   return (
+                    <Box>
+                    <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
+                      Totales convertidos a {moneda} (con el índice de hoy) — usá el selector de arriba para cambiar la moneda.
+                    </Typography>
                     <Grid container spacing={{ xs: 1.5, md: 3 }}>
                       <Grid item xs={6} sm={4}>
                         <Card>
@@ -1532,6 +1666,7 @@ const ControlPresupuestosPage = () => {
                         </Card>
                       </Grid>
                     </Grid>
+                    </Box>
                   );
                 })()}
 
@@ -1587,11 +1722,15 @@ const ControlPresupuestosPage = () => {
                             const monedaItem = item.moneda || 'ARS';
                             const esIdx = !!item.indexacion;
                             const cacTipoLbl = item.cac_tipo === 'mano_obra' ? ' MO' : item.cac_tipo === 'materiales' ? ' MAT' : '';
-                            const unidadIdx = item.indexacion === 'CAC' ? `CAC${cacTipoLbl}` : (item.indexacion === 'USD' ? 'USD' : '');
-                            const idxActual = item.indexacion === 'CAC' ? getCacIndice(item.cac_tipo) : (item.indexacion === 'USD' ? tipoCambio : null);
-                            const presEnARS = esIdx && idxActual ? item.monto * idxActual : null;
-                            const ejEnARS = esIdx && idxActual ? (item.ejecutado || 0) * idxActual : null;
-                            const saldoEnARS = esIdx && idxActual ? (item.monto - (item.ejecutado || 0)) * idxActual : null;
+                            // Unidad nativa (con equiv en pesos a hoy) para indexados Y para moneda nativa USD/CAC.
+                            const esCAClike = item.indexacion === 'CAC' || (!esIdx && monedaItem === 'CAC');
+                            const esUSDlike = item.indexacion === 'USD' || (!esIdx && monedaItem === 'USD');
+                            const mostrarUnidad = esCAClike || esUSDlike;
+                            const unidadIdx = esCAClike ? `CAC${cacTipoLbl}` : (esUSDlike ? 'USD' : '');
+                            const idxActual = esCAClike ? getCacIndice(item.cac_tipo) : (esUSDlike ? tipoCambio : null);
+                            const presEnARS = mostrarUnidad && idxActual ? item.monto * idxActual : null;
+                            const ejEnARS = mostrarUnidad && idxActual ? (item.ejecutado || 0) * idxActual : null;
+                            const saldoEnARS = mostrarUnidad && idxActual ? (item.monto - (item.ejecutado || 0)) * idxActual : null;
                             const fmtARS = (v) => v != null ? `$${Number(v).toLocaleString('es-AR', { maximumFractionDigits: 0 })}` : '';
                             const fmtUnidad = (v) => `${Number(v).toLocaleString('es-AR', { maximumFractionDigits: 2 })} ${unidadIdx}`;
                             const label = labelItem(item);
@@ -1607,7 +1746,7 @@ const ControlPresupuestosPage = () => {
                               if (!esIdx) return m;
                               const snap = a?.cotizacion_snapshot || {};
                               if (item.indexacion === 'CAC') {
-                                const idx = snap.cac_indice ?? snap.cac_general ?? null;
+                                const idx = snapshotCacIndice(snap, item.cac_tipo, cacModo);
                                 return idx ? m * idx : 0;
                               }
                               if (item.indexacion === 'USD') {
@@ -1690,7 +1829,7 @@ const ControlPresupuestosPage = () => {
                                 </Stack>
                                 {/* Fila 2: chips de montos */}
                                 <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" useFlexGap>
-                                  {esIdx ? (
+                                  {mostrarUnidad ? (
                                     <>
                                       <Tooltip title={tooltipPresTitle} arrow>
                                         <Chip label={`Pres: ${fmtUnidad(item.monto)}`} size="small" variant="outlined" sx={{ cursor: 'help' }} />
@@ -1727,11 +1866,11 @@ const ControlPresupuestosPage = () => {
                                 <Stack direction="row" justifyContent="space-between" sx={{ mt: 0.5 }}>
                                   <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.6rem', sm: '0.75rem' } }}>
                                     {porcentaje.toFixed(1)}% cobrado
-                                    {esIdx && ejEnARS != null && ` · ${fmtARS(ejEnARS)} ARS`}
+                                    {mostrarUnidad && ejEnARS != null && ` · ${fmtARS(ejEnARS)} ARS`}
                                   </Typography>
                                   <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.6rem', sm: '0.75rem' } }}>
-                                    Pendiente: {esIdx ? fmtUnidad(item.monto - (item.ejecutado || 0)) : formatMonto(item.monto - (item.ejecutado || 0), monedaItem)}
-                                    {esIdx && saldoEnARS != null && ` · ${fmtARS(saldoEnARS)} ARS`}
+                                    Pendiente: {mostrarUnidad ? fmtUnidad(item.monto - (item.ejecutado || 0)) : formatMonto(item.monto - (item.ejecutado || 0), monedaItem)}
+                                    {mostrarUnidad && saldoEnARS != null && ` · ${fmtARS(saldoEnARS)} ARS`}
                                   </Typography>
                                 </Stack>
                               </Paper>
@@ -1797,127 +1936,96 @@ const ControlPresupuestosPage = () => {
                     <Tab value={2} icon={<StorefrontIcon sx={{ fontSize: { xs: 16, md: 20 } }} />} iconPosition="start" label="Proveedor" />
                   </Tabs>
                   
-                  {/* Resumen de asignación del tab activo */}
-                  <Box sx={{ mt: 2, p: { xs: 1.5, md: 2 }, bgcolor: 'grey.50', borderRadius: 1 }}>
-                    {/* Mobile: grid 2x2; Desktop: fila horizontal */}
-                    <Box sx={{ 
-                      display: 'grid', 
-                      gridTemplateColumns: { xs: '1fr 1fr', sm: 'auto auto auto auto 1fr' },
-                      gap: { xs: 1.5, md: 2 },
-                      alignItems: 'center'
-                    }}>
-                      <Box>
-                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.6rem', sm: '0.75rem' } }}>Presupuesto General</Typography>
-                        <Stack direction="row" alignItems="center" spacing={0.5} flexWrap="wrap" useFlexGap>
-                          {presupuestoGeneral > 0 ? (
-                            (() => {
-                              const gi = calcularSumas.generalItem;
-                              const esIdx = gi && !!gi.indexacion;
-                              const monedaItem = gi?.moneda || 'ARS';
-                              const cacTipoLbl = gi?.cac_tipo === 'mano_obra' ? ' MO' : gi?.cac_tipo === 'materiales' ? ' MAT' : '';
-                              const unidadIdx = gi?.indexacion === 'CAC' ? `CAC${cacTipoLbl}` : (gi?.indexacion === 'USD' ? 'USD' : '');
-                              const idxActual = gi?.indexacion === 'CAC' ? getCacIndice(gi?.cac_tipo) : (gi?.indexacion === 'USD' ? tipoCambio : null);
-                              const presEnARS = esIdx && idxActual ? gi.monto * idxActual : null;
-                              const fmtARS = (v) => v != null ? `$${Number(v).toLocaleString('es-AR', { maximumFractionDigits: 0 })}` : '';
-                              const fmtUnidad = (v) => `${Number(v).toLocaleString('es-AR', { maximumFractionDigits: 2 })} ${unidadIdx}`;
-                              return (
-                                <>
-                                  <Typography variant="h6" sx={{ fontSize: { xs: '0.95rem', md: '1.25rem' } }}>
-                                    {esIdx ? fmtUnidad(gi.monto) : formatMonto(presupuestoGeneral, moneda)}
-                                  </Typography>
-                                  {esIdx && presEnARS != null && (
-                                    <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.6rem', sm: '0.7rem' } }}>
-                                      ≈ {fmtARS(presEnARS)}
-                                    </Typography>
-                                  )}
-                                  {esIdx && (
-                                    <Chip label={`idx ${gi.indexacion}`} size="small" color="secondary" variant="outlined" sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }} />
-                                  )}
-                                  {gi?.base_calculo === 'subtotal' && (
-                                    <Chip label="neto" size="small" color="default" variant="outlined" sx={{ height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }} />
-                                  )}
-                                  <Button 
-                                    size="small"
-                                    sx={{ minWidth: 'auto', px: 0.5, fontSize: '0.7rem' }}
-                                    onClick={() => {
-                                      const generalItem = obtenerTodosLosItemsEgresos().find(itemEsGeneral);
-                                      if (generalItem) abrirDrawerEditar(generalItem, 'General');
-                                    }}
-                                  >
-                                    Editar
-                                  </Button>
-                                  {calcularSumas.generalHistorial?.length > 0 && (
-                                    <Chip 
-                                      label={`${calcularSumas.generalHistorial.length}`} 
-                                      size="small" 
-                                      color="info" 
-                                      variant="outlined"
-                                      onClick={() => {
-                                        const generalItem = obtenerTodosLosItemsEgresos().find(itemEsGeneral);
-                                        if (generalItem) abrirDrawerEditar(generalItem, 'General');
-                                      }}
-                                      sx={{ cursor: 'pointer', height: 20, '& .MuiChip-label': { px: 0.5, fontSize: '0.65rem' } }}
-                                    />
-                                  )}
-                                </>
-                              );
-                            })()
-                          ) : (
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              onClick={() => {
-                                // Sugerencia: monto = total asignado de la pestaña activa, así definir un techo
-                                // arranca desde lo que ya está distribuido en categorías/etapas/proveedores.
-                                const sugerido = tabActivo === 0
-                                  ? calcularSumas.porCategoria
-                                  : tabActivo === 1
-                                    ? calcularSumas.porEtapa
-                                    : calcularSumas.porProveedor;
-                                abrirDrawerCrear({
-                                  tipoDefault: 'egreso',
-                                  preFill: { clasificaciones: [], proveedores: [], etapa: null, monto: sugerido > 0 ? sugerido : null },
-                                });
-                              }}
-                              sx={{ fontSize: { xs: '0.7rem', md: '0.8rem' } }}
-                            >
-                              Definir
-                            </Button>
-                          )}
+                  {/* Presupuesto general por moneda/índice (TAR-423): cada unidad por separado */}
+                  <Stack spacing={1.5} sx={{ mt: 2 }}>
+                    {gruposGeneralEgreso.length === 0 && (
+                      <Box sx={{ p: { xs: 1.5, md: 2 }, bgcolor: 'grey.50', borderRadius: 1 }}>
+                        <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
+                          <Typography variant="body2" color="text.secondary">Todavía no hay presupuesto general</Typography>
+                          <Button size="small" variant="outlined"
+                            onClick={() => abrirDrawerCrear({ tipoDefault: 'egreso', preFill: { clasificaciones: [], proveedores: [], etapa: null } })}>
+                            Definir
+                          </Button>
                         </Stack>
                       </Box>
-                      <Box>
-                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.6rem', sm: '0.75rem' } }}>
-                          Asignado
-                        </Typography>
-                        <Typography variant="h6" sx={{ fontSize: { xs: '0.95rem', md: '1.25rem' } }} color={
-                          (tabActivo === 0 ? calcularSumas.porCategoria : tabActivo === 1 ? calcularSumas.porEtapa : calcularSumas.porProveedor) > presupuestoGeneral 
-                            ? 'error.main' 
-                            : 'text.primary'
-                        }>
-                          {formatMonto(tabActivo === 0 ? calcularSumas.porCategoria : tabActivo === 1 ? calcularSumas.porEtapa : calcularSumas.porProveedor, moneda)}
-                        </Typography>
-                      </Box>
-                      <Box>
-                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.6rem', sm: '0.75rem' } }}>Sin asignar</Typography>
-                        <Typography variant="h6" sx={{ fontSize: { xs: '0.95rem', md: '1.25rem' } }} color={
-                          presupuestoGeneral - (tabActivo === 0 ? calcularSumas.porCategoria : tabActivo === 1 ? calcularSumas.porEtapa : calcularSumas.porProveedor) < 0 
-                            ? 'error.main' 
-                            : 'success.main'
-                        }>
-                          {formatMonto(presupuestoGeneral - (tabActivo === 0 ? calcularSumas.porCategoria : tabActivo === 1 ? calcularSumas.porEtapa : calcularSumas.porProveedor), moneda)}
-                        </Typography>
-                      </Box>
-                      {presupuestoGeneral > 0 && (
-                        <Chip 
-                          label={`${(((tabActivo === 0 ? calcularSumas.porCategoria : tabActivo === 1 ? calcularSumas.porEtapa : calcularSumas.porProveedor) / presupuestoGeneral) * 100).toFixed(0)}%`}
-                          color={(tabActivo === 0 ? calcularSumas.porCategoria : tabActivo === 1 ? calcularSumas.porEtapa : calcularSumas.porProveedor) > presupuestoGeneral ? 'error' : 'primary'}
-                          size="small"
-                        />
-                      )}
-                    </Box>
-                  </Box>
-                  
+                    )}
+                    {gruposGeneralEgreso.map((g) => {
+                      const refARS = g.idxARS && g.monedaNativa !== 'ARS';
+                      const pct = g.generalMonto > 0 ? (g.asignado / g.generalMonto) * 100 : null;
+                      return (
+                        <Box key={g.key} sx={{ p: { xs: 1.5, md: 2 }, bgcolor: 'grey.50', borderRadius: 1 }}>
+                          <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
+                            <Chip label={g.label} size="small" variant="outlined"
+                              color={g.monedaNativa === 'ARS' ? 'default' : 'secondary'} />
+                            {pct != null && (
+                              <Chip size="small" label={`${pct.toFixed(0)}%`}
+                                color={g.asignado > g.generalMonto ? 'error' : 'primary'} />
+                            )}
+                          </Stack>
+                          <Box sx={{
+                            display: 'grid',
+                            gridTemplateColumns: { xs: '1fr 1fr', sm: 'auto auto auto' },
+                            gap: { xs: 1.5, md: 3 },
+                            alignItems: 'center',
+                          }}>
+                            <Box>
+                              <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.6rem', sm: '0.75rem' } }}>Presupuesto general</Typography>
+                              {g.tieneGeneral ? (
+                                <Stack direction="row" alignItems="baseline" spacing={0.75} flexWrap="wrap" useFlexGap>
+                                  <Typography variant="h6" sx={{ fontSize: { xs: '0.95rem', md: '1.25rem' } }}>
+                                    {fmtMontoNativo(g.generalMonto, g.monedaNativa)}
+                                  </Typography>
+                                  {refARS && (
+                                    <Typography variant="caption" color="text.secondary">
+                                      ≈ ${Number(g.generalMonto * g.idxARS).toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                                    </Typography>
+                                  )}
+                                  <Button size="small" sx={{ minWidth: 'auto', px: 0.5, fontSize: '0.7rem' }}
+                                    onClick={() => abrirDrawerEditar(g.general, 'General')}>
+                                    Editar
+                                  </Button>
+                                </Stack>
+                              ) : (
+                                <Box>
+                                  <Button size="small" variant="outlined" onClick={() => abrirDefinirGeneral(g)}
+                                    sx={{ fontSize: { xs: '0.7rem', md: '0.8rem' }, mt: 0.5 }}>
+                                    Definir
+                                  </Button>
+                                </Box>
+                              )}
+                            </Box>
+                            <Box>
+                              {/* Sin general, lo presupuestado en la unidad no es "asignado" (no hay techo del que repartir). */}
+                              <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.6rem', sm: '0.75rem' } }}>
+                                {g.tieneGeneral ? 'Asignado' : 'Presupuestado'}
+                              </Typography>
+                              <Typography variant="h6" sx={{ fontSize: { xs: '0.95rem', md: '1.25rem' } }}
+                                color={g.tieneGeneral && g.asignado > g.generalMonto ? 'error.main' : 'text.primary'}>
+                                {fmtMontoNativo(g.asignado, g.monedaNativa)}
+                              </Typography>
+                            </Box>
+                            {g.tieneGeneral && (
+                              <Box>
+                                <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.6rem', sm: '0.75rem' } }}>Sin asignar</Typography>
+                                <Typography variant="h6" sx={{ fontSize: { xs: '0.95rem', md: '1.25rem' } }}
+                                  color={g.sinAsignar < 0 ? 'error.main' : 'success.main'}>
+                                  {fmtMontoNativo(g.sinAsignar, g.monedaNativa)}
+                                </Typography>
+                              </Box>
+                            )}
+                          </Box>
+                          {!g.tieneGeneral && g.tieneEspecificos && (
+                            <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                              Hay presupuestos en {g.label} sin un general que los englobe.
+                              Podés <Box component="span" sx={{ color: 'primary.main', cursor: 'pointer', textDecoration: 'underline' }}
+                                onClick={() => abrirDefinirGeneral(g)}>crear el general de {g.label}</Box> o dejarlos sueltos.
+                            </Typography>
+                          )}
+                        </Box>
+                      );
+                    })}
+                  </Stack>
+
                   <Box sx={{ mt: 3 }}>
                     {/* Toggle modo selección múltiple */}
                     <Stack direction="row" justifyContent="flex-end" sx={{ mb: 1.5 }}>
@@ -2005,6 +2113,7 @@ const ControlPresupuestosPage = () => {
                                   cacIndiceActual={getCacIndice(dataAjustada.cac_tipo)}
                                   tipoCambioActual={tipoCambio}
                                   cacTipo={dataAjustada.cac_tipo}
+                                  cacEstado={dataAjustada.cac_estado}
                                   seleccionada={seleccionMulti.clasificaciones.includes(catName)}
                                   modoSeleccion={modoSeleccion}
                                   onToggleSeleccion={() => toggleSeleccionCategoria(catName)}
@@ -2034,6 +2143,7 @@ const ControlPresupuestosPage = () => {
                                   cacIndiceActual={getCacIndice(item.cac_tipo)}
                                   tipoCambioActual={tipoCambio}
                                   cacTipo={item.cac_tipo || null}
+                                  cacEstado={item.cac_estado}
                                   seleccionada={false}
                                   modoSeleccion={false}
                                   onToggleSeleccion={() => abrirDrawerEditar(item, label)}
@@ -2079,6 +2189,7 @@ const ControlPresupuestosPage = () => {
                                 cacIndiceActual={getCacIndice(data.cac_tipo)}
                                 tipoCambioActual={tipoCambio}
                                 cacTipo={data.cac_tipo}
+                                cacEstado={data.cac_estado}
                                 seleccionada={seleccionMulti.etapa === etapaName}
                                 modoSeleccion={modoSeleccion}
                                 onToggleSeleccion={() => toggleSeleccionEtapa(etapaName)}
@@ -2144,6 +2255,7 @@ const ControlPresupuestosPage = () => {
                                 cacIndiceActual={getCacIndice(data.cac_tipo)}
                                 tipoCambioActual={tipoCambio}
                                 cacTipo={data.cac_tipo}
+                                cacEstado={data.cac_estado}
                                 seleccionada={seleccionMulti.proveedores.includes(proveedor)}
                                 modoSeleccion={modoSeleccion}
                                 onToggleSeleccion={() => toggleSeleccionProveedor(proveedor)}
@@ -2191,6 +2303,7 @@ const ControlPresupuestosPage = () => {
                             cacIndiceActual={getCacIndice(item.cac_tipo)}
                             tipoCambioActual={tipoCambio}
                             cacTipo={item.cac_tipo || null}
+                            cacEstado={item.cac_estado}
                             onEditar={() => abrirDrawerEditar(item, label)}
                           />
                         );
@@ -2434,6 +2547,7 @@ const ControlPresupuestosPage = () => {
                   monedaPresupuesto: moneda,
                   presupuestadoNativo: presupuestado,
                   tipo: movDrawer.tipo === 'ingreso' ? 'ingresos' : 'gastos',
+                  cacModo,
                 });
               };
               return (

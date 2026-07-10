@@ -456,6 +456,12 @@ const ProyeccionesV2Page = () => {
         render: (item) => formatDateDDMMYYYY(getProjView(item).fechaCompraSugerida),
       },
       {
+        key: "fechaAlta",
+        label: "Fecha alta",
+        sortable: true,
+        render: (item) => formatDateDDMMYYYY(item.fechaAlta),
+      },
+      {
         key: "fechaIngreso",
         label: "Fecha ingreso",
         sortable: true,
@@ -493,6 +499,7 @@ const ProyeccionesV2Page = () => {
       ["Fecha agotamiento (Stock 0)", (it) => formatDateDDMMYYYY(getProjView(it).fechaAgotamientoStock) ?? ""],
       ["Cant. a comprar (100 días)", (it) => getProjView(it).cantidadCompraSugerida ?? ""],
       ["Fecha compra sugerida", (it) => formatDateDDMMYYYY(getProjView(it).fechaCompraSugerida) ?? ""],
+      ["Fecha alta", (it) => formatDateDDMMYYYY(it?.fechaAlta) ?? ""],
       ["Fecha ingreso", (it) => formatDateDDMMYYYY(it?.fechaIngreso) ?? ""],
       ["Fecha cero", (it) => formatDateDDMMYYYY(it?.fechaCero) ?? ""],
     ];

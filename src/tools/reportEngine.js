@@ -10,12 +10,23 @@
  * Se ejecuta 100% en el browser.
  */
 
+import { pickCac, snapshotCacIndice } from '../utils/cac/pickCac';
+
 // ─── Mapeo de display_currency → campo en equivalencias ───
 const CURRENCY_FIELD = {
   ARS: 'ars',
   USD: 'usd_blue',
   CAC: 'cac',
 };
+
+// Extrae un valor de equivalencia; para CAC (variante {legacy,estimado,automatico}) elige el modo.
+function equivValor(equiv, field, modo = 'legacy') {
+  if (!equiv) return null;
+  const raw = equiv[field];
+  return (field === 'cac' || field === 'cac_mano_obra' || field === 'cac_materiales')
+    ? pickCac(raw, modo)
+    : raw;
+}
 
 // ─── Helpers ───
 
@@ -26,7 +37,7 @@ const CURRENCY_FIELD = {
  * @param {string} campo - 'total' | 'subtotal'
  * @returns {number}
  */
-export function getAmount(mov, displayCurrency = 'ARS', campo = 'total') {
+export function getAmount(mov, displayCurrency = 'ARS', campo = 'total', modo = 'legacy') {
   if (displayCurrency === 'original') {
     return campo === 'total'
       ? (mov.total ?? mov.monto ?? 0)
@@ -54,15 +65,15 @@ export function getAmount(mov, displayCurrency = 'ARS', campo = 'total') {
   const key = CURRENCY_FIELD[displayCurrency];
   if (!key) return mov.total ?? mov.monto ?? 0;
 
-  const val = mov?.equivalencias?.[campo]?.[key];
+  const val = equivValor(mov?.equivalencias?.[campo], key, modo);
   if (val != null && !isNaN(val)) return val;
 
   // Fallback: si no tiene equivalencia, devolver monto original
   return mov.total ?? mov.monto ?? 0;
 }
 
-function getConvertedAmount(mov, displayCurrency = 'ARS', campo = 'total') {
-  if (displayCurrency === 'original') return getAmount(mov, displayCurrency, campo);
+function getConvertedAmount(mov, displayCurrency = 'ARS', campo = 'total', modo = 'legacy') {
+  if (displayCurrency === 'original') return getAmount(mov, displayCurrency, campo, modo);
 
   if (displayCurrency === 'USD') {
     const baseAmount = campo === 'subtotal'
@@ -83,9 +94,9 @@ function getConvertedAmount(mov, displayCurrency = 'ARS', campo = 'total') {
   }
 
   const key = CURRENCY_FIELD[displayCurrency];
-  if (!key) return getAmount(mov, displayCurrency, campo);
+  if (!key) return getAmount(mov, displayCurrency, campo, modo);
 
-  const val = mov?.equivalencias?.[campo]?.[key];
+  const val = equivValor(mov?.equivalencias?.[campo], key, modo);
   if (val != null && !isNaN(val)) return val;
 
   if (mov?.moneda === displayCurrency) {
@@ -2007,16 +2018,9 @@ export function processCategoryBudgetMatrix(block, movimientos, presupuestos, cu
   };
 }
 
-function getSnapshotCac(snapshot = {}) {
-  const candidates = [
-    snapshot?.cac_indice,
-    snapshot?.cac_general,
-    snapshot?.cac_mano_obra,
-    snapshot?.cac_materiales,
-    snapshot?.cac,
-  ];
-  const value = candidates.find((v) => Number(v) > 0);
-  return value != null ? Number(value) : 0;
+function getSnapshotCac(snapshot = {}, cacTipo = 'general', modo = 'legacy') {
+  const v = snapshotCacIndice(snapshot, cacTipo, modo);
+  return Number(v) > 0 ? Number(v) : 0;
 }
 
 function getSnapshotUsd(snapshot = {}) {
@@ -2141,8 +2145,8 @@ function getIngresoMovimientoCacIndex(mov, subtotalArs, subtotalCac, cotizacione
   return Number(cotizaciones?.cac || 0);
 }
 
-function getMovimientoCacAmount(mov, campo, subtotalArs, icac) {
-  const raw = mov?.equivalencias?.[campo]?.cac;
+function getMovimientoCacAmount(mov, campo, subtotalArs, icac, modo = 'legacy') {
+  const raw = pickCac(mov?.equivalencias?.[campo]?.cac, modo);
   if (raw != null && !isNaN(raw)) return Math.abs(Number(raw));
 
   if ((mov?.moneda || '').toUpperCase() === 'CAC') {
@@ -2223,7 +2227,7 @@ export function processIncomeBudgetControl(block, movimientos, presupuestos, cur
   const movimientoRows = movimientosIngreso
     .map((m, idx) => {
       const subtotalArs = Math.abs(getAmount(m, 'ARS', amountField));
-      const rawSubtotalCac = m?.equivalencias?.[amountField]?.cac;
+      const rawSubtotalCac = pickCac(m?.equivalencias?.[amountField]?.cac, 'legacy');
       const subtotalCacForIndex = rawSubtotalCac != null && !isNaN(rawSubtotalCac)
         ? Math.abs(Number(rawSubtotalCac))
         : 0;
@@ -2612,7 +2616,7 @@ function getPresupuestoAmount(pres, displayCurrency, cotizaciones) {
   // Usar cotizaciones live (del MonedasService) primero, fallback a snapshot del presupuesto
   const snap = pres.cotizacion_snapshot;
   const dolar = cotizaciones?.dolar_blue || snap?.dolar_blue || snap?.dolar || 0;
-  const cac = cotizaciones?.cac || snap?.cac || 0;
+  const cac = cotizaciones?.cac || snapshotCacIndice(snap, pres?.cac_tipo || 'general', 'legacy') || 0;
 
   if (storage === 'ARS') {
     if (displayCurrency === 'USD' && dolar > 0) return amount / dolar;

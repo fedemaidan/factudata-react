@@ -102,6 +102,7 @@ const TabCalculoContent = ({ producto, calculo, formatDateDDMMYYYY, theme, ponde
   const horizonteCompra = Number(inputs.horizonteCompra) || 100;
   const diasAnticipacion = Number(inputs.diasAnticipacion) || 100;
   const fechaBase = inputs.fechaBase ? new Date(inputs.fechaBase) : null;
+  const fechaAlta = inputs.fechaAlta ? new Date(inputs.fechaAlta) : null;
 
   const ventasProyectadas = producto?.ventasProyectadas ?? Math.round(demanda90);
   const diasHastaAgotar = producto?.diasHastaAgotarStock ?? diaAgotamiento;
@@ -170,6 +171,11 @@ const TabCalculoContent = ({ producto, calculo, formatDateDDMMYYYY, theme, ponde
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
             Tomamos tus ventas del período ({formatNum(ventasPeriodo)} unidades en {diasConStock > 0 ? diasConStock : diasPeriodo} días) y calculamos el promedio diario.
           </Typography>
+          {fechaAlta ? (
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              El producto se dio de alta el {formatDateDDMMYYYY(fechaAlta)}, por eso contamos las ventas desde esa fecha.
+            </Typography>
+          ) : null}
           <Box sx={{ p: 1.5, bgcolor: theme.palette.action.hover, borderRadius: 1, fontFamily: "monospace", fontSize: 14 }}>
             {formatNum2Dec(ventasDiarias, true)} ventas/día × {horizonte90} días = {formatNum(ventasProyectadas)} unidades
           </Box>
