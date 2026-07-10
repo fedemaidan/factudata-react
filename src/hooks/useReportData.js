@@ -515,7 +515,8 @@ export function useReportData(user, empresaId) {
     ? ['ARS']
     : filters.moneda_equivalente?.length > 0
       ? filters.moneda_equivalente
-      : selectedReport?.filtros_schema?.moneda_equivalente?.default_values?.length > 0
+      : selectedReport?.filtros_schema?.moneda_equivalente?.enabled === true
+        && selectedReport.filtros_schema.moneda_equivalente.default_values?.length > 0
         ? selectedReport.filtros_schema.moneda_equivalente.default_values
         : [selectedReport?.display_currency || 'ARS'];
 

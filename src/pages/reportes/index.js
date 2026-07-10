@@ -56,7 +56,7 @@ const TEMPLATES = [
       tipo: { enabled: true },
       categorias: { enabled: false },
       proveedores: { enabled: false },
-      moneda_equivalente: { enabled: true, default_values: ['ARS'] },
+      moneda_equivalente: { enabled: false, default_values: ['ARS'] },
     },
     layout: [
       {
@@ -296,7 +296,7 @@ const TEMPLATES = [
       proyectos: { enabled: true },
       tipo: { enabled: false, default_value: 'egreso' },
       categorias: { enabled: false },
-      moneda_equivalente: { enabled: true, default_values: ['ARS'] },
+      moneda_equivalente: { enabled: false, default_values: ['ARS'] },
     },
     layout: [
       {

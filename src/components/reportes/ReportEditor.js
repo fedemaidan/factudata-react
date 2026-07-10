@@ -110,7 +110,7 @@ const ReportEditor = ({
 
   const liveCurrencies = useMemo(() => {
     const eq = config.filtros_schema?.moneda_equivalente;
-    if (eq?.default_values?.length > 0) return eq.default_values;
+    if (eq?.enabled === true && eq?.default_values?.length > 0) return eq.default_values;
     return [config.display_currency || 'ARS'];
   }, [config]);
 
@@ -370,7 +370,7 @@ const ReportEditor = ({
                       ...prev.filtros_schema,
                       moneda_equivalente: {
                         ...(prev.filtros_schema?.moneda_equivalente || {}),
-                        enabled: true,
+                        enabled: prev.filtros_schema?.moneda_equivalente?.enabled === true,
                         default_values: val,
                       },
                     },

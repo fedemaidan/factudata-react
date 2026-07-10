@@ -222,7 +222,7 @@ const PublicReportPage = () => {
     // Si los filtros runtime cambiaron la moneda equivalente, usar esos
     if (filters.moneda_equivalente?.length > 0) return filters.moneda_equivalente;
     const eq = report.filtros_schema?.moneda_equivalente;
-    if (eq?.default_values?.length > 0) return eq.default_values;
+    if (eq?.enabled === true && eq?.default_values?.length > 0) return eq.default_values;
     return [report.display_currency || 'ARS'];
   }, [report, filters.moneda_equivalente]);
 

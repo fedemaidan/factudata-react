@@ -3979,7 +3979,7 @@ export function buildDefaultFilters(filtrosSchema) {
     defaults.etapas = filtrosSchema.etapas.default_values;
   }
 
-  if (filtrosSchema?.moneda_equivalente?.enabled !== false && filtrosSchema.moneda_equivalente?.default_values?.length > 0) {
+  if (filtrosSchema?.moneda_equivalente?.enabled === true && filtrosSchema.moneda_equivalente?.default_values?.length > 0) {
     defaults.moneda_equivalente = filtrosSchema.moneda_equivalente.default_values;
   }
 

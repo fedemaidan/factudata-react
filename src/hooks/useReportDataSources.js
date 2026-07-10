@@ -37,8 +37,9 @@ function deriveDisplayCurrencies(draft) {
   const layout = Array.isArray(draft?.layout) ? draft.layout : [];
   const hasIncomeBudgetControl = layout.some((b) => b?.type === 'income_budget_control');
   if (hasIncomeBudgetControl) return ['ARS'];
-  const fromSchema = draft?.filtros_schema?.moneda_equivalente?.default_values;
-  if (Array.isArray(fromSchema) && fromSchema.length > 0) return fromSchema;
+  const eq = draft?.filtros_schema?.moneda_equivalente;
+  const fromSchema = eq?.default_values;
+  if (eq?.enabled === true && Array.isArray(fromSchema) && fromSchema.length > 0) return fromSchema;
   return [draft?.display_currency || 'ARS'];
 }
 
