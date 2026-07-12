@@ -333,6 +333,7 @@ const MovementFormPage = () => {
     const rid = reservaProyecto._id || reservaProyecto.id;
     if (rid && !formik.values.reserva_id) {
       formik.setFieldValue('reserva_id', rid);
+      formik.setFieldValue('reserva_decidida', true); // viene explícito desde la reserva
       if (formik.values.type !== 'egreso') formik.setFieldValue('type', 'egreso');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -843,6 +844,16 @@ const createdAtStr = (() => {
         return;
       }
 
+      if (fieldName === 'reserva') {
+        // reserva_id null es una respuesta válida ("No"); se exige que el usuario haya
+        // decidido explícitamente, solo cuando la obra tiene reserva y es un egreso nuevo.
+        const aplica = !isEditMode && values?.type === 'egreso' && !!reservaProyecto;
+        if (aplica && !values?.reserva_decidida) {
+          errors.reserva = 'Indicá si el gasto sale de la reserva';
+        }
+        return;
+      }
+
       if (isEmptyRequiredValue(values?.[fieldName])) {
         errors[fieldName] = `${getValidationLabel(fieldName)} es obligatorio`;
       }
@@ -924,6 +935,7 @@ const createdAtStr = (() => {
       tags_extra: [],
       caja_chica: false,
       reserva_id: null,
+      reserva_decidida: false, // transitorio: solo para validar el "Reserva: Sí/No" obligatorio
       control_obra_id: null,
       imputaciones_obra: [],
       medio_pago: '',
@@ -966,6 +978,8 @@ const createdAtStr = (() => {
         cliente: values.cliente || '',
         factura_cliente: values.factura_cliente === true
       };
+      // Flag transitorio de validación: no se persiste.
+      delete payload.reserva_decidida;
 
       // Pago parcial: total = importe completo; monto_pagado = parte abonada (informativo)
       if (values.estado === 'Parcialmente Pagado' && values.type === 'egreso') {
@@ -2061,22 +2075,58 @@ const createdAtStr = (() => {
                   <StitchBlock step={2} title="Clasificación">
                     <MovementFields {...sharedFieldProps} block="classification" />
                     {reservaProyecto && formik.values.type === 'egreso' && (
-                      <div className="mt-2 rounded-lg border border-warning-main/40 bg-warning-main/5 px-2.5 py-2">
-                        <label className="flex cursor-pointer items-center justify-between gap-2">
-                          <span className="min-w-0">
-                            <span className="block text-xs font-medium text-neutral-800">Gasto de Reserva de Obra</span>
-                            <span className="block text-[11px] text-neutral-500">
-                              Consume la reserva interna de {reservaProyecto.proyecto_nombre || 'la obra'} (es un egreso real de la obra)
-                            </span>
+                      requiredFieldNames.includes('reserva') && !isEditMode ? (
+                        // Obligatorio: pregunta Sí/No sin opción por defecto (bloquea el submit).
+                        <div className="mt-2 rounded-lg border border-warning-main/40 bg-warning-main/5 px-2.5 py-2">
+                          <span className="block text-xs font-medium text-neutral-800">¿Este gasto sale de la Reserva de Obra?</span>
+                          <span className="mb-1.5 block text-[11px] text-neutral-500">
+                            Reserva interna de {reservaProyecto.proyecto_nombre || 'la obra'}. Elegí una opción para continuar.
                           </span>
-                          <input
-                            type="checkbox"
-                            className="h-4 w-4 shrink-0 accent-warning-main"
-                            checked={!!formik.values.reserva_id}
-                            onChange={(e) => formik.setFieldValue('reserva_id', e.target.checked ? (reservaProyecto._id || reservaProyecto.id) : null)}
-                          />
-                        </label>
-                      </div>
+                          <div className="flex gap-2">
+                            {[
+                              { key: 'si', label: 'Sí, de la reserva', rid: (reservaProyecto._id || reservaProyecto.id) },
+                              { key: 'no', label: 'No, saldo general', rid: null },
+                            ].map((opt) => {
+                              const selected = formik.values.reserva_decidida
+                                && (opt.key === 'si' ? !!formik.values.reserva_id : !formik.values.reserva_id);
+                              return (
+                                <button
+                                  type="button"
+                                  key={opt.key}
+                                  onClick={() => {
+                                    formik.setFieldValue('reserva_id', opt.rid);
+                                    formik.setFieldValue('reserva_decidida', true);
+                                    formik.setFieldTouched('reserva', true, false);
+                                  }}
+                                  className={`flex-1 rounded-md border px-2 py-1.5 text-xs font-medium transition ${selected ? 'border-warning-main bg-warning-main/20 text-neutral-900' : 'border-neutral-300 bg-white text-neutral-600 hover:border-warning-main/60'}`}
+                                >
+                                  {opt.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          {formik.touched.reserva && formik.errors.reserva && (
+                            <span className="mt-1 block text-[11px] text-error-main">{formik.errors.reserva}</span>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="mt-2 rounded-lg border border-warning-main/40 bg-warning-main/5 px-2.5 py-2">
+                          <label className="flex cursor-pointer items-center justify-between gap-2">
+                            <span className="min-w-0">
+                              <span className="block text-xs font-medium text-neutral-800">Gasto de Reserva de Obra</span>
+                              <span className="block text-[11px] text-neutral-500">
+                                Consume la reserva interna de {reservaProyecto.proyecto_nombre || 'la obra'} (es un egreso real de la obra)
+                              </span>
+                            </span>
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 shrink-0 accent-warning-main"
+                              checked={!!formik.values.reserva_id}
+                              onChange={(e) => formik.setFieldValue('reserva_id', e.target.checked ? (reservaProyecto._id || reservaProyecto.id) : null)}
+                            />
+                          </label>
+                        </div>
+                      )
                     )}
                     {obrasProyecto.length > 0 && formik.values.type === 'egreso' && (() => {
                       const obraSel = obrasProyecto.find((o) => o._id === formik.values.control_obra_id) || null;

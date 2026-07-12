@@ -287,6 +287,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
     "medio_pago",
     "detalle",
     "asignado",
+    "reserva",
   ];
 
   const handleDolarAjusteChange = (event) => {
