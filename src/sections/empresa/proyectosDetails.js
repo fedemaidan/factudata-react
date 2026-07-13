@@ -73,7 +73,7 @@ import profileService from 'src/services/profileService';
 // aparece si la empresa tiene al menos una de sus acciones reales.
 const ACCIONES_OBRA_CATALOGO = [
   { key: 'cargar_egreso',  label: 'Cargar egreso',  grupo: 'Cargar',      acciones: ['CREAR_EGRESO', 'CREAR_EGRESO_SIMPLIFICADO', 'CREAR_EGRESO_PRORATEADO', 'CREAR_EGRESOS_MASIVO'] },
-  { key: 'cargar_ingreso', label: 'Cargar ingreso',                                          grupo: 'Cargar',      acciones: ['CREAR_INGRESO'] },
+  { key: 'cargar_ingreso', label: 'Cargar ingreso',                                          grupo: 'Cargar',      acciones: ['CREAR_INGRESO', 'CREAR_INGRESO_IMAGEN'] },
   { key: 'ver_obra',       label: 'Ver la obra',    hint: 'saldos y todos los movimientos',  grupo: 'Ver',         acciones: ['VER_CAJAS', 'LISTAR_MOVIMIENTOS'] },
   { key: 'ver_propios',    label: 'Ver solo lo suyo', hint: 'solo los movimientos que cargó él', grupo: 'Ver',     acciones: ['VER_MIS_MOVIMIENTOS'] },
   { key: 'gestionar',      label: 'Editar o eliminar movimientos',                           grupo: 'Operaciones', acciones: ['GESTIONAR_MOVIMIENTO'] },
