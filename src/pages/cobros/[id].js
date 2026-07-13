@@ -93,9 +93,18 @@ const DetallePlanPage = () => {
   // Fase 5 — ajuste manual periódico
   const [showAjuste, setShowAjuste] = useState(false);
   const [ajustePct, setAjustePct] = useState('');
-  // Anexos (Fase 6 ronda 2)
+  // Anexos (Fase 6 ronda 2). fecha = fecha del anexo (default hoy). Para planes CAC:
+  // cacInput = unidades CAC, cacRef = índice de referencia (override), cacRefMes = mes elegido.
   const [showAnexo, setShowAnexo] = useState(false);
-  const [anexoForm, setAnexoForm] = useState({ monto: '', motivo: '', modo: 'prorratear' });
+  const [anexoForm, setAnexoForm] = useState({
+    monto: '',
+    motivo: '',
+    modo: 'prorratear',
+    fecha: new Date().toISOString().split('T')[0],
+    cacInput: '',
+    cacRef: null,
+    cacRefMes: '',
+  });
 
   useEffect(() => {
     if (!user) return;
@@ -320,9 +329,35 @@ const DetallePlanPage = () => {
     }
   };
 
+  const resetAnexoForm = () => setAnexoForm({
+    monto: '', motivo: '', modo: 'prorratear',
+    fecha: new Date().toISOString().split('T')[0], cacInput: '', cacRef: null, cacRefMes: '',
+  });
+
+  // Al elegir un mes, busca el índice CAC publicado y lo fija como referencia del anexo,
+  // recalculando las unidades CAC contra ese índice para mantener los pesos ingresados.
+  const handleAnexoCacRefMes = async (mes) => {
+    setAnexoForm((f) => ({ ...f, cacRefMes: mes }));
+    if (!mes) { setAnexoForm((f) => ({ ...f, cacRef: null })); return; }
+    try {
+      const res = await planCobroService.previewCAC(`${mes}-01`, plan?.cac_tipo || 'general');
+      const idx = res?.data?.data?.cac_indice || null;
+      if (idx) {
+        setAnexoForm((f) => {
+          const pesos = parseFloat(parseNumberInput(f.monto));
+          return { ...f, cacRef: idx, cacInput: isNaN(pesos) ? f.cacInput : String(Math.round((pesos / idx) * 100) / 100) };
+        });
+      }
+    } catch {
+      /* si falla el preview, se mantiene la referencia base del plan */
+    }
+  };
+
   const handleAnexoConfirm = async () => {
     const montoNum = parseFloat(parseNumberInput(anexoForm.monto));
     if (!montoNum) return;
+    const esCac = plan?.indexacion === 'CAC' && cacIndiceBase;
+    const cacNum = esCac ? parseFloat(String(anexoForm.cacInput).replace(',', '.')) : null;
     setSavingSaldo(true);
     try {
       await planCobroService.agregarAnexo(id, {
@@ -330,9 +365,13 @@ const DetallePlanPage = () => {
         monto: montoNum,
         motivo: anexoForm.motivo || undefined,
         modo: anexoForm.modo,
+        fecha: anexoForm.fecha || undefined,
+        // Planes CAC: mandamos las unidades pactadas y el índice del mes elegido (si hay).
+        ...(esCac && cacNum > 0 ? { monto_cac: cacNum } : {}),
+        ...(esCac ? { cac_indice_ref: anexoForm.cacRef || null } : {}),
       });
       setShowAnexo(false);
-      setAnexoForm({ monto: '', motivo: '', modo: 'prorratear' });
+      resetAnexoForm();
       await refresh();
       setAlert({ open: true, message: 'Anexo aplicado', severity: 'success' });
     } catch (err) {
@@ -805,6 +844,7 @@ const DetallePlanPage = () => {
                       <Typography variant="body2">{a.motivo || 'Anexo'}</Typography>
                       <Typography variant="caption" color="text.secondary">
                         {a.fecha ? new Date(a.fecha).toLocaleDateString('es-AR') : ''} · {a.modo === 'nueva_cuota' ? 'cuota nueva' : 'prorrateado'}
+                        {a.monto_cac ? ` · ${Math.round(a.monto_cac * 100) / 100} CAC${a.cac_indice_ref ? ` @ ${a.cac_indice_ref.toLocaleString('es-AR')}` : ''}` : ''}
                       </Typography>
                     </Box>
                     <Typography variant="body2" fontWeight={700} color={a.monto >= 0 ? 'success.main' : 'error.main'}>
@@ -1598,14 +1638,92 @@ const DetallePlanPage = () => {
             Un anexo suma (o resta) al total del plan y queda en el historial. Elegí cómo distribuirlo.
           </DialogContentText>
           <Stack spacing={2}>
+            {plan?.indexacion === 'CAC' && cacIndiceBase ? (
+              (() => {
+                const refEfectivo = anexoForm.cacRef || cacIndiceBase;
+                return (
+                  <Stack spacing={1.5}>
+                    <TextField
+                      label="Unidades CAC del anexo"
+                      value={anexoForm.cacInput}
+                      onChange={(e) => {
+                        const raw = e.target.value.replace(/[^\d.,-]/g, '');
+                        const num = parseFloat(raw.replace(',', '.'));
+                        setAnexoForm((f) => ({
+                          ...f,
+                          cacInput: raw,
+                          monto: !isNaN(num) && refEfectivo ? String(Math.round(num * refEfectivo * 100) / 100) : f.monto,
+                        }));
+                      }}
+                      fullWidth size="small" autoFocus
+                      inputProps={{ inputMode: 'decimal' }}
+                      InputProps={{ endAdornment: <InputAdornment position="end">CAC</InputAdornment> }}
+                    />
+                    <TextField
+                      label="Monto del anexo en ARS"
+                      value={formatNumberInput(anexoForm.monto)}
+                      onChange={(e) => {
+                        const raw = parseNumberInput(e.target.value);
+                        const num = parseFloat(raw);
+                        setAnexoForm((f) => ({
+                          ...f,
+                          monto: raw,
+                          cacInput: !isNaN(num) && refEfectivo ? String(Math.round((num / refEfectivo) * 100) / 100) : f.cacInput,
+                        }));
+                      }}
+                      fullWidth size="small"
+                      inputProps={{ inputMode: 'decimal' }}
+                      InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment> }}
+                      helperText={
+                        refEfectivo
+                          ? `Índice CAC de referencia: ${refEfectivo.toLocaleString('es-AR')}${anexoForm.cacRef ? ' (mes elegido)' : ' (base del plan)'}. Podés usar negativos para reducir el alcance.`
+                          : 'Índice CAC base no disponible'
+                      }
+                    />
+                    <TextField
+                      label="Mes / índice CAC de referencia (opcional)"
+                      type="month"
+                      value={anexoForm.cacRefMes}
+                      onChange={(e) => handleAnexoCacRefMes(e.target.value)}
+                      fullWidth size="small"
+                      InputLabelProps={{ shrink: true }}
+                      helperText="Usa el CAC publicado de ese mes como referencia del anexo"
+                    />
+                    {anexoForm.cacRef && (
+                      <Button
+                        size="small"
+                        onClick={() => setAnexoForm((f) => {
+                          const pesos = parseFloat(parseNumberInput(f.monto));
+                          return {
+                            ...f, cacRef: null, cacRefMes: '',
+                            cacInput: !isNaN(pesos) && cacIndiceBase ? String(Math.round((pesos / cacIndiceBase) * 100) / 100) : f.cacInput,
+                          };
+                        })}
+                      >
+                        Volver al índice base del plan
+                      </Button>
+                    )}
+                  </Stack>
+                );
+              })()
+            ) : (
+              <TextField
+                label="Monto del anexo"
+                value={formatNumberInput(anexoForm.monto)}
+                onChange={(e) => setAnexoForm((f) => ({ ...f, monto: parseNumberInput(e.target.value) }))}
+                fullWidth size="small" autoFocus
+                inputProps={{ inputMode: 'decimal' }}
+                InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment> }}
+                helperText="Podés usar negativos para reducir el alcance."
+              />
+            )}
             <TextField
-              label="Monto del anexo"
-              value={formatNumberInput(anexoForm.monto)}
-              onChange={(e) => setAnexoForm((f) => ({ ...f, monto: parseNumberInput(e.target.value) }))}
-              fullWidth size="small" autoFocus
-              inputProps={{ inputMode: 'decimal' }}
-              InputProps={{ startAdornment: <InputAdornment position="start">$</InputAdornment> }}
-              helperText="Podés usar negativos para reducir el alcance."
+              label="Fecha del anexo"
+              type="date"
+              value={anexoForm.fecha}
+              onChange={(e) => setAnexoForm((f) => ({ ...f, fecha: e.target.value }))}
+              fullWidth size="small"
+              InputLabelProps={{ shrink: true }}
             />
             <ToggleButtonGroup
               value={anexoForm.modo}
