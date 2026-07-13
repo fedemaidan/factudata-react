@@ -62,6 +62,8 @@ const DetallePlanPage = () => {
   const [tipoCobro, setTipoCobro] = useState('total'); // 'total' | 'parcial'
   const [montoParcial, setMontoParcial] = useState('');
   const [modoCobro, setModoCobro] = useState('nuevo'); // 'nuevo' | 'vincular' | 'solo_estado'
+  // Fecha efectiva de cobro (TAR-442): default hoy, editable para registrar cobros históricos.
+  const [fechaCobro, setFechaCobro] = useState(new Date().toISOString().split('T')[0]);
   const [movVinculables, setMovVinculables] = useState([]);
   const [movSel, setMovSel] = useState(null);
 
@@ -162,6 +164,7 @@ const DetallePlanPage = () => {
     setMontoParcial('');
     setModoCobro('nuevo');
     setMovSel(null);
+    setFechaCobro(new Date().toISOString().split('T')[0]);
     // Precargar movimientos vinculables (por si el usuario elige "vincular")
     planCobroService.listarMovimientosVinculables(empresaId, plan?.proyecto_id)
       .then((res) => setMovVinculables(res?.data?.data || []))
@@ -181,7 +184,7 @@ const DetallePlanPage = () => {
     setCobrandoId(cuotaId);
     try {
       await marcarCobrada(cuotaId, {
-        fecha_cobrado: new Date().toISOString().split('T')[0],
+        fecha_cobrado: fechaCobro || new Date().toISOString().split('T')[0],
         monto_parcial: parcial ? Number(parcial) : undefined,
         modo: modoCobro,
         movimiento_id: modoCobro === 'vincular' ? movSel?._id : undefined,
@@ -1191,6 +1194,23 @@ const DetallePlanPage = () => {
                         ? `Resto después de este pago: ${formatCurrency(Math.max(0, montoRestante - (Number(montoParcial) || 0)), monedaDisplay)}`
                         : ''
                     }
+                  />
+                )}
+
+                {/* Fecha efectiva de cobro (TAR-442): editable para registrar cobros históricos.
+                    En modo "vincular" la fecha la define el movimiento ya cargado. */}
+                {modoCobro !== 'vincular' && (
+                  <TextField
+                    label="Fecha efectiva de cobro"
+                    type="date"
+                    value={fechaCobro}
+                    onChange={(e) => setFechaCobro(e.target.value)}
+                    fullWidth
+                    size="small"
+                    sx={{ mt: 2 }}
+                    InputLabelProps={{ shrink: true }}
+                    inputProps={{ max: new Date().toISOString().split('T')[0] }}
+                    helperText="El ingreso en caja se registra con esta fecha. Podés indicar una fecha pasada."
                   />
                 )}
 
