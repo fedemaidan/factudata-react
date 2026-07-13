@@ -220,10 +220,13 @@ const GastosRecurrentes = () => {
   const pendientes = aCargar.filter((r) => !REALIZADOS.includes(r.estado));
   const realizadosFilas = aCargar.filter((r) => REALIZADOS.includes(r.estado));
 
-  // Pendientes en tres baldes: mes pasado (anteriores), mes actual, mes futuro.
+  // Pendientes en baldes. El mes actual se parte en dos: los ya vencidos y los
+  // que hay que pagar este mes pero todavía no vencieron (estado proximo/pendiente).
+  const enMesActual = (r) => mesIdx(r) === idxActual;
   const gruposPendientes = [
     { key: 'pasado', label: 'Mes pasado', rows: pendientes.filter((r) => mesIdx(r) < idxActual) },
-    { key: 'actual', label: 'Mes actual', rows: pendientes.filter((r) => mesIdx(r) === idxActual) },
+    { key: 'actual-vencidos', label: 'Mes actual · vencidos', rows: pendientes.filter((r) => enMesActual(r) && r.estado === 'vencido') },
+    { key: 'actual-por-vencer', label: 'Mes actual · por vencer', rows: pendientes.filter((r) => enMesActual(r) && r.estado !== 'vencido') },
     { key: 'futuro', label: 'Mes futuro', rows: pendientes.filter((r) => mesIdx(r) > idxActual) },
   ].filter((g) => g.rows.length);
 

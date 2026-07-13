@@ -19,6 +19,7 @@ import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import VisibilityOffOutlinedIcon from '@mui/icons-material/VisibilityOffOutlined';
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
+import LockOpenOutlinedIcon from '@mui/icons-material/LockOpenOutlined';
 import AccountBalanceWalletOutlinedIcon from '@mui/icons-material/AccountBalanceWalletOutlined';
 import SouthIcon from '@mui/icons-material/South';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
@@ -239,6 +240,20 @@ const ReservaObraDetallePage = () => {
     }
   };
 
+  // Saca un gasto de la reserva: el egreso sigue en la caja, deja de imputarse a la reserva.
+  const handleSacarDeReserva = async (m) => {
+    if (!m?._id) return;
+    if (!window.confirm('¿Sacar este gasto de la reserva? El egreso sigue en la caja, pero deja de descontar del saldo reservado.')) return;
+    try {
+      await reservaObraService.sacarGastoDeReserva(id, m._id);
+      setAlert({ open: true, message: 'Gasto sacado de la reserva', severity: 'success' });
+      await fetchReserva();
+    } catch (err) {
+      console.error('Error sacando gasto de la reserva:', err);
+      setAlert({ open: true, message: err?.response?.data?.error || 'Error al sacar el gasto de la reserva', severity: 'error' });
+    }
+  };
+
   // ── Ocultar / mostrar la reserva (borrado lógico: no aparece en la caja)
   const handleToggleOcultar = async () => {
     if (!reserva) return;
@@ -359,15 +374,14 @@ const ReservaObraDetallePage = () => {
               {(() => {
                 const sm = reserva.saldos?.[selectedMoneda] || {};
                 const cards = [
-                  { label: 'Saldo reservado actual', value: sm.reservado || 0, Icon: LockOutlinedIcon, bg: 'error.lighter', circle: '#FDE7E7', color: (sm.reservado || 0) >= 0 ? 'success.main' : 'error.main', iconColor: 'error.main' },
-                  { label: 'Fondos asignados', value: sm.asignado || 0, Icon: AccountBalanceWalletOutlinedIcon, circle: '#E3F6EC', color: 'success.main', iconColor: 'success.main' },
+                  { label: 'Reserva asignada', value: sm.asignado || 0, Icon: AccountBalanceWalletOutlinedIcon, circle: '#E3F6EC', color: 'success.main', iconColor: 'success.main' },
                   { label: 'Gastos registrados', value: -(sm.gastado || 0), Icon: SouthIcon, circle: '#FDE7E7', color: 'error.main', iconColor: 'error.main' },
-                  { label: 'Saldo disponible', value: sm.reservado || 0, Icon: AccountBalanceWalletOutlinedIcon, circle: '#EEF0F4', color: 'text.primary', iconColor: 'text.secondary' },
+                  { label: 'Saldo disponible', value: sm.reservado || 0, Icon: LockOutlinedIcon, circle: '#EEF0F4', color: (sm.reservado || 0) >= 0 ? 'text.primary' : 'error.main', iconColor: 'text.secondary' },
                 ];
                 return (
                   <Grid container spacing={2}>
                     {cards.map((c) => (
-                      <Grid item xs={6} md={2.4} key={c.label}>
+                      <Grid item xs={6} md={3} key={c.label}>
                         <Card variant="outlined" sx={{ borderRadius: 3, height: '100%' }}>
                           <CardContent>
                             <Stack direction="row" spacing={1.5} alignItems="center">
@@ -385,7 +399,7 @@ const ReservaObraDetallePage = () => {
                         </Card>
                       </Grid>
                     ))}
-                    <Grid item xs={6} md={2.4}>
+                    <Grid item xs={6} md={3}>
                       <Card variant="outlined" sx={{ borderRadius: 3, height: '100%', bgcolor: 'action.hover' }}>
                         <CardContent>
                           <Stack direction="row" spacing={1} alignItems="center">
@@ -428,15 +442,6 @@ const ReservaObraDetallePage = () => {
                     onClick={() => { resetForm(); setLedgerDialog('ajuste'); }}
                   >
                     Ajuste / Arqueo
-                  </Button>
-                )}
-                {puedeGestionar && (
-                  <Button
-                    variant="outlined"
-                    color="success"
-                    onClick={() => { resetForm(); setLedgerDialog('reposicion'); }}
-                  >
-                    Reposición
                   </Button>
                 )}
                 <Box flexGrow={1} />
@@ -558,11 +563,20 @@ const ReservaObraDetallePage = () => {
                                   <TableCell>{m.nombre_user || '—'}</TableCell>
                                   <TableCell align="center">
                                     {m.fuente === 'movimiento' ? (
-                                      <Tooltip title="Abrir el movimiento">
-                                        <IconButton size="small" onClick={() => irAMovimiento(m)}>
-                                          <OpenInNewIcon fontSize="small" />
-                                        </IconButton>
-                                      </Tooltip>
+                                      <Stack direction="row" spacing={0.5} justifyContent="center">
+                                        <Tooltip title="Abrir el movimiento">
+                                          <IconButton size="small" onClick={() => irAMovimiento(m)}>
+                                            <OpenInNewIcon fontSize="small" />
+                                          </IconButton>
+                                        </Tooltip>
+                                        {puedeGestionar && m.tipo === 'egreso' && (
+                                          <Tooltip title="Sacar de la reserva">
+                                            <IconButton size="small" color="warning" onClick={() => handleSacarDeReserva(m)}>
+                                              <LockOpenOutlinedIcon fontSize="small" />
+                                            </IconButton>
+                                          </Tooltip>
+                                        )}
+                                      </Stack>
                                     ) : puedeGestionar ? (
                                       <Stack direction="row" spacing={0.5} justifyContent="center">
                                         <Tooltip title="Editar">

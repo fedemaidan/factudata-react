@@ -68,6 +68,11 @@ const reservaObraService = {
     return data; // { movimiento, reserva }
   },
 
+  async sacarGastoDeReserva(id, movId) {
+    const { data } = await api.post(`/reservas/${id}/gasto/${movId}/sacar`);
+    return data;
+  },
+
   async editarMovimiento(id, movId, { monto, observacion }) {
     const { data } = await api.put(`/reservas/${id}/movimientos/${movId}`, { monto, observacion });
     return data;

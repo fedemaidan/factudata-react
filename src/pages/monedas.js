@@ -1,9 +1,11 @@
+// 📖 CAC (índice por mes, variantes y recálculo) documentado en
+//    sorby_bot_wa/docs/control-presupuestos/ (funcional §4, técnico §6).
 import { useEffect, useState } from 'react';
 import Head from 'next/head';
 import {
   Box, Container, Dialog, DialogActions, DialogContent, DialogTitle,
   IconButton, Paper, Snackbar, Alert, Stack, Table, TableBody, TableCell, TableHead,
-  TableRow, TextField, Typography, Tab, Tabs, Button, InputAdornment
+  TableRow, TextField, Typography, Tab, Tabs, Button, InputAdornment,
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -331,21 +333,12 @@ function CACTab() {
     setOpenForm(true);
   };
 
-  const save = async () => {
-    if (!form.fecha) {
-      setAlert({ open: true, message: 'La fecha es requerida', severity: 'warning' });
-      return;
-    }
+  // Persiste el índice CAC. Al guardar, el backend recalcula los presupuestos/movimientos
+  // pendientes de ese mes (variantes estimado/automatico) y baja cac_pendiente.
+  const persistCac = async (payload) => {
     try {
-      const payload = {
-        fecha: form.fecha,
-        general: parseFloat(form.general) || 0,
-        materiales: parseFloat(form.materiales) || 0,
-        mano_obra: parseFloat(form.mano_obra) || 0,
-      };
-
       if (isEdit) {
-        await MonedasService.actualizarCAC(form.fecha, payload);
+        await MonedasService.actualizarCAC(payload.fecha, payload);
         setAlert({ open: true, message: 'Índice CAC actualizado', severity: 'success' });
       } else {
         await MonedasService.crearCAC(payload);
@@ -357,6 +350,20 @@ function CACTab() {
       console.error(e);
       setAlert({ open: true, message: 'Error al guardar', severity: 'error' });
     }
+  };
+
+  const save = async () => {
+    if (!form.fecha) {
+      setAlert({ open: true, message: 'La fecha es requerida', severity: 'warning' });
+      return;
+    }
+    const payload = {
+      fecha: form.fecha,
+      general: parseFloat(form.general) || 0,
+      materiales: parseFloat(form.materiales) || 0,
+      mano_obra: parseFloat(form.mano_obra) || 0,
+    };
+    await persistCac(payload);
   };
 
   const confirmDelete = (row) => {
@@ -444,6 +451,9 @@ function CACTab() {
             <TextField label="Índice General" type="number" value={form.general} onChange={(e) => setForm({ ...form, general: e.target.value })} />
             <TextField label="Materiales" type="number" value={form.materiales} onChange={(e) => setForm({ ...form, materiales: e.target.value })} />
             <TextField label="Mano de Obra" type="number" value={form.mano_obra} onChange={(e) => setForm({ ...form, mano_obra: e.target.value })} />
+            <Typography variant="caption" color="text.secondary">
+              Los presupuestos y movimientos de ese mes que estaban pendientes de su CAC se actualizan automáticamente esa noche.
+            </Typography>
           </Stack>
         </DialogContent>
         <DialogActions>

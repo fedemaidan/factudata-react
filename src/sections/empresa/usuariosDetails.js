@@ -483,6 +483,7 @@ export const UsuariosDetails = ({ empresa }) => {
       proyectos: usuario.proyectosData.map(proj => proj?.id),
       tipo_validacion_remito: usuario.tipo_validacion_remito ?? "",
       default_caja_chica: usuario.default_caja_chica ?? null,
+      gasto_reserva_default: usuario.gasto_reserva_default ?? null,
       notificacion_nota_pedido: usuario.notificacion_nota_pedido || false,
       notificacion_logistica: !!usuario.notificacion_logistica,
       modo_estado_carga_bot: usuario.modo_estado_carga_bot ?? "",
