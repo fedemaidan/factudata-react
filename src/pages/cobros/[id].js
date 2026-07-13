@@ -334,22 +334,33 @@ const DetallePlanPage = () => {
     fecha: new Date().toISOString().split('T')[0], cacInput: '', cacRef: null, cacRefMes: '',
   });
 
-  // Al elegir un mes, busca el índice CAC publicado y lo fija como referencia del anexo,
-  // recalculando las unidades CAC contra ese índice para mantener los pesos ingresados.
+  // Al elegir un mes, busca el índice CAC publicado y lo fija como referencia del anexo.
+  // Si ya hay unidades CAC cargadas, mantiene las unidades y recalcula el monto en ARS
+  // (el monto en pesos sigue al índice seleccionado); si no, deriva las unidades del
+  // monto en pesos ya ingresado. Si el mes no tiene índice publicado, avisa y no rompe.
   const handleAnexoCacRefMes = async (mes) => {
     setAnexoForm((f) => ({ ...f, cacRefMes: mes }));
     if (!mes) { setAnexoForm((f) => ({ ...f, cacRef: null })); return; }
     try {
       const res = await planCobroService.previewCAC(`${mes}-01`, plan?.cac_tipo || 'general');
       const idx = res?.data?.data?.cac_indice || null;
-      if (idx) {
-        setAnexoForm((f) => {
-          const pesos = parseFloat(parseNumberInput(f.monto));
-          return { ...f, cacRef: idx, cacInput: isNaN(pesos) ? f.cacInput : String(Math.round((pesos / idx) * 100) / 100) };
-        });
+      if (!idx) {
+        setAnexoForm((f) => ({ ...f, cacRef: null }));
+        setAlert({ open: true, message: `No hay índice CAC publicado para ${mes}. Se mantiene el índice base del plan.`, severity: 'warning' });
+        return;
       }
-    } catch {
-      /* si falla el preview, se mantiene la referencia base del plan */
+      setAnexoForm((f) => {
+        const unidades = parseFloat(String(f.cacInput).replace(',', '.'));
+        if (!isNaN(unidades) && unidades !== 0) {
+          // Mantener unidades CAC → el monto en ARS sigue al índice del mes elegido.
+          return { ...f, cacRef: idx, monto: String(Math.round(unidades * idx * 100) / 100) };
+        }
+        const pesos = parseFloat(parseNumberInput(f.monto));
+        return { ...f, cacRef: idx, cacInput: isNaN(pesos) ? f.cacInput : String(Math.round((pesos / idx) * 100) / 100) };
+      });
+    } catch (err) {
+      setAnexoForm((f) => ({ ...f, cacRef: null }));
+      setAlert({ open: true, message: err?.response?.data?.error || `No se pudo obtener el índice CAC de ${mes}`, severity: 'warning' });
     }
   };
 
