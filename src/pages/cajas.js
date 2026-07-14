@@ -835,6 +835,14 @@ const CajasPage = () => {
     [user, activeProject?.id]
   );
 
+  // Gating de eliminar por obra (TAR-393): la tabla puede mezclar obras (scope multi-proyecto),
+  // así que se resuelve por movimiento con su propio proyecto_id. Sin GESTIONAR_MOVIMIENTO en esa
+  // obra no se muestra el botón de eliminar (editar sí: lleva a movementForm en modo solo lectura).
+  const puedeGestionarMov = useCallback(
+    (mov) => !accionRecortadaEnObra(user, mov?.proyecto_id, 'GESTIONAR_MOVIMIENTO'),
+    [user]
+  );
+
   // Read-gating por obra (TAR-393): si se entra directo a una obra con lectura bloqueada
   // (VER_CAJAS/LISTAR quitados y sin VER_MIS), no mostrar saldos ni movimientos.
   const lecturaBloqueada = useMemo(
@@ -2047,12 +2055,13 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
     openDetalle,
     goToEdit,
     handleEliminarClick,
+    puedeGestionar: puedeGestionarMov,
     onOpenConfirmarPago: handleOpenConfirmarPago,
     deletingElement,
     COLS,
     cellBase,
     ellipsis,
-  }), [empresa, compactCols, deletingElement, openDetalle, handleOpenConfirmarPago]);
+  }), [empresa, compactCols, deletingElement, openDetalle, handleOpenConfirmarPago, puedeGestionarMov]);
 
   const onSelectCaja = (caja) => {
     applyCajaSelection(caja);
@@ -3878,7 +3887,7 @@ useEffect(() => {
       Editar
     </MenuItem>
   )}
-  {mobileActionMov && (
+  {mobileActionMov && puedeGestionarMov(mobileActionMov) && (
     <MenuItem onClick={() => { handleEliminarClick(mobileActionMov.id); closeMobileActions(); }}>
       Eliminar
     </MenuItem>

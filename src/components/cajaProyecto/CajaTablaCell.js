@@ -36,6 +36,10 @@ const CajaTablaCell = ({ colKey, mov, amountColor, ctx, isProrrateo = false }) =
     ellipsis,
   } = ctx;
 
+  // Gating por obra (TAR-393): sin GESTIONAR_MOVIMIENTO en la obra del movimiento no se
+  // puede eliminar. Default true si el contenedor no lo provee (sin cambio de comportamiento).
+  const puedeGestionar = ctx.puedeGestionar ? ctx.puedeGestionar(mov) : true;
+
   const cell = (sx, children) => (
     <TableCell key={colKey} sx={sx}>
       {children}
@@ -266,14 +270,16 @@ const CajaTablaCell = ({ colKey, mov, amountColor, ctx, isProrrateo = false }) =
           <IconButton size="small" color="primary" onClick={(e) => { e.stopPropagation(); goToEdit(mov); }}>
             <EditIcon fontSize="small" />
           </IconButton>
-          <IconButton
-            size="small"
-            color="error"
-            onClick={(e) => { e.stopPropagation(); handleEliminarClick(mov.id); }}
-            disabled={deletingElement === mov.id}
-          >
-            <DeleteIcon fontSize="small" />
-          </IconButton>
+          {puedeGestionar && (
+            <IconButton
+              size="small"
+              color="error"
+              onClick={(e) => { e.stopPropagation(); handleEliminarClick(mov.id); }}
+              disabled={deletingElement === mov.id}
+            >
+              <DeleteIcon fontSize="small" />
+            </IconButton>
+          )}
         </>
       );
     default:
