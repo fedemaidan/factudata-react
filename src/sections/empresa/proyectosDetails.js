@@ -270,6 +270,16 @@ export const ProyectosDetails = ({ empresa, refreshEmpresa }) => {
   };
   
 
+  // Trae los perfiles de la empresa con su proyectosData resuelto. Reutilizado en el
+  // mount y al abrir una obra (para refrescar recortes por-obra sin datos viejos).
+  const fetchUsuariosConProyectos = async () => {
+    const usuarios = await profileService.getProfileByEmpresa(empresa.id);
+    return Promise.all(usuarios.map(async (prof) => {
+      prof.proyectosData = await getProyectosFromUser(prof);
+      return prof;
+    }));
+  };
+
   useEffect(() => {
     const fetchEmpresaData = async () => {
       const proyectosData = await getProyectosByEmpresa(empresa);
@@ -277,13 +287,7 @@ export const ProyectosDetails = ({ empresa, refreshEmpresa }) => {
     };
 
     const fetchUsuarios = async () => {
-      const usuarios = await profileService.getProfileByEmpresa(empresa.id);
-      // Resolver proyectosData para cada usuario (como en usuariosDetails.js)
-      const usuariosConProyectos = await Promise.all(usuarios.map(async (prof) => {
-        prof.proyectosData = await getProyectosFromUser(prof);
-        return prof;
-      }));
-      setUsuariosEmpresa(usuariosConProyectos);
+      setUsuariosEmpresa(await fetchUsuariosConProyectos());
     };
 
     fetchEmpresaData();
@@ -484,9 +488,9 @@ export const ProyectosDetails = ({ empresa, refreshEmpresa }) => {
   // ── Helpers de permisos por acción por usuario × obra (visual) ──
   // Al abrir una obra, cada usuario arranca con las acciones que tenga guardadas
   // como quitadas para esa obra (o vacío = hereda todo).
-  const buildOcultasDesdeUsuarios = (proyectoId) => {
+  const buildOcultasDesdeUsuarios = (proyectoId, usuarios = usuariosEmpresa) => {
     const map = {};
-    usuariosEmpresa.forEach((u) => {
+    usuarios.forEach((u) => {
       const raw = u.permisosOcultosPorProyecto?.[proyectoId];
       map[u.id] = Array.isArray(raw) ? raw : [];
     });
@@ -568,11 +572,22 @@ export const ProyectosDetails = ({ empresa, refreshEmpresa }) => {
     return `${u.firstName || ''} ${u.lastName || ''} ${u.email || ''}`.toLowerCase().includes(q);
   });
 
-  const iniciarEdicionProyecto = (proyecto) => {
+  const iniciarEdicionProyecto = async (proyecto) => {
     setEditingProyecto(proyecto);
 
+    // Refetch de perfiles al abrir la obra (TAR-393): el drawer carga los perfiles una sola
+    // vez al montar, así que sin esto el checklist mostraría recortes por-obra desactualizados
+    // si la DB cambió después. Si el refetch falla, seguimos con lo que había en memoria.
+    let usuarios = usuariosEmpresa;
+    try {
+      usuarios = await fetchUsuariosConProyectos();
+      setUsuariosEmpresa(usuarios);
+    } catch (e) {
+      // fallback: usuariosEmpresa en memoria
+    }
+
     // Encontrar usuarios que ya tienen este proyecto asignado (usando proyectosData)
-    const usuariosConProyecto = usuariosEmpresa.filter(usuario => {
+    const usuariosConProyecto = usuarios.filter(usuario => {
       const proyectosUsuario = usuario.proyectosData?.map(p => p?.id).filter(Boolean) || [];
       return proyectosUsuario.includes(proyecto.id);
     }).map(u => u.id);
@@ -581,7 +596,7 @@ export const ProyectosDetails = ({ empresa, refreshEmpresa }) => {
       ...proyecto,
       usuariosAsignados: usuariosConProyecto
     });
-    setOcultasPorUsuario(buildOcultasDesdeUsuarios(proyecto.id));
+    setOcultasPorUsuario(buildOcultasDesdeUsuarios(proyecto.id, usuarios));
     setUserSearch('');
     setOpenModal(true);
   };
