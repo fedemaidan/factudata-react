@@ -9,6 +9,7 @@ import MoreVertIcon from '@mui/icons-material/MoreVert';
 import HistoryIcon from '@mui/icons-material/History';
 import AddIcon from '@mui/icons-material/Add';
 import ImputarGastoDialog from 'src/components/controlObra/ImputarGastoDialog';
+import ReimputarMasivaDialog from 'src/components/controlObra/ReimputarMasivaDialog';
 import SubrubroAccionesMenu from 'src/components/controlObra/SubrubroAccionesMenu';
 import RubroAccionesMenu from 'src/components/controlObra/RubroAccionesMenu';
 import ArmadoCertificadoDrawer from 'src/components/controlObra/ArmadoCertificadoDrawer';
@@ -23,6 +24,7 @@ const fmtFecha = (d) => (d ? new Date(d).toLocaleDateString('es-AR', { day: '2-d
 export default function EjecucionTab({ obra, ejec, empresaId }) {
   const qc = useQueryClient();
   const [dialog, setDialog] = useState(false);
+  const [masiva, setMasiva] = useState(false);
   const [armado, setArmado] = useState(false);
   const [audit, setAudit] = useState(false);
   const [nuevoRubro, setNuevoRubro] = useState(false);
@@ -44,6 +46,7 @@ export default function EjecucionTab({ obra, ejec, empresaId }) {
               Armar certificado{pendientesCert > 0 ? ` (${pendientesCert})` : ''}
             </Button>
             <Button size="small" variant="outlined" onClick={() => setDialog(true)}>Imputar gasto</Button>
+            <Button size="small" variant="outlined" onClick={() => setMasiva(true)}>Re-imputar masiva</Button>
             <Button size="small" variant="outlined" startIcon={<AddIcon />} onClick={() => setNuevoRubro(true)}>Rubro</Button>
             <IconButton size="small" title="Historial de cambios" onClick={() => setAudit(true)}><HistoryIcon fontSize="small" /></IconButton>
           </Stack>
@@ -131,6 +134,14 @@ export default function EjecucionTab({ obra, ejec, empresaId }) {
         obra={obra}
         empresaId={empresaId}
         onDone={() => { setDialog(false); qc.invalidateQueries({ queryKey: ['control-obra'] }); }}
+      />
+
+      <ReimputarMasivaDialog
+        open={masiva}
+        onClose={() => setMasiva(false)}
+        obra={obra}
+        empresaId={empresaId}
+        onDone={() => { setMasiva(false); qc.invalidateQueries({ queryKey: ['control-obra'] }); }}
       />
 
       <SubrubroAccionesMenu
