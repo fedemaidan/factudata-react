@@ -155,7 +155,7 @@ const ComprobanteCard = ({
   onClick,
   fullHeight,
   viewerState,
-  /** Sin clic, sin zoom embebido ni cambio de tamaño (p. ej. asistente «dos trabajos»). */
+  /** Sin clic ni cambio de tamaño (la selección la maneja el asistente «dos trabajos»); el zoom/rotación sí queda disponible. */
   readOnly = false,
 }) => {
   const theme = useTheme();
@@ -163,7 +163,9 @@ const ComprobanteCard = ({
   const showAsSelected = readOnly ? false : selected;
   const previewFlex = fullHeight ? (readOnly ? 1 : showAsSelected ? 1 : 0.45) : 1;
   const previewHeight = fullHeight ? "100%" : 160;
-  const useViewer = !readOnly && showAsSelected && url && viewerState;
+  // En el asistente (readOnly) igual mostramos el visor en ambas tarjetas para poder
+  // ampliar/rotar el comprobante mientras se decide la división en dos trabajos.
+  const useViewer = Boolean(url) && Boolean(viewerState) && (readOnly || showAsSelected);
 
   const handleContentClick = useCallback(
     (e) => {
@@ -189,7 +191,7 @@ const ComprobanteCard = ({
         flexDirection: "column",
         flex: readOnly ? 1 : showAsSelected ? 3 : 1,
         minWidth: 0,
-        pointerEvents: readOnly ? "none" : "auto",
+        pointerEvents: readOnly && !useViewer ? "none" : "auto",
         userSelect: readOnly ? "none" : "auto",
         ...(fullHeight ? { height: "100%" } : {}),
       }}
