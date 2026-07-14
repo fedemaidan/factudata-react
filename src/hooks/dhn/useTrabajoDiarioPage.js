@@ -61,6 +61,56 @@ const getCustomRange = (fromISO, toISO) => {
   return { from: start.toISOString(), to: end.toISOString() };
 };
 
+const trabajadorKey = (doc) => {
+  const tid = doc?.trabajadorId;
+  if (tid && typeof tid === 'object') return String(tid._id || tid.id || '');
+  return String(tid || '');
+};
+
+const fechaKey = (doc) => {
+  if (!doc?.fecha) return '';
+  const d = new Date(doc.fecha);
+  return Number.isNaN(d.getTime()) ? String(doc.fecha) : d.toISOString().slice(0, 10);
+};
+
+// Normalmente hay un solo TrabajoDiarioRegistrado por trabajador+día, pero cuando
+// se resuelve una licencia con "agregar ambos" quedan dos documentos (cada uno con
+// su PDF). Para que la fila del día muestre ambos comprobantes (chips en la tabla y
+// tabs en el modal de editar) agrupamos por trabajador+fecha y fusionamos los
+// `comprobantes`. Para días sin duplicados es un no-op (grupo de 1). El `total`/stats
+// siguen viniendo del server (cuenta documentos), así que la paginación puede diferir
+// en unas pocas filas cuando hay duplicados; es aceptable dado lo infrecuente.
+const agruparPorTrabajadorFecha = (docs) => {
+  const grupos = new Map();
+  const orden = [];
+  for (const doc of docs) {
+    const key = `${trabajadorKey(doc)}|${fechaKey(doc)}`;
+    if (!grupos.has(key)) {
+      grupos.set(key, []);
+      orden.push(key);
+    }
+    grupos.get(key).push(doc);
+  }
+  return orden.map((key) => {
+    const grupo = grupos.get(key);
+    if (grupo.length === 1) return grupo[0];
+    // Primario para acciones/edición: el que tenga horas (no solo licencia); si no, el primero.
+    const primario = grupo.find((d) => !d.fechaLicencia) || grupo[0];
+    const vistos = new Set();
+    const comprobantes = [];
+    for (const d of grupo) {
+      for (const comp of d.comprobantes || []) {
+        const url = comp?.url || comp?.url_storage;
+        const dedupKey = url || `${comp?.type}-${comprobantes.length}`;
+        if (vistos.has(dedupKey)) continue;
+        vistos.add(dedupKey);
+        comprobantes.push(comp);
+      }
+    }
+    return { ...primario, comprobantes, _grupoIds: grupo.map((d) => d._id) };
+  });
+};
+
 export default function useTrabajoDiarioPage(options = {}) {
   const {
     enabled = true,
@@ -176,7 +226,10 @@ export default function useTrabajoDiarioPage(options = {}) {
     }
   );
 
-  const data = Array.isArray(response?.data) ? response.data : [];
+  const data = useMemo(
+    () => agruparPorTrabajadorFecha(Array.isArray(response?.data) ? response.data : []),
+    [response?.data]
+  );
   const stats = response?.stats || DEFAULT_STATS;
   const total = Number.isFinite(response?.total) ? response.total : Number(response?.total) || 0;
 
