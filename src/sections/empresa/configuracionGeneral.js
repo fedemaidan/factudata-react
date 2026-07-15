@@ -288,6 +288,7 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
     "detalle",
     "asignado",
     "reserva",
+    "subrubro",
   ];
 
   const handleDolarAjusteChange = (event) => {
