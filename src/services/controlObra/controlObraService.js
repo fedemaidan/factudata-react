@@ -109,14 +109,6 @@ const ControlObraService = {
 
   imputarGasto: async (obraId, data) => unwrap(await api.post(`${BASE}/${obraId}/imputar`, data)),
 
-  // Re-imputación masiva (T1b): preview con sugerencias del matcher + aplicar en lote.
-  reimputarLote: async (obraId, empresa_id, limit) => {
-    const res = await api.get(`${BASE}/${obraId}/reimputar-lote`, { params: { empresa_id, ...(limit ? { limit } : {}) } });
-    if (res.status !== 200) throw new Error('Error al obtener el lote a re-imputar');
-    return Array.isArray(res.data?.items) ? res.data.items : [];
-  },
-  reimputarAplicar: async (obraId, data) => unwrap(await api.post(`${BASE}/${obraId}/reimputar-aplicar`, data)),
-
   /* ---------- Mano de obra (Fase 3) ---------- */
   listarOrdenes: async (obraId, empresa_id) => {
     const res = await api.get(`${BASE}/${obraId}/ordenes-pago`, { params: { empresa_id } });
