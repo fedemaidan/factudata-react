@@ -107,6 +107,21 @@ const profileService = {
       throw err; // propaga para que el caller pueda reintentar
     }
   },
+
+  // Acciones destructivas de gestión de sesión: re-lanzan el error para que la UI
+  // muestre fallos reales (a diferencia de las lecturas que devuelven valor neutro).
+  closeSessions: async (userIds) => {
+    const response = await api.post('/profile/sessions/close', { userIds });
+    return response.data;
+  },
+
+  updateSessionDuration: async (profileId, sessionMaxSeconds) => {
+    const response = await api.put(
+      `/profile/${encodeURIComponent(profileId)}/session-duration`,
+      { session_max_seconds: sessionMaxSeconds }
+    );
+    return response.data;
+  },
 };
 
 export default profileService;

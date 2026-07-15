@@ -1,3 +1,4 @@
+import { signOut as firebaseSignOut } from 'firebase/auth';
 import { auth } from 'src/config/firebase';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -101,6 +102,22 @@ export const attachAuthInterceptors = api => {
     response => response,
     async error => {
       const originalRequest = error.config;
+
+      // Sesión invalidada app-level (duración vencida o cierre por admin). Refrescar
+      // el token NO ayuda: el token nuevo mantiene el mismo auth_time y seguiría 401.
+      // Cortamos antes del retry y deslogueamos de verdad.
+      const sessionCode = error?.response?.data?.code;
+      if (sessionCode === 'SESSION_REVOKED' || sessionCode === 'SESSION_EXPIRED') {
+        await firebaseSignOut(auth).catch(() => {});
+        if (typeof window !== 'undefined') {
+          window.localStorage.removeItem('authToken');
+          window.localStorage.removeItem('MY_APP_STATE');
+          if (!window.location.pathname.startsWith('/auth')) {
+            window.location.href = '/auth/login';
+          }
+        }
+        return Promise.reject(error);
+      }
 
       if ([401, 403].includes(error?.response?.status) && originalRequest && !originalRequest._retry) {
         originalRequest._retry = true;
