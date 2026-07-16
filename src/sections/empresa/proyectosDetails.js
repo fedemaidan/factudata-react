@@ -1,18 +1,13 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Chip,
   Box,
   Button,
   Card,
-  CardActions,
-  CardContent,
   CardHeader,
   Divider,
   TextField,
   IconButton,
-  List,
-  ListItem,
-  ListItemText,
   LinearProgress,
   Dialog,
   DialogTitle,
@@ -27,15 +22,27 @@ import {
   Stack,
   Select,
   MenuItem,
+  Menu,
+  ListItemIcon,
   FormControl,
   InputLabel,
   Switch,
+  Tab,
+  Tabs,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  ToggleButton,
+  ToggleButtonGroup,
+  useMediaQuery,
   Typography,
   Snackbar,
-  Alert,
-  Autocomplete
+  Alert
 } from '@mui/material';
-import { alpha } from '@mui/material/styles';
+import { alpha, useTheme } from '@mui/material/styles';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
 import EditIcon from '@mui/icons-material/Edit';
@@ -46,11 +53,14 @@ import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import DriveFileRenameOutlineIcon from '@mui/icons-material/DriveFileRenameOutline';
 import LinkIcon from '@mui/icons-material/Link';
 import TuneIcon from '@mui/icons-material/Tune';
-import AccountTreeOutlinedIcon from '@mui/icons-material/AccountTreeOutlined';
 import GroupsOutlinedIcon from '@mui/icons-material/GroupsOutlined';
 import SearchIcon from '@mui/icons-material/Search';
 import FolderOpenOutlinedIcon from '@mui/icons-material/FolderOpenOutlined';
 import TableChartOutlinedIcon from '@mui/icons-material/TableChartOutlined';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
+import UploadFileIcon from '@mui/icons-material/UploadFile';
+import LockResetIcon from '@mui/icons-material/LockReset';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import { getProyectosByEmpresa, getProyectosFromUser, hasPermission, updateProyecto, crearProyecto, subirCSVProyecto, otorgarPermisosDriveProyecto, softDeleteMovimientosByProyectoId } from 'src/services/proyectosService';
 import { getEmpresaById } from 'src/services/empresaService';
 import { FIREBASE_CLIENT_EMAIL } from 'src/config/env';
@@ -142,6 +152,136 @@ const Seccion = ({ icon: SeccionIcon, title, hint, action, children }) => (
   </Box>
 );
 
+// Ícono de integración (Drive / Sheets): coloreado y clickeable si está
+// conectado; gris y sin interacción si falta el ID.
+const IntegracionIcon = ({ conectado, icon: Ico, label, color, href }) => {
+  const ico = <Ico sx={{ fontSize: 20 }} />;
+  if (!conectado) {
+    return (
+      <Tooltip title={`${label}: no configurado`} arrow>
+        <Box component="span" sx={{ display: 'inline-flex', p: 0.5, color: 'text.disabled' }}>{ico}</Box>
+      </Tooltip>
+    );
+  }
+  return (
+    <Tooltip title={`Abrir ${label}`} arrow>
+      <IconButton size="small" component="a" href={href} target="_blank" rel="noopener noreferrer" sx={{ color }}>
+        {ico}
+      </IconButton>
+    </Tooltip>
+  );
+};
+
+// Íconos de Drive/Sheets + contador de sheets adicionales.
+const Integraciones = ({ proyecto }) => {
+  const extra = proyecto.extraSheets?.length || 0;
+  return (
+    <Stack direction="row" alignItems="center" spacing={0.25}>
+      <IntegracionIcon
+        conectado={Boolean(proyecto.carpetaRef)}
+        icon={FolderOpenOutlinedIcon}
+        label="carpeta de Drive"
+        color={DRIVE_BLUE}
+        href={`https://drive.google.com/drive/folders/${proyecto.carpetaRef}`}
+      />
+      <IntegracionIcon
+        conectado={Boolean(proyecto.sheetWithClient)}
+        icon={TableChartOutlinedIcon}
+        label="Google Sheet"
+        color={SHEET_GREEN}
+        href={`https://docs.google.com/spreadsheets/d/${proyecto.sheetWithClient}`}
+      />
+      {extra > 0 && (
+        <Tooltip title={`${extra} ${extra === 1 ? 'sheet adicional' : 'sheets adicionales'}`} arrow>
+          <Chip label={`+${extra}`} size="small" variant="outlined" sx={{ height: 20, fontSize: 11, ml: 0.25 }} />
+        </Tooltip>
+      )}
+    </Stack>
+  );
+};
+
+const EstadoChip = ({ activo }) => (
+  <Chip
+    size="small"
+    label={activo ? 'Activo' : 'Inactivo'}
+    sx={{
+      height: 20, fontSize: 11, fontWeight: 600, alignSelf: 'flex-start',
+      color: activo ? 'success.main' : 'text.secondary',
+      bgcolor: (t) => (activo ? alpha(t.palette.success.main, 0.12) : t.palette.action.selected),
+    }}
+  />
+);
+
+const NombreLink = ({ proyecto }) => (
+  <Typography
+    component="a"
+    href={`/cajas?proyectoId=${proyecto.id}`}
+    target="_blank"
+    rel="noopener noreferrer"
+    variant="body2"
+    noWrap
+    sx={{ fontWeight: 600, color: 'primary.main', textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}
+  >
+    {proyecto.nombre}
+  </Typography>
+);
+
+// Fila de la tabla (desktop). Memoizada: al tipear en el buscador el padre
+// re-renderiza, pero las filas cuyos props no cambian no se vuelven a pintar.
+const ProyectoRow = React.memo(function ProyectoRow({ proyecto, cajaCentral, onToggleActivo, onMenuOpen }) {
+  return (
+    <TableRow hover sx={{ opacity: proyecto.activo ? 1 : 0.55 }}>
+      <TableCell sx={{ maxWidth: 220 }}>
+        <Stack spacing={0.4}>
+          <NombreLink proyecto={proyecto} />
+          <EstadoChip activo={proyecto.activo} />
+        </Stack>
+      </TableCell>
+      <TableCell>
+        <Typography variant="body2" color={cajaCentral === '—' ? 'text.disabled' : 'text.primary'}>
+          {cajaCentral}
+        </Typography>
+      </TableCell>
+      <TableCell><Integraciones proyecto={proyecto} /></TableCell>
+      <TableCell align="center">
+        <Switch checked={Boolean(proyecto.activo)} onChange={() => onToggleActivo(proyecto)} color="primary" />
+      </TableCell>
+      <TableCell align="right">
+        <IconButton size="small" onClick={(e) => onMenuOpen(e, proyecto)} aria-label="Acciones del proyecto">
+          <MoreVertIcon fontSize="small" />
+        </IconButton>
+      </TableCell>
+    </TableRow>
+  );
+});
+
+// Card equivalente para mobile (la tabla no entra en teléfono).
+const ProyectoCardMobile = React.memo(function ProyectoCardMobile({ proyecto, cajaCentral, onToggleActivo, onMenuOpen }) {
+  return (
+    <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 1.5, p: 1.5, opacity: proyecto.activo ? 1 : 0.55 }}>
+      <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1}>
+        <Box sx={{ minWidth: 0 }}>
+          <NombreLink proyecto={proyecto} />
+          <Box sx={{ mt: 0.5 }}><EstadoChip activo={proyecto.activo} /></Box>
+        </Box>
+        <Stack direction="row" alignItems="center" spacing={0.5}>
+          <Switch size="small" checked={Boolean(proyecto.activo)} onChange={() => onToggleActivo(proyecto)} color="primary" />
+          <IconButton size="small" onClick={(e) => onMenuOpen(e, proyecto)} aria-label="Acciones del proyecto">
+            <MoreVertIcon fontSize="small" />
+          </IconButton>
+        </Stack>
+      </Stack>
+      <Divider sx={{ my: 1 }} />
+      <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1}>
+        <Typography variant="caption" color="text.secondary" noWrap>
+          Caja central: {cajaCentral}
+        </Typography>
+        <Integraciones proyecto={proyecto} />
+      </Stack>
+    </Box>
+  );
+});
+
 export const ProyectosDetails = ({ empresa, refreshEmpresa }) => {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
@@ -165,6 +305,17 @@ export const ProyectosDetails = ({ empresa, refreshEmpresa }) => {
   // { [userId]: [accionKeys quitadas en esta obra] }. Vacío = hereda todo. (visual)
   const [ocultasPorUsuario, setOcultasPorUsuario] = useState({});
   const [userSearch, setUserSearch] = useState('');
+  // Tab activo del drawer: 0 = Configuración de proyecto, 1 = Usuarios y permisos.
+  const [activeTab, setActiveTab] = useState(0);
+  // Toolbar / tabla de proyectos.
+  const [search, setSearch] = useState('');
+  const [estadoFilter, setEstadoFilter] = useState('todos'); // 'todos' | 'activos' | 'inactivos'
+  const [menuAnchor, setMenuAnchor] = useState(null);
+  const [menuProyecto, setMenuProyecto] = useState(null);
+  const [csvDialogOpen, setCsvDialogOpen] = useState(false);
+  const [csvProyecto, setCsvProyecto] = useState(null);
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
   const handleSnackbarClose = () => {
     setSnackbarOpen(false);
@@ -456,6 +607,7 @@ export const ProyectosDetails = ({ empresa, refreshEmpresa }) => {
               });
               setOcultasPorUsuario(ocultasIniciales);
               setUserSearch('');
+              setActiveTab(0);
               setOpenModal(true);
             }, 300);
             
@@ -598,6 +750,7 @@ export const ProyectosDetails = ({ empresa, refreshEmpresa }) => {
     });
     setOcultasPorUsuario(buildOcultasDesdeUsuarios(proyecto.id, usuarios));
     setUserSearch('');
+    setActiveTab(0);
     setOpenModal(true);
   };
 
@@ -606,6 +759,7 @@ export const ProyectosDetails = ({ empresa, refreshEmpresa }) => {
     formik.resetForm();
     setOcultasPorUsuario({});
     setUserSearch('');
+    setActiveTab(0);
     setOpenModal(true);
   };
 
@@ -614,10 +768,11 @@ export const ProyectosDetails = ({ empresa, refreshEmpresa }) => {
     formik.resetForm();
     setOcultasPorUsuario({});
     setUserSearch('');
+    setActiveTab(0);
     setOpenModal(false);
   };
 
-  const toggleProyectoActivo = async (proyecto) => {
+  const toggleProyectoActivo = useCallback(async (proyecto) => {
     try {
       const updatedProyecto = { ...proyecto, activo: !proyecto.activo };
       await updateProyecto(proyecto.id, updatedProyecto);
@@ -632,12 +787,7 @@ export const ProyectosDetails = ({ empresa, refreshEmpresa }) => {
       const proyectosData = await getProyectosByEmpresa(empresa);
       setProyectos(proyectosData);
     }
-  };
-
-  const findProyectoNombreById = id => {
-    const proyecto = proyectos.find(proj => proj.id === id);
-    return proyecto ? proyecto.nombre : "Sin caja central";
-  };
+  }, [empresa]);
 
   const handleAddExtraSheet = async (event) => {
     if (event.key === 'Enter' && event.target.value.trim() !== '') {
@@ -701,231 +851,165 @@ export const ProyectosDetails = ({ empresa, refreshEmpresa }) => {
   }
 };
 
+  // ── Derivados de la tabla ──
+  const nombrePorId = useMemo(() => {
+    const m = {};
+    proyectos.forEach((p) => { m[p.id] = p.nombre; });
+    return m;
+  }, [proyectos]);
+
+  const proyectosFiltrados = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return proyectos.filter((p) => {
+      if (estadoFilter === 'activos' && !p.activo) return false;
+      if (estadoFilter === 'inactivos' && p.activo) return false;
+      if (q && !(p.nombre || '').toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [proyectos, search, estadoFilter]);
+
+  const activosCount = useMemo(() => proyectos.filter((p) => p.activo).length, [proyectos]);
+
+  const cajaCentralDe = (proyecto) =>
+    proyecto.proyecto_default_id ? (nombrePorId[proyecto.proyecto_default_id] || '—') : '—';
+
+  const handleMenuOpen = useCallback((e, proyecto) => {
+    setMenuAnchor(e.currentTarget);
+    setMenuProyecto(proyecto);
+  }, []);
+  const handleMenuClose = useCallback(() => {
+    setMenuAnchor(null);
+    setMenuProyecto(null);
+  }, []);
+
+  const abrirCsvDialog = (proyecto) => {
+    setCsvProyecto(proyecto);
+    setSelectedFile(null);
+    setCsvDialogOpen(true);
+  };
+  const cerrarCsvDialog = () => {
+    setCsvDialogOpen(false);
+    setCsvProyecto(null);
+    setSelectedFile(null);
+  };
+  const handleUploadCSVDesdeDialog = async () => {
+    await handleUploadCSV();
+    cerrarCsvDialog();
+  };
+
   return (
     <>
       <Card>
-        <CardHeader title="Gestionar Proyectos" />
-        <Divider />
-        <CardContent>
-          <List>
-            {proyectos.map((proyecto) => (
-              <ListItem
-                key={proyecto.id}
-                divider
-                alignItems="flex-start"
-                sx={{
-                  py: 2,
-                  alignItems: 'stretch'
-                }}
+        <CardHeader
+          title="Gestionar Proyectos"
+          action={
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+              <Button
+                color="inherit"
+                variant="outlined"
+                startIcon={<CloudUploadIcon />}
+                onClick={handleImportarCSV}
+                sx={{ color: 'text.secondary', whiteSpace: 'nowrap' }}
               >
-                <Box
-                  sx={{
-                    display: 'flex',
-                    flexDirection: { xs: 'column', sm: 'row' },
-                    gap: { xs: 1.5, sm: 2 },
-                    width: '100%'
-                  }}
-                >
-                  <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <ListItemText
-                      primary={
-                        <a href={`/cajas?proyectoId=${proyecto.id}`} target="_blank" rel="noopener noreferrer">
-                          {proyecto.nombre}
-                        </a>
-                      }
-                      secondary={
-                        <Box component="span" sx={{ display: 'block' }}>
-                          <Typography component="span" variant="body2" display="block">
-                            Caja central: {findProyectoNombreById(proyecto.proyecto_default_id)}
-                          </Typography>
-                          <Typography component="span" variant="body2" display="block">
-                            {proyecto.carpetaRef ? (
-                              <a
-                                href={`https://drive.google.com/drive/folders/${proyecto.carpetaRef}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                style={{
-                                  marginLeft: '5px',
-                                  textDecoration: 'none',
-                                  color: '#1a73e8',
-                                  fontWeight: 'bold'
-                                }}
-                              >
-                                Link Carpeta
-                              </a>
-                            ) : (
-                              'Carpeta: No asignada'
-                            )}
-                          </Typography>
-
-                          <Typography component="span" variant="body2" display="block">
-                            {proyecto.sheetWithClient ? (
-                              <a
-                                href={`https://docs.google.com/spreadsheets/d/${proyecto.sheetWithClient}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                style={{
-                                  marginLeft: '5px',
-                                  textDecoration: 'none',
-                                  color: '#1a73e8',
-                                  fontWeight: 'bold'
-                                }}
-                              >
-                                Link Google Sheet
-                              </a>
-                            ) : (
-                              'Google Sheet No asignado'
-                            )}
-                          </Typography>
-
-                          <Typography component="span" variant="body2" display="block">
-                            Estado: {proyecto.activo ? 'Activo' : 'Inactivo'}
-                          </Typography>
-
-                          <Typography component="span" variant="body2" display="block">
-                            Sheets Adicionales:
-                            {proyecto.extraSheets && proyecto.extraSheets?.length > 0
-                              ? proyecto.extraSheets?.map((sheetId, index) => (
-                                  <a
-                                    key={index}
-                                    href={`https://docs.google.com/spreadsheets/d/${sheetId}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    style={{
-                                      marginLeft: '5px',
-                                      textDecoration: 'none',
-                                      color: '#1a73e8',
-                                      fontWeight: 'bold'
-                                    }}
-                                  >
-                                    {` Sheet ${index + 1} `}
-                                  </a>
-                                ))
-                              : ' No asignados'}
-                          </Typography>
-                        </Box>
-                      }
-                    />
-                  </Box>
-
-                  <Box
-                    sx={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: { xs: 'stretch', sm: 'flex-end' },
-                      gap: 1,
-                      minWidth: { xs: 'auto', sm: 360 }
-                    }}
-                  >
-                    <Box
-                      sx={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: { xs: 'flex-start', sm: 'flex-end' }
-                      }}
-                    >
-                      <Switch
-                        checked={proyecto.activo}
-                        onChange={() => toggleProyectoActivo(proyecto)}
-                        color="primary"
-                      />
-                      <IconButton edge="end" onClick={() => iniciarEdicionProyecto(proyecto)}>
-                        <EditIcon />
-                      </IconButton>
-                    </Box>
-
-                    <Box
-                      sx={{
-                        display: 'flex',
-                        flexWrap: 'wrap',
-                        gap: 1,
-                        justifyContent: { xs: 'flex-start', sm: 'flex-end' }
-                      }}
-                    >
-                      <input
-                        accept=".csv"
-                        style={{ display: 'none' }}
-                        id={`upload-csv-${proyecto.id}`}
-                        type="file"
-                        onChange={(event) => handleFileChange(event, proyecto.id, proyecto.nombre)}
-                      />
-                      <label htmlFor={`upload-csv-${proyecto.id}`}>
-                        <Button
-                          variant="contained"
-                          component="span"
-                          color="secondary"
-                          size="small"
-                          disabled={uploading}
-                        >
-                          Subir CSV
-                        </Button>
-                      </label>
-
-                      {selectedFile && uploadProjectId === proyecto.id && (
-                        <Button
-                          variant="contained"
-                          color="primary"
-                          size="small"
-                          onClick={handleUploadCSV}
-                          disabled={uploading}
-                        >
-                          {uploading ? 'Subiendo...' : 'Cargar'}
-                        </Button>
-                      )}
-
-                      <Button
-                        variant="outlined"
-                        color="error"
-                        size="small"
-                        onClick={() => setProyectoAEliminar(proyecto)}
-                      >
-                        Eliminar
-                      </Button>
-
-                      <Button
-                        variant="outlined"
-                        size="small"
-                        onClick={() => handleRestablecerPermisos(proyecto.id)}
-                        disabled={restableciendoId === proyecto.id}
-                      >
-                        {restableciendoId === proyecto.id ? 'Procesando…' : 'Restablecer permisos'}
-                      </Button>
-                    </Box>
-                  </Box>
-                </Box>
-
-              </ListItem>
-            ))}
-          </List>
-        </CardContent>
+                Importar CSV
+              </Button>
+              <Button
+                color="primary"
+                variant="contained"
+                startIcon={<AddCircleIcon />}
+                onClick={iniciarCreacionProyecto}
+                sx={{ whiteSpace: 'nowrap' }}
+              >
+                Agregar Proyecto
+              </Button>
+            </Stack>
+          }
+        />
         <Divider />
-        <CardActions
+
+        {/* Toolbar: búsqueda + contador + filtro de estado */}
+        <Box
           sx={{
-            justifyContent: 'space-between',
-            flexDirection: { xs: 'column', sm: 'row' },
-            alignItems: { xs: 'stretch', sm: 'center' },
-            gap: { xs: 1, sm: 0 }
+            px: { xs: 2, sm: 3 }, py: 1.5,
+            display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap',
           }}
         >
-          <Button
-            color="secondary"
-            variant="outlined"
-            startIcon={<CloudUploadIcon />}
-            onClick={handleImportarCSV}
-            sx={{ width: { xs: '100%', sm: 'auto' } }}
+          <TextField
+            size="small"
+            placeholder="Buscar proyecto…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            sx={{ flexGrow: 1, minWidth: 200, maxWidth: 320 }}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon fontSize="small" sx={{ color: 'text.disabled' }} />
+                </InputAdornment>
+              ),
+            }}
+          />
+          <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
+            {proyectos.length} {proyectos.length === 1 ? 'proyecto' : 'proyectos'} · {activosCount} {activosCount === 1 ? 'activo' : 'activos'}
+          </Typography>
+          <Box sx={{ flexGrow: 1 }} />
+          <ToggleButtonGroup
+            size="small"
+            exclusive
+            value={estadoFilter}
+            onChange={(e, v) => v && setEstadoFilter(v)}
+            aria-label="Filtrar por estado"
           >
-            Importar CSV
-          </Button>
-          <Button
-            color="primary"
-            variant="contained"
-            startIcon={<AddCircleIcon />}
-            onClick={iniciarCreacionProyecto}
-            sx={{ width: { xs: '100%', sm: 'auto' } }}
-          >
-            Agregar Proyecto
-          </Button>
-        </CardActions>
+            <ToggleButton value="todos" sx={{ textTransform: 'none', px: 1.5 }}>Todos</ToggleButton>
+            <ToggleButton value="activos" sx={{ textTransform: 'none', px: 1.5 }}>Activos</ToggleButton>
+            <ToggleButton value="inactivos" sx={{ textTransform: 'none', px: 1.5 }}>Inactivos</ToggleButton>
+          </ToggleButtonGroup>
+        </Box>
+        <Divider />
+
+        {proyectosFiltrados.length === 0 ? (
+          <Box sx={{ py: 6, textAlign: 'center' }}>
+            <Typography variant="body2" color="text.secondary">
+              {proyectos.length === 0 ? 'Todavía no hay proyectos.' : 'No hay proyectos que coincidan con el filtro.'}
+            </Typography>
+          </Box>
+        ) : isMobile ? (
+          <Stack spacing={1} sx={{ p: 2 }}>
+            {proyectosFiltrados.map((proyecto) => (
+              <ProyectoCardMobile
+                key={proyecto.id}
+                proyecto={proyecto}
+                cajaCentral={cajaCentralDe(proyecto)}
+                onToggleActivo={toggleProyectoActivo}
+                onMenuOpen={handleMenuOpen}
+              />
+            ))}
+          </Stack>
+        ) : (
+          <TableContainer>
+            <Table sx={{ minWidth: 640 }}>
+              <TableHead>
+                <TableRow>
+                  <TableCell sx={{ fontWeight: 700, color: 'text.secondary', fontSize: 12, letterSpacing: '.04em' }}>PROYECTO</TableCell>
+                  <TableCell sx={{ fontWeight: 700, color: 'text.secondary', fontSize: 12, letterSpacing: '.04em' }}>CAJA CENTRAL</TableCell>
+                  <TableCell sx={{ fontWeight: 700, color: 'text.secondary', fontSize: 12, letterSpacing: '.04em' }}>INTEGRACIONES</TableCell>
+                  <TableCell align="center" sx={{ fontWeight: 700, color: 'text.secondary', fontSize: 12, letterSpacing: '.04em' }}>ESTADO</TableCell>
+                  <TableCell align="right" sx={{ width: 56 }} />
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {proyectosFiltrados.map((proyecto) => (
+                  <ProyectoRow
+                    key={proyecto.id}
+                    proyecto={proyecto}
+                    cajaCentral={cajaCentralDe(proyecto)}
+                    onToggleActivo={toggleProyectoActivo}
+                    onMenuOpen={handleMenuOpen}
+                  />
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
       </Card>
       <Drawer
         anchor="right"
@@ -960,9 +1044,6 @@ export const ProyectosDetails = ({ empresa, refreshEmpresa }) => {
                 <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.2, mt: 0.25 }} noWrap>
                   {formik.values.nombre || (editingProyecto ? 'Proyecto' : 'Sin nombre')}
                 </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
-                  Datos, integraciones y permisos de la obra.
-                </Typography>
               </Box>
               <IconButton onClick={cancelarEdicion} size="small" sx={{ mt: -0.5 }} aria-label="Cerrar">
                 <CloseIcon />
@@ -972,8 +1053,33 @@ export const ProyectosDetails = ({ empresa, refreshEmpresa }) => {
 
           {isLoading && <LinearProgress />}
 
+          {/* ── Tabs: separan la Configuración de la obra de Usuarios y permisos.
+               Al crear todavía no hay usuarios que asignar, así que solo aparecen al editar. ── */}
+          {editingProyecto && (
+            <Tabs
+              value={activeTab}
+              onChange={(e, v) => setActiveTab(v)}
+              variant="fullWidth"
+              sx={{ px: 1, borderBottom: 1, borderColor: 'divider', minHeight: 48 }}
+            >
+              <Tab
+                icon={<TuneIcon sx={{ fontSize: 18 }} />}
+                iconPosition="start"
+                label="Configuración"
+                sx={{ minHeight: 48, textTransform: 'none', fontWeight: 600 }}
+              />
+              <Tab
+                icon={<GroupsOutlinedIcon sx={{ fontSize: 18 }} />}
+                iconPosition="start"
+                label="Usuarios y permisos"
+                sx={{ minHeight: 48, textTransform: 'none', fontWeight: 600 }}
+              />
+            </Tabs>
+          )}
+
           {/* ── Body (scroll) ── */}
           <Box sx={{ flex: 1, overflowY: 'auto', px: 3, py: 2.5 }}>
+            {(!editingProyecto || activeTab === 0) && (
             <Stack spacing={3.5}>
               {/* Nombre del proyecto */}
               <Seccion icon={DriveFileRenameOutlineIcon} title="Nombre del proyecto">
@@ -1121,131 +1227,14 @@ export const ProyectosDetails = ({ empresa, refreshEmpresa }) => {
                   />
                 </Stack>
               </Seccion>
+            </Stack>
+            )}
 
-              {/* Subproyectos */}
-              <Seccion icon={AccountTreeOutlinedIcon} title="Subproyectos">
-                <Stack spacing={2}>
-                  {formik.values.subproyectos?.map((sp, idx) => (
-                    <Box
-                      key={idx}
-                      sx={{
-                        border: 1,
-                        borderColor: 'divider',
-                        borderRadius: 2,
-                        p: 2,
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: 1.5,
-                        bgcolor: 'background.default',
-                      }}
-                    >
-                      <Autocomplete
-                        multiple
-                        freeSolo
-                        options={[]}
-                        value={sp.path || []}
-                        onChange={(_, newValue) => {
-                          const updated = [...formik.values.subproyectos];
-                          updated[idx].path = newValue;
-                          formik.setFieldValue('subproyectos', updated);
-                        }}
-                        renderTags={(value, getTagProps) =>
-                          value.map((option, index) => (
-                            <Chip variant="outlined" label={option} {...getTagProps({ index })} key={index} />
-                          ))
-                        }
-                        renderInput={(params) => (
-                          <TextField {...params} variant="outlined" label="Path (jerarquía)" placeholder="Ej: Edificio 1, Unidad 2" />
-                        )}
-                      />
-                      <TextField
-                        label="Nombre"
-                        value={sp.nombre}
-                        onChange={(e) => {
-                          const updated = [...formik.values.subproyectos];
-                          updated[idx].nombre = e.target.value;
-                          formik.setFieldValue('subproyectos', updated);
-                        }}
-                        fullWidth
-                      />
-                      <FormControl fullWidth>
-                        <InputLabel>Estado</InputLabel>
-                        <Select
-                          value={sp.estado}
-                          label="Estado"
-                          onChange={(e) => {
-                            const updated = [...formik.values.subproyectos];
-                            updated[idx].estado = e.target.value;
-                            if (e.target.value !== 'alquilado') updated[idx].meses = '';
-                            formik.setFieldValue('subproyectos', updated);
-                          }}
-                        >
-                          <MenuItem value="Disponible">Disponible</MenuItem>
-                          <MenuItem value="Vendido">Vendido</MenuItem>
-                          <MenuItem value="alquilado">Alquilado</MenuItem>
-                        </Select>
-                      </FormControl>
-                      <TextField
-                        label="Valor"
-                        type="number"
-                        value={sp.valor}
-                        onChange={(e) => {
-                          const updated = [...formik.values.subproyectos];
-                          updated[idx].valor = e.target.value;
-                          formik.setFieldValue('subproyectos', updated);
-                        }}
-                        fullWidth
-                      />
-                      {sp.estado === 'alquilado' && (
-                        <TextField
-                          label="Meses de alquiler"
-                          type="number"
-                          value={sp.meses || ''}
-                          onChange={(e) => {
-                            const updated = [...formik.values.subproyectos];
-                            updated[idx].meses = e.target.value;
-                            formik.setFieldValue('subproyectos', updated);
-                          }}
-                          fullWidth
-                        />
-                      )}
-                      <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
-                        <Button
-                          variant="text"
-                          color="error"
-                          size="small"
-                          onClick={() => {
-                            const updated = formik.values.subproyectos.filter((_, i) => i !== idx);
-                            formik.setFieldValue('subproyectos', updated);
-                          }}
-                        >
-                          Eliminar subproyecto
-                        </Button>
-                      </Box>
-                    </Box>
-                  ))}
-                  <Button
-                    variant="outlined"
-                    startIcon={<AddCircleIcon />}
-                    onClick={() =>
-                      formik.setFieldValue('subproyectos', [
-                        ...formik.values.subproyectos,
-                        { nombre: '', estado: 'Disponible', valor: '', meses: '' },
-                      ])
-                    }
-                    sx={{ alignSelf: 'flex-start' }}
-                  >
-                    Agregar subproyecto
-                  </Button>
-                </Stack>
-              </Seccion>
-
-              {/* Usuarios y permisos — solo al editar */}
-              {editingProyecto && (
+            {/* ── Tab: Usuarios y permisos ── */}
+            {editingProyecto && activeTab === 1 && (
                 <Seccion
                   icon={GroupsOutlinedIcon}
                   title="Usuarios y permisos"
-                  hint="Quien tiene acceso hereda todas las acciones en esta obra. Destildá las que no quieras que pueda hacer acá."
                 >
                   <Stack spacing={1.5}>
                     <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
@@ -1440,8 +1429,7 @@ export const ProyectosDetails = ({ empresa, refreshEmpresa }) => {
                     </Box>
                   </Stack>
                 </Seccion>
-              )}
-            </Stack>
+            )}
           </Box>
 
           {/* ── Footer ── */}
@@ -1487,6 +1475,67 @@ export const ProyectosDetails = ({ empresa, refreshEmpresa }) => {
     </Button>
   </DialogActions>
 </Dialog>
+
+      {/* Menú de acciones por proyecto (kebab de cada fila) */}
+      <Menu anchorEl={menuAnchor} open={Boolean(menuAnchor)} onClose={handleMenuClose}>
+        <MenuItem
+          onClick={() => { const p = menuProyecto; handleMenuClose(); iniciarEdicionProyecto(p); }}
+        >
+          <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon>
+          Editar
+        </MenuItem>
+        <MenuItem
+          onClick={() => { const p = menuProyecto; handleMenuClose(); abrirCsvDialog(p); }}
+        >
+          <ListItemIcon><UploadFileIcon fontSize="small" /></ListItemIcon>
+          Subir CSV
+        </MenuItem>
+        <MenuItem
+          onClick={() => { const p = menuProyecto; handleMenuClose(); handleRestablecerPermisos(p.id); }}
+        >
+          <ListItemIcon><LockResetIcon fontSize="small" /></ListItemIcon>
+          Restablecer permisos
+        </MenuItem>
+        <Divider />
+        <MenuItem
+          onClick={() => { const p = menuProyecto; handleMenuClose(); setProyectoAEliminar(p); }}
+          sx={{ color: 'error.main' }}
+        >
+          <ListItemIcon><DeleteOutlineIcon fontSize="small" sx={{ color: 'error.main' }} /></ListItemIcon>
+          Eliminar
+        </MenuItem>
+      </Menu>
+
+      {/* Subir CSV en un solo paso */}
+      <Dialog open={csvDialogOpen} onClose={cerrarCsvDialog} fullWidth maxWidth="xs">
+        <DialogTitle>Subir CSV{csvProyecto ? ` — ${csvProyecto.nombre}` : ''}</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ pt: 1 }}>
+            <Typography variant="body2" color="text.secondary">
+              Cargá un archivo CSV con los movimientos de esta obra.
+            </Typography>
+            <Button variant="outlined" component="label" startIcon={<UploadFileIcon />}>
+              {selectedFile ? selectedFile.name : 'Elegir archivo CSV'}
+              <input
+                hidden
+                accept=".csv"
+                type="file"
+                onChange={(event) => csvProyecto && handleFileChange(event, csvProyecto.id, csvProyecto.nombre)}
+              />
+            </Button>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={cerrarCsvDialog} color="inherit" sx={{ color: 'text.secondary' }}>Cancelar</Button>
+          <Button
+            onClick={handleUploadCSVDesdeDialog}
+            variant="contained"
+            disabled={!selectedFile || uploading}
+          >
+            {uploading ? 'Subiendo…' : 'Cargar'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Snackbar
         open={snackbarOpen}
