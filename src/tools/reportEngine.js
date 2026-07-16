@@ -175,6 +175,43 @@ function formatMonthKey(key) {
   return label.replace('.', '').replace(' ', '-');
 }
 
+function formatShortDate(date) {
+  if (!date || isNaN(date.getTime())) return '';
+  return date.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
+}
+
+function getWeekRange(date) {
+  if (!date || isNaN(date.getTime())) return null;
+  const start = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const day = start.getDay();
+  const diffToMonday = day === 0 ? -6 : 1 - day;
+  start.setDate(start.getDate() + diffToMonday);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  end.setHours(23, 59, 59, 999);
+  return { start, end };
+}
+
+function getWeekKeyFromDate(date) {
+  const range = getWeekRange(date);
+  if (!range) return null;
+  const y = range.start.getFullYear();
+  const m = String(range.start.getMonth() + 1).padStart(2, '0');
+  const d = String(range.start.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function formatWeekKey(key) {
+  if (!key) return '';
+  const [year, month, day] = String(key).split('-').map(Number);
+  const start = new Date(year, month - 1, day);
+  if (isNaN(start.getTime())) return key;
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  return `${formatShortDate(start)} - ${formatShortDate(end)}`;
+}
+
 /**
  * Convierte fecha de movimiento a Date
  */
@@ -1747,6 +1784,162 @@ export function processBudgetVsActual(block, movimientos, presupuestos, currenci
 }
 
 /**
+ * Lista presupuestos vinculados a proveedores, respetando filtros globales.
+ * Pensado para ver un proveedor en todas las obras activas.
+ */
+export function processSupplierBudgets(block, movimientos, presupuestos, currencies, cotizaciones, extraContext = {}) {
+  const displayCurrency = currencies[0];
+  const data = applyBlockFilters(movimientos, block);
+  const projects = Array.isArray(extraContext?.proyectos) ? extraContext.proyectos : [];
+  const projectNameById = new Map();
+  const activeProjectIds = new Set();
+  const hasProjectList = projects.length > 0;
+
+  for (const project of projects) {
+    const id = String(project?._id || project?.id || '').trim();
+    if (!id) continue;
+    projectNameById.set(id, project?.nombre || project?.name || id);
+    if (project?.activo !== false && project?.eliminado !== true) {
+      activeProjectIds.add(id);
+    }
+  }
+
+  const runtimeProjectIds = new Set((extraContext?.filters?.proyectos || []).map((id) => String(id)));
+  const runtimeCategorySet = toNormalizedSet(extraContext?.filters?.categorias || []);
+  const runtimeProviderSet = toNormalizedSet(extraContext?.filters?.proveedores || []);
+  const excludedProviderSet = toNormalizedSet(block.excluir?.proveedores || []);
+  const excludedBudgetSet = toNormalizedSet(block.excluir?.presupuestos || []);
+
+  let presFiltered = Array.isArray(presupuestos) ? [...presupuestos] : [];
+
+  if (block.mostrar_tipo && block.mostrar_tipo !== 'ambos') {
+    presFiltered = presFiltered.filter((p) => p.tipo === block.mostrar_tipo);
+  }
+
+  presFiltered = presFiltered.filter((p) => presupuestoTieneProveedores(p));
+
+  if (runtimeProjectIds.size > 0) {
+    presFiltered = presFiltered.filter((p) => runtimeProjectIds.has(getPresupuestoProjectInfo(p).id));
+  } else if (block.solo_obras_activas !== false && hasProjectList) {
+    presFiltered = presFiltered.filter((p) => activeProjectIds.has(getPresupuestoProjectInfo(p).id));
+  }
+
+  if (runtimeCategorySet.size > 0) {
+    presFiltered = presFiltered.filter((p) =>
+      getPresupuestoCategorias(p).some((cat) =>
+        runtimeCategorySet.has(normalizeCategoryFilterValue(cat))
+      )
+    );
+  }
+
+  if (runtimeProviderSet.size > 0) {
+    presFiltered = presFiltered.filter((p) =>
+      getPresupuestoProveedores(p).some((prov) => runtimeProviderSet.has(normalizeFilterText(prov)))
+    );
+  }
+
+  if (excludedProviderSet.size > 0) {
+    presFiltered = presFiltered.filter((p) =>
+      !getPresupuestoProveedores(p).some((prov) => excludedProviderSet.has(normalizeFilterText(prov)))
+    );
+  }
+
+  if (excludedBudgetSet.size > 0) {
+    presFiltered = presFiltered.filter((p) => {
+      const label = p.nombre || p.rubro || p.codigo || getPresupuestoBreakdownLabel(p, 'proveedor');
+      return !excludedBudgetSet.has(normalizeFilterText(label));
+    });
+  }
+
+  const rows = presFiltered.map((p) => {
+    const projectInfo = getPresupuestoProjectInfo(p, projectNameById);
+    const presupuestado = getPresupuestoAmount(p, displayCurrency, cotizaciones);
+    const ejecutado = convertPresupuestoValue(p, Number(p.ejecutado || 0), displayCurrency, cotizaciones);
+    const saldo = presupuestado - ejecutado;
+    const porcentaje = presupuestado > 0 ? ejecutado / presupuestado : 0;
+    const proveedor = getPresupuestoProveedores(p).join(' + ');
+    const presupuesto = p.nombre || p.rubro || getPresupuestoBreakdownLabel(p, 'proveedor') || p.codigo || 'Presupuesto';
+    const fechaRaw = p.fecha_presupuesto || p.creadoEn || p.createdAt || p.fechaInicio || null;
+    const movimientosPresupuesto = data.filter((m) => movimientoMatchesPresupuesto(m, p));
+
+    return {
+      id: getPresupuestoId(p),
+      obra: projectInfo.nombre,
+      obra_id: projectInfo.id,
+      presupuesto,
+      codigo: p.codigo || '',
+      proveedor,
+      fecha_creacion: fechaRaw,
+      presupuestado,
+      ejecutado,
+      saldo,
+      porcentaje,
+      estado: p.estado || (porcentaje >= 1 ? 'Completado' : ejecutado > 0 ? 'En ejecución' : 'Pendiente'),
+      _movimientos: movimientosPresupuesto,
+    };
+  });
+
+  rows.sort((a, b) =>
+    a.obra.localeCompare(b.obra)
+    || a.proveedor.localeCompare(b.proveedor)
+    || a.presupuesto.localeCompare(b.presupuesto)
+  );
+
+  const resumenMap = new Map();
+  for (const row of rows) {
+    const key = row.obra_id || row.obra;
+    if (!resumenMap.has(key)) {
+      resumenMap.set(key, {
+        obra: row.obra,
+        presupuestos: 0,
+        presupuestado: 0,
+        ejecutado: 0,
+        saldo: 0,
+        porcentaje: 0,
+      });
+    }
+    const item = resumenMap.get(key);
+    item.presupuestos += 1;
+    item.presupuestado += row.presupuestado;
+    item.ejecutado += row.ejecutado;
+    item.saldo += row.saldo;
+  }
+
+  const resumenObras = [...resumenMap.values()]
+    .map((row) => ({
+      ...row,
+      porcentaje: row.presupuestado > 0 ? row.ejecutado / row.presupuestado : 0,
+    }))
+    .sort((a, b) => b.presupuestado - a.presupuestado || a.obra.localeCompare(b.obra));
+
+  const totals = {
+    obra: 'TOTAL',
+    presupuestos: rows.length,
+    presupuestado: sum(rows.map((r) => r.presupuestado)),
+    ejecutado: sum(rows.map((r) => r.ejecutado)),
+    saldo: sum(rows.map((r) => r.saldo)),
+  };
+  totals.porcentaje = totals.presupuestado > 0 ? totals.ejecutado / totals.presupuestado : 0;
+
+  return {
+    displayCurrency,
+    rows,
+    resumenObras,
+    mostrarResumenObras: block.mostrar_resumen_obras !== false,
+    totals,
+    headers: [
+      { id: 'obra', titulo: 'Obra', formato: 'text' },
+      { id: 'presupuesto', titulo: 'Presupuesto', formato: 'text' },
+      { id: 'proveedor', titulo: 'Proveedor', formato: 'text' },
+      { id: 'presupuestado', titulo: 'Presupuestado', formato: 'currency' },
+      { id: 'ejecutado', titulo: 'Ejecutado', formato: 'currency' },
+      { id: 'saldo', titulo: 'Saldo', formato: 'currency' },
+      { id: 'porcentaje', titulo: '% Ejec.', formato: 'percentage' },
+    ],
+  };
+}
+
+/**
  * Procesa un bloque category_budget_matrix
  * Matriz por categoría con columnas de proyectos y filas:
  * - Presupuesto inicial
@@ -3021,6 +3214,134 @@ export function processChart(block, movimientos, presupuestos, currencies, cotiz
   };
 }
 
+/**
+ * Cash Flow: ingresos vs gastos por categoría, agrupado por mes o semana.
+ * Emite una shape propia con chart + matriz para web, PDF y XLSX.
+ */
+export function processCashflowMonthly(block, movimientos, _presupuestos, currencies) {
+  const displayCurrency = block.display_currency || currencies[0] || 'ARS';
+  const campo = block.campo_monto || 'total';
+  const groupMode = block.periodo || 'mensual';
+  const data = applyBlockFilters(movimientos, block);
+  const periods = new Map();
+  const categoryTotals = new Map();
+  let sinCotizacion = 0;
+
+  const ensurePeriod = (key, label, startTime) => {
+    if (!key) return null;
+    if (!periods.has(key)) {
+      periods.set(key, {
+        key,
+        label,
+        startTime,
+        ingresos: 0,
+        gastos: 0,
+        categorias: new Map(),
+      });
+    }
+    return periods.get(key);
+  };
+
+  for (const mov of data) {
+    const date = toDate(mov);
+    if (!date) continue;
+    const key = groupMode === 'semanal' ? getWeekKeyFromDate(date) : getMonthKeyFromDate(date);
+    const label = groupMode === 'semanal' ? formatWeekKey(key) : formatMonthKey(key);
+    const startTime = groupMode === 'semanal'
+      ? getWeekRange(date)?.start?.getTime()
+      : new Date(date.getFullYear(), date.getMonth(), 1).getTime();
+    const period = ensurePeriod(key, label, startTime);
+    if (!period) continue;
+
+    const amountResult = getReportAmountResult(mov, displayCurrency, campo);
+    if (amountResult.missingQuote) {
+      sinCotizacion += 1;
+      continue;
+    }
+    const amount = Math.abs(Number(amountResult.value || 0));
+    if (mov.type === 'ingreso') {
+      period.ingresos += amount;
+    } else if (mov.type === 'egreso') {
+      period.gastos += amount;
+      const categoria = mov.categoria || 'Sin categoría';
+      period.categorias.set(categoria, (period.categorias.get(categoria) || 0) + amount);
+      categoryTotals.set(categoria, (categoryTotals.get(categoria) || 0) + amount);
+    }
+  }
+
+  const orderedPeriods = [...periods.values()]
+    .filter((period) => period.ingresos !== 0 || period.gastos !== 0)
+    .sort((a, b) => a.startTime - b.startTime);
+
+  const sortedCategories = [...categoryTotals.entries()]
+    .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
+    .map(([categoria]) => categoria);
+
+  const totalIngresos = orderedPeriods.reduce((acc, period) => acc + period.ingresos, 0);
+  const totalGastos = orderedPeriods.reduce((acc, period) => acc + period.gastos, 0);
+  const netoTotal = totalIngresos - totalGastos;
+  const margenNeto = totalIngresos ? netoTotal / totalIngresos : 0;
+
+  const chart = {
+    labels: orderedPeriods.map((period) => period.label),
+    series: [
+      { name: 'Ingresos', type: 'column', data: orderedPeriods.map((period) => period.ingresos) },
+      { name: 'Gastos', type: 'column', data: orderedPeriods.map((period) => period.gastos) },
+      { name: 'Neto', type: 'line', data: orderedPeriods.map((period) => period.ingresos - period.gastos) },
+    ],
+  };
+
+  const periodHeaders = orderedPeriods.map((period) => ({
+    id: period.key,
+    titulo: period.label,
+    formato: 'currency',
+    currency: displayCurrency,
+  }));
+  const headers = [
+    { id: 'grupo', titulo: 'Categoría', formato: 'text', align: 'left' },
+    { id: 'acumulado', titulo: groupMode === 'semanal' ? 'Acumulado' : 'Acum. anual', formato: 'currency', currency: displayCurrency },
+    ...periodHeaders,
+  ];
+
+  const makeRow = (grupo, resolver, options = {}) => {
+    const row = { grupo, _rowKind: options.kind || null };
+    let acumulado = 0;
+    for (const period of orderedPeriods) {
+      const value = resolver(period);
+      row[period.key] = value;
+      acumulado += value;
+    }
+    row.acumulado = acumulado;
+    return row;
+  };
+
+  const rows = [
+    makeRow('INGRESOS', (period) => period.ingresos, { kind: 'income' }),
+    ...sortedCategories.map((categoria) =>
+      makeRow(categoria, (period) => period.categorias.get(categoria) || 0, { kind: 'expense' })
+    ),
+    makeRow('TOTAL GASTOS', (period) => period.gastos, { kind: 'expense_total' }),
+    makeRow('NETO', (period) => period.ingresos - period.gastos, { kind: 'net' }),
+  ];
+
+  return {
+    displayCurrency,
+    periodo: groupMode,
+    headers,
+    rows,
+    totals: null,
+    chart,
+    summary: {
+      ingresos: totalIngresos,
+      gastos: totalGastos,
+      neto: netoTotal,
+      margen: margenNeto,
+    },
+    sinCotizacion,
+    mostrarSinCotizacion: block.mostrar_sin_cotizacion === true,
+  };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  Bloques de PLAN DE COBROS (dataset planes_cobro)
 //
@@ -3837,9 +4158,11 @@ const BLOCK_PROCESSORS = {
   movements_table: processMovementsTable,
   budget_vs_actual: processBudgetVsActual,
   monthly_budget_control: processMonthlyBudgetControl,
+  supplier_budgets: processSupplierBudgets,
   category_budget_matrix: processCategoryBudgetMatrix,
   income_budget_control: processIncomeBudgetControl,
   chart: processChart,
+  cashflow_monthly: processCashflowMonthly,
   grouped_detail: processGroupedDetail,
   balance_between_partners: processBalanceBetweenPartners,
   category_subcategory_accordion: processCategorySubcategoryAccordion,
@@ -3873,15 +4196,15 @@ export function executeReport(reportConfig, movimientos, presupuestos = [], disp
   return layout.map((block) => {
     const processor = BLOCK_PROCESSORS[block.type];
     if (!processor) {
-      return { type: block.type, titulo: block.titulo, data: null, error: `Tipo desconocido: ${block.type}` };
+      return { type: block.type, titulo: block.titulo, ocultar_en_pdf: block.ocultar_en_pdf === true, data: null, error: `Tipo desconocido: ${block.type}` };
     }
 
     try {
       const data = processor(block, movimientos, presupuestos, currencies, cotizaciones, processorContext);
-      return { type: block.type, titulo: block.titulo || '', data };
+      return { type: block.type, titulo: block.titulo || '', ocultar_en_pdf: block.ocultar_en_pdf === true, data };
     } catch (err) {
       console.error(`Error procesando bloque ${block.type}:`, err);
-      return { type: block.type, titulo: block.titulo || '', data: null, error: err.message };
+      return { type: block.type, titulo: block.titulo || '', ocultar_en_pdf: block.ocultar_en_pdf === true, data: null, error: err.message };
     }
   });
 }

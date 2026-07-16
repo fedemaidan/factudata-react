@@ -305,7 +305,14 @@ const ReportDetailPage = () => {
     setAddingBlock(true);
     try {
       const updatedLayout = [...(selectedReport.layout || []), block];
-      const updatedReport = { ...selectedReport, layout: updatedLayout };
+      const usesBudgets = ['budget_vs_actual', 'supplier_budgets'].includes(block.type);
+      const updatedReport = {
+        ...selectedReport,
+        layout: updatedLayout,
+        datasets: usesBudgets
+          ? { ...(selectedReport.datasets || {}), presupuestos: true }
+          : selectedReport.datasets,
+      };
       const saved = await updateReport(updatedReport._id, updatedReport);
       if (saved) {
         await loadReportData(saved);

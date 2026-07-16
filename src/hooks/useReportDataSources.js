@@ -43,6 +43,22 @@ function deriveDisplayCurrencies(draft) {
   return [draft?.display_currency || 'ARS'];
 }
 
+function getPresupuestoProviderOptions(presupuestos = []) {
+  const seen = new Set();
+  const values = [];
+  for (const presupuesto of presupuestos || []) {
+    const proveedores = Array.isArray(presupuesto?.proveedores) ? presupuesto.proveedores : [];
+    for (const proveedor of proveedores) {
+      const nombre = String(proveedor?.nombre || '').trim();
+      const key = normalizeFilterOptionText(nombre);
+      if (!nombre || seen.has(key)) continue;
+      seen.add(key);
+      values.push(nombre);
+    }
+  }
+  return values.sort((a, b) => a.localeCompare(b));
+}
+
 /**
  * Carga los datos crudos (proyectos, movimientos, presupuestos, cotizaciones) necesarios
  * para previsualizar un BORRADOR de reporte que todavía no existe en la base. Pensado para
@@ -227,10 +243,20 @@ export function useReportDataSources(user, empresaId) {
       });
 
       const usuarios = usuariosRef.current;
+      const proveedoresSet = new Set();
+      const proveedores = [
+        ...getUniqueValues(movs, 'proveedor'),
+        ...getPresupuestoProviderOptions(presus),
+      ].filter((value) => {
+        const key = normalizeFilterOptionText(value);
+        if (!key || proveedoresSet.has(key)) return false;
+        proveedoresSet.add(key);
+        return true;
+      });
       const options = {
         proyectos: allProyectos.map((p) => ({ id: p.id, nombre: p.nombre || p.proyecto || p.id })),
         categorias: visibleCategories,
-        proveedores: getUniqueValues(movs, 'proveedor'),
+        proveedores,
         etapas: getUniqueValues(movs, 'etapa'),
         mediosPago: getUniqueValues(movs, 'medio_pago'),
         monedas: getUniqueValues(movs, 'moneda'),
