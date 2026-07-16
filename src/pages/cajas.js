@@ -2079,16 +2079,36 @@ const getTime = (v) => {
 };
 
   
-  const totalesDetallados = useMemo(() => ({
-    ARS: {
-      ingreso: dashboardTotals?.currencies?.ARS?.ingreso || 0,
-      egreso: dashboardTotals?.currencies?.ARS?.egreso || 0,
-    },
-    USD: {
-      ingreso: dashboardTotals?.currencies?.USD?.ingreso || 0,
-      egreso: dashboardTotals?.currencies?.USD?.egreso || 0,
-    },
-  }), [dashboardTotals]);
+  const totalesDetallados = useMemo(() => {
+    // Cajas con equivalencia (p. ej. dolarizada = usd_referencia) totalizan TODOS
+    // los movimientos convertidos a la moneda de salida. El balde `currencies` sólo
+    // suma por moneda nativa, así que al filtrar por moneda daría 0 (TAR-515).
+    // Espejamos la lógica de getCajaNetFromTotals: leemos el balde de equivalencia.
+    const equivalencia = activeCaja?.equivalencia && activeCaja.equivalencia !== 'none'
+      ? activeCaja.equivalencia
+      : null;
+
+    if (equivalencia) {
+      const eq = dashboardTotals?.equivalencias?.[equivalencia] || {};
+      const outCur = EQUIV_META[equivalencia]?.out || 'USD';
+      return {
+        ARS: { ingreso: 0, egreso: 0 },
+        USD: { ingreso: 0, egreso: 0 },
+        [outCur]: { ingreso: eq.ingreso || 0, egreso: eq.egreso || 0 },
+      };
+    }
+
+    return {
+      ARS: {
+        ingreso: dashboardTotals?.currencies?.ARS?.ingreso || 0,
+        egreso: dashboardTotals?.currencies?.ARS?.egreso || 0,
+      },
+      USD: {
+        ingreso: dashboardTotals?.currencies?.USD?.ingreso || 0,
+        egreso: dashboardTotals?.currencies?.USD?.egreso || 0,
+      },
+    };
+  }, [dashboardTotals, activeCaja]);
 
   const movimientosConProrrateo = useMemo(() => dashboardItems, [dashboardItems]);
 

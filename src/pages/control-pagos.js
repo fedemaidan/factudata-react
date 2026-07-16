@@ -1109,6 +1109,15 @@ const PagosAprobacionesPage = () => {
     fetchMovimientos();
   }, [fetchMovimientos]);
 
+  // Refresca la tabla y las métricas globales del encabezado juntas. Se usa
+  // tras cualquier mutación que cambie montos pagados/saldos (pagos, marcar
+  // como pagadas, guardar cambios inline, eliminar) para que "Saldo a pagar" y
+  // "Pagado" se actualicen en el momento, sin refrescar la página.
+  const refreshMovimientosYMetricas = useCallback(() => {
+    fetchMovimientos();
+    fetchGlobalMetrics();
+  }, [fetchMovimientos, fetchGlobalMetrics]);
+
   const handleSort = useCallback((sortField) => {
     if (!sortField) return;
     setFilterState((prev) => ({
@@ -1227,10 +1236,10 @@ const PagosAprobacionesPage = () => {
         setFeedback({ severity: 'error', message: 'No se pudieron guardar los cambios.' });
       } else if (successIds.length === results.length) {
         setFeedback({ severity: 'success', message: `Se guardaron ${successIds.length} movimiento(s).` });
-        fetchMovimientos();
+        refreshMovimientosYMetricas();
       } else {
         setFeedback({ severity: 'warning', message: `Se guardaron ${successIds.length} de ${results.length} movimiento(s).` });
-        fetchMovimientos();
+        refreshMovimientosYMetricas();
       }
     } catch (saveError) {
       console.error('Error guardando cambios inline:', saveError);
@@ -1245,7 +1254,7 @@ const PagosAprobacionesPage = () => {
       });
       setBulkSaveLoading(false);
     }
-  }, [dirtyMovimientos, fetchMovimientos, user]);
+  }, [dirtyMovimientos, refreshMovimientosYMetricas, user]);
 
   const handlePagarSeleccionados = useCallback(() => {
     if (selectedPayableMovimientos.length === 0) return;
@@ -1255,8 +1264,8 @@ const PagosAprobacionesPage = () => {
   const handleImputarSuccess = useCallback(() => {
     setFeedback({ severity: 'success', message: 'Pago registrado correctamente.' });
     setSelectedIds(new Set());
-    fetchMovimientos();
-  }, [fetchMovimientos]);
+    refreshMovimientosYMetricas();
+  }, [refreshMovimientosYMetricas]);
 
   const handleImputarClose = useCallback(() => {
     setImputarOpen(false);
@@ -1292,8 +1301,8 @@ const PagosAprobacionesPage = () => {
     setDraftsById({});
     setConfirmarPagoOpen(false);
     setMovimientosParaConfirmar([]);
-    fetchMovimientos();
-  }, [fetchMovimientos]);
+    refreshMovimientosYMetricas();
+  }, [refreshMovimientosYMetricas]);
 
   // ── "Eliminar movimientos" ──────────────────────────────────────────────────
   const handleConfirmarEliminar = useCallback(async () => {
@@ -1315,14 +1324,14 @@ const PagosAprobacionesPage = () => {
       }
       setEliminarOpen(false);
       setSelectedIds(new Set());
-      fetchMovimientos();
+      refreshMovimientosYMetricas();
     } catch (err) {
       console.error('Error eliminando movimientos:', err);
       setFeedback({ severity: 'error', message: 'Error al eliminar movimientos.' });
     } finally {
       setEliminarLoading(false);
     }
-  }, [selectedMovimientos, fetchMovimientos]);
+  }, [selectedMovimientos, refreshMovimientosYMetricas]);
 
   // ── "Marcar como pagadas" ───────────────────────────────────────────────────
   // Cierra los movimientos seleccionados (monto_pagado = total, estado = 'Pagado')
@@ -1368,14 +1377,14 @@ const PagosAprobacionesPage = () => {
       }
       setMarcarPagadasOpen(false);
       setSelectedIds(new Set());
-      fetchMovimientos();
+      refreshMovimientosYMetricas();
     } catch (err) {
       console.error('Error marcando como pagadas:', err);
       setFeedback({ severity: 'error', message: 'Error al cerrar los movimientos.' });
     } finally {
       setMarcarPagadasLoading(false);
     }
-  }, [selectedPayableMovimientos, user, fetchMovimientos]);
+  }, [selectedPayableMovimientos, user, refreshMovimientosYMetricas]);
 
   const fetchPretendidos = useCallback(async () => {
     if (!empresa?.id || activeTab !== 'pretendidos') return;
@@ -1675,10 +1684,16 @@ const PagosAprobacionesPage = () => {
               {/* Métricas globales */}
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3} flexWrap="wrap" alignItems="center" sx={{ px: 2, py: 1, borderBottom: 1, borderColor: 'divider', bgcolor: 'grey.50' }}>
                 <Typography variant="body2" color="text.secondary">
-                  Saldo a pagar: <strong>{globalMetrics ? formatCurrencyWithCode(globalMetrics.currencies?.ARS?.egreso || 0, 'ARS') : '—'}</strong>
+                  Saldo a pagar: <strong>{globalMetrics ? formatCurrencyWithCode(globalMetrics.egresosAprobacion?.ARS?.pendiente || 0, 'ARS') : '—'}</strong>
+                  {globalMetrics && (globalMetrics.egresosAprobacion?.USD?.pendiente || 0) !== 0 && (
+                    <>{' · '}<strong>{formatCurrencyWithCode(globalMetrics.egresosAprobacion.USD.pendiente, 'USD')}</strong></>
+                  )}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Pagado: <strong>{globalMetrics ? formatCurrencyWithCode(globalMetrics.egresosAprobacion?.totalMontoPagado || 0, 'ARS') : '—'}</strong>
+                  Pagado: <strong>{globalMetrics ? formatCurrencyWithCode(globalMetrics.egresosAprobacion?.ARS?.pagado || 0, 'ARS') : '—'}</strong>
+                  {globalMetrics && (globalMetrics.egresosAprobacion?.USD?.pagado || 0) !== 0 && (
+                    <>{' · '}<strong>{formatCurrencyWithCode(globalMetrics.egresosAprobacion.USD.pagado, 'USD')}</strong></>
+                  )}
                 </Typography>
               </Stack>
               <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} justifyContent="space-between" alignItems={{ xs: 'flex-start', md: 'center' }} sx={{ p: 2 }}>

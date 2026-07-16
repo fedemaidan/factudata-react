@@ -2179,7 +2179,6 @@ const createdAtStr = (() => {
                     {obrasProyecto.length > 0 && formik.values.type === 'egreso' && (() => {
                       const obraSel = obrasProyecto.find((o) => o._id === formik.values.control_obra_id) || null;
                       const subs = obraSel ? (obraSel.rubros || []).flatMap((r) => (r.subrubros || []).map((s) => ({ uid: s.uid, nombre: `${r.nombre} · ${s.nombre}` }))) : [];
-                      const subSel = formik.values.imputaciones_obra?.[0]?.subrubro_uid || '';
                       const setObra = (oid) => {
                         const o = obrasProyecto.find((x) => x._id === oid);
                         const firstSub = o ? (o.rubros || []).flatMap((r) => r.subrubros || [])[0] : null;
@@ -2207,14 +2206,39 @@ const createdAtStr = (() => {
                                   {obrasProyecto.map((o) => <option key={o._id} value={o._id}>{o.titulo || '(obra)'}</option>)}
                                 </select>
                               )}
-                              <select
-                                className="rounded border border-divider px-2 py-1 text-xs"
-                                value={subSel}
-                                onChange={(e) => formik.setFieldValue('imputaciones_obra', e.target.value ? [{ subrubro_uid: e.target.value, pct: 100 }] : [])}
-                              >
-                                <option value="">Elegí un sub-rubro…</option>
-                                {subs.map((s) => <option key={s.uid} value={s.uid}>{s.nombre}</option>)}
-                              </select>
+                              {(() => {
+                                const imps = formik.values.imputaciones_obra || [];
+                                const pctByUid = Object.fromEntries(imps.map((i) => [i.subrubro_uid, i.pct]));
+                                const suma = imps.reduce((a, i) => a + (Number(i.pct) || 0), 0);
+                                const setPct = (uid, val) => {
+                                  const next = { ...pctByUid, [uid]: val };
+                                  const arr = Object.entries(next)
+                                    .filter(([, p]) => Number(p) > 0)
+                                    .map(([subrubro_uid, p]) => ({ subrubro_uid, pct: Number(p) }));
+                                  formik.setFieldValue('imputaciones_obra', arr);
+                                };
+                                return (
+                                  <>
+                                    <span className="text-[11px] text-neutral-500">Repartí el gasto entre sub-rubros (debe sumar 100%)</span>
+                                    {subs.map((s) => (
+                                      <div key={s.uid} className="flex items-center gap-2">
+                                        <span className="min-w-0 flex-1 truncate text-xs text-neutral-700">{s.nombre}</span>
+                                        <input
+                                          type="number" min="0" max="100"
+                                          className="w-16 rounded border border-divider px-2 py-1 text-right text-xs"
+                                          value={pctByUid[s.uid] ?? ''}
+                                          onChange={(e) => setPct(s.uid, e.target.value)}
+                                          placeholder="0"
+                                        />
+                                        <span className="text-[11px] text-neutral-400">%</span>
+                                      </div>
+                                    ))}
+                                    <span className={`text-[11px] ${Math.round(suma) === 100 ? 'text-success-main' : 'text-warning-main'}`}>
+                                      Suma: {suma}%{Math.round(suma) === 100 ? ' ✓' : ' — debe sumar 100'}
+                                    </span>
+                                  </>
+                                );
+                              })()}
                             </div>
                           )}
                         </div>

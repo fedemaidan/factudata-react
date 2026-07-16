@@ -30,6 +30,7 @@ import {
   Delete as DeleteIcon
 } from '@mui/icons-material';
 import importMovimientosService from 'src/services/importMovimientosService';
+import proveedorService from 'src/services/proveedorService';
 import { buscarCanonicoEnLista } from 'src/utils/normalizarNombre';
 
 const PasoRevisarProveedores = forwardRef(({
@@ -142,7 +143,15 @@ const PasoRevisarProveedores = forwardRef(({
       // Defensa redundante: matchear cada proveedor detectado contra el catálogo
       // de la empresa con normalización estricta (case/acentos/espacios). Si el
       // backend marcó como nuevo pero hay un canónico, lo reclasificamos.
-      const catalogo = empresa?.proveedores_data || empresa?.proveedores || [];
+      // Catálogo desde la colección Proveedor (fuente única, TAR-566): antes salía
+      // de empresa.proveedores_data (array embebido) que quedaba con nombres viejos
+      // al renombrar/borrar. La colección es la que edita/muestra la web.
+      let catalogo = [];
+      try {
+        catalogo = await proveedorService.getByEmpresa(empresaId);
+      } catch (err) {
+        console.warn('[PasoRevisarProveedores] No se pudo cargar el catálogo de proveedores:', err);
+      }
       const getNombre = (p) => (typeof p === 'string' ? p : (p?.nombre || p?.name || ''));
       const proveedoresFinales = proveedoresNormalizados.map((prov) => {
         if (prov.estado === 'existe' || prov.estado === 'variante' || prov.accion === 'usar_existente') {

@@ -262,6 +262,11 @@ const RemitosTable = ({
                             <Chip label="Duplicado" color="warning" size="small" sx={{ fontSize: 10, height: 18 }} />
                           </Tooltip>
                         )}
+                        {remito.vacio && (
+                          <Tooltip title="No se pudieron leer los materiales del remito — cargalos manualmente">
+                            <Chip label="Sin materiales" color="warning" size="small" sx={{ fontSize: 10, height: 18 }} />
+                          </Tooltip>
+                        )}
                         {(remito.es_borrador || remito.estado === 'borrador') && onConfirmarBorrador && (
                           <Button
                             size="small"
