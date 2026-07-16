@@ -61,6 +61,8 @@ import MoreVertIcon from '@mui/icons-material/MoreVert';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import LockResetIcon from '@mui/icons-material/LockReset';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import SquareFootOutlinedIcon from '@mui/icons-material/SquareFootOutlined';
+import { MONEDAS } from 'src/components/presupuestosProfesionales/constants';
 import { getProyectosByEmpresa, getProyectosFromUser, hasPermission, updateProyecto, crearProyecto, subirCSVProyecto, otorgarPermisosDriveProyecto, softDeleteMovimientosByProyectoId } from 'src/services/proyectosService';
 import { getEmpresaById } from 'src/services/empresaService';
 import { FIREBASE_CLIENT_EMAIL } from 'src/config/env';
@@ -454,16 +456,42 @@ export const ProyectosDetails = ({ empresa, refreshEmpresa }) => {
       extraSheets: [],
       subproyectos: [],
       usuariosAsignados: [],
-      datos_facturacion_cliente: ''
+      datos_facturacion_cliente: '',
+      superficie_total_m2: '',
+      costo_objetivo_m2: '',
+      costo_maximo_m2: '',
+      moneda_objetivo: 'ARS',
+      fecha_actualizacion_costos: null
     },
     enableReinitialize: true,
     validationSchema: Yup.object({
       nombre: Yup.string().required('El nombre del proyecto es requerido'),
       proyecto_default_id: Yup.string(),
-      sheetWithClient: Yup.string().nullable()
+      sheetWithClient: Yup.string().nullable(),
+      superficie_total_m2: Yup.number().transform((v, o) => (o === '' ? null : v)).min(0, 'No puede ser negativo').nullable(),
+      costo_objetivo_m2: Yup.number().transform((v, o) => (o === '' ? null : v)).min(0, 'No puede ser negativo').nullable(),
+      costo_maximo_m2: Yup.number().transform((v, o) => (o === '' ? null : v)).min(0, 'No puede ser negativo').nullable()
     }),
     onSubmit: async (values, { resetForm }) => {
       setIsLoading(true);
+
+      // Costo por m² (TAR-439): normalizar '' → null y sellar la fecha solo si
+      // cambió algún dato de costo respecto de lo guardado.
+      const numOrNull = (v) => (v === '' || v === null || v === undefined ? null : Number(v));
+      const superficie = numOrNull(values.superficie_total_m2);
+      const objetivoM2 = numOrNull(values.costo_objetivo_m2);
+      const maximoM2 = numOrNull(values.costo_maximo_m2);
+      const monedaObjetivo = values.moneda_objetivo || 'ARS';
+      const prev = editingProyecto || {};
+      const costosCambiaron =
+        superficie !== (prev.superficie_total_m2 ?? null) ||
+        objetivoM2 !== (prev.costo_objetivo_m2 ?? null) ||
+        maximoM2 !== (prev.costo_maximo_m2 ?? null) ||
+        monedaObjetivo !== (prev.moneda_objetivo ?? 'ARS');
+      const fechaActualizacionCostos = costosCambiaron
+        ? new Date().toISOString()
+        : (prev.fecha_actualizacion_costos ?? null);
+
       const proyectoData = {
         nombre: values.nombre,
         carpetaRef: values.carpetaRef,
@@ -472,6 +500,11 @@ export const ProyectosDetails = ({ empresa, refreshEmpresa }) => {
         extraSheets: values.extraSheets,
         subproyectos: values.subproyectos || [],
         datos_facturacion_cliente: values.datos_facturacion_cliente || '',
+        superficie_total_m2: superficie,
+        costo_objetivo_m2: objetivoM2,
+        costo_maximo_m2: maximoM2,
+        moneda_objetivo: monedaObjetivo,
+        fecha_actualizacion_costos: fechaActualizacionCostos,
       };
 
       try {
@@ -1225,6 +1258,83 @@ export const ProyectosDetails = ({ empresa, refreshEmpresa }) => {
                     rows={3}
                     helperText="Razón social, CUIT u otros datos del cliente que ayuden al bot a identificar si una factura es del cliente de este proyecto."
                   />
+                </Stack>
+              </Seccion>
+
+              {/* Costo por m² (TAR-439) */}
+              <Seccion
+                icon={SquareFootOutlinedIcon}
+                title="Costo por m²"
+                hint="Datos para seguir el gasto por metro cuadrado de la obra. Todos opcionales; la superficie es la que habilita el cálculo."
+              >
+                <Stack spacing={2}>
+                  <TextField
+                    fullWidth
+                    type="number"
+                    name="superficie_total_m2"
+                    label="Superficie total"
+                    value={formik.values.superficie_total_m2 ?? ''}
+                    onChange={formik.handleChange}
+                    error={formik.touched.superficie_total_m2 && Boolean(formik.errors.superficie_total_m2)}
+                    helperText={formik.touched.superficie_total_m2 && formik.errors.superficie_total_m2}
+                    InputProps={{ endAdornment: <InputAdornment position="end">m²</InputAdornment> }}
+                  />
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+                    <TextField
+                      fullWidth
+                      type="number"
+                      name="costo_objetivo_m2"
+                      label="Costo objetivo por m²"
+                      value={formik.values.costo_objetivo_m2 ?? ''}
+                      onChange={formik.handleChange}
+                      error={formik.touched.costo_objetivo_m2 && Boolean(formik.errors.costo_objetivo_m2)}
+                      helperText={formik.touched.costo_objetivo_m2 && formik.errors.costo_objetivo_m2}
+                      InputProps={{
+                        startAdornment: <InputAdornment position="start">{formik.values.moneda_objetivo === 'USD' ? 'U$S' : '$'}</InputAdornment>,
+                        endAdornment: <InputAdornment position="end">/m²</InputAdornment>,
+                      }}
+                    />
+                    <TextField
+                      fullWidth
+                      type="number"
+                      name="costo_maximo_m2"
+                      label="Tope máximo por m²"
+                      value={formik.values.costo_maximo_m2 ?? ''}
+                      onChange={formik.handleChange}
+                      error={formik.touched.costo_maximo_m2 && Boolean(formik.errors.costo_maximo_m2)}
+                      helperText={
+                        (formik.values.costo_maximo_m2 !== '' &&
+                          formik.values.costo_objetivo_m2 !== '' &&
+                          Number(formik.values.costo_maximo_m2) < Number(formik.values.costo_objetivo_m2))
+                          ? 'El tope es menor que el objetivo'
+                          : (formik.touched.costo_maximo_m2 && formik.errors.costo_maximo_m2)
+                      }
+                      InputProps={{
+                        startAdornment: <InputAdornment position="start">{formik.values.moneda_objetivo === 'USD' ? 'U$S' : '$'}</InputAdornment>,
+                        endAdornment: <InputAdornment position="end">/m²</InputAdornment>,
+                      }}
+                    />
+                  </Stack>
+                  <FormControl fullWidth>
+                    <InputLabel id="moneda-objetivo-label">Moneda del valor objetivo</InputLabel>
+                    <Select
+                      labelId="moneda-objetivo-label"
+                      label="Moneda del valor objetivo"
+                      name="moneda_objetivo"
+                      value={formik.values.moneda_objetivo || 'ARS'}
+                      onChange={formik.handleChange}
+                    >
+                      {MONEDAS.map((m) => (
+                        <MenuItem key={m} value={m}>{m}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  <Typography variant="caption" color="text.secondary">
+                    Última actualización:{' '}
+                    {formik.values.fecha_actualizacion_costos
+                      ? new Date(formik.values.fecha_actualizacion_costos).toLocaleDateString('es-AR')
+                      : '—'}
+                  </Typography>
                 </Stack>
               </Seccion>
             </Stack>

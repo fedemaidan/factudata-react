@@ -286,6 +286,11 @@ export const updateProyecto = async (id, proyecto, empresaId = null) => {
       eliminado: proyecto.eliminado || false,
       ui_prefs: proyecto.ui_prefs || {},
       datos_facturacion_cliente: proyecto.datos_facturacion_cliente ?? "",
+      superficie_total_m2:        proyecto.superficie_total_m2 ?? null,
+      costo_objetivo_m2:          proyecto.costo_objetivo_m2 ?? null,
+      costo_maximo_m2:            proyecto.costo_maximo_m2 ?? null,
+      moneda_objetivo:            proyecto.moneda_objetivo ?? 'ARS',
+      fecha_actualizacion_costos: proyecto.fecha_actualizacion_costos ?? null,
     }
     console.log("proyecto nuevo", proyecto);
     await api.put(`/proyecto/${id}`, proyecto);
