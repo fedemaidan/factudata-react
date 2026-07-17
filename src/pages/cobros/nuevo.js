@@ -46,6 +46,7 @@ import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import { getProyectosFromUser } from 'src/services/proyectosService';
 import clienteService from 'src/services/clienteService';
 import PresupuestoService from 'src/services/presupuestoService';
+import ControlObraService from 'src/services/controlObra/controlObraService';
 import planCobroService from 'src/services/planCobroService';
 import { CuotasTableEdit } from 'src/components/planCobro/CuotasTable';
 import { formatCurrency, formatNumberInput, parseNumberInput } from 'src/utils/formatters';
@@ -96,6 +97,8 @@ const todayIso = () => new Date().toISOString().split('T')[0];
 const NuevoPlanPage = () => {
   const { user } = useAuthContext();
   const router = useRouter();
+  // Si se llega desde una obra (?obra=...&proyecto=...), el plan se asocia a esa obra al guardar.
+  const obraId = router.query.obra ? String(router.query.obra) : null;
   const [step, setStep] = useState(0);
   const [empresaId, setEmpresaId] = useState(null);
   const [proyectos, setProyectos] = useState([]);
@@ -144,6 +147,13 @@ const NuevoPlanPage = () => {
     });
     getProyectosFromUser(user).then((list) => setProyectos(list || []));
   }, [user]);
+
+  // Pre-selecciona el proyecto de la obra cuando se llega desde una obra.
+  useEffect(() => {
+    if (!router.isReady) return;
+    const proyQ = router.query.proyecto ? String(router.query.proyecto) : null;
+    if (proyQ) setPlanData((prev) => (prev.proyecto_id ? prev : { ...prev, proyecto_id: proyQ }));
+  }, [router.isReady, router.query.proyecto]);
 
   const presupuestosDelProyecto = useMemo(() => {
     if (!planData.proyecto_id) return [];
@@ -480,6 +490,15 @@ const NuevoPlanPage = () => {
       });
       const dc = resConfirm?.data;
       if (!dc?.ok) throw new Error(dc?.error || 'Error al confirmar');
+
+      // Si se creó desde una obra, asociar el plan al control de obra y volver a la obra.
+      if (obraId) {
+        try {
+          await ControlObraService.agregarPlan(obraId, empresaId, { plan_cobro_id: plan._id });
+        } catch { /* si falla la asociación, el plan igual quedó creado */ }
+        router.push(`/control-obra/${obraId}`);
+        return;
+      }
 
       router.push(`/cobros/${plan._id}`);
     } catch (err) {

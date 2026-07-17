@@ -1,22 +1,21 @@
-import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueries } from '@tanstack/react-query';
 import { useRouter } from 'next/router';
 import { Box, Chip, LinearProgress, Paper, Stack, Typography, Button } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import planCobroService from 'src/services/planCobroService';
-import ControlObraService from 'src/services/controlObra/controlObraService';
 
 const money = (n, moneda) => (n || 0).toLocaleString('es-AR', { style: 'currency', currency: moneda === 'USD' ? 'USD' : 'ARS', maximumFractionDigits: 0 });
 
-// Pestaña "Cobros" de la obra: muestra el/los plan(es) de cobro asociados y cómo
-// vienen. En modo 'plan' el cobro va por acá; en modo 'certificados' el plan se
-// alimenta de los certificados aprobados.
+// Pestaña "Cobros" de la obra: muestra el/los plan(es) de cobro asociados (0..N).
+// "Nuevo plan" abre el asistente de creación con la obra ya asignada; al guardar,
+// el plan queda asociado a la obra. Los certificados se cobran directo (otra pestaña).
 export default function CobrosObraTab({ obra, empresaId }) {
   const router = useRouter();
-  const queryClient = useQueryClient();
-  const nuevoPlanMut = useMutation({
-    mutationFn: () => ControlObraService.agregarPlan(obra._id, empresaId, { nombre: `Plan ${(obra.plan_cobro_ids || []).length + 1}` }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['control-obra'] }),
+  // Abre el asistente de plan de cobro con la obra (y su proyecto) precargados.
+  const nuevoPlan = () => router.push({
+    pathname: '/cobros/nuevo',
+    query: { obra: obra._id, ...(obra.proyecto_id ? { proyecto: obra.proyecto_id } : {}) },
   });
   const planIds = (obra.plan_cobro_ids && obra.plan_cobro_ids.length)
     ? obra.plan_cobro_ids
@@ -39,7 +38,7 @@ export default function CobrosObraTab({ obra, empresaId }) {
         <Typography variant="caption" color="text.secondary" sx={{ flexGrow: 1 }}>
           Una obra puede tener 0..N planes de cobro (fijos). Los certificados se cobran directo (pestaña Certificados).
         </Typography>
-        <Button size="small" variant="outlined" startIcon={<AddIcon />} onClick={() => nuevoPlanMut.mutate()} disabled={nuevoPlanMut.isPending}>
+        <Button size="small" variant="outlined" startIcon={<AddIcon />} onClick={nuevoPlan}>
           Nuevo plan
         </Button>
       </Stack>
