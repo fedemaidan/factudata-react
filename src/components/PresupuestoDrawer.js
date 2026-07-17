@@ -322,8 +322,12 @@ const PresupuestoDrawer = ({
   const [baseCalculo, setBaseCalculo] = useState('total'); // 'total' | 'subtotal'
   const [nuevaBaseCalculo, setNuevaBaseCalculo] = useState('total');
 
-  // Función para cargar cotizaciones basada en una fecha específica
-  const cargarCotizacionesPorFecha = async (fechaStr, target = 'principal') => {
+  // Carga cotizaciones (dólar + CAC) para una fecha. El effect que la llama pasa `isCancelled`
+  // y en su cleanup lo activa: si la fecha cambia (o se cierra) antes de que resuelvan los
+  // requests, se ignora la respuesta vieja y no pisa a la nueva. Mismo patrón que el fetch de
+  // movimientos de este drawer. Evita que el llamado inicial con la fecha default (hoy →
+  // fallback al último CAC) pise al de la fecha real del presupuesto (bug: "no publicado" en prod).
+  const cargarCotizacionesPorFecha = async (fechaStr, target = 'principal', isCancelled = () => false) => {
     const setDolar = target === 'adicional' ? setAdicionalDolarRate : setDolarRate;
     const setCac = target === 'adicional' ? setAdicionalCacIndice : setCacIndice;
     const setCacFecha = target === 'adicional' ? setAdicionalCacFechaAplicada : setCacFechaAplicada;
@@ -335,11 +339,13 @@ const PresupuestoDrawer = ({
     try {
       // Dólar: valor para la fecha exacta
       const dolarData = await MonedasService.obtenerDolar(fechaStr).catch(() => null);
+      if (isCancelled()) return;
       if (dolarData) {
         setDolar(dolarData.blue?.venta || dolarData.blue?.promedio || dolarData.oficial?.venta || null);
       } else {
         // Fallback: último valor disponible
         const dolarFallback = await MonedasService.listarDolar({ limit: 1 }).catch(() => null);
+        if (isCancelled()) return;
         if (dolarFallback?.[0]) {
           const d = dolarFallback[0];
           setDolar(d.blue?.venta || d.blue?.promedio || d.oficial?.venta || null);
@@ -351,6 +357,7 @@ const PresupuestoDrawer = ({
       setCacFecha(cacFecha);
       if (cacFecha) {
         const cacData = await MonedasService.obtenerCAC(cacFecha).catch(() => null);
+        if (isCancelled()) return;
         if (cacData) {
           setCac(cacData.general || cacData.valor || null);
           setSubs({ general: cacData.general || cacData.valor || null, mano_obra: cacData.mano_obra || null, materiales: cacData.materiales || null });
@@ -359,6 +366,7 @@ const PresupuestoDrawer = ({
         } else {
           // Fallback: último CAC disponible (no sobreescribir la fecha calculada)
           const cacFallback = await MonedasService.listarCAC({ limit: 1 }).catch(() => null);
+          if (isCancelled()) return;
           if (cacFallback?.[0]) {
             setCac(cacFallback[0].general || cacFallback[0].valor || null);
             setSubs({ general: cacFallback[0].general || cacFallback[0].valor || null, mano_obra: cacFallback[0].mano_obra || null, materiales: cacFallback[0].materiales || null });
@@ -370,14 +378,18 @@ const PresupuestoDrawer = ({
     } catch (err) {
       console.warn('No se pudieron cargar cotizaciones para fecha:', fechaStr, err);
     } finally {
-      setLoadingRates(false);
+      if (!isCancelled()) setLoadingRates(false);
     }
   };
 
-  // Cargar cotizaciones al abrir el drawer (basado en la fecha del presupuesto)
+  // Cargar cotizaciones al abrir el drawer (basado en la fecha del presupuesto).
+  // La fecha arranca en hoy y luego pasa a la real → esta carga se dispara dos veces; el
+  // cleanup cancela la anterior para que la de "hoy" no pise a la de la fecha real.
   useEffect(() => {
     if (!open) return;
-    cargarCotizacionesPorFecha(fechaPresupuesto, 'principal');
+    let cancelled = false;
+    cargarCotizacionesPorFecha(fechaPresupuesto, 'principal', () => cancelled);
+    return () => { cancelled = true; };
   }, [open, fechaPresupuesto]);
 
   // Cargar CAC actual (hoy) para mostrar valores actualizados
@@ -401,7 +413,9 @@ const PresupuestoDrawer = ({
       setAdicionalCacFechaAplicada(null);
       return;
     }
-    cargarCotizacionesPorFecha(fechaAdicional, 'adicional');
+    let cancelled = false;
+    cargarCotizacionesPorFecha(fechaAdicional, 'adicional', () => cancelled);
+    return () => { cancelled = true; };
   }, [open, fechaAdicional, activeTab]);
 
   // Reset al abrir/cambiar modo
