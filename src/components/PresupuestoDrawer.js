@@ -105,6 +105,51 @@ const formatMesLegible = (fechaAAAAMM) => {
   return `${meses[parseInt(mes) - 1]} ${anio}`;
 };
 
+const fmtIndice = (v) => Number(v).toLocaleString('es-AR', { maximumFractionDigits: 1 });
+const fmtPct = (p) => `${p >= 0 ? '+' : ''}${Number(p).toLocaleString('es-AR', { maximumFractionDigits: 1 })}%`;
+
+// Leyenda bajo el selector de fecha: qué índice CAC se aplica y por qué, según el modo
+// de la empresa (resolucion = { modo, pendiente, fechaUtilizada, detalle } de /cac/variantes).
+// tipoSufijo: etiqueta corta del subíndice (' MO' / ' MAT') para la pestaña Adicional.
+const CacResumenFecha = ({ resolucion, fechaObjetivo, cacEfectivo, cacTipo, tipoSufijo = '' }) => {
+  const valorStr = cacEfectivo ? ` = ${fmtIndice(cacEfectivo)}` : '';
+  if (resolucion?.modo === 'legacy' && resolucion?.fechaUtilizada) {
+    return (
+      <>Índice CAC{tipoSufijo} aplicado: <strong>{formatMesLegible(resolucion.fechaUtilizada)}</strong>{valorStr} · <em>modalidad clásica: se usa el índice de dos meses antes de la fecha del presupuesto</em></>
+    );
+  }
+  if (resolucion?.pendiente && resolucion?.modo === 'estimado' && resolucion?.detalle) {
+    const d = resolucion.detalle;
+    const pct = d.variacion_mensual_pct?.[cacTipo] ?? d.variacion_mensual_pct?.general;
+    return (
+      <>Índice CAC{tipoSufijo} de <strong>{formatMesLegible(fechaObjetivo)}</strong> · <em>aún no publicado: estimado{cacEfectivo ? <> en <strong>{fmtIndice(cacEfectivo)}</strong></> : ''} proyectando desde {formatMesLegible(d.base_mes)}{pct != null ? ` la variación promedio de los últimos meses (${fmtPct(pct)} mensual)` : ''}. Se ajusta solo cuando salga el oficial.</em></>
+    );
+  }
+  if (resolucion?.pendiente) {
+    return (
+      <>Índice CAC{tipoSufijo} de <strong>{formatMesLegible(fechaObjetivo)}</strong> · <em>aún no publicado: se usa el último disponible{resolucion?.fechaUtilizada ? ` (${formatMesLegible(resolucion.fechaUtilizada)})` : ''}{valorStr}. Cuando se publique el del mes, el total se actualiza solo.</em></>
+    );
+  }
+  return <>Índice CAC{tipoSufijo} de <strong>{formatMesLegible(fechaObjetivo)}</strong>{valorStr}</>;
+};
+
+// Nota del recuadro "Equivale a CAC …": de qué mes es el índice usado y si el total se va a ajustar.
+const CacEquivalenciaNota = ({ resolucion, fechaObjetivo, cacEfectivo, cacTipo }) => {
+  const valorStr = cacEfectivo ? ` = ${fmtIndice(cacEfectivo)}` : '';
+  if (resolucion?.modo === 'legacy' && resolucion?.fechaUtilizada) {
+    return <> (CAC {formatMesLegible(resolucion.fechaUtilizada)}{valorStr}, el de dos meses antes de la fecha del presupuesto). Este índice queda fijo para el presupuesto.</>;
+  }
+  if (resolucion?.pendiente && resolucion?.modo === 'estimado' && resolucion?.detalle) {
+    const d = resolucion.detalle;
+    const pct = d.variacion_mensual_pct?.[cacTipo] ?? d.variacion_mensual_pct?.general;
+    return <> (CAC estimado de {formatMesLegible(fechaObjetivo)}{valorStr}: proyectado desde {formatMesLegible(d.base_mes)}{pct != null ? ` con la variación promedio de los últimos meses publicados, ${fmtPct(pct)} mensual` : ''}). Cuando se publique el oficial, el total se ajusta automáticamente.</>;
+  }
+  if (resolucion?.pendiente) {
+    return <> (último CAC publicado{resolucion?.fechaUtilizada ? `: ${formatMesLegible(resolucion.fechaUtilizada)}` : ''}{valorStr}). Cuando se publique el CAC de {formatMesLegible(fechaObjetivo)}, el total se actualiza automáticamente.</>;
+  }
+  return <> (CAC {formatMesLegible(fechaObjetivo)}{valorStr}). Se ajusta automáticamente por inflación.</>;
+};
+
 /**
  * PresupuestoDrawer - Drawer reutilizable para crear, editar y gestionar presupuestos
  * 
@@ -155,6 +200,9 @@ const PresupuestoDrawer = ({
   // Cuando true, oculta el bloque de filtros (categorías/proveedores/etapa) detrás de un botón "Configuración avanzada".
   // Útil cuando el usuario ya eligió los filtros fuera del drawer (p.ej. Control de presupuestos).
   filtrosColapsados = false,
+  // Modo CAC de la empresa (presupuesto_cac_modo): 'legacy' | 'automatico' | 'estimado'.
+  // Define qué variante del índice se muestra y el texto explicativo (debe coincidir con lo que guarda el backend).
+  cacModo = 'legacy',
 }) => {
   const [filtrosExpandidos, setFiltrosExpandidos] = useState(false);
   const router = useRouter();
@@ -196,16 +244,16 @@ const PresupuestoDrawer = ({
   const hoyStr = new Date().toISOString().split('T')[0];
   const [fechaPresupuesto, setFechaPresupuesto] = useState(hoyStr);
   const [fechaAdicional, setFechaAdicional] = useState(hoyStr);
-  const [cacFechaAplicada, setCacFechaAplicada] = useState(null); // YYYY-MM del CAC que se aplica
-  const [cacEsFallback, setCacEsFallback] = useState(false); // true si el CAC no existía y se usó el último disponible
-  const [cacFechaFallback, setCacFechaFallback] = useState(null); // YYYY-MM del CAC realmente usado (cuando es fallback)
+  const [cacFechaAplicada, setCacFechaAplicada] = useState(null); // YYYY-MM del mes objetivo (fecha del presupuesto)
+  // Cómo se resolvió el índice según el modo CAC de la empresa:
+  // { modo, pendiente, fechaUtilizada, detalle } — detalle solo cuando el modo estimado proyectó.
+  const [cacResolucion, setCacResolucion] = useState(null);
 
   // === Estado: Cotizaciones para adicional (separado del principal)
   const [adicionalDolarRate, setAdicionalDolarRate] = useState(null);
   const [adicionalCacIndice, setAdicionalCacIndice] = useState(null);
   const [adicionalCacFechaAplicada, setAdicionalCacFechaAplicada] = useState(null);
-  const [adicionalCacEsFallback, setAdicionalCacEsFallback] = useState(false);
-  const [adicionalCacFechaFallback, setAdicionalCacFechaFallback] = useState(null);
+  const [adicionalCacResolucion, setAdicionalCacResolucion] = useState(null);
 
   // === Estado: Historial ===
   const [mostrarHistorial, setMostrarHistorial] = useState(false);
@@ -332,8 +380,7 @@ const PresupuestoDrawer = ({
     const setCac = target === 'adicional' ? setAdicionalCacIndice : setCacIndice;
     const setCacFecha = target === 'adicional' ? setAdicionalCacFechaAplicada : setCacFechaAplicada;
     const setSubs = target === 'adicional' ? setAdicionalCacSubindices : setCacSubindices;
-    const setEsFallback = target === 'adicional' ? setAdicionalCacEsFallback : setCacEsFallback;
-    const setFechaFb = target === 'adicional' ? setAdicionalCacFechaFallback : setCacFechaFallback;
+    const setResolucion = target === 'adicional' ? setAdicionalCacResolucion : setCacResolucion;
 
     setLoadingRates(true);
     try {
@@ -352,26 +399,35 @@ const PresupuestoDrawer = ({
         }
       }
 
-      // CAC: usar el mes REAL del presupuesto (sin corrimiento). Si no salió, último disponible.
+      // CAC: resolver la variante que corresponde al modo de la empresa (legacy/automatico/estimado),
+      // la misma que va a usar el backend al guardar. El valor y el texto explicativo salen de acá.
       const cacFecha = mesDeFecha(fechaStr);
       setCacFecha(cacFecha);
       if (cacFecha) {
-        const cacData = await MonedasService.obtenerCAC(cacFecha).catch(() => null);
+        const variantes = await MonedasService.obtenerVariantesCAC(cacFecha).catch(() => null);
         if (isCancelled()) return;
-        if (cacData) {
-          setCac(cacData.general || cacData.valor || null);
-          setSubs({ general: cacData.general || cacData.valor || null, mano_obra: cacData.mano_obra || null, materiales: cacData.materiales || null });
-          setEsFallback(false);
-          setFechaFb(null);
+        const v = variantes?.[cacModo];
+        if (v && (v.general || v.mano_obra || v.materiales)) {
+          setCac(v.general ?? null);
+          setSubs({ general: v.general ?? null, mano_obra: v.mano_obra ?? null, materiales: v.materiales ?? null });
+          setResolucion({ modo: cacModo, pendiente: !!variantes.pendiente, fechaUtilizada: v.fecha_utilizada || null, detalle: v.detalle || null });
         } else {
-          // Fallback: último CAC disponible (no sobreescribir la fecha calculada)
-          const cacFallback = await MonedasService.listarCAC({ limit: 1 }).catch(() => null);
+          // Fallback (backend sin /cac/variantes todavía, o sin datos para el modo):
+          // CAC del mes real, y si no salió, el último disponible.
+          const cacData = await MonedasService.obtenerCAC(cacFecha).catch(() => null);
           if (isCancelled()) return;
-          if (cacFallback?.[0]) {
-            setCac(cacFallback[0].general || cacFallback[0].valor || null);
-            setSubs({ general: cacFallback[0].general || cacFallback[0].valor || null, mano_obra: cacFallback[0].mano_obra || null, materiales: cacFallback[0].materiales || null });
-            setEsFallback(true);
-            setFechaFb(cacFallback[0].fecha || null);
+          if (cacData) {
+            setCac(cacData.general || cacData.valor || null);
+            setSubs({ general: cacData.general || cacData.valor || null, mano_obra: cacData.mano_obra || null, materiales: cacData.materiales || null });
+            setResolucion({ modo: 'automatico', pendiente: false, fechaUtilizada: cacFecha, detalle: null });
+          } else {
+            const cacFallback = await MonedasService.listarCAC({ limit: 1 }).catch(() => null);
+            if (isCancelled()) return;
+            if (cacFallback?.[0]) {
+              setCac(cacFallback[0].general || cacFallback[0].valor || null);
+              setSubs({ general: cacFallback[0].general || cacFallback[0].valor || null, mano_obra: cacFallback[0].mano_obra || null, materiales: cacFallback[0].materiales || null });
+              setResolucion({ modo: 'automatico', pendiente: true, fechaUtilizada: cacFallback[0].fecha || null, detalle: null });
+            }
           }
         }
       }
@@ -1117,7 +1173,7 @@ const PresupuestoDrawer = ({
                     <CalendarMonthIcon sx={{ fontSize: 14, color: 'text.disabled' }} />
                     <Typography variant="caption" color="text.secondary">
                       {indexacion === 'CAC'
-                        ? <>Índice CAC de <strong>{formatMesLegible(cacFechaAplicada)}</strong>{cacEsFallback ? <> · <em>aún no publicado, se estima con el último disponible{cacFechaFallback ? ` (${formatMesLegible(cacFechaFallback)})` : ''}</em></> : ''}{cacEfectivo ? <> = {Number(cacEfectivo).toLocaleString('es-AR', { maximumFractionDigits: 1 })}</> : ''}</>
+                        ? <CacResumenFecha resolucion={cacResolucion} fechaObjetivo={cacFechaAplicada} cacEfectivo={cacEfectivo} cacTipo={cacTipoActivo} />
                         : <>Dólar blue aplicado: <strong>{dayjs(fechaPresupuesto).format('DD/MM/YYYY')}</strong></>
                       }
                     </Typography>
@@ -1286,7 +1342,7 @@ const PresupuestoDrawer = ({
                     <Alert severity="info" variant="outlined" icon={<InfoOutlinedIcon fontSize="small" />} sx={{ mt: 1 }}>
                       <Typography variant="caption">
                         {indexacion === 'CAC' && cacEfectivo ? (
-                          <>Equivale a <strong>CAC {(parseFloat(monto) / cacEfectivo).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong> (CAC {formatMesLegible(cacFechaAplicada)} = {Number(cacEfectivo).toLocaleString('es-AR')}). Se ajusta automáticamente por inflación.</>
+                          <>Equivale a <strong>CAC {(parseFloat(monto) / cacEfectivo).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong><CacEquivalenciaNota resolucion={cacResolucion} fechaObjetivo={cacFechaAplicada} cacEfectivo={cacEfectivo} cacTipo={cacTipoActivo} /></>
                         ) : indexacion === 'USD' && dolarEfectivo ? (
                           <>Equivale a <strong>USD {(parseFloat(monto) / dolarEfectivo).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong> (USD {dayjs(fechaPresupuesto).format('DD/MM/YYYY')} = ${Number(dolarEfectivo).toLocaleString('es-AR')}). Se ajusta al valor del dólar.</>
                         ) : loadingRates ? (
@@ -1830,7 +1886,7 @@ const PresupuestoDrawer = ({
                         <CalendarMonthIcon sx={{ fontSize: 14, color: 'text.disabled' }} />
                         <Typography variant="caption" color="text.secondary">
                           {nuevaIndexacion === 'CAC'
-                            ? <>Índice CAC de <strong>{formatMesLegible(cacFechaAplicada)}</strong>{cacEsFallback ? <> · <em>aún no publicado, se estima con el último disponible{cacFechaFallback ? ` (${formatMesLegible(cacFechaFallback)})` : ''}</em></> : ''}{cacEfectivo ? <> = {Number(cacEfectivo).toLocaleString('es-AR')}</> : ''}</>
+                            ? <CacResumenFecha resolucion={cacResolucion} fechaObjetivo={cacFechaAplicada} cacEfectivo={cacEfectivo} cacTipo={cacTipoActivo} />
                             : <>Dólar blue aplicado: <strong>{dayjs(fechaPresupuesto).format('DD/MM/YYYY')}</strong>{dolarEfectivo ? <> = ${Number(dolarEfectivo).toLocaleString('es-AR')}</> : ''}</>
                           }
                         </Typography>
@@ -2314,7 +2370,13 @@ const PresupuestoDrawer = ({
                           <CalendarMonthIcon sx={{ fontSize: 14, color: 'text.disabled' }} />
                           <Typography variant="caption" color="text.secondary">
                             {presupuesto.indexacion === 'CAC'
-                              ? <>Índice CAC{presupuesto.cac_tipo === 'mano_obra' ? ' MO' : presupuesto.cac_tipo === 'materiales' ? ' MAT' : ''}: <strong>{formatMesLegible(adicionalCacFechaAplicada || cacFechaAplicada)}</strong> = {Number(adicionalCacEfectivo).toLocaleString('es-AR')}{adicionalCacOverride ? ' (manual)' : ''}</>
+                              ? <><CacResumenFecha
+                                  resolucion={adicionalCacResolucion || cacResolucion}
+                                  fechaObjetivo={adicionalCacFechaAplicada || cacFechaAplicada}
+                                  cacEfectivo={adicionalCacEfectivo}
+                                  cacTipo={presupuesto.cac_tipo || 'general'}
+                                  tipoSufijo={presupuesto.cac_tipo === 'mano_obra' ? ' MO' : presupuesto.cac_tipo === 'materiales' ? ' MAT' : ''}
+                                />{adicionalCacOverride ? ' (manual)' : ''}</>
                               : <>Dólar blue: <strong>{dayjs(fechaAdicional).format('DD/MM/YYYY')}</strong> = ${Number(adicionalDolarEfectivo).toLocaleString('es-AR')}{adicionalDolarOverride ? ' (manual)' : ''}</>
                             }
                           </Typography>
@@ -2676,7 +2738,7 @@ const PresupuestoDrawer = ({
                           cacTipo: presupuesto.cac_tipo || null,
                           baseCalculo: presupuesto.base_calculo || 'total',
                           presupuestadoNativo: Number(presupuesto.monto != null ? presupuesto.monto : presupuesto.monto_ingresado || 0),
-                          presupuestadoNominal: calcPresupuestadoNominal(presupuesto),
+                          presupuestadoNominal: calcPresupuestadoNominal(presupuesto, cacModo),
                           montoIngresado: presupuesto.monto_ingresado != null ? Number(presupuesto.monto_ingresado) : null,
                           cacIndiceActual: cacActualEfectivo || cacEfectivo,
                           tipoCambioActual: dolarEfectivo,

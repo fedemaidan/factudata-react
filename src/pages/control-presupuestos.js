@@ -2465,6 +2465,7 @@ const ControlPresupuestosPage = () => {
         presupuesto={drawerPresupuesto.presupuesto}
         drawerView={drawerPresupuesto.drawerView || 'full'}
         filtrosColapsados
+        cacModo={cacModo}
         onRecalcular={async (id) => {
           try {
             const { success } = await presupuestoService.recalcularPresupuesto(id, empresaId);

@@ -8,6 +8,8 @@
  * cotizacion_snapshot (el valor del momento en que se agregaron, no el actual).
  */
 
+import { snapshotCacIndice } from 'src/utils/cac/pickCac';
+
 const num = (v) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
@@ -17,8 +19,10 @@ const num = (v) => {
  * Presupuestado nominal en pesos (o en su moneda nativa si el presupuesto es plano).
  * - Indexado (CAC/USD): monto_ingresado original + Σ adicionales valuados a su snapshot.
  * - Plano: presupuesto.monto (ya incluye adicionales, en su moneda nativa).
+ * cacModo: modo CAC de la empresa, para elegir la variante en snapshots nuevos
+ * (snapshotCacIndice también resuelve el shape viejo cac_indice/cac_general).
  */
-export function calcPresupuestadoNominal(presupuesto) {
+export function calcPresupuestadoNominal(presupuesto, cacModo = 'legacy') {
   const p = presupuesto || {};
   if (p.indexacion === 'CAC' || p.indexacion === 'USD') {
     const base = num(p.monto_ingresado);
@@ -26,7 +30,7 @@ export function calcPresupuestadoNominal(presupuesto) {
       const monto = num(a?.monto);
       const snap = a?.cotizacion_snapshot || {};
       const cotiz = p.indexacion === 'CAC'
-        ? (snap.cac_indice ?? snap.cac_general ?? null)
+        ? snapshotCacIndice(snap, p.cac_tipo, cacModo)
         : (snap.dolar_blue ?? null);
       return s + (cotiz ? monto * num(cotiz) : 0);
     }, 0);
