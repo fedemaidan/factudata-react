@@ -1,8 +1,10 @@
-import { useQuery, useQueries } from '@tanstack/react-query';
+import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/router';
 import { Box, Chip, LinearProgress, Paper, Stack, Typography, Button } from '@mui/material';
+import AddIcon from '@mui/icons-material/Add';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import planCobroService from 'src/services/planCobroService';
+import ControlObraService from 'src/services/controlObra/controlObraService';
 
 const money = (n, moneda) => (n || 0).toLocaleString('es-AR', { style: 'currency', currency: moneda === 'USD' ? 'USD' : 'ARS', maximumFractionDigits: 0 });
 
@@ -11,6 +13,11 @@ const money = (n, moneda) => (n || 0).toLocaleString('es-AR', { style: 'currency
 // alimenta de los certificados aprobados.
 export default function CobrosObraTab({ obra, empresaId }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const nuevoPlanMut = useMutation({
+    mutationFn: () => ControlObraService.agregarPlan(obra._id, empresaId, { nombre: `Plan ${(obra.plan_cobro_ids || []).length + 1}` }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['control-obra'] }),
+  });
   const planIds = (obra.plan_cobro_ids && obra.plan_cobro_ids.length)
     ? obra.plan_cobro_ids
     : (obra.plan_cobro_id ? [obra.plan_cobro_id] : []);
@@ -28,23 +35,19 @@ export default function CobrosObraTab({ obra, empresaId }) {
   return (
     <Box>
       <Stack direction="row" alignItems="center" spacing={1} mb={2} flexWrap="wrap">
-        <Typography variant="subtitle2" fontWeight={700}>Cobro de la obra:</Typography>
-        <Chip
-          size="small"
-          color={obra.modo_cobro === 'plan' ? 'primary' : 'default'}
-          label={obra.modo_cobro === 'plan' ? 'Por plan de cobro' : 'Por certificados'}
-        />
-        <Typography variant="caption" color="text.secondary">
-          {obra.modo_cobro === 'plan'
-            ? 'El cobro va por el cronograma del/los plan(es). Los certificados registran avance pero no generan cuotas.'
-            : 'Cada certificado aprobado agrega una cuota al plan.'}
+        <Typography variant="subtitle2" fontWeight={700}>Planes de cobro de la obra</Typography>
+        <Typography variant="caption" color="text.secondary" sx={{ flexGrow: 1 }}>
+          Una obra puede tener 0..N planes de cobro (fijos). Los certificados se cobran directo (pestaña Certificados).
         </Typography>
+        <Button size="small" variant="outlined" startIcon={<AddIcon />} onClick={() => nuevoPlanMut.mutate()} disabled={nuevoPlanMut.isPending}>
+          Nuevo plan
+        </Button>
       </Stack>
 
       {loading && <LinearProgress sx={{ mb: 2 }} />}
 
       {!loading && planes.length === 0 && (
-        <Typography variant="body2" color="text.secondary">La obra no tiene plan de cobro asociado.</Typography>
+        <Typography variant="body2" color="text.secondary">La obra no tiene planes de cobro asociados.</Typography>
       )}
 
       <Stack spacing={1.5}>

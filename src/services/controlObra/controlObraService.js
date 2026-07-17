@@ -170,11 +170,12 @@ const ControlObraService = {
   cobrarCertificado: async (certId, empresa_id, montoParcial = null, fechaCobrado = null) =>
     unwrap(await api.post(`${BASE}/certificados/${certId}/cobrar`, { empresa_id, monto_parcial: montoParcial, fecha_cobrado: fechaCobrado })),
 
-  // Fase F: modo de cobro de la obra + planes adicionales (multi-plan)
-  setModoCobro: async (obraId, empresa_id, modo_cobro) =>
-    unwrap(await api.patch(`${BASE}/${obraId}/modo-cobro`, { empresa_id, modo_cobro })),
-  agregarPlan: async (obraId, empresa_id, { nombre = null, monto_total = 0 } = {}) =>
-    unwrap(await api.post(`${BASE}/${obraId}/planes`, { empresa_id, nombre, monto_total })),
+  // Multi-plan: crear/asociar/desasociar planes de cobro de la obra (0..N).
+  // `plan_cobro_id` presente → asocia uno existente; ausente → crea uno nuevo.
+  agregarPlan: async (obraId, empresa_id, { plan_cobro_id = null, nombre = null, monto_total = 0 } = {}) =>
+    unwrap(await api.post(`${BASE}/${obraId}/planes`, { empresa_id, plan_cobro_id, nombre, monto_total })),
+  desasociarPlan: async (obraId, empresa_id, planId) =>
+    unwrap(await api.delete(`${BASE}/${obraId}/planes/${planId}`, { params: { empresa_id } })),
 };
 
 export default ControlObraService;
