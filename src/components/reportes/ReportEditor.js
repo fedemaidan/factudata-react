@@ -24,10 +24,12 @@ const BLOCK_TYPE_LABELS = {
   summary_table: 'Tabla Resumen',
   movements_table: 'Tabla de Movimientos',
   budget_vs_actual: 'Presupuesto vs Real',
+  supplier_budgets: 'Presupuestos por Proveedor',
   monthly_budget_control: 'Control Presupuestario Mensual',
   category_budget_matrix: 'Matriz de Presupuestos por Proyecto',
   income_budget_control: 'Control de Ingresos CAC',
   chart: 'Gráfico',
+  cashflow_monthly: 'Cash Flow mensual',
   grouped_detail: 'Detalle por Grupo',
   category_subcategory_accordion: 'Categorias y Subcategorias',
   subcategory_monthly_evolution: 'Evolución mensual por subcategoría',
@@ -200,9 +202,10 @@ const ReportEditor = ({
 
   // Layout / Bloques
   const addBlock = (block) => {
+    const usesBudgets = ['budget_vs_actual', 'supplier_budgets'].includes(block.type);
     setConfig((prev) => ({
       ...prev,
-      datasets: block.type === 'budget_vs_actual'
+      datasets: usesBudgets
         ? { ...(prev.datasets || {}), presupuestos: true }
         : prev.datasets,
       layout: [...prev.layout, block],
@@ -286,6 +289,9 @@ const ReportEditor = ({
       case 'budget_vs_actual':
         detail = 'Tipo: ' + (block.mostrar_tipo || 'egreso') + ' · Por: ' + (block.agrupar_por || 'categoria') + (block.mostrar_desglose_presupuestos ? ' · con desglose' : '');
         break;
+      case 'supplier_budgets':
+        detail = 'Presupuestos con proveedor · ' + (block.solo_obras_activas === false ? 'todas las obras' : 'obras activas');
+        break;
       case 'monthly_budget_control':
         detail = 'Mensual · ' + (block.categorias_control?.length || 3) + ' categorias · % avance';
         break;
@@ -297,6 +303,9 @@ const ReportEditor = ({
         break;
       case 'chart':
         detail = (block.chart_type || 'bar') + ' · Por ' + (block.agrupar_por || 'categoria');
+        break;
+      case 'cashflow_monthly':
+        detail = (block.periodo || 'mensual') + ' · ingresos vs gastos · neto';
         break;
       case 'grouped_detail':
         detail = 'Por ' + (block.agrupar_por || 'etapa') + ' · ' + (block.chips_style === 'chip' ? 'Chips' : 'Mini-cards') + ' · ' + (block.columnas_visibles?.length || 7) + ' col';

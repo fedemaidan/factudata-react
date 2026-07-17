@@ -12,6 +12,8 @@ import IncomeBudgetControlBlock from './blocks/IncomeBudgetControlBlock';
 import BalanceBetweenPartnersBlock from './blocks/BalanceBetweenPartnersBlock';
 import CategorySubcategoryAccordionBlock from './blocks/CategorySubcategoryAccordionBlock';
 import SubcategoryMonthlyEvolutionBlock from './blocks/SubcategoryMonthlyEvolutionBlock';
+import SupplierBudgetsBlock from './blocks/SupplierBudgetsBlock';
+import CashflowMonthlyBlock from './blocks/CashflowMonthlyBlock';
 import DrillDownDialog from './DrillDownDialog';
 import { executeReport, filterMovimientos } from 'src/tools/reportEngine';
 
@@ -20,9 +22,11 @@ const BLOCK_COMPONENTS = {
   summary_table: SummaryTableBlock,
   movements_table: MovementsTableBlock,
   budget_vs_actual: BudgetVsActualBlock,
+  supplier_budgets: SupplierBudgetsBlock,
   monthly_budget_control: MonthlyBudgetControlBlock,
   category_budget_matrix: CategoryBudgetMatrixBlock,
   chart: ChartBlock,
+  cashflow_monthly: CashflowMonthlyBlock,
   grouped_detail: GroupedDetailBlock,
   balance_between_partners: BalanceBetweenPartnersBlock,
   income_budget_control: IncomeBudgetControlBlock,
