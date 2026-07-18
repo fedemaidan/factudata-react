@@ -192,6 +192,15 @@ const ControlObraService = {
   crearPlanPago: async (obraId, data) => unwrap(await api.post(`${BASE}/${obraId}/planes-pago`, data)),
   generarCuotasPorAvance: async (planId, empresa_id, fecha_vencimiento = null) =>
     unwrap(await api.post(`${BASE}/planes-pago/${planId}/cuotas/por-avance`, { empresa_id, fecha_vencimiento })),
+
+  // Cartera cross-obra (T6): cuotas de pago a proveedores pendientes de TODAS las obras
+  // de la empresa. El backend devuelve una fila por cuota; la hoja standalone las
+  // agrupa por plan. Espejo del listado de planes de cobro.
+  listarPlanesPagoCartera: async (empresa_id) => {
+    const res = await api.get(`${BASE}/cartera/pagos-plan`, { params: { empresa_id } });
+    if (res.status !== 200) throw new Error('Error al obtener los planes de pago');
+    return Array.isArray(res.data?.items) ? res.data.items : [];
+  },
 };
 
 export default ControlObraService;
