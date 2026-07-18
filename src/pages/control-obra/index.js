@@ -44,7 +44,7 @@ function MisObrasPage() {
   const onEliminar = (o) => {
     cerrarMenu();
     // eslint-disable-next-line no-alert
-    if (window.confirm(`¿Eliminar la obra "${o.titulo || 'sin título'}"? Sale de la lista (no se borra el historial).`)) eliminarMut.mutate(o);
+    if (window.confirm(`¿Eliminar la obra "${o.titulo || 'sin título'}"?\n\nLos gastos y cobros quedan en la caja (sin imputar a la obra) y los planes se desasocian. No se toca la plata. Recuperable solo desde soporte.`)) eliminarMut.mutate(o);
   };
 
   const obras = carteraQ.data || [];
