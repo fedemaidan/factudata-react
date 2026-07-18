@@ -74,11 +74,16 @@ const ControlObraService = {
   },
 
   /* ---------- Cartera (cross-obra) ---------- */
-  resumenCartera: async (empresa_id) => {
-    const res = await api.get(`${BASE}/cartera/resumen`, { params: { empresa_id } });
+  resumenCartera: async (empresa_id, { incluir_archivadas = false } = {}) => {
+    const res = await api.get(`${BASE}/cartera/resumen`, { params: { empresa_id, incluir_archivadas: incluir_archivadas ? 'true' : undefined } });
     if (res.status !== 200) throw new Error('Error al obtener la cartera');
     return Array.isArray(res.data?.items) ? res.data.items : [];
   },
+
+  /* ---------- Archivar / eliminar obra ---------- */
+  archivarObra: async (id, empresa_id) => unwrap(await api.patch(`${BASE}/${id}/archivar`, { empresa_id })),
+  desarchivarObra: async (id, empresa_id) => unwrap(await api.patch(`${BASE}/${id}/desarchivar`, { empresa_id })),
+  eliminarObra: async (id, empresa_id) => unwrap(await api.delete(`${BASE}/${id}`, { params: { empresa_id } })),
 
   cobranzas: async (empresa_id) => {
     const res = await api.get(`${BASE}/cartera/cobranzas`, { params: { empresa_id } });
