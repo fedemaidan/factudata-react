@@ -7,6 +7,7 @@ import {
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import LinkIcon from '@mui/icons-material/Link';
+import LinkOffIcon from '@mui/icons-material/LinkOff';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import planCobroService from 'src/services/planCobroService';
 import ControlObraService from 'src/services/controlObra/controlObraService';
@@ -59,6 +60,17 @@ export default function CobrosObraTab({ obra, empresaId }) {
     },
   });
 
+  const desasociarMut = useMutation({
+    mutationFn: (planId) => ControlObraService.desasociarPlan(obra._id, empresaId, planId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['control-obra'] }),
+  });
+  const desasociar = (plan) => {
+    // eslint-disable-next-line no-alert
+    if (window.confirm(`¿Desasociar "${plan.nombre}" de esta obra? El plan no se borra, solo se desvincula.`)) {
+      desasociarMut.mutate(plan._id);
+    }
+  };
+
   return (
     <Box>
       <Stack direction="row" alignItems="center" spacing={1} mb={2} flexWrap="wrap">
@@ -98,14 +110,25 @@ export default function CobrosObraTab({ obra, empresaId }) {
                     {r.proxima_cuota?.fecha_vencimiento ? ` · Próxima: ${new Date(r.proxima_cuota.fecha_vencimiento).toLocaleDateString('es-AR')}` : ''}
                   </Typography>
                 </Box>
-                <Button
-                  size="small"
-                  variant="outlined"
-                  endIcon={<OpenInNewIcon fontSize="small" />}
-                  onClick={() => router.push(`/cobros/${plan._id}`)}
-                >
-                  Ver plan
-                </Button>
+                <Stack direction="row" spacing={1}>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    endIcon={<OpenInNewIcon fontSize="small" />}
+                    onClick={() => router.push(`/cobros/${plan._id}`)}
+                  >
+                    Ver plan
+                  </Button>
+                  <Button
+                    size="small"
+                    color="error"
+                    startIcon={<LinkOffIcon fontSize="small" />}
+                    disabled={desasociarMut.isPending}
+                    onClick={() => desasociar(plan)}
+                  >
+                    Desasociar
+                  </Button>
+                </Stack>
               </Stack>
 
               <Stack direction="row" spacing={3} mt={1.5} flexWrap="wrap">
