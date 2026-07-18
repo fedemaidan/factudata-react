@@ -58,7 +58,10 @@ export default function EjecucionTab({ obra, ejec, empresaId }) {
               <TableCell align="right">Contrato</TableCell>
               <TableCell sx={{ width: 160 }}>Avance</TableCell>
               <TableCell align="right">Certificado</TableCell>
+              <TableCell align="right">Costo estimado</TableCell>
+              <TableCell align="right">Contratado</TableCell>
               <TableCell align="right">Gastado</TableCell>
+              <TableCell align="right">Margen esperado</TableCell>
               <TableCell align="right">Margen</TableCell>
             </TableRow>
           </TableHead>
@@ -72,7 +75,10 @@ export default function EjecucionTab({ obra, ejec, empresaId }) {
                   <TableCell align="right">{fmt(rContrato)}</TableCell>
                   <TableCell />
                   <TableCell />
+                  <TableCell />
+                  <TableCell />
                   <TableCell align="right">{fmt(rGastado)}</TableCell>
+                  <TableCell />
                   <TableCell align="right" sx={{ py: 0 }}>
                     <IconButton size="small" onClick={(e) => setRubroMenu({ anchorEl: e.currentTarget, rubro: r })}><MoreVertIcon fontSize="small" /></IconButton>
                   </TableCell>
@@ -105,7 +111,12 @@ export default function EjecucionTab({ obra, ejec, empresaId }) {
                       </Stack>
                     </TableCell>
                     <TableCell align="right">{fmt(s.certificado)}</TableCell>
-                    <TableCell align="right">{fmt(s.gastado)}</TableCell>
+                    <TableCell align="right">{s.costo_estimado != null ? fmt(s.costo_estimado) : '—'}</TableCell>
+                    <TableCell align="right">{s.contrato_proveedor ? fmt(s.contrato_proveedor.monto) : '—'}</TableCell>
+                    <TableCell align="right" sx={s.sobrecosto ? { color: 'error.main', fontWeight: 600 } : undefined}>{fmt(s.gastado)}</TableCell>
+                    <TableCell align="right" sx={{ color: s.margen_esperado != null ? margenColor(s.margen_esperado) : undefined, fontWeight: 500 }}>
+                      {s.margen_esperado != null ? fmt(s.margen_esperado) : '—'}
+                    </TableCell>
                     <TableCell align="right" sx={{ color: margenColor(s.margen), fontWeight: 500 }}>{fmt(s.margen)}</TableCell>
                   </TableRow>
                 )),
@@ -118,7 +129,10 @@ export default function EjecucionTab({ obra, ejec, empresaId }) {
               <TableCell align="right">{fmt(t.contrato)}</TableCell>
               <TableCell />
               <TableCell align="right">{fmt(t.certificado)}</TableCell>
+              <TableCell />
+              <TableCell align="right" title="Costo de referencia (contratado o estimado)">{t.costo_ref != null ? fmt(t.costo_ref) : '—'}</TableCell>
               <TableCell align="right">{fmt(t.gastado)}</TableCell>
+              <TableCell align="right" sx={{ color: t.margen_esperado != null ? margenColor(t.margen_esperado) : undefined }}>{t.margen_esperado != null ? fmt(t.margen_esperado) : '—'}</TableCell>
               <TableCell align="right" sx={{ color: margenColor(t.margen || 0) }}>{fmt(t.margen)}</TableCell>
             </TableRow>
           </TableBody>
