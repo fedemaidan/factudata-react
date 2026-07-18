@@ -7,6 +7,8 @@ import {
   IconButton, Menu, MenuItem, FormControlLabel, Switch,
 } from '@mui/material';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
+import WarningAmberRoundedIcon from '@mui/icons-material/WarningAmberRounded';
+import ConfirmDialog from 'src/components/controlObra/ConfirmDialog';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useAuthContext } from 'src/contexts/auth-context';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
@@ -24,6 +26,7 @@ function MisObrasPage() {
   const [nuevaObra, setNuevaObra] = useState(false);
   const [verArchivadas, setVerArchivadas] = useState(false);
   const [menu, setMenu] = useState({ anchor: null, obra: null }); // menú de acciones por obra
+  const [confirmDel, setConfirmDel] = useState(null); // obra a eliminar (abre el diálogo)
 
   useEffect(() => {
     if (!user) return;
@@ -40,12 +43,8 @@ function MisObrasPage() {
   const cerrarMenu = () => setMenu({ anchor: null, obra: null });
   const archivarMut = useMutation({ mutationFn: (o) => ControlObraService.archivarObra(o._id, empresaId), onSuccess: refetchObras });
   const desarchivarMut = useMutation({ mutationFn: (o) => ControlObraService.desarchivarObra(o._id, empresaId), onSuccess: refetchObras });
-  const eliminarMut = useMutation({ mutationFn: (o) => ControlObraService.eliminarObra(o._id, empresaId), onSuccess: refetchObras });
-  const onEliminar = (o) => {
-    cerrarMenu();
-    // eslint-disable-next-line no-alert
-    if (window.confirm(`¿Eliminar la obra "${o.titulo || 'sin título'}"?\n\nLos gastos y cobros quedan en la caja (sin imputar a la obra) y los planes se desasocian. No se toca la plata. Recuperable solo desde soporte.`)) eliminarMut.mutate(o);
-  };
+  const eliminarMut = useMutation({ mutationFn: (o) => ControlObraService.eliminarObra(o._id, empresaId), onSuccess: () => { refetchObras(); setConfirmDel(null); } });
+  const onEliminar = (o) => { cerrarMenu(); setConfirmDel(o); };
 
   const obras = carteraQ.data || [];
   const totalContrato = obras.reduce((a, o) => a + (o.total_contrato || 0), 0);
@@ -141,6 +140,19 @@ function MisObrasPage() {
           : <MenuItem onClick={() => { archivarMut.mutate(menu.obra); cerrarMenu(); }}>Archivar</MenuItem>}
         <MenuItem onClick={() => onEliminar(menu.obra)} sx={{ color: 'error.main' }}>Eliminar</MenuItem>
       </Menu>
+
+      <ConfirmDialog
+        open={!!confirmDel}
+        icon={<WarningAmberRoundedIcon color="error" />}
+        title={`Eliminar "${confirmDel?.titulo || 'sin título'}"`}
+        message="La obra se saca de la lista. Los gastos y cobros quedan en la caja (sin imputar a la obra) y los planes de cobro se desasocian."
+        detail="No se toca la plata. Recuperable solo desde soporte."
+        confirmLabel="Eliminar"
+        confirmColor="error"
+        loading={eliminarMut.isPending}
+        onConfirm={() => eliminarMut.mutate(confirmDel)}
+        onClose={() => setConfirmDel(null)}
+      />
 
       <NuevaObraDialog
         open={nuevaObra}
