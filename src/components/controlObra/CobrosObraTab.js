@@ -1,19 +1,40 @@
-import { useQuery, useQueries } from '@tanstack/react-query';
+import { useState } from 'react';
+import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/router';
-import { Box, Chip, LinearProgress, Paper, Stack, Typography, Button } from '@mui/material';
+import {
+  Box, Chip, LinearProgress, Paper, Stack, Typography, Button,
+  Dialog, DialogTitle, DialogContent, DialogActions, TextField, MenuItem, Alert,
+} from '@mui/material';
+import AddIcon from '@mui/icons-material/Add';
+import LinkIcon from '@mui/icons-material/Link';
+import LinkOffIcon from '@mui/icons-material/LinkOff';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import LinkOffRoundedIcon from '@mui/icons-material/LinkOffRounded';
 import planCobroService from 'src/services/planCobroService';
+import ControlObraService from 'src/services/controlObra/controlObraService';
+import ConfirmDialog from 'src/components/controlObra/ConfirmDialog';
 
 const money = (n, moneda) => (n || 0).toLocaleString('es-AR', { style: 'currency', currency: moneda === 'USD' ? 'USD' : 'ARS', maximumFractionDigits: 0 });
 
-// Pestaña "Cobros" de la obra: muestra el/los plan(es) de cobro asociados y cómo
-// vienen. En modo 'plan' el cobro va por acá; en modo 'certificados' el plan se
-// alimenta de los certificados aprobados.
+// Pestaña "Cobros" de la obra: muestra el/los plan(es) de cobro asociados (0..N).
+// "Nuevo plan" abre el asistente de creación con la obra ya asignada; "Asociar
+// existente" engancha un plan ya creado. Los certificados se cobran directo (otra pestaña).
 export default function CobrosObraTab({ obra, empresaId }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const [openAsociar, setOpenAsociar] = useState(false);
+  const [selPlan, setSelPlan] = useState('');
+  const [confirmDes, setConfirmDes] = useState(null); // plan a desasociar (abre el diálogo)
+
   const planIds = (obra.plan_cobro_ids && obra.plan_cobro_ids.length)
-    ? obra.plan_cobro_ids
-    : (obra.plan_cobro_id ? [obra.plan_cobro_id] : []);
+    ? obra.plan_cobro_ids.map(String)
+    : (obra.plan_cobro_id ? [String(obra.plan_cobro_id)] : []);
+
+  // Abre el asistente de plan de cobro con la obra (y su proyecto) precargados.
+  const nuevoPlan = () => router.push({
+    pathname: '/cobros/nuevo',
+    query: { obra: obra._id, ...(obra.proyecto_id ? { proyecto: obra.proyecto_id } : {}) },
+  });
 
   const planesQ = useQueries({
     queries: planIds.map((pid) => ({
@@ -25,26 +46,47 @@ export default function CobrosObraTab({ obra, empresaId }) {
   const planes = planesQ.map((q) => q.data).filter(Boolean);
   const loading = planesQ.some((q) => q.isLoading);
 
+  // Planes de la empresa disponibles para asociar (los que no están ya en la obra).
+  const disponiblesQ = useQuery({
+    queryKey: ['plan-cobro', 'empresa', empresaId],
+    queryFn: async () => (await planCobroService.listarPlanes(empresaId))?.data?.data || [],
+    enabled: !!empresaId && openAsociar,
+  });
+  const disponibles = (disponiblesQ.data || []).filter((p) => !planIds.includes(String(p._id)));
+
+  const asociarMut = useMutation({
+    mutationFn: (planId) => ControlObraService.agregarPlan(obra._id, empresaId, { plan_cobro_id: planId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['control-obra'] });
+      setOpenAsociar(false);
+      setSelPlan('');
+    },
+  });
+
+  const desasociarMut = useMutation({
+    mutationFn: (planId) => ControlObraService.desasociarPlan(obra._id, empresaId, planId),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['control-obra'] }); setConfirmDes(null); },
+  });
+
   return (
     <Box>
       <Stack direction="row" alignItems="center" spacing={1} mb={2} flexWrap="wrap">
-        <Typography variant="subtitle2" fontWeight={700}>Cobro de la obra:</Typography>
-        <Chip
-          size="small"
-          color={obra.modo_cobro === 'plan' ? 'primary' : 'default'}
-          label={obra.modo_cobro === 'plan' ? 'Por plan de cobro' : 'Por certificados'}
-        />
-        <Typography variant="caption" color="text.secondary">
-          {obra.modo_cobro === 'plan'
-            ? 'El cobro va por el cronograma del/los plan(es). Los certificados registran avance pero no generan cuotas.'
-            : 'Cada certificado aprobado agrega una cuota al plan.'}
+        <Typography variant="subtitle2" fontWeight={700}>Planes de cobro de la obra</Typography>
+        <Typography variant="caption" color="text.secondary" sx={{ flexGrow: 1 }}>
+          Una obra puede tener 0..N planes de cobro (fijos). Los certificados se cobran directo (pestaña Certificados).
         </Typography>
+        <Button size="small" variant="text" startIcon={<LinkIcon />} onClick={() => setOpenAsociar(true)}>
+          Asociar existente
+        </Button>
+        <Button size="small" variant="outlined" startIcon={<AddIcon />} onClick={nuevoPlan}>
+          Nuevo plan
+        </Button>
       </Stack>
 
       {loading && <LinearProgress sx={{ mb: 2 }} />}
 
       {!loading && planes.length === 0 && (
-        <Typography variant="body2" color="text.secondary">La obra no tiene plan de cobro asociado.</Typography>
+        <Typography variant="body2" color="text.secondary">La obra no tiene planes de cobro asociados.</Typography>
       )}
 
       <Stack spacing={1.5}>
@@ -65,14 +107,24 @@ export default function CobrosObraTab({ obra, empresaId }) {
                     {r.proxima_cuota?.fecha_vencimiento ? ` · Próxima: ${new Date(r.proxima_cuota.fecha_vencimiento).toLocaleDateString('es-AR')}` : ''}
                   </Typography>
                 </Box>
-                <Button
-                  size="small"
-                  variant="outlined"
-                  endIcon={<OpenInNewIcon fontSize="small" />}
-                  onClick={() => router.push(`/cobros/${plan._id}`)}
-                >
-                  Ver plan
-                </Button>
+                <Stack direction="row" spacing={1}>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    endIcon={<OpenInNewIcon fontSize="small" />}
+                    onClick={() => router.push(`/cobros/${plan._id}`)}
+                  >
+                    Ver plan
+                  </Button>
+                  <Button
+                    size="small"
+                    color="error"
+                    startIcon={<LinkOffIcon fontSize="small" />}
+                    onClick={() => setConfirmDes(plan)}
+                  >
+                    Desasociar
+                  </Button>
+                </Stack>
               </Stack>
 
               <Stack direction="row" spacing={3} mt={1.5} flexWrap="wrap">
@@ -92,6 +144,63 @@ export default function CobrosObraTab({ obra, empresaId }) {
           );
         })}
       </Stack>
+
+      {/* Diálogo: asociar un plan de cobro ya existente */}
+      <Dialog open={openAsociar} onClose={() => setOpenAsociar(false)} fullWidth maxWidth="sm">
+        <DialogTitle>Asociar plan de cobro existente</DialogTitle>
+        <DialogContent>
+          {disponiblesQ.isLoading && <LinearProgress sx={{ mb: 2 }} />}
+          {!disponiblesQ.isLoading && disponibles.length === 0 && (
+            <Alert severity="info" sx={{ mt: 1 }}>
+              No hay planes de cobro disponibles para asociar. Podés crear uno con &quot;Nuevo plan&quot;.
+            </Alert>
+          )}
+          {disponibles.length > 0 && (
+            <TextField
+              select
+              fullWidth
+              label="Plan de cobro"
+              value={selPlan}
+              onChange={(e) => setSelPlan(e.target.value)}
+              sx={{ mt: 1 }}
+            >
+              {disponibles.map((p) => (
+                <MenuItem key={p._id} value={p._id}>
+                  {(p.codigo ? `#${p.codigo} — ` : '') + p.nombre}
+                  {p.estado ? ` · ${p.estado}` : ''}
+                  {p.cliente_nombre ? ` · ${p.cliente_nombre}` : ''}
+                </MenuItem>
+              ))}
+            </TextField>
+          )}
+          {asociarMut.isError && (
+            <Alert severity="error" sx={{ mt: 2 }}>No se pudo asociar el plan. Reintentá.</Alert>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenAsociar(false)}>Cancelar</Button>
+          <Button
+            variant="contained"
+            disabled={!selPlan || asociarMut.isPending}
+            onClick={() => asociarMut.mutate(selPlan)}
+          >
+            Asociar
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <ConfirmDialog
+        open={!!confirmDes}
+        icon={<LinkOffRoundedIcon color="error" />}
+        title="Desasociar plan de cobro"
+        message={`¿Desasociar "${confirmDes?.nombre || ''}" de esta obra?`}
+        detail="El plan no se borra ni cambia de estado; solo se desvincula de la obra."
+        confirmLabel="Desasociar"
+        confirmColor="error"
+        loading={desasociarMut.isPending}
+        onConfirm={() => desasociarMut.mutate(confirmDes._id)}
+        onClose={() => setConfirmDes(null)}
+      />
     </Box>
   );
 }

@@ -74,11 +74,16 @@ const ControlObraService = {
   },
 
   /* ---------- Cartera (cross-obra) ---------- */
-  resumenCartera: async (empresa_id) => {
-    const res = await api.get(`${BASE}/cartera/resumen`, { params: { empresa_id } });
+  resumenCartera: async (empresa_id, { incluir_archivadas = false } = {}) => {
+    const res = await api.get(`${BASE}/cartera/resumen`, { params: { empresa_id, incluir_archivadas: incluir_archivadas ? 'true' : undefined } });
     if (res.status !== 200) throw new Error('Error al obtener la cartera');
     return Array.isArray(res.data?.items) ? res.data.items : [];
   },
+
+  /* ---------- Archivar / eliminar obra ---------- */
+  archivarObra: async (id, empresa_id) => unwrap(await api.patch(`${BASE}/${id}/archivar`, { empresa_id })),
+  desarchivarObra: async (id, empresa_id) => unwrap(await api.patch(`${BASE}/${id}/desarchivar`, { empresa_id })),
+  eliminarObra: async (id, empresa_id) => unwrap(await api.delete(`${BASE}/${id}`, { params: { empresa_id } })),
 
   cobranzas: async (empresa_id) => {
     const res = await api.get(`${BASE}/cartera/cobranzas`, { params: { empresa_id } });
@@ -170,11 +175,12 @@ const ControlObraService = {
   cobrarCertificado: async (certId, empresa_id, montoParcial = null, fechaCobrado = null) =>
     unwrap(await api.post(`${BASE}/certificados/${certId}/cobrar`, { empresa_id, monto_parcial: montoParcial, fecha_cobrado: fechaCobrado })),
 
-  // Fase F: modo de cobro de la obra + planes adicionales (multi-plan)
-  setModoCobro: async (obraId, empresa_id, modo_cobro) =>
-    unwrap(await api.patch(`${BASE}/${obraId}/modo-cobro`, { empresa_id, modo_cobro })),
-  agregarPlan: async (obraId, empresa_id, { nombre = null, monto_total = 0 } = {}) =>
-    unwrap(await api.post(`${BASE}/${obraId}/planes`, { empresa_id, nombre, monto_total })),
+  // Multi-plan: crear/asociar/desasociar planes de cobro de la obra (0..N).
+  // `plan_cobro_id` presente → asocia uno existente; ausente → crea uno nuevo.
+  agregarPlan: async (obraId, empresa_id, { plan_cobro_id = null, nombre = null, monto_total = 0 } = {}) =>
+    unwrap(await api.post(`${BASE}/${obraId}/planes`, { empresa_id, plan_cobro_id, nombre, monto_total })),
+  desasociarPlan: async (obraId, empresa_id, planId) =>
+    unwrap(await api.delete(`${BASE}/${obraId}/planes/${planId}`, { params: { empresa_id } })),
 };
 
 export default ControlObraService;

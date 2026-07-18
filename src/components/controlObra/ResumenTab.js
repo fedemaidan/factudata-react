@@ -1,5 +1,5 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Box, Divider, Paper, Stack, Typography, ToggleButton, ToggleButtonGroup } from '@mui/material';
+import { useQuery } from '@tanstack/react-query';
+import { Box, Divider, Paper, Stack, Typography } from '@mui/material';
 import { BarChart } from '@mui/x-charts/BarChart';
 import { LineChart } from '@mui/x-charts/LineChart';
 import DashboardIcon from '@mui/icons-material/Dashboard';
@@ -13,11 +13,6 @@ import { KpiCard, fmt, fmtM } from 'src/components/controlObra/ui';
 
 // Tablero de la obra (cockpit): snapshot financiero + qué necesita atención + circuito de plata.
 export default function ResumenTab({ obra, ejec, certs = [], empresaId }) {
-  const queryClient = useQueryClient();
-  const modoCobroMut = useMutation({
-    mutationFn: (modo) => ControlObraService.setModoCobro(obra._id, empresaId, modo),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['control-obra'] }),
-  });
   const carteraQ = useQuery({
     queryKey: ['control-obra', 'cartera', empresaId],
     queryFn: () => ControlObraService.resumenCartera(empresaId),
@@ -58,26 +53,6 @@ export default function ResumenTab({ obra, ejec, certs = [], empresaId }) {
 
   return (
     <Box>
-      {/* Fase F: cómo se cobra la obra */}
-      <Stack direction="row" alignItems="center" spacing={1.5} mb={2} flexWrap="wrap">
-        <Typography variant="body2" color="text.secondary">Cobro de la obra:</Typography>
-        <ToggleButtonGroup
-          size="small"
-          exclusive
-          value={obra.modo_cobro || 'certificados'}
-          onChange={(_, v) => { if (v) modoCobroMut.mutate(v); }}
-          disabled={modoCobroMut.isPending}
-        >
-          <ToggleButton value="certificados">Por certificados</ToggleButton>
-          <ToggleButton value="plan">Por plan de cobro</ToggleButton>
-        </ToggleButtonGroup>
-        {(obra.modo_cobro === 'plan') && (
-          <Typography variant="caption" color="text.secondary">
-            Los certificados registran avance pero no generan cuotas; el cobro va por el cronograma del plan.
-          </Typography>
-        )}
-      </Stack>
-
       <Stack direction="row" spacing={2} flexWrap="wrap" mb={3} useFlexGap>
         <KpiCard label="Contrato" value={fmtM(total)} sub="presupuesto total" />
         <KpiCard label="Avance físico" value={`${avance.toFixed(1)}%`} sub="ponderado por monto" />
@@ -126,15 +101,17 @@ export default function ResumenTab({ obra, ejec, certs = [], empresaId }) {
 
       {curva.meses.length > 0 && (
         <Paper variant="outlined" sx={{ p: 2, mt: 2 }}>
-          <Typography variant="subtitle2" fontWeight={600} mb={0.5}>Curva S — plan vs certificado vs cobrado ($M)</Typography>
+          <Typography variant="subtitle2" fontWeight={600} mb={0.5}>Curva financiera — plan vs certificado vs cobrado vs egresos ($M)</Typography>
           <Typography variant="caption" color="text.secondary" display="block" mb={1}>
-            Acumulado mensual. {curva.plan?.length ? 'Gris = plan (cronograma) · ' : ''}Naranja = certificado · Verde = cobrado.
+            Acumulado mensual. {curva.plan?.length ? 'Gris = plan (cronograma) · ' : ''}Naranja = certificado · Verde = cobrado{curva.ingresos_proyectados?.length ? ' · Verde claro = ingresos proyectados' : ''}{curva.egresos?.length ? ' · Rojo = egresos reales' : ''}.
           </Typography>
           <LineChart
             series={[
               ...(curva.plan?.length ? [{ data: curva.plan, label: 'Plan', color: '#9e9e9e' }] : []),
               { data: curva.certificado, label: 'Certificado', color: '#f57c00' },
               { data: curva.cobrado, label: 'Cobrado', color: '#388e3c' },
+              ...(curva.ingresos_proyectados?.length ? [{ data: curva.ingresos_proyectados, label: 'Ingresos proyectados', color: '#81c784' }] : []),
+              ...(curva.egresos?.length ? [{ data: curva.egresos, label: 'Egresos reales', color: '#d32f2f' }] : []),
             ]}
             xAxis={[{ data: curva.meses, scaleType: 'band' }]}
             height={240}
