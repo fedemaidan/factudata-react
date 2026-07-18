@@ -181,6 +181,17 @@ const ControlObraService = {
     unwrap(await api.post(`${BASE}/${obraId}/planes`, { empresa_id, plan_cobro_id, nombre, monto_total })),
   desasociarPlan: async (obraId, empresa_id, planId) =>
     unwrap(await api.delete(`${BASE}/${obraId}/planes/${planId}`, { params: { empresa_id } })),
+
+  /* ---------- Planes de pago a proveedores (T3, lado costo) ----------
+     Espejo outbound de los planes de cobro: 0..N por obra, cada uno con sus
+     cuotas + resumen embebidos por el backend (getPlanes ya devuelve ambos). */
+  listarPlanesPago: async (obraId, empresa_id) => {
+    const res = await api.get(`${BASE}/${obraId}/planes-pago`, { params: { empresa_id } });
+    return Array.isArray(res.data?.items) ? res.data.items : [];
+  },
+  crearPlanPago: async (obraId, data) => unwrap(await api.post(`${BASE}/${obraId}/planes-pago`, data)),
+  generarCuotasPorAvance: async (planId, empresa_id, fecha_vencimiento = null) =>
+    unwrap(await api.post(`${BASE}/planes-pago/${planId}/cuotas/por-avance`, { empresa_id, fecha_vencimiento })),
 };
 
 export default ControlObraService;

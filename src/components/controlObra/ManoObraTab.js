@@ -1,15 +1,31 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Box, Button, Card, CardContent, Chip, Stack, Table, TableBody, TableCell,
-  TableHead, TableRow, TextField, Typography,
+  Alert, Box, Button, Card, CardContent, Chip, LinearProgress, MenuItem, Paper,
+  Stack, Table, TableBody, TableCell, TableHead, TableRow, TextField, Typography,
 } from '@mui/material';
+import AddIcon from '@mui/icons-material/Add';
 import FormDrawer from 'src/components/controlObra/FormDrawer';
 import ControlObraService from 'src/services/controlObra/controlObraService';
 
 const fmt = (n) => (Number(n) || 0).toLocaleString('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 });
+const money = (n, moneda) => (Number(n) || 0).toLocaleString('es-AR', { style: 'currency', currency: moneda === 'USD' ? 'USD' : 'ARS', maximumFractionDigits: 0 });
 const COLOR = { borrador: 'default', aprobada: 'info', pagada: 'success', anulada: 'error' };
 const MODALIDAD_LBL = { avance_fisico: 'avance físico', certificado: 'certificado' };
+
+// Proveedores con contrato asignado a alguna tarea de la obra (candidatos a plan de pago).
+function proveedoresConContrato(obra) {
+  const map = new Map();
+  for (const r of obra.rubros || []) {
+    for (const s of r.subrubros || []) {
+      const c = s.contrato_proveedor;
+      if (!c || !c.proveedor_nombre) continue;
+      const key = c.proveedor_id || c.proveedor_nombre;
+      if (!map.has(key)) map.set(key, { proveedor_id: c.proveedor_id || null, proveedor_nombre: c.proveedor_nombre });
+    }
+  }
+  return Array.from(map.values());
+}
 
 export default function ManoObraTab({ obra, empresaId }) {
   const qc = useQueryClient();
@@ -105,7 +121,204 @@ export default function ManoObraTab({ obra, empresaId }) {
       </CardContent>
       <NuevaOrdenDialog open={dialog} onClose={() => setDialog(false)} obra={obra} empresaId={empresaId} onDone={() => { setDialog(false); refresh(); }} />
     </Card>
+
+    <PlanesPagoSection obra={obra} empresaId={empresaId} />
     </Stack>
+  );
+}
+
+// Sección "Planes de pago a proveedores" (T3): espejo outbound de CobrosObraTab.
+// Lista 0..N planes de la obra con resumen/cuotas; permite crear uno nuevo y
+// generar cuotas por avance devengado del proveedor.
+function PlanesPagoSection({ obra, empresaId }) {
+  const qc = useQueryClient();
+  const [dialog, setDialog] = useState(false);
+
+  const planesQ = useQuery({
+    queryKey: ['control-obra', 'planes-pago', obra._id, empresaId],
+    queryFn: () => ControlObraService.listarPlanesPago(obra._id, empresaId),
+    enabled: !!empresaId,
+  });
+  const refresh = () => qc.invalidateQueries({ queryKey: ['control-obra', 'planes-pago', obra._id, empresaId] });
+
+  const generarAvance = useMutation({
+    mutationFn: (planId) => ControlObraService.generarCuotasPorAvance(planId, empresaId),
+    onSuccess: refresh,
+  });
+
+  const planes = planesQ.data || [];
+
+  return (
+    <Card>
+      <CardContent>
+        <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ sm: 'center' }} spacing={1} mb={1}>
+          <Box>
+            <Typography variant="subtitle1" fontWeight={600}>Planes de pago a proveedores</Typography>
+            <Typography variant="caption" color="text.secondary">
+              0..N planes por obra. Cada plan agrupa las cuotas a desembolsar a un proveedor (por avance devengado, fijas o por hito).
+            </Typography>
+          </Box>
+          <Button size="small" variant="outlined" startIcon={<AddIcon />} onClick={() => setDialog(true)}>Nuevo plan de pago</Button>
+        </Stack>
+
+        {planesQ.isLoading && <LinearProgress sx={{ mb: 2 }} />}
+
+        {!planesQ.isLoading && planes.length === 0 && (
+          <Typography variant="body2" color="text.secondary">La obra no tiene planes de pago.</Typography>
+        )}
+
+        {generarAvance.isError && (
+          <Alert severity="warning" sx={{ mb: 1.5 }}>
+            {generarAvance.error?.response?.data?.error?.message || 'No se pudieron generar cuotas por avance.'}
+          </Alert>
+        )}
+
+        <Stack spacing={1.5}>
+          {planes.map((plan) => {
+            const r = plan.resumen || {};
+            const pct = r.total ? Math.round((r.pagado || 0) / r.total * 100) : 0;
+            return (
+              <Paper key={plan._id} variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+                <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" spacing={1.5} alignItems={{ sm: 'center' }}>
+                  <Box sx={{ minWidth: 0 }}>
+                    <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                      <Typography variant="subtitle2" fontWeight={700}>{plan.nombre}</Typography>
+                      <Chip size="small" label={plan.estado} color={plan.estado === 'completado' ? 'success' : plan.estado === 'activo' ? 'primary' : 'default'} />
+                      {plan.indexacion && <Chip size="small" variant="outlined" label={plan.indexacion} />}
+                    </Stack>
+                    <Typography variant="caption" color="text.secondary">
+                      {r.cuotas_total || 0} cuota(s) · Proveedor: {plan.proveedor_nombre || 's/d'}
+                    </Typography>
+                  </Box>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    disabled={generarAvance.isPending}
+                    onClick={() => generarAvance.mutate(plan._id)}
+                  >
+                    Generar por avance
+                  </Button>
+                </Stack>
+
+                <Stack direction="row" spacing={3} mt={1.5} flexWrap="wrap">
+                  <Metric label="Total" value={money(r.total, plan.moneda)} />
+                  <Metric label="Pagado" value={money(r.pagado, plan.moneda)} color="success.main" />
+                  <Metric label="Pendiente" value={money(r.pendiente, plan.moneda)} color="error.main" />
+                  {r.vencido > 0 && <Metric label="Vencido" value={money(r.vencido, plan.moneda)} color="warning.main" />}
+                </Stack>
+
+                <Box mt={1}>
+                  <Stack direction="row" justifyContent="space-between" mb={0.5}>
+                    <Typography variant="caption" color="text.secondary">Avance de pago</Typography>
+                    <Typography variant="caption" fontWeight={600}>{pct}%</Typography>
+                  </Stack>
+                  <LinearProgress variant="determinate" value={pct} color={plan.estado === 'completado' ? 'success' : 'primary'} sx={{ height: 6, borderRadius: 3 }} />
+                </Box>
+
+                {(plan.cuotas || []).length > 0 && (
+                  <Table size="small" sx={{ mt: 1.5 }}>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Descripción</TableCell>
+                        <TableCell>Vencimiento</TableCell>
+                        <TableCell align="right">Monto</TableCell>
+                        <TableCell>Estado</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {plan.cuotas.map((c) => (
+                        <TableRow key={c._id}>
+                          <TableCell>{c.descripcion || c.tipo}</TableCell>
+                          <TableCell>{c.fecha_vencimiento ? new Date(c.fecha_vencimiento).toLocaleDateString('es-AR') : '—'}</TableCell>
+                          <TableCell align="right">{money(c.monto, plan.moneda)}</TableCell>
+                          <TableCell><Chip size="small" label={c.estado_ui || c.estado} color={COLOR[c.estado] || 'default'} /></TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </Paper>
+            );
+          })}
+        </Stack>
+      </CardContent>
+
+      <NuevoPlanPagoDialog
+        open={dialog}
+        onClose={() => setDialog(false)}
+        obra={obra}
+        empresaId={empresaId}
+        onDone={() => { setDialog(false); refresh(); }}
+      />
+    </Card>
+  );
+}
+
+function NuevoPlanPagoDialog({ open, onClose, obra, empresaId, onDone }) {
+  const proveedores = useMemo(() => proveedoresConContrato(obra), [obra]);
+  const [sel, setSel] = useState('');
+  const [proveedorLibre, setProveedorLibre] = useState('');
+  const [nombre, setNombre] = useState('');
+  const [error, setError] = useState(null);
+
+  const seleccionado = proveedores.find((p) => (p.proveedor_id || p.proveedor_nombre) === sel);
+
+  const crear = useMutation({
+    mutationFn: () => {
+      const proveedor_nombre = seleccionado ? seleccionado.proveedor_nombre : proveedorLibre.trim();
+      if (!proveedor_nombre) throw new Error('Elegí o escribí un proveedor');
+      return ControlObraService.crearPlanPago(obra._id, {
+        empresa_id: empresaId,
+        proveedor_id: seleccionado ? seleccionado.proveedor_id : null,
+        proveedor_nombre,
+        nombre: nombre.trim() || null,
+      });
+    },
+    onSuccess: () => { setSel(''); setProveedorLibre(''); setNombre(''); onDone(); },
+    onError: (e) => setError(e?.response?.data?.error?.message || e.message),
+  });
+
+  return (
+    <FormDrawer
+      open={open} onClose={onClose} title="Nuevo plan de pago" width={480}
+      actions={(
+        <>
+          <Button onClick={onClose}>Cancelar</Button>
+          <Button variant="contained" disabled={crear.isPending} onClick={() => { setError(null); crear.mutate(); }}>Crear</Button>
+        </>
+      )}
+    >
+      <Typography variant="caption" color="text.secondary">Proveedor</Typography>
+      {proveedores.length > 0 ? (
+        <TextField select fullWidth size="small" label="Proveedor (con contrato)" value={sel} onChange={(e) => setSel(e.target.value)} sx={{ mt: 1, mb: 2 }}>
+          <MenuItem value="">Otro (escribir)</MenuItem>
+          {proveedores.map((p) => (
+            <MenuItem key={p.proveedor_id || p.proveedor_nombre} value={p.proveedor_id || p.proveedor_nombre}>{p.proveedor_nombre}</MenuItem>
+          ))}
+        </TextField>
+      ) : (
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, mb: 1 }}>
+          No hay proveedores con contrato asignado en la obra. Escribí el nombre a mano.
+        </Typography>
+      )}
+
+      {!seleccionado && (
+        <TextField label="Nombre del proveedor" fullWidth size="small" value={proveedorLibre} onChange={(e) => setProveedorLibre(e.target.value)} sx={{ mb: 2 }} />
+      )}
+
+      <TextField label="Nombre del plan (opcional)" fullWidth size="small" value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Pagos: <proveedor>" />
+
+      {error && <Typography color="error" variant="body2" mt={1}>{error}</Typography>}
+    </FormDrawer>
+  );
+}
+
+function Metric({ label, value, color }) {
+  return (
+    <Box>
+      <Typography variant="caption" color="text.secondary" display="block">{label}</Typography>
+      <Typography variant="body2" fontWeight={700} color={color}>{value}</Typography>
+    </Box>
   );
 }
 
