@@ -46,34 +46,25 @@ const puedeVerPlanesPago = (user, empresa) => {
 
 const money = (n) => (n || 0).toLocaleString('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 });
 
-// Agrupa las cuotas cross-obra (una fila por cuota) en planes de pago.
-const agruparPorPlan = (cuotas) => {
-  const byPlan = new Map();
-  cuotas.forEach((c) => {
-    let p = byPlan.get(c.plan_id);
-    if (!p) {
-      p = {
-        plan_id: c.plan_id,
-        obra_id: c.obra_id,
-        obra_titulo: c.obra_titulo,
-        proveedor_nombre: c.proveedor_nombre,
-        total: 0,
-        pagado: 0,
-        pendiente: 0,
-        cuotas: 0,
-        proxima_vencimiento: null,
-      };
-      byPlan.set(c.plan_id, p);
-    }
-    p.total += c.monto || 0;
-    p.pagado += c.pagado || 0;
-    p.pendiente += c.saldo || 0;
-    p.cuotas += 1;
-    if (c.fecha_vencimiento && (!p.proxima_vencimiento || c.fecha_vencimiento < p.proxima_vencimiento)) {
-      p.proxima_vencimiento = c.fecha_vencimiento;
-    }
-  });
-  return [...byPlan.values()];
+// Normaliza un plan de pago (endpoint por-plan) a la forma que muestra la tabla.
+const normalizarPlan = (p) => {
+  const r = p.resumen || {};
+  const proxima = (p.cuotas || [])
+    .filter((c) => (c.saldo || 0) > 0 || (c.estado && c.estado !== 'pagada'))
+    .map((c) => c.fecha_vencimiento)
+    .filter(Boolean)
+    .sort()[0] || null;
+  return {
+    plan_id: p._id,
+    obra_id: p.control_obra_id,
+    obra_titulo: p.obra_titulo,
+    proveedor_nombre: p.proveedor_nombre,
+    total: r.total || 0,
+    pagado: r.pagado || 0,
+    pendiente: r.pendiente || 0,
+    cuotas: r.cuotas_total != null ? r.cuotas_total : (p.cuotas || []).length,
+    proxima_vencimiento: proxima,
+  };
 };
 
 const PagosProveedoresList = () => {
@@ -81,7 +72,7 @@ const PagosProveedoresList = () => {
   const [empresa, setEmpresa] = useState(null);
   const [empresaResuelta, setEmpresaResuelta] = useState(false);
   const [empresaId, setEmpresaId] = useState(null);
-  const [cuotas, setCuotas] = useState([]);
+  const [planesRaw, setPlanesRaw] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busqueda, setBusqueda] = useState('');
   const [sortBy, setSortBy] = useState('proxima_cuota');
@@ -104,14 +95,14 @@ const PagosProveedoresList = () => {
       return;
     }
     setLoading(true);
-    ControlObraService.listarPlanesPagoCartera(empresaId)
-      .then((items) => setCuotas(items || []))
+    ControlObraService.listarPlanesPagoEmpresa(empresaId)
+      .then((items) => setPlanesRaw(items || []))
       .catch(() => setAlert({ open: true, message: 'Error al cargar los planes de pago', severity: 'error' }))
       .finally(() => setLoading(false));
   }, [empresaId, tienePermiso, empresaResuelta]);
 
   const planes = useMemo(() => {
-    let result = agruparPorPlan(cuotas);
+    let result = planesRaw.map(normalizarPlan);
     if (busqueda.trim()) {
       const q = busqueda.toLowerCase();
       result = result.filter(
@@ -129,7 +120,7 @@ const PagosProveedoresList = () => {
       default:
         return result.sort((a, b) => (a.proxima_vencimiento || '9999').localeCompare(b.proxima_vencimiento || '9999'));
     }
-  }, [cuotas, busqueda, sortBy]);
+  }, [planesRaw, busqueda, sortBy]);
 
   // Gating: sin permiso, pantalla consistente con el resto del producto.
   if (empresaResuelta && !tienePermiso) {
@@ -197,7 +188,7 @@ const PagosProveedoresList = () => {
             <Box textAlign="center" py={8}>
               <InboxIcon sx={{ fontSize: 64, color: 'text.disabled', mb: 2 }} />
               <Typography variant="h6" color="text.secondary" mb={1}>
-                No hay planes de pago con cuotas pendientes
+                No hay planes de pago
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 Los planes de pago a proveedores se crean dentro de cada obra, en la pestaña de pagos.

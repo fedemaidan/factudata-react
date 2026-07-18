@@ -201,6 +201,12 @@ const ControlObraService = {
     if (res.status !== 200) throw new Error('Error al obtener los planes de pago');
     return Array.isArray(res.data?.items) ? res.data.items : [];
   },
+  // TODOS los planes de pago de la empresa (cross-obra, uno por plan con resumen + obra_titulo).
+  listarPlanesPagoEmpresa: async (empresa_id) => {
+    const res = await api.get(`${BASE}/cartera/planes-pago`, { params: { empresa_id } });
+    if (res.status !== 200) throw new Error('Error al obtener los planes de pago');
+    return Array.isArray(res.data?.items) ? res.data.items : [];
+  },
 };
 
 export default ControlObraService;
