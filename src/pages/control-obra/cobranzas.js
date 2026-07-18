@@ -71,9 +71,9 @@ function CobranzasPage() {
               </TableHead>
               <TableBody>
                 {items.map((i) => (
-                  <TableRow key={i.cuota_id} hover>
+                  <TableRow key={i.cuota_id || i.certificado_id} hover>
                     <TableCell>{i.obra_titulo || '(sin título)'}</TableCell>
-                    <TableCell>{i.descripcion || '—'}</TableCell>
+                    <TableCell>{i.descripcion || '—'}{i.tipo === 'certificado' ? ' · certificado' : ''}</TableCell>
                     <TableCell sx={{ color: vencida(i.fecha_vencimiento) ? 'error.main' : undefined }}>{fecha(i.fecha_vencimiento)}</TableCell>
                     <TableCell>
                       <Chip size="small" label={vencida(i.fecha_vencimiento) ? 'vencida' : i.estado} color={vencida(i.fecha_vencimiento) ? 'error' : (i.estado === 'cobrada_parcial' ? 'info' : 'warning')} />
@@ -81,14 +81,16 @@ function CobranzasPage() {
                     <TableCell align="right">{fmt(i.pendiente)}</TableCell>
                     <TableCell align="right">
                       <Stack direction="row" spacing={1} justifyContent="flex-end">
-                        <Button size="small" variant="contained" onClick={() => accion.mutate({ fn: () => ControlObraService.cobrarCuota(i.obra_id, i.cuota_id, empresaId) })}>Cobrar</Button>
+                        <Button size="small" variant="contained" onClick={() => accion.mutate({ fn: () => (i.tipo === 'certificado'
+                          ? ControlObraService.cobrarCertificado(i.certificado_id, empresaId)
+                          : ControlObraService.cobrarCuota(i.obra_id, i.cuota_id, empresaId)) })}>Cobrar</Button>
                         <Button size="small" onClick={() => router.push(`/control-obra/${i.obra_id}`)}>Ver obra</Button>
                       </Stack>
                     </TableCell>
                   </TableRow>
                 ))}
                 {!q.isLoading && items.length === 0 && (
-                  <TableRow><TableCell colSpan={6}><Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>No hay cuotas pendientes.</Typography></TableCell></TableRow>
+                  <TableRow><TableCell colSpan={6}><Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>No hay cobros pendientes.</Typography></TableCell></TableRow>
                 )}
               </TableBody>
             </Table>
