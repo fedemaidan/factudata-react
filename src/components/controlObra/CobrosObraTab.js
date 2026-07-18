@@ -9,8 +9,10 @@ import AddIcon from '@mui/icons-material/Add';
 import LinkIcon from '@mui/icons-material/Link';
 import LinkOffIcon from '@mui/icons-material/LinkOff';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import LinkOffRoundedIcon from '@mui/icons-material/LinkOffRounded';
 import planCobroService from 'src/services/planCobroService';
 import ControlObraService from 'src/services/controlObra/controlObraService';
+import ConfirmDialog from 'src/components/controlObra/ConfirmDialog';
 
 const money = (n, moneda) => (n || 0).toLocaleString('es-AR', { style: 'currency', currency: moneda === 'USD' ? 'USD' : 'ARS', maximumFractionDigits: 0 });
 
@@ -22,6 +24,7 @@ export default function CobrosObraTab({ obra, empresaId }) {
   const queryClient = useQueryClient();
   const [openAsociar, setOpenAsociar] = useState(false);
   const [selPlan, setSelPlan] = useState('');
+  const [confirmDes, setConfirmDes] = useState(null); // plan a desasociar (abre el diálogo)
 
   const planIds = (obra.plan_cobro_ids && obra.plan_cobro_ids.length)
     ? obra.plan_cobro_ids.map(String)
@@ -62,14 +65,8 @@ export default function CobrosObraTab({ obra, empresaId }) {
 
   const desasociarMut = useMutation({
     mutationFn: (planId) => ControlObraService.desasociarPlan(obra._id, empresaId, planId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['control-obra'] }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['control-obra'] }); setConfirmDes(null); },
   });
-  const desasociar = (plan) => {
-    // eslint-disable-next-line no-alert
-    if (window.confirm(`¿Desasociar "${plan.nombre}" de esta obra? El plan no se borra, solo se desvincula.`)) {
-      desasociarMut.mutate(plan._id);
-    }
-  };
 
   return (
     <Box>
@@ -123,8 +120,7 @@ export default function CobrosObraTab({ obra, empresaId }) {
                     size="small"
                     color="error"
                     startIcon={<LinkOffIcon fontSize="small" />}
-                    disabled={desasociarMut.isPending}
-                    onClick={() => desasociar(plan)}
+                    onClick={() => setConfirmDes(plan)}
                   >
                     Desasociar
                   </Button>
@@ -192,6 +188,19 @@ export default function CobrosObraTab({ obra, empresaId }) {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <ConfirmDialog
+        open={!!confirmDes}
+        icon={<LinkOffRoundedIcon color="error" />}
+        title="Desasociar plan de cobro"
+        message={`¿Desasociar "${confirmDes?.nombre || ''}" de esta obra?`}
+        detail="El plan no se borra ni cambia de estado; solo se desvincula de la obra."
+        confirmLabel="Desasociar"
+        confirmColor="error"
+        loading={desasociarMut.isPending}
+        onConfirm={() => desasociarMut.mutate(confirmDes._id)}
+        onClose={() => setConfirmDes(null)}
+      />
     </Box>
   );
 }
