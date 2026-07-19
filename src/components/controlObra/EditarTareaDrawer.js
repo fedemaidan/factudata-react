@@ -35,6 +35,7 @@ export default function EditarTareaDrawer({ obra, subrubro, empresaId, onClose, 
   const [form, setForm] = useState({
     nombre: subrubro.nombre || '',
     monto: String(subrubro.contrato ?? subrubro.monto ?? 0),
+    costo_estimado: subrubro.costo_estimado ?? '',
     unidad: subrubro.unidad || '',
     cantidad: subrubro.cantidad ?? '',
     fecha_inicio: inicioInicial,
@@ -64,6 +65,7 @@ export default function EditarTareaDrawer({ obra, subrubro, empresaId, onClose, 
     mutationFn: () => ControlObraService.editarSubrubro(obra._id, subrubro.uid, empresaId, {
       nombre: form.nombre,
       monto: Number(form.monto),
+      costo_estimado: form.costo_estimado === '' ? null : Number(form.costo_estimado),
       unidad: form.unidad || null,
       cantidad: form.cantidad === '' ? null : Number(form.cantidad),
       duracion_dias: tieneDuracion ? Number(form.duracion_dias) : null,
@@ -91,7 +93,8 @@ export default function EditarTareaDrawer({ obra, subrubro, empresaId, onClose, 
     >
       <Stack spacing={2}>
         <TextField label="Nombre" value={form.nombre} onChange={(e) => set('nombre', e.target.value)} size="small" fullWidth />
-        <TextField label="Monto de contrato" type="number" value={form.monto} onChange={(e) => set('monto', e.target.value)} size="small" fullWidth />
+        <TextField label="Monto de contrato (cliente)" type="number" value={form.monto} onChange={(e) => set('monto', e.target.value)} size="small" fullWidth helperText="Lo que vas a cobrar por este sub-rubro" />
+        <TextField label="Costo estimado (proveedor)" type="number" value={form.costo_estimado} onChange={(e) => set('costo_estimado', e.target.value)} size="small" fullWidth helperText="Lo que pensás gastar; lo refina el contrato del proveedor. Vacío = sin estimar" />
         <Stack direction="row" spacing={1}>
           <TextField label="Unidad" value={form.unidad} onChange={(e) => set('unidad', e.target.value)} size="small" sx={{ flex: 1 }} />
           <TextField label="Cantidad" type="number" value={form.cantidad} onChange={(e) => set('cantidad', e.target.value)} size="small" sx={{ flex: 1 }} />
