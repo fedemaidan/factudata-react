@@ -49,6 +49,11 @@ export default function ResumenTab({ obra, ejec, certs = [], empresaId }) {
     queryKey: ['control-obra', 'cartera', empresaId],
     queryFn: () => ControlObraService.resumenCartera(empresaId),
     enabled: !!empresaId,
+    // La composición del cobro depende de los planes (monto_total), que se editan
+    // en otras pantallas (/cobros). Refrescamos siempre al entrar para no mostrar
+    // un esperado_planes viejo cuando una cuota cambió afuera.
+    refetchOnMount: 'always',
+    staleTime: 0,
   });
   const incQ = useQuery({
     queryKey: ['control-obra', 'inconvenientes', obra._id, empresaId],
@@ -59,6 +64,8 @@ export default function ResumenTab({ obra, ejec, certs = [], empresaId }) {
     queryKey: ['control-obra', 'curva-s', obra._id, empresaId],
     queryFn: () => ControlObraService.curvaS(obra._id, empresaId),
     enabled: !!empresaId,
+    refetchOnMount: 'always',
+    staleTime: 0,
   });
   const curva = curvaQ.data || { meses: [], certificado: [], cobrado: [], plan: [] };
 

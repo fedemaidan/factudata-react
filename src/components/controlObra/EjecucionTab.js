@@ -25,6 +25,7 @@ export default function EjecucionTab({ obra, ejec, empresaId }) {
   const qc = useQueryClient();
   const [dialog, setDialog] = useState(false);
   const [masiva, setMasiva] = useState(false);
+  const [estimar, setEstimar] = useState(false);
   const [armado, setArmado] = useState(false);
   const [audit, setAudit] = useState(false);
   const [nuevoRubro, setNuevoRubro] = useState(false);
@@ -47,6 +48,7 @@ export default function EjecucionTab({ obra, ejec, empresaId }) {
             </Button>
             <Button size="small" variant="outlined" onClick={() => setDialog(true)}>Imputar gasto</Button>
             <Button size="small" variant="outlined" onClick={() => setMasiva(true)}>Re-imputar masiva</Button>
+            <Button size="small" variant="outlined" onClick={() => setEstimar(true)}>Estimar costos</Button>
             <Button size="small" variant="outlined" startIcon={<AddIcon />} onClick={() => setNuevoRubro(true)}>Rubro</Button>
             <IconButton size="small" title="Historial de cambios" onClick={() => setAudit(true)}><HistoryIcon fontSize="small" /></IconButton>
           </Stack>
@@ -58,8 +60,7 @@ export default function EjecucionTab({ obra, ejec, empresaId }) {
               <TableCell align="right">Contrato</TableCell>
               <TableCell sx={{ width: 160 }}>Avance</TableCell>
               <TableCell align="right">Certificado</TableCell>
-              <TableCell align="right">Costo estimado</TableCell>
-              <TableCell align="right">Contratado</TableCell>
+              <TableCell align="right" title="Costo estimado → contratado del proveedor (el firme manda)">Costo est/contr</TableCell>
               <TableCell align="right">Gastado</TableCell>
               <TableCell align="right">Margen esperado</TableCell>
               <TableCell align="right">Margen</TableCell>
@@ -73,7 +74,6 @@ export default function EjecucionTab({ obra, ejec, empresaId }) {
                 <TableRow key={r.uid} sx={{ '& td': { bgcolor: 'action.hover', fontWeight: 600, borderBottom: 'none' } }}>
                   <TableCell>{r.nombre}</TableCell>
                   <TableCell align="right">{fmt(rContrato)}</TableCell>
-                  <TableCell />
                   <TableCell />
                   <TableCell />
                   <TableCell />
@@ -111,8 +111,7 @@ export default function EjecucionTab({ obra, ejec, empresaId }) {
                       </Stack>
                     </TableCell>
                     <TableCell align="right">{fmt(s.certificado)}</TableCell>
-                    <TableCell align="right">{s.costo_estimado != null ? fmt(s.costo_estimado) : '—'}</TableCell>
-                    <TableCell align="right">{s.contrato_proveedor ? fmt(s.contrato_proveedor.monto) : '—'}</TableCell>
+                    <CostoCell s={s} />
                     <TableCell align="right" sx={s.sobrecosto ? { color: 'error.main', fontWeight: 600 } : undefined}>{fmt(s.gastado)}</TableCell>
                     <TableCell align="right" sx={{ color: s.margen_esperado != null ? margenColor(s.margen_esperado) : undefined, fontWeight: 500 }}>
                       {s.margen_esperado != null ? fmt(s.margen_esperado) : '—'}
@@ -129,7 +128,6 @@ export default function EjecucionTab({ obra, ejec, empresaId }) {
               <TableCell align="right">{fmt(t.contrato)}</TableCell>
               <TableCell />
               <TableCell align="right">{fmt(t.certificado)}</TableCell>
-              <TableCell />
               <TableCell align="right" title="Costo de referencia (contratado o estimado)">{t.costo_ref != null ? fmt(t.costo_ref) : '—'}</TableCell>
               <TableCell align="right">{fmt(t.gastado)}</TableCell>
               <TableCell align="right" sx={{ color: t.margen_esperado != null ? margenColor(t.margen_esperado) : undefined }}>{t.margen_esperado != null ? fmt(t.margen_esperado) : '—'}</TableCell>
@@ -185,7 +183,89 @@ export default function EjecucionTab({ obra, ejec, empresaId }) {
       <AuditoriaDrawer open={audit} onClose={() => setAudit(false)} obra={obra} empresaId={empresaId} />
 
       <NuevoRubroDialog open={nuevoRubro} onClose={() => setNuevoRubro(false)} obra={obra} empresaId={empresaId} onDone={() => { setNuevoRubro(false); qc.invalidateQueries({ queryKey: ['control-obra'] }); }} />
+
+      <EstimarCostosDialog open={estimar} onClose={() => setEstimar(false)} obra={obra} empresaId={empresaId} onDone={() => { setEstimar(false); qc.invalidateQueries({ queryKey: ['control-obra'] }); }} />
     </Card>
+  );
+}
+
+// Celda fusionada costo estimado / contratado (feedback #1). Muestra el valor de
+// referencia (contratado si hay, si no el estimado) y, cuando conviven, la
+// diferencia entre lo estimado y lo firme.
+function CostoCell({ s }) {
+  const estimado = s.costo_estimado;
+  const contratado = s.contrato_proveedor ? s.contrato_proveedor.monto : null;
+  const ref = contratado != null ? contratado : estimado;
+  if (ref == null) return <TableCell align="right">—</TableCell>;
+  const ambos = contratado != null && estimado != null;
+  const delta = ambos ? contratado - estimado : 0;
+  return (
+    <TableCell align="right">
+      <Typography variant="body2" component="span" sx={{ fontStyle: contratado == null ? 'italic' : 'normal' }}>
+        {fmt(ref)}
+      </Typography>
+      {ambos && delta !== 0 && (
+        <Typography variant="caption" display="block" sx={{ color: delta > 0 ? 'error.main' : 'success.main' }}>
+          est. {fmt(estimado)} · {delta > 0 ? '+' : ''}{fmt(delta)}
+        </Typography>
+      )}
+      {!ambos && (
+        <Typography variant="caption" display="block" color="text.secondary">
+          {contratado != null ? 'contratado' : 'estimado'}
+        </Typography>
+      )}
+    </TableCell>
+  );
+}
+
+// Carga masiva de costos estimados desde el contrato (feedback #2), o al revés.
+function EstimarCostosDialog({ open, onClose, obra, empresaId, onDone }) {
+  const [direccion, setDireccion] = useState('costo_desde_contrato');
+  const [pct, setPct] = useState('20');
+  const [soloVacios, setSoloVacios] = useState(true);
+  const [error, setError] = useState(null);
+  const m = useMutation({
+    mutationFn: () => ControlObraService.estimarCostos(obra._id, empresaId, { direccion, pct: Number(pct), solo_vacios: soloVacios }),
+    onSuccess: onDone,
+    onError: (e) => setError(e?.response?.data?.error?.message || e.message),
+  });
+  const desdeContrato = direccion === 'costo_desde_contrato';
+  return (
+    <FormDrawer
+      open={open} onClose={onClose} title="Estimar costos en masa" width={440}
+      actions={(
+        <>
+          <Button onClick={onClose}>Cancelar</Button>
+          <Button variant="contained" disabled={m.isPending || pct === '' || Number.isNaN(Number(pct))} onClick={() => { setError(null); m.mutate(); }}>Aplicar</Button>
+        </>
+      )}
+    >
+      <Stack spacing={2}>
+        <TextField
+          select SelectProps={{ native: true }} size="small" label="Dirección"
+          value={direccion} onChange={(e) => setDireccion(e.target.value)}
+        >
+          <option value="costo_desde_contrato">Costo estimado = contrato − %</option>
+          <option value="contrato_desde_costo">Contrato = costo estimado + %</option>
+        </TextField>
+        <TextField
+          label={desdeContrato ? 'Margen a descontar del contrato (%)' : 'Markup sobre el costo (%)'}
+          type="number" value={pct} onChange={(e) => setPct(e.target.value)} size="small" fullWidth
+          inputProps={{ min: 0, step: 1 }}
+          helperText={desdeContrato
+            ? 'Costo estimado = monto de contrato × (1 − %). Ej: 20% → costo = 80% del contrato.'
+            : 'Contrato = costo estimado × (1 + %). Fija el precio al cliente a partir del costo.'}
+        />
+        <Stack direction="row" spacing={1} alignItems="center" sx={{ cursor: 'pointer' }} onClick={() => setSoloVacios((v) => !v)}>
+          <input type="checkbox" checked={soloVacios} onChange={(e) => setSoloVacios(e.target.checked)} />
+          <Typography variant="body2">Solo los que están sin {desdeContrato ? 'costo estimado' : 'contrato'} (no pisar los cargados)</Typography>
+        </Stack>
+        <Typography variant="caption" color="text.secondary">
+          Se aplica a todos los sub-rubros de la obra. {desdeContrato ? 'No toca los contratos de proveedor ya asignados.' : 'Ajusta el monto de contrato con el cliente y el plan de cobro asociado.'}
+        </Typography>
+        {error && <Typography color="error" variant="body2">{error}</Typography>}
+      </Stack>
+    </FormDrawer>
   );
 }
 
