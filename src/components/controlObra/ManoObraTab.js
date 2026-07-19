@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
+import { useRouter } from 'next/router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Alert, Box, Button, Card, CardContent, Chip, LinearProgress, MenuItem, Paper,
+  Alert, Box, Button, Card, CardContent, Chip, LinearProgress, Paper,
   Stack, Table, TableBody, TableCell, TableHead, TableRow, TextField, Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
@@ -12,20 +13,6 @@ const fmt = (n) => (Number(n) || 0).toLocaleString('es-AR', { style: 'currency',
 const money = (n, moneda) => (Number(n) || 0).toLocaleString('es-AR', { style: 'currency', currency: moneda === 'USD' ? 'USD' : 'ARS', maximumFractionDigits: 0 });
 const COLOR = { borrador: 'default', aprobada: 'info', pagada: 'success', anulada: 'error' };
 const MODALIDAD_LBL = { avance_fisico: 'avance físico', certificado: 'certificado' };
-
-// Proveedores con contrato asignado a alguna tarea de la obra (candidatos a plan de pago).
-function proveedoresConContrato(obra) {
-  const map = new Map();
-  for (const r of obra.rubros || []) {
-    for (const s of r.subrubros || []) {
-      const c = s.contrato_proveedor;
-      if (!c || !c.proveedor_nombre) continue;
-      const key = c.proveedor_id || c.proveedor_nombre;
-      if (!map.has(key)) map.set(key, { proveedor_id: c.proveedor_id || null, proveedor_nombre: c.proveedor_nombre });
-    }
-  }
-  return Array.from(map.values());
-}
 
 export default function ManoObraTab({ obra, empresaId }) {
   const qc = useQueryClient();
@@ -132,7 +119,7 @@ export default function ManoObraTab({ obra, empresaId }) {
 // generar cuotas por avance devengado del proveedor.
 function PlanesPagoSection({ obra, empresaId }) {
   const qc = useQueryClient();
-  const [dialog, setDialog] = useState(false);
+  const router = useRouter();
 
   const planesQ = useQuery({
     queryKey: ['control-obra', 'planes-pago', obra._id, empresaId],
@@ -140,6 +127,12 @@ function PlanesPagoSection({ obra, empresaId }) {
     enabled: !!empresaId,
   });
   const refresh = () => qc.invalidateQueries({ queryKey: ['control-obra', 'planes-pago', obra._id, empresaId] });
+
+  // Abre el asistente de plan de pago con la obra precargada (espejo de "Nuevo plan" de cobros).
+  const nuevoPlan = () => router.push({
+    pathname: '/pagos-proveedores/nuevo',
+    query: { obra: obra._id, ...(obra.proyecto_id ? { proyecto: obra.proyecto_id } : {}) },
+  });
 
   const generarAvance = useMutation({
     mutationFn: (planId) => ControlObraService.generarCuotasPorAvance(planId, empresaId),
@@ -158,7 +151,7 @@ function PlanesPagoSection({ obra, empresaId }) {
               0..N planes por obra. Cada plan agrupa las cuotas a desembolsar a un proveedor (por avance devengado, fijas o por hito).
             </Typography>
           </Box>
-          <Button size="small" variant="outlined" startIcon={<AddIcon />} onClick={() => setDialog(true)}>Nuevo plan de pago</Button>
+          <Button size="small" variant="outlined" startIcon={<AddIcon />} onClick={nuevoPlan}>Nuevo plan de pago</Button>
         </Stack>
 
         {planesQ.isLoading && <LinearProgress sx={{ mb: 2 }} />}
@@ -178,7 +171,12 @@ function PlanesPagoSection({ obra, empresaId }) {
             const r = plan.resumen || {};
             const pct = r.total ? Math.round((r.pagado || 0) / r.total * 100) : 0;
             return (
-              <Paper key={plan._id} variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+              <Paper
+                key={plan._id}
+                variant="outlined"
+                sx={{ p: 2, borderRadius: 2, cursor: 'pointer', '&:hover': { borderColor: 'primary.main' } }}
+                onClick={() => router.push(`/pagos-proveedores/${plan._id}`)}
+              >
                 <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" spacing={1.5} alignItems={{ sm: 'center' }}>
                   <Box sx={{ minWidth: 0 }}>
                     <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
@@ -190,14 +188,19 @@ function PlanesPagoSection({ obra, empresaId }) {
                       {r.cuotas_total || 0} cuota(s) · Proveedor: {plan.proveedor_nombre || 's/d'}
                     </Typography>
                   </Box>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    disabled={generarAvance.isPending}
-                    onClick={() => generarAvance.mutate(plan._id)}
-                  >
-                    Generar por avance
-                  </Button>
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      disabled={generarAvance.isPending}
+                      onClick={(e) => { e.stopPropagation(); generarAvance.mutate(plan._id); }}
+                    >
+                      Generar por avance
+                    </Button>
+                    <Button size="small" onClick={(e) => { e.stopPropagation(); router.push(`/pagos-proveedores/${plan._id}`); }}>
+                      Ver detalle
+                    </Button>
+                  </Stack>
                 </Stack>
 
                 <Stack direction="row" spacing={3} mt={1.5} flexWrap="wrap">
@@ -242,74 +245,7 @@ function PlanesPagoSection({ obra, empresaId }) {
           })}
         </Stack>
       </CardContent>
-
-      <NuevoPlanPagoDialog
-        open={dialog}
-        onClose={() => setDialog(false)}
-        obra={obra}
-        empresaId={empresaId}
-        onDone={() => { setDialog(false); refresh(); }}
-      />
     </Card>
-  );
-}
-
-function NuevoPlanPagoDialog({ open, onClose, obra, empresaId, onDone }) {
-  const proveedores = useMemo(() => proveedoresConContrato(obra), [obra]);
-  const [sel, setSel] = useState('');
-  const [proveedorLibre, setProveedorLibre] = useState('');
-  const [nombre, setNombre] = useState('');
-  const [error, setError] = useState(null);
-
-  const seleccionado = proveedores.find((p) => (p.proveedor_id || p.proveedor_nombre) === sel);
-
-  const crear = useMutation({
-    mutationFn: () => {
-      const proveedor_nombre = seleccionado ? seleccionado.proveedor_nombre : proveedorLibre.trim();
-      if (!proveedor_nombre) throw new Error('Elegí o escribí un proveedor');
-      return ControlObraService.crearPlanPago(obra._id, {
-        empresa_id: empresaId,
-        proveedor_id: seleccionado ? seleccionado.proveedor_id : null,
-        proveedor_nombre,
-        nombre: nombre.trim() || null,
-      });
-    },
-    onSuccess: () => { setSel(''); setProveedorLibre(''); setNombre(''); onDone(); },
-    onError: (e) => setError(e?.response?.data?.error?.message || e.message),
-  });
-
-  return (
-    <FormDrawer
-      open={open} onClose={onClose} title="Nuevo plan de pago" width={480}
-      actions={(
-        <>
-          <Button onClick={onClose}>Cancelar</Button>
-          <Button variant="contained" disabled={crear.isPending} onClick={() => { setError(null); crear.mutate(); }}>Crear</Button>
-        </>
-      )}
-    >
-      <Typography variant="caption" color="text.secondary">Proveedor</Typography>
-      {proveedores.length > 0 ? (
-        <TextField select fullWidth size="small" label="Proveedor (con contrato)" value={sel} onChange={(e) => setSel(e.target.value)} sx={{ mt: 1, mb: 2 }}>
-          <MenuItem value="">Otro (escribir)</MenuItem>
-          {proveedores.map((p) => (
-            <MenuItem key={p.proveedor_id || p.proveedor_nombre} value={p.proveedor_id || p.proveedor_nombre}>{p.proveedor_nombre}</MenuItem>
-          ))}
-        </TextField>
-      ) : (
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, mb: 1 }}>
-          No hay proveedores con contrato asignado en la obra. Escribí el nombre a mano.
-        </Typography>
-      )}
-
-      {!seleccionado && (
-        <TextField label="Nombre del proveedor" fullWidth size="small" value={proveedorLibre} onChange={(e) => setProveedorLibre(e.target.value)} sx={{ mb: 2 }} />
-      )}
-
-      <TextField label="Nombre del plan (opcional)" fullWidth size="small" value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Pagos: <proveedor>" />
-
-      {error && <Typography color="error" variant="body2" mt={1}>{error}</Typography>}
-    </FormDrawer>
   );
 }
 

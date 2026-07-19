@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import Head from 'next/head';
+import { useRouter } from 'next/router';
 import {
   Alert,
   Box,
@@ -69,6 +70,7 @@ const normalizarPlan = (p) => {
 
 const PagosProveedoresList = () => {
   const { user } = useAuthContext();
+  const router = useRouter();
   const [empresa, setEmpresa] = useState(null);
   const [empresaResuelta, setEmpresaResuelta] = useState(false);
   const [empresaId, setEmpresaId] = useState(null);
@@ -212,7 +214,12 @@ const PagosProveedoresList = () => {
                 </TableHead>
                 <TableBody>
                   {planes.map((p) => (
-                    <TableRow key={p.plan_id} hover>
+                    <TableRow
+                      key={p.plan_id}
+                      hover
+                      sx={{ cursor: 'pointer' }}
+                      onClick={() => router.push(`/pagos-proveedores/${p.plan_id}`)}
+                    >
                       <TableCell>{p.proveedor_nombre || '—'}</TableCell>
                       <TableCell>
                         {p.obra_titulo || '—'}
@@ -223,6 +230,7 @@ const PagosProveedoresList = () => {
                             component="a"
                             clickable
                             href={`/control-obra/${p.obra_id}`}
+                            onClick={(e) => e.stopPropagation()}
                             sx={{ ml: 1 }}
                           />
                         )}
