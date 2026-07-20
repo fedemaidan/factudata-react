@@ -103,12 +103,10 @@ const MovimientoCajaChicaModal = ({
 
     const proyectoSeleccionado = proyectos.find((p) => p.id === formData.proyecto_id);
 
-    const movimientoData = {
+    const base = {
       type: formData.type,
       total: parseFloat(formData.total),
       moneda: 'ARS',
-      proyecto_id: formData.proyecto_id,
-      proyecto: proyectoSeleccionado?.nombre || '',
       categoria: formData.categoria,
       observacion: formData.observacion || '',
       nombre_proveedor: formData.nombre_proveedor || '',
@@ -116,6 +114,18 @@ const MovimientoCajaChicaModal = ({
       caja_chica: true,
       origen: 'web',
     };
+    const movimientoData = formData.type === 'ingreso'
+      ? {
+          ...base,
+          proyecto_id: null,
+          proyecto_origen_id: formData.proyecto_id || null,
+          proyecto_origen_nombre: proyectoSeleccionado?.nombre || null,
+        }
+      : {
+          ...base,
+          proyecto_id: formData.proyecto_id,
+          proyecto: proyectoSeleccionado?.nombre || '',
+        };
 
     onSubmit(movimientoData);
   };
@@ -201,14 +211,16 @@ const MovimientoCajaChicaModal = ({
             required
           />
 
-          {/* Proyecto (opcional) */}
+          {/* Proyecto (opcional). En ingreso es la caja de la que sale el dinero. */}
           <TextField
             select
-            label="Proyecto"
+            label={formData.type === 'ingreso' ? 'Proyecto de origen del dinero' : 'Proyecto'}
             value={formData.proyecto_id}
             onChange={handleChange('proyecto_id')}
             error={!!errors.proyecto_id}
-            helperText={errors.proyecto_id || 'Opcional'}
+            helperText={errors.proyecto_id || (formData.type === 'ingreso'
+              ? 'Opcional — caja de la que sale el dinero que ingresa a la caja chica'
+              : 'Opcional')}
             fullWidth
           >
             <MenuItem value="">
