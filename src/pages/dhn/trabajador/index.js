@@ -21,6 +21,7 @@ import TrabajadorService from 'src/services/dhn/TrabajadorService';
 import { format } from 'date-fns';
 import { useRouter } from 'next/router';
 import AgregarTrabajadorModal from 'src/components/dhn/AgregarTrabajadorModal';
+import ExportarTrabajadoresButton from 'src/components/dhn/ExportarTrabajadoresButton';
 import EditarTrabajadorModal from 'src/components/dhn/EditarTrabajadorModal';
 import HistorialModal from 'src/components/dhn/HistorialModal';
 import useDhnSoloLectura from 'src/hooks/dhn/useDhnSoloLectura';
@@ -47,6 +48,7 @@ const TrabajadoresPage = () => {
   const [logsTrabajador, setLogsTrabajador] = useState(null);
   const [logsLoading, setLogsLoading] = useState(false);
   const [logsError, setLogsError] = useState("");
+  const [exportError, setExportError] = useState("");
 
   const handleEdit = (trabajador) => {
     setTrabajadorSeleccionado(trabajador);
@@ -217,7 +219,14 @@ const TrabajadoresPage = () => {
               Agregar Trabajador
             </Button>
           )}
+          <ExportarTrabajadoresButton onError={setExportError} />
         </Box>
+
+        {exportError && (
+          <Alert severity="error" sx={{ mb: 2 }} onClose={() => setExportError("")}>
+            {exportError}
+          </Alert>
+        )}
 
         {isError && (
           <Alert severity="error" sx={{ mb: 2 }}>
