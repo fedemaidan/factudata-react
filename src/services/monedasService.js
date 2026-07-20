@@ -74,6 +74,17 @@ const MonedasService = {
   },
 
   /**
+   * Resolver las 3 variantes del índice CAC (legacy / estimado / automatico) para un mes.
+   * Devuelve { fecha_objetivo, pendiente, legacy, estimado, automatico }; cada variante trae
+   * { general, mano_obra, materiales, fecha_utilizada, disponible } (+ detalle en estimado proyectado).
+   * @param {string} fecha - formato YYYY-MM
+   */
+  obtenerVariantesCAC: async (fecha) => {
+    const res = await api.get(`/monedas/cac/variantes/${encodeURIComponent(fecha)}`);
+    return res.data;
+  },
+
+  /**
    * Crear/actualizar índice CAC para un mes
    * @param {Object} data - { fecha, general, materiales, mano_obra }
    */
