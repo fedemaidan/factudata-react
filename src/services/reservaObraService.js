@@ -22,11 +22,21 @@ const reservaObraService = {
     return data; // { reservado: {ARS, USD}, reservas: [...] }
   },
 
-  async crear({ empresaId, proyectoId, proyectoNombre, responsableId, responsableNombre, participantes }) {
+  async crear({ empresaId, proyectoId, proyectoNombre, nombre, responsableId, responsableNombre, participantes }) {
     const { data } = await api.post('/reservas', {
-      empresaId, proyectoId, proyectoNombre, responsableId, responsableNombre, participantes,
+      empresaId, proyectoId, proyectoNombre, nombre, responsableId, responsableNombre, participantes,
     });
     return data;
+  },
+
+  async mias(empresaId) {
+    const { data } = await api.get('/reservas/mias', { params: { empresaId } });
+    return data; // { ok, reservas: [...], totales: {ARS, USD} }
+  },
+
+  async consolidado(empresaId) {
+    const { data } = await api.get('/reservas/consolidado', { params: { empresaId } });
+    return data; // { ok, obras: [{proyecto, reservado, saldo_caja, disponible, reservas}], totales }
   },
 
   async actualizar(id, { responsableId, responsableNombre, estado, activa, nombre } = {}) {
@@ -58,6 +68,12 @@ const reservaObraService = {
 
   async registrarReposicion(id, { moneda, monto, observacion }) {
     const { data } = await api.post(`/reservas/${id}/reposicion`, { moneda, monto, observacion });
+    return data;
+  },
+
+  // Devuelve fondos reservados al disponible de la obra (no genera movimientos de caja).
+  async desasignarFondos(id, { moneda, monto, observacion }) {
+    const { data } = await api.post(`/reservas/${id}/desasignar`, { moneda, monto, observacion });
     return data;
   },
 

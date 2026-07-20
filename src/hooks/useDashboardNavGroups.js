@@ -137,6 +137,12 @@ async function buildDefaultGroups({ user, empresa, permisosUsuario }) {
   if (esAdmin && permisosUsuario.includes("VER_MI_CAJA_CHICA")) {
     finanzasItems.push({ title: "Todas las cajas chicas", path: "/perfilesEmpresa", icon: icon(AttachMoneyIcon) });
   }
+  if (!esCorralon) {
+    // "Mis reservas": vista del participante (total + desglose por obra). No exige
+    // VER_RESERVAS_OBRA: un operador puede participar de reservas sin permiso global;
+    // la página muestra vacío si no participa en ninguna.
+    finanzasItems.push({ title: "Mis reservas", path: "/misReservas", icon: icon(AccountBalanceWallet) });
+  }
   if (permisosUsuario.includes("VER_RESERVAS_OBRA") && !esCorralon) {
     // Reserva de Obra: reserva interna de fondos por obra (≠ caja chica personal).
     // Visible solo con la acción VER_RESERVAS_OBRA configurada en la empresa.
