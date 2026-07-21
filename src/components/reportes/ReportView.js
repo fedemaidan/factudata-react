@@ -169,6 +169,7 @@ const ReportView = ({
         movimientos={drillDownMovs}
         titulo={drillDownTitulo}
         displayCurrency={primaryCurrency}
+        empresaConfig={reportContext?.empresa}
       />
     </>
   );

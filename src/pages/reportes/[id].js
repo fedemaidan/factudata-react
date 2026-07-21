@@ -47,6 +47,7 @@ const ReportDetailPage = () => {
   const { id, edit } = router.query;
   const { user } = useAuthContext();
   const [empresaId, setEmpresaId] = useState(null);
+  const [empresaConfig, setEmpresaConfig] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [filtersExpanded, setFiltersExpanded] = useState(true);
@@ -72,6 +73,7 @@ const ReportDetailPage = () => {
       try {
         const empresa = await getEmpresaDetailsFromUser(user);
         setEmpresaId(empresa?.id || null);
+        setEmpresaConfig(empresa || null);
       } catch (err) {
         console.error('Error obteniendo empresa:', err);
       }
@@ -550,7 +552,7 @@ const ReportDetailPage = () => {
                       planesCobro={planesCobro}
                       displayCurrencies={displayCurrencies}
                       cotizaciones={cotizaciones}
-                      reportContext={{ usuariosEmpresa, filters, proyectos }}
+                      reportContext={{ usuariosEmpresa, filters, proyectos, empresa: empresaConfig }}
                       onBlockConfigChange={handleUpdateBlockConfig}
                     />
                   )}

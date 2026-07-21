@@ -45,6 +45,7 @@ const FILTRO_FIELDS = [
   { key: 'categorias', label: 'Categorias' },
   { key: 'proveedores', label: 'Proveedores' },
   { key: 'etapas', label: 'Etapas' },
+  { key: 'asignado', label: 'Asignado' },
   { key: 'usuarios', label: 'Usuarios' },
   { key: 'medio_pago', label: 'Medio de pago' },
   { key: 'moneda_movimiento', label: 'Moneda del movimiento' },
@@ -78,6 +79,7 @@ const ReportEditor = ({
     display_currency: report.display_currency || 'ARS',
     datasets: report.datasets || { movimientos: true, presupuestos: false },
     filtros_schema: report.filtros_schema || {},
+    usar_caja_chica: report.usar_caja_chica === true,
     layout: report.layout || [],
     status: report.status || 'draft',
     permisos: report.permisos || { usuarios: [], publico: false, link_token: null },
@@ -266,9 +268,9 @@ const ReportEditor = ({
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const datasets = { ...config.datasets, planes_cobro: (config.datasets?.planes_cobro || usaPlanesCobro) };
-    onSave({ ...report, ...config, datasets });
+    await onSave({ ...report, ...config, datasets });
   };
 
   const blockSummary = (block) => {
@@ -414,6 +416,16 @@ const ReportEditor = ({
               size="small"
               multiline
               rows={2}
+            />
+            <FormControlLabel
+              control={
+                <Switch
+                  size="small"
+                  checked={config.usar_caja_chica === true}
+                  onChange={(e) => updateField('usar_caja_chica', e.target.checked)}
+                />
+              }
+              label={<Typography variant="body2">Usar caja chica</Typography>}
             />
             <FormControlLabel
               control={

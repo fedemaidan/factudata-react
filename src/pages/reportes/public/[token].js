@@ -36,7 +36,7 @@ function parseFiltersFromURL() {
 
   const ARRAY_KEYS = new Set([
     'proyectos', 'categorias', 'proveedores', 'etapas',
-    'medio_pago', 'moneda_movimiento', 'moneda_equivalente', 'usuarios',
+    'asignado', 'medio_pago', 'moneda_movimiento', 'moneda_equivalente', 'usuarios',
   ]);
   const filters = {};
   for (const [key, value] of params.entries()) {
@@ -241,6 +241,7 @@ const PublicReportPage = () => {
       categorias: getUniqueValues(allMovimientos, 'categoria'),
       proveedores: getUniqueValues(allMovimientos, 'proveedor'),
       etapas: getUniqueValues(allMovimientos, 'etapa'),
+      asignados: getUniqueValues(allMovimientos, 'asignado'),
       mediosPago: getUniqueValues(allMovimientos, 'medio_pago'),
       monedas: getUniqueValues(allMovimientos, 'moneda'),
     };
