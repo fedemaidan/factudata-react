@@ -14,6 +14,7 @@ import CompareArrowsIcon from "@mui/icons-material/CompareArrows";
 import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
 import ContactsIcon from "@mui/icons-material/Contacts";
 import AssessmentIcon from "@mui/icons-material/Assessment";
+import SummarizeIcon from "@mui/icons-material/Summarize";
 import ConstructionIcon from "@mui/icons-material/Construction";
 import AutoAwesomeRoundedIcon from "@mui/icons-material/AutoAwesomeRounded";
 import EventAvailableIcon from "@mui/icons-material/EventAvailable";
@@ -367,6 +368,7 @@ export function useDashboardNavGroups() {
           id: "sorby-admin",
           label: "Sorby Admin",
           items: [
+            { title: "Resumen del mes", path: "/admin-resumen", icon: icon(SummarizeIcon) },
             { title: "Clientes", path: "/admin-clientes", icon: icon(PeopleIcon) },
             { title: "Cobranzas", path: "/admin-cobranzas", icon: icon(AttachMoneyIcon) },
             { title: "Reportes", path: "/admin-reportes", icon: icon(AssessmentIcon) },
