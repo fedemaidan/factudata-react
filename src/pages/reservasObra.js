@@ -98,7 +98,9 @@ const ReservasObraPage = () => {
   const accionesEmpresa = user?.empresa?.acciones || user?.empresaData?.acciones || [];
   const permisosOcultos = user?.permisosOcultos || [];
   const tienePermiso = (accion) => accionesEmpresa.includes(accion) && !permisosOcultos.includes(accion);
-  const puedeGestionar = user?.admin || tienePermiso('GESTIONAR_RESERVAS_OBRA');
+  // Gestión solo por permiso explícito (sin bypass de admin): igual que el
+  // requireGestion del backend.
+  const puedeGestionar = tienePermiso('GESTIONAR_RESERVAS_OBRA');
 
   const fetchReservas = useCallback(async () => {
     const empId = resolveEmpresaId();
