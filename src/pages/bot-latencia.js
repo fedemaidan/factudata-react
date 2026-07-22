@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import Head from 'next/head';
+import { useRouter } from 'next/router';
 import {
   Alert,
   Autocomplete,
@@ -9,6 +10,7 @@ import {
   Chip,
   CircularProgress,
   Container,
+  Drawer,
   Grid,
   IconButton,
   MenuItem,
@@ -19,6 +21,7 @@ import {
   TableCell,
   TableContainer,
   TableHead,
+  TablePagination,
   TableRow,
   TableSortLabel,
   TextField,
@@ -26,14 +29,19 @@ import {
   ToggleButtonGroup,
   Tooltip,
   Typography,
-  alpha
+  alpha,
+  useTheme
 } from '@mui/material';
-import RefreshIcon from '@mui/icons-material/Refresh';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import CloseIcon from '@mui/icons-material/Close';
 import SpeedIcon from '@mui/icons-material/Speed';
 import BoltIcon from '@mui/icons-material/Bolt';
 import ReportProblemIcon from '@mui/icons-material/ReportProblem';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import CancelIcon from '@mui/icons-material/Cancel';
+import WhatsAppIcon from '@mui/icons-material/WhatsApp';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
+import { Chart } from 'src/components/chart';
 import LatenciaBotService from 'src/services/latenciaBotService';
 
 const VENTANAS = [
@@ -125,6 +133,347 @@ const KpiCard = ({ title, value, subtitle, icon: Icon, color = 'primary' }) => (
   </Card>
 );
 
+const formatFecha = (fecha) =>
+  new Date(`${fecha}T00:00:00`).toLocaleDateString('es-AR', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short'
+  });
+
+const formatHora = (iso) =>
+  new Date(iso).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+// Identidad legible de una fila de métrica para títulos del drawer
+const etiquetaMetrica = (m) => {
+  if (!m) return '';
+  if (m.tipo === 'accion') return m.accion || '—';
+  return [m.flujo, m.step].filter(Boolean).join(' · ') || '—';
+};
+
+const REGISTROS_POR_PAGINA = 25;
+
+/**
+ * Drill-down de una métrica: nivel 1 = desglose día por día (serie + gráfico),
+ * nivel 2 = mediciones individuales de un día, con salto a la conversación.
+ */
+const DetalleMetricaDrawer = ({ metrica, percentilesDisponibles, onClose, onError }) => {
+  const router = useRouter();
+  const theme = useTheme();
+  const [serieData, setSerieData] = useState(null);
+  const [loadingSerie, setLoadingSerie] = useState(false);
+  const [fechaSeleccionada, setFechaSeleccionada] = useState(null);
+  const [registrosData, setRegistrosData] = useState(null);
+  const [pagina, setPagina] = useState(0);
+  const [loadingRegistros, setLoadingRegistros] = useState(false);
+  const [resolviendoMensaje, setResolviendoMensaje] = useState(null);
+
+  useEffect(() => {
+    if (!metrica) return undefined;
+    setSerieData(null);
+    setFechaSeleccionada(null);
+    setRegistrosData(null);
+    setPagina(0);
+    let cancelado = false;
+    setLoadingSerie(true);
+    LatenciaBotService.getSerie({
+      tipo: metrica.tipo,
+      flujo: metrica.flujo,
+      accion: metrica.accion,
+      step: metrica.step
+    })
+      .then((d) => !cancelado && setSerieData(d))
+      .catch(() => !cancelado && onError('No se pudo cargar el desglose diario'))
+      .finally(() => !cancelado && setLoadingSerie(false));
+    return () => {
+      cancelado = true;
+    };
+  }, [metrica, onError]);
+
+  useEffect(() => {
+    if (!metrica || !fechaSeleccionada) return undefined;
+    let cancelado = false;
+    setLoadingRegistros(true);
+    LatenciaBotService.getRegistros({
+      fecha: fechaSeleccionada,
+      tipo: metrica.tipo,
+      flujo: metrica.flujo,
+      accion: metrica.accion,
+      step: metrica.step,
+      page: pagina,
+      limit: REGISTROS_POR_PAGINA
+    })
+      .then((d) => !cancelado && setRegistrosData(d))
+      .catch(() => !cancelado && onError('No se pudieron cargar los registros del día'))
+      .finally(() => !cancelado && setLoadingRegistros(false));
+    return () => {
+      cancelado = true;
+    };
+  }, [metrica, fechaSeleccionada, pagina, onError]);
+
+  const serie = serieData?.serie || [];
+
+  // Días fuera de la retención de crudos: hay agregado pero no detalle
+  const fechaLimiteDetalle = useMemo(() => {
+    const dias = serieData?.retencion_registros_dias || 60;
+    return new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  }, [serieData]);
+
+  const chartOptions = useMemo(
+    () => ({
+      chart: { toolbar: { show: false }, zoom: { enabled: false }, background: 'transparent' },
+      theme: { mode: theme.palette.mode },
+      stroke: { curve: 'smooth', width: 2 },
+      colors: [theme.palette.primary.main, theme.palette.warning.main],
+      dataLabels: { enabled: false },
+      xaxis: {
+        categories: serie.map((s) => s.fecha.slice(5)),
+        labels: { rotate: 0, style: { fontSize: '11px' } },
+        tooltip: { enabled: false }
+      },
+      yaxis: { labels: { formatter: (v) => formatMs(v) } },
+      tooltip: { y: { formatter: (v) => formatMs(v) } },
+      grid: { borderColor: theme.palette.divider, strokeDashArray: 3 },
+      legend: { show: true, position: 'top', horizontalAlign: 'right' }
+    }),
+    [serie, theme]
+  );
+
+  const chartSeries = useMemo(() => {
+    const series = [{ name: 'Promedio', data: serie.map((s) => s.promedio_ms) }];
+    if (percentilesDisponibles) series.push({ name: 'p95', data: serie.map((s) => s.p95_ms) });
+    return series;
+  }, [serie, percentilesDisponibles]);
+
+  const verConversacion = async (registro) => {
+    setResolviendoMensaje(registro._id);
+    try {
+      const { conversationId, messageId } = await LatenciaBotService.getConversacionDeMensaje(
+        registro.mensaje_id
+      );
+      router.push({ pathname: '/conversaciones', query: { conversationId, messageId } });
+    } catch (error) {
+      onError('No se encontró el mensaje en las conversaciones');
+      setResolviendoMensaje(null);
+    }
+  };
+
+  const enNivelRegistros = Boolean(fechaSeleccionada);
+
+  return (
+    <Drawer
+      anchor="right"
+      open={Boolean(metrica)}
+      onClose={onClose}
+      PaperProps={{ sx: { width: { xs: '100%', sm: 640, md: 760 } } }}
+    >
+      {metrica && (
+        <Stack sx={{ height: '100%' }}>
+          <Stack
+            direction="row"
+            alignItems="center"
+            spacing={1}
+            sx={{ px: 2, py: 1.5, borderBottom: 1, borderColor: 'divider' }}
+          >
+            {enNivelRegistros && (
+              <IconButton size="small" onClick={() => { setFechaSeleccionada(null); setRegistrosData(null); setPagina(0); }}>
+                <ArrowBackIcon fontSize="small" />
+              </IconButton>
+            )}
+            <Chip
+              size="small"
+              label={metrica.tipo === 'accion' ? 'Acción' : 'Step'}
+              color={metrica.tipo === 'accion' ? 'primary' : 'default'}
+              variant={metrica.tipo === 'accion' ? 'filled' : 'outlined'}
+            />
+            <Box sx={{ minWidth: 0, flex: 1 }}>
+              <Typography variant="subtitle1" noWrap sx={{ fontWeight: 600 }}>
+                {etiquetaMetrica(metrica)}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                {enNivelRegistros
+                  ? `Mediciones del ${formatFecha(fechaSeleccionada)}`
+                  : 'Evolución día por día · click en un día para ver cada medición'}
+              </Typography>
+            </Box>
+            <IconButton size="small" onClick={onClose}>
+              <CloseIcon fontSize="small" />
+            </IconButton>
+          </Stack>
+
+          <Box sx={{ flex: 1, overflowY: 'auto' }}>
+            {!enNivelRegistros && (
+              <>
+                {loadingSerie && (
+                  <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+                    <CircularProgress size={28} />
+                  </Box>
+                )}
+                {!loadingSerie && serie.length === 0 && serieData && (
+                  <Typography color="text.secondary" align="center" sx={{ py: 8 }}>
+                    Sin datos diarios para esta métrica
+                  </Typography>
+                )}
+                {!loadingSerie && serie.length > 0 && (
+                  <>
+                    <Box sx={{ px: 2, pt: 1 }}>
+                      <Chart options={chartOptions} series={chartSeries} type="area" height={200} width="100%" />
+                    </Box>
+                    <Table size="small" stickyHeader>
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Día</TableCell>
+                          <TableCell align="right">N</TableCell>
+                          <TableCell align="right">Promedio</TableCell>
+                          {percentilesDisponibles && <TableCell align="right">p50</TableCell>}
+                          {percentilesDisponibles && <TableCell align="right">p95</TableCell>}
+                          <TableCell align="right">Máx</TableCell>
+                          <TableCell align="right">% Éxito</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {[...serie].reverse().map((dia) => {
+                          const sinDetalle = dia.fecha < fechaLimiteDetalle;
+                          return (
+                            <Tooltip
+                              key={dia.fecha}
+                              title={sinDetalle ? 'Fuera de retención: solo queda el agregado del día' : ''}
+                            >
+                              <TableRow
+                                hover={!sinDetalle}
+                                onClick={() => !sinDetalle && setFechaSeleccionada(dia.fecha)}
+                                sx={{ cursor: sinDetalle ? 'default' : 'pointer', opacity: sinDetalle ? 0.5 : 1 }}
+                              >
+                                <TableCell>
+                                  <Stack direction="row" alignItems="center" spacing={1}>
+                                    <span>{formatFecha(dia.fecha)}</span>
+                                    {dia.parcial && <Chip size="small" label="hoy" color="info" variant="outlined" sx={{ height: 18, fontSize: '0.65rem' }} />}
+                                  </Stack>
+                                </TableCell>
+                                <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+                                  {formatNumber(dia.n)}
+                                </TableCell>
+                                <CeldaMs ms={dia.promedio_ms} semaforo />
+                                {percentilesDisponibles && <CeldaMs ms={dia.p50_ms} />}
+                                {percentilesDisponibles && <CeldaMs ms={dia.p95_ms} semaforo />}
+                                <CeldaMs ms={dia.max_ms} />
+                                <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+                                  {dia.exito_pct != null ? `${dia.exito_pct}%` : '—'}
+                                </TableCell>
+                              </TableRow>
+                            </Tooltip>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </>
+                )}
+              </>
+            )}
+
+            {enNivelRegistros && (
+              <>
+                {loadingRegistros && !registrosData && (
+                  <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+                    <CircularProgress size={28} />
+                  </Box>
+                )}
+                {registrosData && (
+                  <Table size="small" stickyHeader>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Hora</TableCell>
+                        <TableCell align="right">Duración</TableCell>
+                        <TableCell align="center">Éxito</TableCell>
+                        <TableCell>Teléfono</TableCell>
+                        <TableCell>Email</TableCell>
+                        <TableCell>Empresa</TableCell>
+                        <TableCell align="center">Conversación</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {registrosData.registros.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={7} align="center" sx={{ py: 6 }}>
+                            <Typography color="text.secondary">Sin mediciones ese día</Typography>
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        registrosData.registros.map((r) => (
+                          <TableRow key={r._id} hover sx={{ opacity: loadingRegistros ? 0.5 : 1 }}>
+                            <TableCell sx={{ fontVariantNumeric: 'tabular-nums' }}>
+                              {formatHora(r.creado_en)}
+                            </TableCell>
+                            <CeldaMs ms={r.duracion_ms} semaforo />
+                            <TableCell align="center">
+                              {r.exito ? (
+                                <CheckCircleIcon fontSize="small" color="success" />
+                              ) : (
+                                <Tooltip title={r.error || 'Falló'}>
+                                  <CancelIcon fontSize="small" color="error" />
+                                </Tooltip>
+                              )}
+                            </TableCell>
+                            <TableCell sx={{ fontVariantNumeric: 'tabular-nums' }}>{r.telefono || '—'}</TableCell>
+                            <TableCell>{r.email || '—'}</TableCell>
+                            <TableCell>
+                              {r.empresa_id ? (
+                                <Tooltip title={r.empresa_id}>
+                                  <Box component="code" sx={{ fontSize: 12 }}>{r.empresa_id.slice(0, 8)}…</Box>
+                                </Tooltip>
+                              ) : (
+                                '—'
+                              )}
+                            </TableCell>
+                            <TableCell align="center">
+                              {r.mensaje_id ? (
+                                <Tooltip title="Ver el mensaje en Conversaciones">
+                                  <span>
+                                    <IconButton
+                                      size="small"
+                                      color="success"
+                                      disabled={resolviendoMensaje === r._id}
+                                      onClick={() => verConversacion(r)}
+                                    >
+                                      {resolviendoMensaje === r._id ? (
+                                        <CircularProgress size={18} />
+                                      ) : (
+                                        <WhatsAppIcon fontSize="small" />
+                                      )}
+                                    </IconButton>
+                                  </span>
+                                </Tooltip>
+                              ) : (
+                                '—'
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                )}
+              </>
+            )}
+          </Box>
+
+          {enNivelRegistros && registrosData && (
+            <TablePagination
+              component="div"
+              count={registrosData.total}
+              page={pagina}
+              onPageChange={(e, p) => setPagina(p)}
+              rowsPerPage={REGISTROS_POR_PAGINA}
+              rowsPerPageOptions={[REGISTROS_POR_PAGINA]}
+              labelDisplayedRows={({ from, to, count }) => `${from}–${to} de ${count}`}
+              sx={{ borderTop: 1, borderColor: 'divider' }}
+            />
+          )}
+        </Stack>
+      )}
+    </Drawer>
+  );
+};
+
 const COLUMNAS = [
   { id: 'tipo', label: 'Tipo', numeric: false },
   { id: 'accion', label: 'Acción', numeric: false },
@@ -140,7 +489,6 @@ const COLUMNAS = [
 
 const BotLatenciaPage = () => {
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [data, setData] = useState(null);
   const [alerta, setAlerta] = useState({ open: false, message: '', severity: 'info' });
 
@@ -150,18 +498,22 @@ const BotLatenciaPage = () => {
   const [filtroAccion, setFiltroAccion] = useState(null);
   const [busquedaStep, setBusquedaStep] = useState('');
   const [orden, setOrden] = useState({ campo: 'promedio_ms', dir: 'desc' });
+  const [metricaSeleccionada, setMetricaSeleccionada] = useState(null);
 
-  const fetchData = useCallback(async (refresh = false) => {
-    refresh ? setRefreshing(true) : setLoading(true);
+  const mostrarError = useCallback(
+    (message) => setAlerta({ open: true, message, severity: 'error' }),
+    []
+  );
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
     try {
-      const result = await LatenciaBotService.getStats(refresh);
+      const result = await LatenciaBotService.getStats();
       setData(result);
-      if (refresh) setAlerta({ open: true, message: 'Métricas recalculadas', severity: 'success' });
     } catch (error) {
       setAlerta({ open: true, message: 'No se pudieron cargar las métricas de latencia', severity: 'error' });
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
   }, []);
 
@@ -259,20 +611,11 @@ const BotLatenciaPage = () => {
                   </Typography>
                 </Box>
               </Stack>
-              <Stack direction="row" alignItems="center" spacing={1}>
-                {data?.calculado_en && (
-                  <Tooltip title={new Date(data.calculado_en).toLocaleString('es-AR')}>
-                    <Chip size="small" variant="outlined" label={`Actualizado ${haceCuanto(data.calculado_en)}`} />
-                  </Tooltip>
-                )}
-                <Tooltip title="Recalcular ahora">
-                  <span>
-                    <IconButton onClick={() => fetchData(true)} disabled={refreshing}>
-                      {refreshing ? <CircularProgress size={22} /> : <RefreshIcon />}
-                    </IconButton>
-                  </span>
+              {data?.calculado_en && (
+                <Tooltip title={new Date(data.calculado_en).toLocaleString('es-AR')}>
+                  <Chip size="small" variant="outlined" label={`Actualizado ${haceCuanto(data.calculado_en)}`} />
                 </Tooltip>
-              </Stack>
+              )}
             </Stack>
 
             <ToggleButtonGroup
@@ -373,6 +716,9 @@ const BotLatenciaPage = () => {
                     />
                   </Grid>
                 </Grid>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.5 }}>
+                  Click en una fila para ver la evolución diaria y cada medición individual
+                </Typography>
               </CardContent>
 
               <TableContainer sx={{ maxHeight: 640 }}>
@@ -408,6 +754,8 @@ const BotLatenciaPage = () => {
                         <TableRow
                           hover
                           key={`${f.tipo}|${f.flujo}|${f.accion}|${f.step}`}
+                          onClick={() => setMetricaSeleccionada(f)}
+                          sx={{ cursor: 'pointer' }}
                         >
                           <TableCell>
                             <Chip
@@ -454,6 +802,13 @@ const BotLatenciaPage = () => {
           </Stack>
         </Container>
       </Box>
+
+      <DetalleMetricaDrawer
+        metrica={metricaSeleccionada}
+        percentilesDisponibles={Boolean(data?.percentiles_disponibles)}
+        onClose={() => setMetricaSeleccionada(null)}
+        onError={mostrarError}
+      />
 
       <Snackbar
         open={alerta.open}
