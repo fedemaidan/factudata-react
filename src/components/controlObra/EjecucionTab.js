@@ -189,31 +189,34 @@ export default function EjecucionTab({ obra, ejec, empresaId }) {
   );
 }
 
-// Celda fusionada costo estimado / contratado (feedback #1). Muestra el valor de
-// referencia (contratado si hay, si no el estimado) y, cuando conviven, la
-// diferencia entre lo estimado y lo firme.
+// Celda de costo de la tarea. Muestra el costo de referencia total (parte proveedor
+// + parte directa/materiales) y, debajo, la composición: si hay costo directo lo
+// desglosa "prov X + dir Y"; si no, cae al detalle estimado/contratado (feedback #1).
 function CostoCell({ s }) {
+  const total = s.costo_ref;
+  if (total == null) return <TableCell align="right">—</TableCell>;
   const estimado = s.costo_estimado;
   const contratado = s.contrato_proveedor ? s.contrato_proveedor.monto : null;
-  const ref = contratado != null ? contratado : estimado;
-  if (ref == null) return <TableCell align="right">—</TableCell>;
-  const ambos = contratado != null && estimado != null;
+  const directo = s.costo_directo;
+  const soloEstimado = contratado == null && directo == null; // todo estimado (blando)
+  const ambos = contratado != null && estimado != null && contratado !== estimado;
   const delta = ambos ? contratado - estimado : 0;
+  let caption = null;
+  let captionColor = 'text.secondary';
+  if (directo != null) {
+    caption = `prov ${fmt(s.costo_proveedor || 0)} + dir ${fmt(directo)}`;
+  } else if (ambos) {
+    caption = `est. ${fmt(estimado)} · ${delta > 0 ? '+' : ''}${fmt(delta)}`;
+    captionColor = delta > 0 ? 'error.main' : 'success.main';
+  } else {
+    caption = contratado != null ? 'contratado' : 'estimado';
+  }
   return (
     <TableCell align="right">
-      <Typography variant="body2" component="span" sx={{ fontStyle: contratado == null ? 'italic' : 'normal' }}>
-        {fmt(ref)}
+      <Typography variant="body2" component="span" sx={{ fontStyle: soloEstimado ? 'italic' : 'normal' }}>
+        {fmt(total)}
       </Typography>
-      {ambos && delta !== 0 && (
-        <Typography variant="caption" display="block" sx={{ color: delta > 0 ? 'error.main' : 'success.main' }}>
-          est. {fmt(estimado)} · {delta > 0 ? '+' : ''}{fmt(delta)}
-        </Typography>
-      )}
-      {!ambos && (
-        <Typography variant="caption" display="block" color="text.secondary">
-          {contratado != null ? 'contratado' : 'estimado'}
-        </Typography>
-      )}
+      <Typography variant="caption" display="block" sx={{ color: captionColor }}>{caption}</Typography>
     </TableCell>
   );
 }
