@@ -30,6 +30,8 @@ export default function NuevaObraDialog({ open, onClose, empresaId, proyectoId: 
   const [fechaBase, setFechaBase] = useState('');
   const [proyecto, setProyecto] = useState(null);
   const [rubros, setRubros] = useState([{ nombre: '', subrubros: [{ nombre: '', monto: '' }] }]);
+  const [archivos, setArchivos] = useState([]); // origen 'archivo': Excel/PDF (1) o imágenes (hasta 10)
+  const [warnings, setWarnings] = useState([]); // observaciones que devuelve la extracción
   const [error, setError] = useState(null);
 
   const ppsQ = useQuery({
@@ -63,6 +65,19 @@ export default function NuevaObraDialog({ open, onClose, empresaId, proyectoId: 
         if (!ppId) throw new Error('Elegí un presupuesto profesional');
         return ControlObraService.crearObra({ empresa_id: empresaId, proyecto_id: proyectoId, ...condiciones, origen: { tipo: 'pp', ref_id: ppId } });
       }
+      if (origen === 'archivo') {
+        if (!archivos.length) throw new Error('Elegí el archivo del presupuesto');
+        const fd = new FormData();
+        fd.append('empresa_id', empresaId);
+        if (proyectoId) fd.append('proyecto_id', proyectoId);
+        if (titulo) fd.append('titulo', titulo);
+        Object.entries(condiciones).forEach(([k, v]) => { if (v != null) fd.append(k, v); });
+        // Varias páginas van como `archivos` (el backend exige que sean imágenes);
+        // un Excel/PDF único va como `archivo`.
+        if (archivos.length > 1) archivos.forEach((f) => fd.append('archivos', f));
+        else fd.append('archivo', archivos[0]);
+        return ControlObraService.importarObra(fd);
+      }
       if (origen === 'categorias') {
         if (!titulo) throw new Error('Ingresá un título');
         return ControlObraService.crearObra({
@@ -74,12 +89,23 @@ export default function NuevaObraDialog({ open, onClose, empresaId, proyectoId: 
         rubros: rubros.map((r) => ({ nombre: r.nombre, subrubros: r.subrubros.filter((s) => s.nombre && s.monto).map((s) => ({ nombre: s.nombre, monto: Number(s.monto) })) })),
       });
     },
-    onSuccess: (obra) => onCreated(obra._id),
+    // El import devuelve { obra, warnings }; el resto devuelve la obra directo.
+    onSuccess: (res) => {
+      const obra = res?.obra || res;
+      const obs = res?.warnings || [];
+      if (obs.length) {
+        // Hay observaciones de la extracción: las mostramos antes de salir para que
+        // el usuario sepa qué no se pudo interpretar del archivo.
+        setWarnings(obs);
+        return;
+      }
+      onCreated(obra._id);
+    },
     onError: (e) => setError(e?.response?.data?.error?.message || e.message),
   });
 
   const setSub = (ri, si, key, val) => setRubros((rs) => rs.map((r, i) => i !== ri ? r : { ...r, subrubros: r.subrubros.map((s, j) => j !== si ? s : { ...s, [key]: val }) }));
-  const puedeCrear = origen === 'pp' ? !!ppId : !!titulo;
+  const puedeCrear = origen === 'pp' ? !!ppId : (origen === 'archivo' ? archivos.length > 0 : !!titulo);
 
   return (
     <FormDrawer
@@ -93,10 +119,16 @@ export default function NuevaObraDialog({ open, onClose, empresaId, proyectoId: 
     >
       <Stack spacing={2}>
           <ToggleButtonGroup exclusive size="small" value={origen} onChange={(_, v) => v && setOrigen(v)} sx={{ flexWrap: 'wrap' }}>
+            <ToggleButton value="archivo">Desde archivo</ToggleButton>
             <ToggleButton value="pp">Desde presupuesto profesional</ToggleButton>
             <ToggleButton value="categorias">Desde categorías</ToggleButton>
             <ToggleButton value="manual">Carga manual</ToggleButton>
           </ToggleButtonGroup>
+          {origen === 'archivo' && (
+            <Typography variant="caption" color="text.secondary">
+              Subí tu presupuesto (Excel, PDF o fotos) y armamos la obra con sus rubros y montos. Si el archivo trae el avance de cada tarea, la obra arranca con ese porcentaje.
+            </Typography>
+          )}
           {origen === 'categorias' && (
             <Typography variant="caption" color="text.secondary">
               Arma la estructura desde las categorías/subcategorías de la empresa y suma los presupuestos del proyecto. Después podés borrar los rubros que no apliquen.
@@ -151,6 +183,54 @@ export default function NuevaObraDialog({ open, onClose, empresaId, proyectoId: 
             isOptionEqualToValue={(o, v) => (o.id || o._id) === (v.id || v._id)}
             renderInput={(params) => <TextField {...params} label="Proyecto (opcional)" size="small" helperText="Asocia la obra a un proyecto: filtra los egresos a imputar y la caja" />}
           />
+
+          {origen === 'archivo' && (
+            <Stack spacing={1.5}>
+              <Button variant="outlined" component="label" disabled={crear.isPending}>
+                {archivos.length ? `${archivos.length} archivo(s) elegido(s)` : 'Elegir archivo…'}
+                <input
+                  type="file" hidden multiple
+                  accept=".xlsx,.xls,.csv,.pdf,image/*"
+                  onChange={(e) => {
+                    const files = Array.from(e.target.files || []).slice(0, 10);
+                    setArchivos(files);
+                    setWarnings([]);
+                    setError(null);
+                  }}
+                />
+              </Button>
+              {archivos.length > 0 && (
+                <Typography variant="caption" color="text.secondary">
+                  {archivos.map((f) => f.name).join(' · ')}
+                </Typography>
+              )}
+              <TextField
+                label="Título (opcional)" value={titulo} onChange={(e) => setTitulo(e.target.value)} fullWidth size="small"
+                helperText="Si lo dejás vacío, usamos el nombre que venga en el archivo."
+              />
+              {crear.isPending && (
+                <Typography variant="caption" color="text.secondary">
+                  Leyendo el archivo… esto puede tardar unos segundos.
+                </Typography>
+              )}
+              {warnings.length > 0 && (
+                <Box sx={{ p: 1.5, borderRadius: 1, bgcolor: 'warning.light', color: 'warning.contrastText' }}>
+                  <Typography variant="caption" fontWeight={600} display="block" mb={0.5}>
+                    La obra se creó. Revisá esto que no pudimos interpretar:
+                  </Typography>
+                  {warnings.map((w, i) => (
+                    <Typography key={i} variant="caption" display="block">· {w}</Typography>
+                  ))}
+                  <Button
+                    size="small" sx={{ mt: 1 }} variant="contained"
+                    onClick={() => onCreated(crear.data?.obra?._id)}
+                  >
+                    Ir a la obra
+                  </Button>
+                </Box>
+              )}
+            </Stack>
+          )}
 
           {origen === 'pp' && (
             <TextField
