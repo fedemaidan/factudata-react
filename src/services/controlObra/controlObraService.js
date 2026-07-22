@@ -36,6 +36,13 @@ const ControlObraService = {
     };
   },
 
+  // Crea la obra directo desde un archivo (Excel/PDF o hasta 10 imágenes).
+  // Devuelve { obra, warnings, total_rubros, total_tareas }. La extracción con IA
+  // puede tardar, así que el caller debería mostrar progreso.
+  importarObra: async (formData) => unwrap(await api.post(`${BASE}/importar`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })),
+
   obtenerObra: async (id, empresa_id) => {
     const res = await api.get(`${BASE}/${id}`, { params: { empresa_id } });
     if (res.status === 200) return unwrap(res);
