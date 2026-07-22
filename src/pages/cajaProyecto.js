@@ -56,7 +56,7 @@ import SettingsIcon from '@mui/icons-material/Settings';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import { buildCompletarPagoUpdateFields, puedeCompletarPagoEgreso } from 'src/utils/movimientoPagoCompleto';
 import { formatCurrencyWithCode } from 'src/utils/formatters';
-import { FILTER_ARRAY_KEYS } from 'src/utils/parseData';
+import { FILTER_ARRAY_KEYS, getCajaMediosPago } from 'src/utils/parseData';
 
 
 // tamaños mínimos por columna (px)
@@ -984,7 +984,7 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
     setEditandoCaja(index);
     setNombreCaja(caja.nombre);
     setMonedaCaja(caja.moneda);
-    setMedioPagoCaja(caja.medio_pago || '');
+    setMedioPagoCaja(getCajaMediosPago(caja)[0] || '');
     setShowCrearCaja(true);
     setTypeCaja(caja.type || '');
     setEstadoCaja(caja.estado || '');
@@ -1005,7 +1005,7 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
       const normalizedFilters = {
         caja: caja || null,
         moneda: caja?.moneda ? [caja.moneda] : [],
-        medioPago: caja?.medio_pago ? [caja.medio_pago] : [],
+        medioPago: getCajaMediosPago(caja),
         estados: caja?.estado ? [caja.estado] : [],
         tipo: caja?.type ? [caja.type] : [],
       };
@@ -1320,7 +1320,8 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
 
       // Autoseleccionar caja: la que coincida con el filtro de la URL, o la primera
       const cajaFromUrl = router.query.caja ? (() => { try { return JSON.parse(router.query.caja); } catch { return null; } })() : null;
-      const cajaDefault = (cajaFromUrl && cajasIniciales.find(c => c.moneda === cajaFromUrl.moneda && c.medio_pago === (cajaFromUrl.medio_pago || '')))
+      const mediosPagoUrl = getCajaMediosPago(cajaFromUrl).join('|');
+      const cajaDefault = (cajaFromUrl && cajasIniciales.find(c => c.moneda === cajaFromUrl.moneda && getCajaMediosPago(c).join('|') === mediosPagoUrl))
         || cajasIniciales[0]
         || null;
       logCajaDebug('Resolución de cajas', {
@@ -1547,13 +1548,13 @@ const getTime = (v) => {
     if (!filters.caja || !cajaSeleccionada) return;
     const filtersCajaKey = JSON.stringify({
       moneda: filters.caja.moneda || null,
-      medio_pago: filters.caja.medio_pago || '',
+      medios_pago: getCajaMediosPago(filters.caja),
       estado: filters.caja.estado || '',
       type: filters.caja.type || '',
     });
     const selectedCajaKey = JSON.stringify({
       moneda: cajaSeleccionada.moneda || null,
-      medio_pago: cajaSeleccionada.medio_pago || '',
+      medios_pago: getCajaMediosPago(cajaSeleccionada),
       estado: cajaSeleccionada.estado || '',
       type: cajaSeleccionada.type || '',
     });
@@ -1689,9 +1690,10 @@ const movimientosConProrrateo = useMemo(() => {
        }
      
        const mergeMonedas = (caja.equivalencia && caja.equivalencia !== 'none');
+       const mediosCaja = getCajaMediosPago(caja);
 
        const result = allMovs.reduce((acc, mov) => {
-         const matchMedioPago = caja.medio_pago ? mov.medio_pago === caja.medio_pago : true;
+         const matchMedioPago = mediosCaja.length === 0 || mediosCaja.includes(mov.medio_pago);
          const matchEstado    = caja.estado ? mov.estado === caja.estado : true;
          const matchType      = caja.type ? mov.type === caja.type : true;
          const matchMoneda    = mergeMonedas ? true : (caja.moneda ? mov.moneda === caja.moneda : true);
@@ -1812,10 +1814,15 @@ const movimientosConProrrateo = useMemo(() => {
   }, [csvExportFields, csvFieldOrder, csvSelectedFields, movimientosExportables, proyecto?.nombre]);
 
   const handleGuardarCaja = async () => {
+    // Acá solo se elige un medio de pago; si la caja se configuró con varios
+    // desde /cajas, se preservan en lugar de pisarlos con el único del select.
+    const mediosPagoPrevios = editandoCaja !== null ? getCajaMediosPago(cajasVirtuales[editandoCaja]) : [];
     const nuevaCaja = {
       nombre: nombreCaja,
       moneda: monedaCaja || '',
-      medio_pago: medioPagoCaja,
+      medios_pago: mediosPagoPrevios.length > 1
+        ? mediosPagoPrevios
+        : (medioPagoCaja ? [medioPagoCaja] : []),
       estado: estadoCaja,
       equivalencia: equivalenciaCaja || 'none',
       type: typeCaja || '',

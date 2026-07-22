@@ -16,6 +16,11 @@ export const parseQueryParamList = (value) => {
     .filter(Boolean);
 };
 
+export const getCajaMediosPago = (caja) => {
+  if (Array.isArray(caja?.medios_pago) && caja.medios_pago.length > 0) return caja.medios_pago;
+  return caja?.medio_pago ? [caja.medio_pago] : [];
+};
+
 export const toNumber = (value) => {
   if (typeof value === "number") return value;
   if (value instanceof Date) return value.getTime();
