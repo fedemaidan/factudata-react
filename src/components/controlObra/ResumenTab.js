@@ -82,7 +82,9 @@ export default function ResumenTab({ obra, ejec, certs = [], empresaId }) {
 
   // Lado gastar (T2 en getEjecucion).
   const gastado = ejec?.totales?.gastado || 0;
-  const costoRef = ejec?.totales?.costo_ref || 0; // contratado o estimado, por precedencia
+  const costoRef = ejec?.totales?.costo_ref || 0; // proveedor + directo
+  const costoProveedor = ejec?.totales?.costo_proveedor || 0; // parte del proveedor (contratado o estimado)
+  const costoDirecto = ejec?.totales?.costo_directo || 0; // parte directa (materiales/gastos sueltos)
   const margen = ejec?.totales?.margen || 0; // realizado (certificado − gastado)
   const margenEsperado = ejec?.totales?.margen_esperado || 0; // proyectado (contrato − costo_ref)
 
@@ -171,7 +173,13 @@ export default function ResumenTab({ obra, ejec, certs = [], empresaId }) {
             <PaymentsIcon fontSize="small" color="action" />
             <Typography variant="subtitle2" fontWeight={700}>Gastar (proveedor)</Typography>
           </Stack>
-          <LadoRow label="Costo de referencia" value={costoRef ? fmt(costoRef) : '—'} sub="contratado o estimado" />
+          <LadoRow label="Costo de referencia" value={costoRef ? fmt(costoRef) : '—'} sub={costoDirecto > 0 ? 'proveedor + directo' : 'contratado o estimado'} />
+          {costoDirecto > 0 && (
+            <>
+              <LadoRow label="· Proveedor" value={fmt(costoProveedor)} sub="contratado o estimado" />
+              <LadoRow label="· Directo (materiales)" value={fmt(costoDirecto)} sub="se imputa suelto" />
+            </>
+          )}
           <LadoRow label="Gastado real" value={fmt(gastado)} />
           <Divider sx={{ my: 0.5 }} />
           <LadoRow label="Margen esperado" value={`${margenEsperado >= 0 ? '+' : ''}${fmt(margenEsperado)}`} color={margenEsperado >= 0 ? 'success.main' : 'error.main'} strong sub="contrato − costo de referencia" />
