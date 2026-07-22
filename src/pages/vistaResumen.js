@@ -43,6 +43,7 @@ import { useAuthContext } from 'src/contexts/auth-context'
 import { useRouter } from 'next/router'
 import { getEmpresaById, getEmpresaDetailsFromUser } from 'src/services/empresaService'
 import { getProyectosFromUser } from 'src/services/proyectosService'
+import { modoLecturaEnProyecto } from 'src/utils/permisos/accionesPorProyecto'
 import { formatTimestamp } from 'src/utils/formatters'
 import ticketService from 'src/services/ticketService'
 
@@ -623,7 +624,13 @@ function BoxSummaryPage() {
         const resumenMap = {}
         for (const r of resumen) { resumenMap[r.proyecto_id] = r }
 
-        const mapped = (proys || []).map((p) => {
+        // Read-gating por obra (TAR-393): no listar en el resumen las obras con lectura bloqueada.
+        const userLect = { ...user, empresa: { acciones: emp?.acciones || [] } }
+        const proysVisibles = (proys || []).filter(
+          (p) => modoLecturaEnProyecto(userLect, p.id || p._id) !== 'bloqueado'
+        )
+
+        const mapped = proysVisibles.map((p) => {
           const r = resumenMap[p.id || p._id] || {}
           const cajas = {
             ARS: r.ARS ?? 0,
