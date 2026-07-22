@@ -280,7 +280,10 @@ const DetallePlanPagoPage = () => {
                 <>
                   <Button size="small" variant="outlined" startIcon={<AddIcon />} onClick={() => setShowAddCuota(true)}>Agregar cuota</Button>
                   <Button size="small" variant="outlined" startIcon={<AutorenewIcon />} onClick={() => setShowPeriodicas(true)}>Periódicas</Button>
-                  <Button size="small" variant="outlined" disabled={busy} onClick={handleGenerarAvance}>Generar por avance</Button>
+                  {/* "Por avance" solo aplica dentro de una obra (devenga contra sus sub-rubros). */}
+                  {plan.control_obra_id && (
+                    <Button size="small" variant="outlined" disabled={busy} onClick={handleGenerarAvance}>Generar por avance</Button>
+                  )}
                 </>
               )}
               <Button size="small" color="error" variant="outlined" startIcon={<DeleteIcon />} onClick={() => setConfirmEliminarPlan(true)}>Eliminar plan</Button>
@@ -311,7 +314,7 @@ const DetallePlanPagoPage = () => {
             <Typography variant="subtitle1" fontWeight={600} mb={1.5}>Cronograma de cuotas</Typography>
             {cuotas.length === 0 ? (
               <Typography variant="body2" color="text.secondary">
-                Este plan todavía no tiene cuotas. Agregá una cuota, generá periódicas o generá por avance devengado del proveedor.
+                Este plan todavía no tiene cuotas. Agregá una cuota{plan.control_obra_id ? ', generá periódicas o generá por avance devengado del proveedor.' : ' o generá cuotas periódicas.'}
               </Typography>
             ) : (
               <Box sx={{ overflowX: 'auto' }}>

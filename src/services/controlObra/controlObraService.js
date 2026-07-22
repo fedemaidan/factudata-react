@@ -192,6 +192,8 @@ const ControlObraService = {
     return Array.isArray(res.data?.items) ? res.data.items : [];
   },
   crearPlanPago: async (obraId, data) => unwrap(await api.post(`${BASE}/${obraId}/planes-pago`, data)),
+  // Plan de pago suelto (sin obra): requiere proyecto_id (caja destino) y monto_total.
+  crearPlanPagoEmpresa: async (data) => unwrap(await api.post(`${BASE}/planes-pago`, data)),
 
   // Detalle de un plan de pago (con cuotas + resumen embebidos).
   getPlanPago: async (planId, empresa_id) => unwrap(await api.get(`${BASE}/planes-pago/${planId}`, { params: { empresa_id } })),

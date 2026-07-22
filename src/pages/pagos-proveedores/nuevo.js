@@ -36,6 +36,7 @@ import GridViewIcon from '@mui/icons-material/GridView';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useAuthContext } from 'src/contexts/auth-context';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
+import { getProyectosFromUser } from 'src/services/proyectosService';
 import ControlObraService from 'src/services/controlObra/controlObraService';
 import planCobroService from 'src/services/planCobroService';
 import { CuotasTableEdit } from 'src/components/planCobro/CuotasTable';
@@ -103,10 +104,13 @@ const NuevoPlanPagoPage = () => {
   // El plan de pago SIEMPRE se crea dentro de una obra: ?obra=<id> es requerido
   // (a diferencia de cobros, donde la obra es opcional). Al guardar se asocia a esa obra.
   const obraId = router.query.obra ? String(router.query.obra) : null;
+  const esSuelto = !obraId; // plan de pago suelto: sin obra, elige proyecto/caja destino
   const [step, setStep] = useState(0);
   const [empresaId, setEmpresaId] = useState(null);
   const [obra, setObra] = useState(null);
   const [obraLoading, setObraLoading] = useState(true);
+  const [proyectos, setProyectos] = useState([]);
+  const [proyectoSel, setProyectoSel] = useState(''); // caja destino para el plan suelto
   const [proveedorSel, setProveedorSel] = useState(''); // key = proveedor_id || nombre
   const [proveedorLibre, setProveedorLibre] = useState('');
   const [planData, setPlanData] = useState(defaultPlan);
@@ -144,6 +148,15 @@ const NuevoPlanPagoPage = () => {
       .catch(() => setAlert({ open: true, message: 'No se pudo cargar la obra', severity: 'error' }))
       .finally(() => setObraLoading(false));
   }, [empresaId, obraId]);
+
+  // Plan suelto: cargar los proyectos/cajas de la empresa para elegir destino.
+  useEffect(() => {
+    if (!user || !esSuelto) return;
+    getProyectosFromUser(user).then((list) => setProyectos(list || [])).catch(() => setProyectos([]));
+  }, [user, esSuelto]);
+
+  // "Por avance" solo aplica dentro de una obra (devenga contra sus sub-rubros).
+  const frecuencias = useMemo(() => (esSuelto ? FRECUENCIAS.filter((f) => f.value !== 'avance_obra') : FRECUENCIAS), [esSuelto]);
 
   const proveedores = useMemo(() => proveedoresConContrato(obra), [obra]);
   const seleccionado = proveedores.find((p) => (p.proveedor_id || p.proveedor_nombre) === proveedorSel);
@@ -274,6 +287,7 @@ const NuevoPlanPagoPage = () => {
 
   const validarStep1 = () => {
     const errs = {};
+    if (esSuelto && !proyectoSel) errs.proyecto_id = 'Elegí el proyecto/caja destino';
     if (!proveedorNombre) errs.proveedor = 'Elegí o escribí un proveedor';
     if (!planData.nombre.trim()) errs.nombre = 'El nombre es requerido';
     if (!planData.moneda) errs.moneda = 'La moneda es requerida';
@@ -339,13 +353,14 @@ const NuevoPlanPagoPage = () => {
   const handleSubmit = async () => {
     const errs = validarStep3();
     if (Object.keys(errs).length > 0) { setErrors(errs); return; }
-    if (!obraId) { setAlert({ open: true, message: 'Falta la obra de destino (?obra=...)', severity: 'error' }); return; }
+    if (esSuelto && !proyectoSel) { setAlert({ open: true, message: 'Elegí el proyecto/caja destino', severity: 'error' }); return; }
 
     setSaving(true);
     try {
-      // 1) Crear el plan de pago dentro de la obra. El backend NO tiene "confirmar":
-      //    primero se crea el plan y después se agregan las cuotas una a una.
-      const plan = await ControlObraService.crearPlanPago(obraId, {
+      // 1) Crear el plan de pago. El backend NO tiene "confirmar": primero se crea el
+      //    plan y después se agregan las cuotas una a una. Con obra queda atado a ella;
+      //    suelto, va a nivel empresa con la caja (proyecto_id) elegida y el total manual.
+      const base = {
         empresa_id: empresaId,
         proveedor_id: seleccionado ? seleccionado.proveedor_id : null,
         proveedor_nombre: proveedorNombre,
@@ -356,7 +371,10 @@ const NuevoPlanPagoPage = () => {
         usd_fuente: planData.indexacion === 'USD' ? planData.usd_fuente : null,
         fecha_base: planData.fecha_base || null,
         notas: planData.notas.trim() || null,
-      });
+      };
+      const plan = esSuelto
+        ? await ControlObraService.crearPlanPagoEmpresa({ ...base, proyecto_id: proyectoSel, monto_total: montoTotal || null })
+        : await ControlObraService.crearPlanPago(obraId, base);
       if (!plan?._id) throw new Error('No se pudo crear el plan de pago');
 
       // 2) Agregar las cuotas (secuencial: cada agregarCuota reasigna número y devenga índice).
@@ -379,17 +397,12 @@ const NuevoPlanPagoPage = () => {
 
   const monedaDisplay = planData.moneda;
 
-  if (!obraLoading && !obraId) {
+  // En modo obra, esperamos a que cargue (para tener proveedores/monto referencial).
+  if (obraId && obraLoading) {
     return (
       <Box component="main" sx={{ flexGrow: 1, py: 4 }}>
-        <Container maxWidth="md">
-          <Alert severity="warning">
-            Los planes de pago se crean dentro de una obra. Abrí este asistente desde la obra
-            (botón <strong>Nuevo plan de pago</strong>) para que se asocie correctamente.
-          </Alert>
-          <Button sx={{ mt: 2 }} variant="outlined" onClick={() => router.push('/pagos-proveedores')}>
-            Volver a Planes de pago
-          </Button>
+        <Container maxWidth="md" sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
+          <CircularProgress />
         </Container>
       </Box>
     );
@@ -405,9 +418,13 @@ const NuevoPlanPagoPage = () => {
           <Typography variant="h5" fontWeight={700} mb={1}>
             Nuevo plan de pago a proveedor
           </Typography>
-          {obra && (
+          {obra ? (
             <Typography variant="body2" color="text.secondary" mb={2}>
               Obra: <strong>{obra.titulo}</strong>
+            </Typography>
+          ) : (
+            <Typography variant="body2" color="text.secondary" mb={2}>
+              Plan suelto (sin obra) · se imputa a la caja del proyecto elegido
             </Typography>
           )}
 
@@ -425,6 +442,26 @@ const NuevoPlanPagoPage = () => {
               <Grid container spacing={4}>
                 <Grid item xs={12} md={6}>
                   <Stack spacing={3}>
+                    {/* Plan suelto: caja destino (proyecto). Con obra se hereda y no se muestra. */}
+                    {esSuelto && (
+                      <TextField
+                        select
+                        label="Proyecto / caja destino *"
+                        value={proyectoSel}
+                        onChange={(e) => { setProyectoSel(e.target.value); setErrors((p) => ({ ...p, proyecto_id: '' })); }}
+                        error={!!errors.proyecto_id}
+                        helperText={errors.proyecto_id || 'Los pagos de este plan se registran como egreso en esta caja.'}
+                        fullWidth
+                        SelectProps={{ native: true }}
+                        InputLabelProps={{ shrink: true }}
+                      >
+                        <option value="">Elegí un proyecto…</option>
+                        {proyectos.map((p) => (
+                          <option key={p.id} value={p.id}>{p.nombre}</option>
+                        ))}
+                      </TextField>
+                    )}
+
                     {/* Proveedor (en vez de cliente): candidatos = proveedores con contrato en la obra. */}
                     {proveedores.length > 0 ? (
                       <TextField
@@ -755,7 +792,7 @@ const NuevoPlanPagoPage = () => {
                             <Stack spacing={0.5}>
                               <Typography variant="caption" color="text.secondary">Frecuencia</Typography>
                               <Stack direction="row" spacing={1} flexWrap="wrap">
-                                {FRECUENCIAS.map((f) => (
+                                {frecuencias.map((f) => (
                                   <Button
                                     key={f.value}
                                     variant={generador.frecuencia === f.value ? 'contained' : 'outlined'}

@@ -4,6 +4,7 @@ import { useRouter } from 'next/router';
 import {
   Alert,
   Box,
+  Button,
   Chip,
   Container,
   FormControl,
@@ -24,6 +25,7 @@ import {
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import InboxIcon from '@mui/icons-material/Inbox';
+import AddIcon from '@mui/icons-material/Add';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useAuthContext } from 'src/contexts/auth-context';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
@@ -149,6 +151,9 @@ const PagosProveedoresList = () => {
             <Typography variant="h5" fontWeight={700}>
               Planes de Pago
             </Typography>
+            <Button variant="contained" startIcon={<AddIcon />} onClick={() => router.push('/pagos-proveedores/nuevo')}>
+              Nuevo plan
+            </Button>
           </Stack>
 
           <Stack direction="row" spacing={2} mb={3} alignItems="center" flexWrap="wrap" useFlexGap>
