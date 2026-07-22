@@ -196,6 +196,7 @@ function emptyMetrica() {
     filtro_tipo: null,
     formato: 'currency',
     color: 'default',
+    excluir: {},
   };
 }
 
@@ -236,6 +237,7 @@ function defaultBlock(type) {
         resumen_titulo: '',
         mostrar_cantidad_resumen: false,
         mostrar_sin_cotizacion: false,
+        excluir: {},
       };
     case 'budget_vs_actual':
       return {
@@ -402,6 +404,40 @@ function sanitizeExcludeValues(values = []) {
   return out;
 }
 
+function ExcludeCategoriesControl({ block, onChange, excludeOptions = {}, value, onChangeValue }) {
+  const selected = value || block?.excluir?.categorias || [];
+  const handleChange = (nextValue) => {
+    const sanitized = sanitizeExcludeValues(nextValue);
+    if (onChangeValue) {
+      onChangeValue(sanitized);
+      return;
+    }
+    onChange('excluir', { ...(block.excluir || {}), categorias: sanitized });
+  };
+
+  return (
+    <>
+      <Divider />
+      <Typography variant="subtitle2" fontWeight={600}>Ocultar categorías</Typography>
+      <Autocomplete
+        multiple
+        freeSolo
+        size="small"
+        options={excludeOptions.categorias || []}
+        filterSelectedOptions
+        value={selected}
+        onChange={(_, val) => handleChange(val)}
+        renderTags={(value, getTagProps) =>
+          value.map((option, index) => (
+            <Chip key={option} label={option} size="small" color="error" variant="outlined" {...getTagProps({ index })} />
+          ))
+        }
+        renderInput={(params) => <TextField {...params} label="Excluir categorías" placeholder="Escribí y presioná Enter" />}
+      />
+    </>
+  );
+}
+
 // ─── Componente Principal ───
 
 const BlockEditorDialog = ({
@@ -536,7 +572,7 @@ const BlockEditorDialog = ({
 
           {/* Config específica por tipo */}
           {block.type === 'metric_cards' && (
-            <MetricCardsConfig block={block} onChange={updateBlock} proyectos={proyectos} />
+            <MetricCardsConfig block={block} onChange={updateBlock} proyectos={proyectos} excludeOptions={excludeOptions} />
           )}
           {block.type === 'group_month_matrix' && (
             <GroupMonthMatrixConfig block={block} onChange={updateBlock} />
@@ -545,7 +581,7 @@ const BlockEditorDialog = ({
             <SummaryTableConfig block={block} onChange={updateBlock} excludeOptions={excludeOptions} />
           )}
           {block.type === 'movements_table' && (
-            <MovementsTableConfig block={block} onChange={updateBlock} />
+            <MovementsTableConfig block={block} onChange={updateBlock} excludeOptions={excludeOptions} />
           )}
           {block.type === 'budget_vs_actual' && (
             <BudgetVsActualConfig block={block} onChange={updateBlock} excludeOptions={excludeOptions} />
@@ -650,7 +686,7 @@ function ProyectoMultiSelect({ value = [], onChange, proyectos = [], label = 'Pr
   );
 }
 
-function MetricCardsConfig({ block, onChange, proyectos = [] }) {
+function MetricCardsConfig({ block, onChange, proyectos = [], excludeOptions = {} }) {
   const metricas = block.metricas || [];
 
   const updateMetrica = (idx, field, value) => {
@@ -823,6 +859,11 @@ function MetricCardsConfig({ block, onChange, proyectos = [] }) {
                   : `${(m.filtros_extra.proyectos).length} caja(s) seleccionada(s)`}
               />
             )}
+            <ExcludeCategoriesControl
+              excludeOptions={excludeOptions}
+              value={m.excluir?.categorias || []}
+              onChangeValue={(val) => updateMetrica(idx, 'excluir', { ...(m.excluir || {}), categorias: val })}
+            />
           </Stack>
         </Box>
       ))}
@@ -1129,7 +1170,7 @@ function SummaryTableConfig({ block, onChange, excludeOptions = {} }) {
   );
 }
 
-function MovementsTableConfig({ block, onChange }) {
+function MovementsTableConfig({ block, onChange, excludeOptions = {} }) {
   const selected = block.columnas_visibles || [];
 
   return (
@@ -1179,6 +1220,8 @@ function MovementsTableConfig({ block, onChange }) {
         }
         label="Mostrar avisos de movimientos sin cotización"
       />
+
+      <ExcludeCategoriesControl block={block} onChange={onChange} excludeOptions={excludeOptions} />
 
       <Typography variant="subtitle2" fontWeight={600}>Columnas visibles</Typography>
       <Autocomplete

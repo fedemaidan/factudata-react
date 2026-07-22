@@ -364,6 +364,7 @@ export function useReportData(user, empresaId) {
         categorias: visibleCategories,
         proveedores: getUniqueValues(movs, 'proveedor'),
         etapas: getUniqueValues(movs, 'etapa'),
+        asignados: getUniqueValues(movs, 'asignado'),
         mediosPago: getUniqueValues(movs, 'medio_pago'),
         monedas: getUniqueValues(movs, 'moneda'),
         usuarios: buildUserOptions(usuariosEmpresa, movs),

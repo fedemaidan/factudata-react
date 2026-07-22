@@ -258,6 +258,7 @@ export function useReportDataSources(user, empresaId) {
         categorias: visibleCategories,
         proveedores,
         etapas: getUniqueValues(movs, 'etapa'),
+        asignados: getUniqueValues(movs, 'asignado'),
         mediosPago: getUniqueValues(movs, 'medio_pago'),
         monedas: getUniqueValues(movs, 'moneda'),
         usuarios: buildUserOptions(usuarios, movs),

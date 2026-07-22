@@ -565,7 +565,7 @@ function resolveMovimientoUserLabel(mov, usersLookup) {
 /**
  * Filtra movimientos según filtros runtime del usuario
  * @param {Array} movimientos
- * @param {Object} filters - { fecha_from, fecha_to, proyectos[], tipo, categorias[], proveedores[], etapas[], medio_pago[], moneda_movimiento[] }
+ * @param {Object} filters - { fecha_from, fecha_to, proyectos[], tipo, categorias[], proveedores[], etapas[], asignado[], medio_pago[], moneda_movimiento[] }
  * @param {Object} extraContext - { usuariosEmpresa?: Array }
  * @returns {Array}
  */
@@ -625,6 +625,12 @@ export function filterMovimientos(movimientos, filters = {}, extraContext = {}) 
     result = result.filter((m) => set.has(normalizeFilterText(m.etapa)));
   }
 
+  // Asignado
+  if (filters.asignado?.length > 0) {
+    const set = toNormalizedSet(filters.asignado);
+    result = result.filter((m) => set.has(normalizeFilterText(m.asignado)));
+  }
+
   // Medio de pago
   if (filters.medio_pago?.length > 0) {
     const set = toNormalizedSet(filters.medio_pago);
@@ -669,6 +675,31 @@ export function filterMovimientos(movimientos, filters = {}, extraContext = {}) 
   }
 
   return result;
+}
+
+function normalizeCajaChicaText(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ');
+}
+
+function applyCajaChicaReportFilter(movimientos = []) {
+  const ajusteObs = normalizeCajaChicaText('Ajuste de comprobante de caja chica');
+  const categoriaCajaChica = normalizeCajaChicaText('Ingreso dinero de caja chica');
+
+  return movimientos.filter((mov) => {
+    const type = String(mov?.type || '').toLowerCase();
+    const observacion = normalizeCajaChicaText(mov?.observacion);
+    const categoria = normalizeCajaChicaText(mov?.categoria);
+
+    const esAjusteCajaChica = type === 'ingreso' && observacion.includes(ajusteObs);
+    const esEgresoACajaChica = type === 'egreso' && categoria === categoriaCajaChica;
+
+    return !esAjusteCajaChica && !esEgresoACajaChica;
+  });
 }
 
 /**
@@ -1058,6 +1089,11 @@ export function processMetricCards(block, movimientos, presupuestos, currencies,
         const set = toNormalizedSet(monedas);
         data = data.filter((m) => set.has(normalizeFilterText(m.moneda || 'ARS')));
       }
+    }
+
+    if (metrica.excluir?.categorias?.length > 0) {
+      const excludedCategories = toNormalizedSet(metrica.excluir.categorias);
+      data = data.filter((m) => !excludedCategories.has(normalizeCategoryFilterValue(m.categoria)));
     }
 
     // Extraer valores — calcular para cada moneda seleccionada
@@ -4192,6 +4228,9 @@ export function executeReport(reportConfig, movimientos, presupuestos = [], disp
     : [reportConfig.display_currency || 'ARS'];
   const layout = reportConfig.layout || [];
   const processorContext = { ...(extraContext || {}), reportConfig };
+  const reportMovimientos = reportConfig?.usar_caja_chica === true
+    ? applyCajaChicaReportFilter(movimientos)
+    : movimientos;
 
   return layout.map((block) => {
     const processor = BLOCK_PROCESSORS[block.type];
@@ -4200,7 +4239,7 @@ export function executeReport(reportConfig, movimientos, presupuestos = [], disp
     }
 
     try {
-      const data = processor(block, movimientos, presupuestos, currencies, cotizaciones, processorContext);
+      const data = processor(block, reportMovimientos, presupuestos, currencies, cotizaciones, processorContext);
       return { type: block.type, titulo: block.titulo || '', ocultar_en_pdf: block.ocultar_en_pdf === true, data };
     } catch (err) {
       console.error(`Error procesando bloque ${block.type}:`, err);
@@ -4224,6 +4263,7 @@ export function getUniqueValues(movimientos, campo) {
     categoria: (m) => (m?.categoria == null || m?.categoria === '' ? 'Sin categoría' : m.categoria),
     proveedor: (m) => m.nombre_proveedor,
     etapa: (m) => m.etapa,
+    asignado: (m) => m.asignado,
     proyecto: (m) => m.proyecto,
     medio_pago: (m) => m.medio_pago,
     moneda: (m) => m.moneda,
@@ -4300,6 +4340,10 @@ export function buildDefaultFilters(filtrosSchema) {
 
   if (filtrosSchema?.etapas?.enabled && filtrosSchema.etapas.default_values?.length > 0) {
     defaults.etapas = filtrosSchema.etapas.default_values;
+  }
+
+  if (filtrosSchema?.asignado?.enabled && filtrosSchema.asignado.default_values?.length > 0) {
+    defaults.asignado = filtrosSchema.asignado.default_values;
   }
 
   if (filtrosSchema?.moneda_equivalente?.enabled === true && filtrosSchema.moneda_equivalente?.default_values?.length > 0) {

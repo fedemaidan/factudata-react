@@ -79,6 +79,10 @@ function buildFiltrosTexto(filters) {
     parts.push(`Prov: ${filters.proveedores.join(', ')}`);
   }
 
+  if (filters.asignado?.length > 0) {
+    parts.push(`Asignado: ${filters.asignado.join(', ')}`);
+  }
+
   if (filters.moneda_equivalente?.length > 0) {
     parts.push(`Moneda: ${filters.moneda_equivalente.join(', ')}`);
   }
