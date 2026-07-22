@@ -105,10 +105,16 @@ const NuevoPlanPagoPage = () => {
   const router = useRouter();
   // El plan de pago SIEMPRE se crea dentro de una obra: ?obra=<id> es requerido
   // (a diferencia de cobros, donde la obra es opcional). Al guardar se asocia a esa obra.
-  const obraId = router.query.obra ? String(router.query.obra) : null;
-  const esSuelto = !obraId; // plan de pago suelto: sin obra, elige proyecto/caja destino
+  // Obra: puede venir fija por URL (?obra=, al entrar desde la obra) o elegirse
+  // acá en el asistente general. Si no hay ninguna, el plan es suelto (proyecto/caja).
+  const obraFijaId = router.query.obra ? String(router.query.obra) : null;
   const [step, setStep] = useState(0);
   const [empresaId, setEmpresaId] = useState(null);
+  const [obrasEmpresa, setObrasEmpresa] = useState([]); // para el selector de obra (asistente general)
+  const [obraSel, setObraSel] = useState(''); // obra elegida en el asistente
+  const [subrubroSel, setSubrubroSel] = useState(''); // tarea opcional dentro de la obra
+  const obraId = obraFijaId || obraSel || null;
+  const esSuelto = !obraId; // sin obra → plan suelto (elige proyecto/caja destino)
   const [obra, setObra] = useState(null);
   const [obraLoading, setObraLoading] = useState(true);
   const [proyectos, setProyectos] = useState([]);
@@ -145,13 +151,21 @@ const NuevoPlanPagoPage = () => {
 
   // Carga la obra a la que se asociará el plan (proveedores con contrato + monto referencial).
   useEffect(() => {
-    if (!empresaId || !obraId) { if (!obraId) setObraLoading(false); return; }
+    if (!empresaId || !obraId) { setObra(null); setObraLoading(false); return; }
     setObraLoading(true);
     ControlObraService.obtenerObra(obraId, empresaId)
       .then((o) => setObra(o || null))
       .catch(() => setAlert({ open: true, message: 'No se pudo cargar la obra', severity: 'error' }))
       .finally(() => setObraLoading(false));
   }, [empresaId, obraId]);
+
+  // Asistente general (sin ?obra=): lista de obras para el selector opcional.
+  useEffect(() => {
+    if (!empresaId || obraFijaId) return;
+    ControlObraService.listarObras({ empresa_id: empresaId })
+      .then((r) => setObrasEmpresa(r?.items || []))
+      .catch(() => setObrasEmpresa([]));
+  }, [empresaId, obraFijaId]);
 
   // Plan suelto: cargar los proyectos/cajas de la empresa para elegir destino.
   useEffect(() => {
@@ -171,6 +185,17 @@ const NuevoPlanPagoPage = () => {
   const proveedores = useMemo(() => proveedoresConContrato(obra), [obra]);
   const seleccionado = proveedores.find((p) => (p.proveedor_id || p.proveedor_nombre) === proveedorSel);
   const proveedorNombre = seleccionado ? seleccionado.proveedor_nombre : proveedorLibre.trim();
+
+  // Tareas (sub-rubros) de la obra elegida, para asociar el plan a una puntual.
+  const subrubrosDeObra = useMemo(() => (obra?.rubros || []).flatMap((r) =>
+    (r.subrubros || []).map((s) => ({ uid: s.uid, nombre: s.nombre, rubro: r.nombre, contrato: s.contrato_proveedor?.monto ?? null }))), [obra]);
+
+  // Al elegir una tarea, pre-llenar el total con su contrato de proveedor (si tiene).
+  useEffect(() => {
+    if (!subrubroSel) return;
+    const s = subrubrosDeObra.find((x) => x.uid === subrubroSel);
+    if (s && s.contrato != null) setPlanData((prev) => ({ ...prev, monto_total: String(s.contrato) }));
+  }, [subrubroSel, subrubrosDeObra]);
 
   // Al elegir un proveedor con contrato, pre-llenar el nombre y el total referencial
   // (suma de contratos de ese proveedor en la obra).
@@ -384,7 +409,7 @@ const NuevoPlanPagoPage = () => {
       };
       const plan = esSuelto
         ? await ControlObraService.crearPlanPagoEmpresa({ ...base, proyecto_id: proyectoSel, monto_total: montoTotal || null })
-        : await ControlObraService.crearPlanPago(obraId, base);
+        : await ControlObraService.crearPlanPago(obraId, { ...base, subrubro_uid: subrubroSel || null });
       if (!plan?._id) throw new Error('No se pudo crear el plan de pago');
 
       // 2) Agregar las cuotas (secuencial: cada agregarCuota reasigna número y devenga índice).
@@ -407,8 +432,9 @@ const NuevoPlanPagoPage = () => {
 
   const monedaDisplay = planData.moneda;
 
-  // En modo obra, esperamos a que cargue (para tener proveedores/monto referencial).
-  if (obraId && obraLoading) {
+  // Solo bloqueamos con spinner cuando la obra viene fija por URL (carga inicial).
+  // Si se elige en el asistente, la obra carga en segundo plano sin tapar el form.
+  if (obraFijaId && obraLoading) {
     return (
       <Box component="main" sx={{ flexGrow: 1, py: 4 }}>
         <Container maxWidth="md" sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
@@ -452,6 +478,45 @@ const NuevoPlanPagoPage = () => {
               <Grid container spacing={4}>
                 <Grid item xs={12} md={6}>
                   <Stack spacing={3}>
+                    {/* Asistente general: elegir obra (opcional). Al elegir una, el plan
+                        queda atado a ella y la caja la define su proyecto. */}
+                    {!obraFijaId && (
+                      <TextField
+                        select
+                        label="Obra (opcional)"
+                        value={obraSel}
+                        onChange={(e) => { setObraSel(e.target.value); setSubrubroSel(''); setErrors((p) => ({ ...p, proyecto_id: '' })); }}
+                        helperText="Dejala vacía para un plan suelto (elegís proyecto/caja). Si elegís una, se imputa a esa obra."
+                        fullWidth
+                        SelectProps={{ native: true }}
+                        InputLabelProps={{ shrink: true }}
+                      >
+                        <option value="">Sin obra (plan suelto)</option>
+                        {obrasEmpresa.map((o) => (
+                          <option key={o._id} value={o._id}>{o.titulo}</option>
+                        ))}
+                      </TextField>
+                    )}
+
+                    {/* Con obra: tarea (sub-rubro) opcional a la que queda asociado el plan. */}
+                    {obraId && subrubrosDeObra.length > 0 && (
+                      <TextField
+                        select
+                        label="Tarea de la obra (opcional)"
+                        value={subrubroSel}
+                        onChange={(e) => setSubrubroSel(e.target.value)}
+                        helperText="Si elegís una tarea, los pagos de este plan se imputan a ella."
+                        fullWidth
+                        SelectProps={{ native: true }}
+                        InputLabelProps={{ shrink: true }}
+                      >
+                        <option value="">Toda la obra (reparto entre las tareas del proveedor)</option>
+                        {subrubrosDeObra.map((s) => (
+                          <option key={s.uid} value={s.uid}>{s.rubro} · {s.nombre}</option>
+                        ))}
+                      </TextField>
+                    )}
+
                     {/* Plan suelto: caja destino (proyecto). Con obra se hereda y no se muestra. */}
                     {esSuelto && (
                       <TextField
