@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import {
-  Autocomplete, Box, Button, Card, CardContent, Chip, MenuItem, Stack, TextField,
+  Autocomplete, Box, Button, Card, CardContent, MenuItem, Stack, TextField,
   ToggleButton, ToggleButtonGroup, Typography,
 } from '@mui/material';
 import FormDrawer from 'src/components/controlObra/FormDrawer';
@@ -9,19 +9,25 @@ import ControlObraService from 'src/services/controlObra/controlObraService';
 import PresupuestoProfesionalService from 'src/services/presupuestoProfesional/presupuestoProfesionalService';
 import { getProyectosByEmpresaId } from 'src/services/proyectosService';
 
-const PERFILES = [
-  { value: 'reforma', label: 'Reforma / obra chica', desc: 'Precio cerrado, lo más simple', feats: ['sin deducciones'] },
-  { value: 'vivienda', label: 'Casa / vivienda', desc: 'Precio cerrado con anticipo', feats: ['Anticipo 10%'] },
-  { value: 'privada', label: 'Privada / desarrollo', desc: 'Indexada (desarrolladoras)', feats: ['CAC', 'Anticipo 15%'] },
-  { value: 'publica', label: 'Grande / pública', desc: 'El esquema completo', feats: ['CAC', 'Retención 5%', 'Anticipo 20%'] },
+const CAC_TIPOS = [
+  { value: 'general', label: 'General' },
+  { value: 'mano_obra', label: 'Mano de obra' },
+  { value: 'materiales', label: 'Materiales' },
 ];
+
+// Porcentaje libre: vacío = 0, se clampea a 0–100.
+const pct = (v) => Math.min(100, Math.max(0, Number(v) || 0));
 
 // Alta de obra: desde un presupuesto profesional (se arma sola) o carga manual.
 export default function NuevaObraDialog({ open, onClose, empresaId, proyectoId: proyectoIdProp = null, onCreated }) {
   const [origen, setOrigen] = useState('pp'); // 'pp' | 'manual'
   const [ppId, setPpId] = useState('');
   const [titulo, setTitulo] = useState('');
-  const [perfil, setPerfil] = useState('vivienda');
+  const [anticipoPct, setAnticipoPct] = useState('');
+  const [retencionPct, setRetencionPct] = useState('');
+  const [indexacion, setIndexacion] = useState('');
+  const [cacTipo, setCacTipo] = useState('general');
+  const [fechaBase, setFechaBase] = useState('');
   const [proyecto, setProyecto] = useState(null);
   const [rubros, setRubros] = useState([{ nombre: '', subrubros: [{ nombre: '', monto: '' }] }]);
   const [error, setError] = useState(null);
@@ -41,20 +47,30 @@ export default function NuevaObraDialog({ open, onClose, empresaId, proyectoId: 
   const proyectos = proyectosQ.data || [];
   const proyectoId = proyecto?.id || proyecto?._id || proyectoIdProp || null;
 
+  // Condiciones del contrato: van siempre explícitas (perfil 'custom' = sin preset).
+  const condiciones = {
+    perfil: 'custom',
+    anticipo_pct: pct(anticipoPct),
+    retencion_pct: pct(retencionPct),
+    indexacion: indexacion || null,
+    cac_tipo: indexacion === 'CAC' ? cacTipo : null,
+    fecha_base: indexacion === 'CAC' ? (fechaBase || null) : null,
+  };
+
   const crear = useMutation({
     mutationFn: () => {
       if (origen === 'pp') {
         if (!ppId) throw new Error('Elegí un presupuesto profesional');
-        return ControlObraService.crearObra({ empresa_id: empresaId, proyecto_id: proyectoId, perfil, origen: { tipo: 'pp', ref_id: ppId } });
+        return ControlObraService.crearObra({ empresa_id: empresaId, proyecto_id: proyectoId, ...condiciones, origen: { tipo: 'pp', ref_id: ppId } });
       }
       if (origen === 'categorias') {
         if (!titulo) throw new Error('Ingresá un título');
         return ControlObraService.crearObra({
-          empresa_id: empresaId, proyecto_id: proyectoId, titulo, perfil, origen: { tipo: 'categorias' },
+          empresa_id: empresaId, proyecto_id: proyectoId, titulo, ...condiciones, origen: { tipo: 'categorias' },
         });
       }
       return ControlObraService.crearObra({
-        empresa_id: empresaId, proyecto_id: proyectoId, titulo, perfil, origen: { tipo: 'manual' },
+        empresa_id: empresaId, proyecto_id: proyectoId, titulo, ...condiciones, origen: { tipo: 'manual' },
         rubros: rubros.map((r) => ({ nombre: r.nombre, subrubros: r.subrubros.filter((s) => s.nombre && s.monto).map((s) => ({ nombre: s.nombre, monto: Number(s.monto) })) })),
       });
     },
@@ -88,22 +104,41 @@ export default function NuevaObraDialog({ open, onClose, empresaId, proyectoId: 
           )}
 
           <Box>
-            <Typography variant="caption" color="text.secondary">Perfil de obra — define indexación CAC, retención y anticipo</Typography>
-            <Stack direction="row" flexWrap="wrap" useFlexGap gap={1} mt={0.5}>
-              {PERFILES.map((p) => (
-                <Card
-                  key={p.value} variant="outlined" onClick={() => setPerfil(p.value)}
-                  sx={{ flex: '1 1 45%', minWidth: 180, cursor: 'pointer', borderColor: perfil === p.value ? 'primary.main' : 'divider', borderWidth: perfil === p.value ? 2 : 1 }}
-                >
-                  <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
-                    <Typography variant="body2" fontWeight={600}>{p.label}</Typography>
-                    <Typography variant="caption" color="text.secondary" display="block" mb={0.5}>{p.desc}</Typography>
-                    <Stack direction="row" flexWrap="wrap" gap={0.5}>
-                      {p.feats.map((f) => <Chip key={f} size="small" label={f} variant="outlined" />)}
-                    </Stack>
-                  </CardContent>
-                </Card>
-              ))}
+            <Typography variant="caption" color="text.secondary">Condiciones del contrato — todo opcional, vacío = sin deducción</Typography>
+            <Stack direction="row" spacing={1} mt={0.5}>
+              <TextField
+                label="Anticipo %" size="small" type="number" value={anticipoPct}
+                onChange={(e) => setAnticipoPct(e.target.value)}
+                inputProps={{ min: 0, max: 100, step: 0.5 }} sx={{ flex: 1 }}
+                helperText="Se amortiza en cada certificado"
+              />
+              <TextField
+                label="Fondo de reparo %" size="small" type="number" value={retencionPct}
+                onChange={(e) => setRetencionPct(e.target.value)}
+                inputProps={{ min: 0, max: 100, step: 0.5 }} sx={{ flex: 1 }}
+                helperText="Se retiene y libera al conforme"
+              />
+            </Stack>
+            <Stack direction="row" spacing={1} mt={1}>
+              <TextField
+                select label="Indexación" size="small" value={indexacion}
+                onChange={(e) => setIndexacion(e.target.value)} sx={{ flex: 1 }}
+              >
+                <MenuItem value="">Sin indexación</MenuItem>
+                <MenuItem value="CAC">CAC</MenuItem>
+              </TextField>
+              {indexacion === 'CAC' && (
+                <>
+                  <TextField select label="Índice" size="small" value={cacTipo} onChange={(e) => setCacTipo(e.target.value)} sx={{ flex: 1 }}>
+                    {CAC_TIPOS.map((t) => <MenuItem key={t.value} value={t.value}>{t.label}</MenuItem>)}
+                  </TextField>
+                  <TextField
+                    label="Fecha base" size="small" type="date" value={fechaBase}
+                    onChange={(e) => setFechaBase(e.target.value)}
+                    InputLabelProps={{ shrink: true }} sx={{ flex: 1 }}
+                  />
+                </>
+              )}
             </Stack>
           </Box>
 
