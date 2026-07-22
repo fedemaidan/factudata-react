@@ -46,6 +46,8 @@ const ControlObraService = {
   registrarAvance: async (id, subrubroUid, empresa_id, avance_pct) => unwrap(await api.patch(`${BASE}/${id}/subrubros/${subrubroUid}/avance`, { empresa_id, avance_pct })),
   editarSubrubro: async (id, subrubroUid, empresa_id, cambios) => unwrap(await api.patch(`${BASE}/${id}/subrubros/${subrubroUid}`, { empresa_id, cambios })),
   eliminarSubrubro: async (id, subrubroUid, empresa_id) => unwrap(await api.delete(`${BASE}/${id}/subrubros/${subrubroUid}`, { params: { empresa_id } })),
+  // Carga masiva de costo_estimado. direccion: 'costo_desde_contrato' | 'contrato_desde_costo'
+  estimarCostos: async (id, empresa_id, { direccion, pct, solo_vacios = false }) => unwrap(await api.post(`${BASE}/${id}/estimar-costos`, { empresa_id, direccion, pct, solo_vacios })),
   // contrato = { proveedor_id, proveedor_nombre, monto, modalidad } | null (para borrar)
   asignarContrato: async (id, subrubroUid, empresa_id, contrato) => unwrap(await api.patch(`${BASE}/${id}/subrubros/${subrubroUid}/contrato`, { empresa_id, contrato })),
   // responsable = { user_id, nombre } | null (para borrar)
@@ -181,6 +183,59 @@ const ControlObraService = {
     unwrap(await api.post(`${BASE}/${obraId}/planes`, { empresa_id, plan_cobro_id, nombre, monto_total })),
   desasociarPlan: async (obraId, empresa_id, planId) =>
     unwrap(await api.delete(`${BASE}/${obraId}/planes/${planId}`, { params: { empresa_id } })),
+
+  /* ---------- Planes de pago a proveedores (T3, lado costo) ----------
+     Espejo outbound de los planes de cobro: 0..N por obra, cada uno con sus
+     cuotas + resumen embebidos por el backend (getPlanes ya devuelve ambos). */
+  listarPlanesPago: async (obraId, empresa_id) => {
+    const res = await api.get(`${BASE}/${obraId}/planes-pago`, { params: { empresa_id } });
+    return Array.isArray(res.data?.items) ? res.data.items : [];
+  },
+  crearPlanPago: async (obraId, data) => unwrap(await api.post(`${BASE}/${obraId}/planes-pago`, data)),
+  // Plan de pago suelto (sin obra): requiere proyecto_id (caja destino) y monto_total.
+  crearPlanPagoEmpresa: async (data) => unwrap(await api.post(`${BASE}/planes-pago`, data)),
+
+  // Detalle de un plan de pago (con cuotas + resumen embebidos).
+  getPlanPago: async (planId, empresa_id) => unwrap(await api.get(`${BASE}/planes-pago/${planId}`, { params: { empresa_id } })),
+  editarPlanPago: async (planId, empresa_id, cambios) =>
+    unwrap(await api.patch(`${BASE}/planes-pago/${planId}`, { empresa_id, cambios })),
+  eliminarPlanPago: async (planId, empresa_id) =>
+    unwrap(await api.delete(`${BASE}/planes-pago/${planId}`, { params: { empresa_id } })),
+
+  // Cuotas del plan de pago.
+  // data = { empresa_id, tipo?, descripcion?, fecha_vencimiento?, monto, subrubro_uids?, hito_pct? }
+  agregarCuotaPago: async (planId, data) => unwrap(await api.post(`${BASE}/planes-pago/${planId}/cuotas`, data)),
+  // data = { empresa_id, monto, cantidad, frecuencia?, fecha_inicio, descripcion? }
+  generarCuotasPeriodicas: async (planId, data) =>
+    unwrap(await api.post(`${BASE}/planes-pago/${planId}/cuotas/periodicas`, data)),
+  generarCuotasPorAvance: async (planId, empresa_id, fecha_vencimiento = null) =>
+    unwrap(await api.post(`${BASE}/planes-pago/${planId}/cuotas/por-avance`, { empresa_id, fecha_vencimiento })),
+  editarCuotaPago: async (planId, cuotaId, empresa_id, cambios) =>
+    unwrap(await api.patch(`${BASE}/planes-pago/${planId}/cuotas/${cuotaId}`, { empresa_id, cambios })),
+  eliminarCuotaPago: async (planId, cuotaId, empresa_id) =>
+    unwrap(await api.delete(`${BASE}/planes-pago/${planId}/cuotas/${cuotaId}`, { params: { empresa_id } })),
+  aprobarCuotaPago: async (planId, cuotaId, empresa_id) =>
+    unwrap(await api.post(`${BASE}/planes-pago/${planId}/cuotas/${cuotaId}/aprobar`, { empresa_id })),
+  // monto_parcial null => paga el saldo total. fecha_pago opcional.
+  pagarCuotaPago: async (planId, cuotaId, empresa_id, { monto_parcial = null, fecha_pago = null } = {}) =>
+    unwrap(await api.post(`${BASE}/planes-pago/${planId}/cuotas/${cuotaId}/pagar`, { empresa_id, monto_parcial, fecha_pago })),
+  revertirPagoCuota: async (planId, cuotaId, empresa_id) =>
+    unwrap(await api.post(`${BASE}/planes-pago/${planId}/cuotas/${cuotaId}/revertir`, { empresa_id })),
+
+  // Cartera cross-obra (T6): cuotas de pago a proveedores pendientes de TODAS las obras
+  // de la empresa. El backend devuelve una fila por cuota; la hoja standalone las
+  // agrupa por plan. Espejo del listado de planes de cobro.
+  listarPlanesPagoCartera: async (empresa_id) => {
+    const res = await api.get(`${BASE}/cartera/pagos-plan`, { params: { empresa_id } });
+    if (res.status !== 200) throw new Error('Error al obtener los planes de pago');
+    return Array.isArray(res.data?.items) ? res.data.items : [];
+  },
+  // TODOS los planes de pago de la empresa (cross-obra, uno por plan con resumen + obra_titulo).
+  listarPlanesPagoEmpresa: async (empresa_id) => {
+    const res = await api.get(`${BASE}/cartera/planes-pago`, { params: { empresa_id } });
+    if (res.status !== 200) throw new Error('Error al obtener los planes de pago');
+    return Array.isArray(res.data?.items) ? res.data.items : [];
+  },
 };
 
 export default ControlObraService;

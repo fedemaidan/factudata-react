@@ -157,6 +157,10 @@ async function buildDefaultGroups({ user, empresa, permisosUsuario }) {
     // Plan de cobros (PlanCobroModel) es para constructoras. En corralón no aplica.
     finanzasItems.push({ title: "Plan de cobros", path: "/cobros", icon: icon(AttachMoneyIcon) });
   }
+  if (permisosUsuario.includes("VER_PLANES_PAGO") && !esCorralon) {
+    // Planes de pago a proveedores (PlanPago, lado costo). Espejo de "Plan de cobros".
+    finanzasItems.push({ title: "Planes de pago", path: "/pagos-proveedores", icon: icon(PaymentsIcon) });
+  }
   if (esAdmin && !esCorralon) {
     // Control de presupuestos / presupuestos profesionales son de obra (constructora).
     finanzasItems.push({ title: "Control presupuestos", path: "/control-presupuestos", icon: icon(NoteAltIcon) });
