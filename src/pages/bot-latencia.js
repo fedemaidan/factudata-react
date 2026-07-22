@@ -141,7 +141,7 @@ const formatFecha = (fecha) =>
   });
 
 const formatHora = (iso) =>
-  new Date(iso).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  new Date(iso).toLocaleTimeString('es-AR', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
 // Identidad legible de una fila de métrica para títulos del drawer
 const etiquetaMetrica = (m) => {
@@ -378,53 +378,71 @@ const DetalleMetricaDrawer = ({ metrica, percentilesDisponibles, onClose, onErro
                   </Box>
                 )}
                 {registrosData && (
-                  <Table size="small" stickyHeader>
+                  <Table size="small" stickyHeader sx={{ tableLayout: 'fixed' }}>
                     <TableHead>
                       <TableRow>
-                        <TableCell>Hora</TableCell>
-                        <TableCell align="right">Duración</TableCell>
-                        <TableCell align="center">Éxito</TableCell>
-                        <TableCell>Teléfono</TableCell>
-                        <TableCell>Email</TableCell>
-                        <TableCell>Empresa</TableCell>
-                        <TableCell align="center">Conversación</TableCell>
+                        <TableCell sx={{ width: 82 }}>Hora</TableCell>
+                        <TableCell align="right" sx={{ width: 96 }}>Duración</TableCell>
+                        <TableCell>Usuario</TableCell>
+                        <TableCell sx={{ width: '22%' }}>Empresa</TableCell>
+                        <TableCell align="center" sx={{ width: 56 }} />
                       </TableRow>
                     </TableHead>
                     <TableBody>
                       {registrosData.registros.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={7} align="center" sx={{ py: 6 }}>
+                          <TableCell colSpan={5} align="center" sx={{ py: 6 }}>
                             <Typography color="text.secondary">Sin mediciones ese día</Typography>
                           </TableCell>
                         </TableRow>
                       ) : (
                         registrosData.registros.map((r) => (
                           <TableRow key={r._id} hover sx={{ opacity: loadingRegistros ? 0.5 : 1 }}>
-                            <TableCell sx={{ fontVariantNumeric: 'tabular-nums' }}>
+                            <TableCell sx={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
                               {formatHora(r.creado_en)}
                             </TableCell>
-                            <CeldaMs ms={r.duracion_ms} semaforo />
-                            <TableCell align="center">
-                              {r.exito ? (
-                                <CheckCircleIcon fontSize="small" color="success" />
-                              ) : (
-                                <Tooltip title={r.error || 'Falló'}>
-                                  <CancelIcon fontSize="small" color="error" />
-                                </Tooltip>
+                            <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
+                              <Stack direction="row" spacing={0.5} alignItems="center" justifyContent="flex-end">
+                                {!r.exito && (
+                                  <Tooltip title={r.error || 'Falló'}>
+                                    <CancelIcon sx={{ fontSize: 16 }} color="error" />
+                                  </Tooltip>
+                                )}
+                                <Box
+                                  component="span"
+                                  sx={{
+                                    fontVariantNumeric: 'tabular-nums',
+                                    fontWeight: nivelLatencia(r.duracion_ms) === 'error' ? 600 : 400,
+                                    color: `${nivelLatencia(r.duracion_ms)}.main`,
+                                    backgroundColor: (theme) =>
+                                      alpha(theme.palette[nivelLatencia(r.duracion_ms)].main, 0.08),
+                                    borderRadius: 1,
+                                    px: 0.75,
+                                    py: 0.25
+                                  }}
+                                >
+                                  {formatMs(r.duracion_ms)}
+                                </Box>
+                              </Stack>
+                            </TableCell>
+                            <TableCell sx={{ overflow: 'hidden' }}>
+                              <Typography variant="body2" sx={{ fontVariantNumeric: 'tabular-nums' }} noWrap>
+                                {r.telefono || '—'}
+                              </Typography>
+                              {r.email && (
+                                <Typography variant="caption" color="text.secondary" noWrap display="block">
+                                  {r.email}
+                                </Typography>
                               )}
                             </TableCell>
-                            <TableCell sx={{ fontVariantNumeric: 'tabular-nums' }}>{r.telefono || '—'}</TableCell>
-                            <TableCell>{r.email || '—'}</TableCell>
-                            <TableCell>
-                              {r.empresa_id ? (
-                                <Tooltip title={r.empresa_id}>
-                                  <Box component="code" sx={{ fontSize: 12 }}>{r.empresa_id.slice(0, 8)}…</Box>
-                                </Tooltip>
-                              ) : (
-                                '—'
-                              )}
+                            <TableCell sx={{ overflow: 'hidden' }}>
+                              <Tooltip title={r.empresa_nombre || r.empresa_id || ''}>
+                                <Typography variant="body2" noWrap>
+                                  {r.empresa_nombre || (r.empresa_id ? `${r.empresa_id.slice(0, 8)}…` : '—')}
+                                </Typography>
+                              </Tooltip>
                             </TableCell>
-                            <TableCell align="center">
+                            <TableCell align="center" sx={{ px: 0.5 }}>
                               {r.mensaje_id ? (
                                 <Tooltip title="Ver el mensaje en Conversaciones">
                                   <span>
@@ -443,7 +461,7 @@ const DetalleMetricaDrawer = ({ metrica, percentilesDisponibles, onClose, onErro
                                   </span>
                                 </Tooltip>
                               ) : (
-                                '—'
+                                <Typography variant="body2" color="text.disabled">—</Typography>
                               )}
                             </TableCell>
                           </TableRow>
