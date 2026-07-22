@@ -10,7 +10,7 @@ import HistoryIcon from '@mui/icons-material/History';
 import AddIcon from '@mui/icons-material/Add';
 import ImputarGastoDialog from 'src/components/controlObra/ImputarGastoDialog';
 import ReimputarMasivaDialog from 'src/components/controlObra/ReimputarMasivaDialog';
-import SubrubroAccionesMenu from 'src/components/controlObra/SubrubroAccionesMenu';
+import SubrubroDetalleDrawer from 'src/components/controlObra/SubrubroDetalleDrawer';
 import RubroAccionesMenu from 'src/components/controlObra/RubroAccionesMenu';
 import ArmadoCertificadoDrawer from 'src/components/controlObra/ArmadoCertificadoDrawer';
 import AuditoriaDrawer from 'src/components/controlObra/AuditoriaDrawer';
@@ -29,8 +29,12 @@ export default function EjecucionTab({ obra, ejec, empresaId }) {
   const [armado, setArmado] = useState(false);
   const [audit, setAudit] = useState(false);
   const [nuevoRubro, setNuevoRubro] = useState(false);
-  const [menu, setMenu] = useState({ anchorEl: null, sub: null });
+  const [detalleUid, setDetalleUid] = useState(null);
   const [rubroMenu, setRubroMenu] = useState({ anchorEl: null, rubro: null });
+  // El detalle se re-deriva de la ejecución en cada render para reflejar ediciones.
+  const detalleSub = detalleUid
+    ? (ejec?.rubros || []).flatMap((r) => r.subrubros || []).find((x) => x.uid === detalleUid)
+    : null;
   const t = ejec?.totales || {};
   const pendientesCert = (ejec?.rubros || []).flatMap((r) => r.subrubros || []).filter((s) => (s.avance_pct || 0) > (s.cert_pct || 0)).length;
 
@@ -84,7 +88,7 @@ export default function EjecucionTab({ obra, ejec, empresaId }) {
                   </TableCell>
                 </TableRow>,
                 ...(r.subrubros || []).map((s) => (
-                  <TableRow key={s.uid} hover sx={{ cursor: 'pointer' }} onClick={(e) => setMenu({ anchorEl: e.currentTarget, sub: s })}>
+                  <TableRow key={s.uid} hover sx={{ cursor: 'pointer' }} onClick={() => setDetalleUid(s.uid)}>
                     <TableCell sx={{ pl: 4 }}>
                       <Stack direction="row" spacing={0.75} alignItems="center">
                         <span>{s.nombre}</span>
@@ -156,13 +160,14 @@ export default function EjecucionTab({ obra, ejec, empresaId }) {
         onDone={() => { setMasiva(false); qc.invalidateQueries({ queryKey: ['control-obra'] }); }}
       />
 
-      <SubrubroAccionesMenu
-        obra={obra}
-        subrubro={menu.sub}
-        empresaId={empresaId}
-        anchorEl={menu.anchorEl}
-        onClose={() => setMenu({ anchorEl: null, sub: null })}
-      />
+      {detalleSub && (
+        <SubrubroDetalleDrawer
+          obra={obra}
+          subrubro={detalleSub}
+          empresaId={empresaId}
+          onClose={() => setDetalleUid(null)}
+        />
+      )}
 
       <RubroAccionesMenu
         obra={obra}
