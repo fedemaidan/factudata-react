@@ -3,6 +3,7 @@ import Head from 'next/head';
 import { useRouter } from 'next/router';
 import {
   Alert,
+  Autocomplete,
   Box,
   Button,
   Chip,
@@ -37,6 +38,7 @@ import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useAuthContext } from 'src/contexts/auth-context';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import { getProyectosFromUser } from 'src/services/proyectosService';
+import proveedorService from 'src/services/proveedorService';
 import ControlObraService from 'src/services/controlObra/controlObraService';
 import planCobroService from 'src/services/planCobroService';
 import { CuotasTableEdit } from 'src/components/planCobro/CuotasTable';
@@ -111,6 +113,8 @@ const NuevoPlanPagoPage = () => {
   const [obraLoading, setObraLoading] = useState(true);
   const [proyectos, setProyectos] = useState([]);
   const [proyectoSel, setProyectoSel] = useState(''); // caja destino para el plan suelto
+  const [proveedoresEmpresa, setProveedoresEmpresa] = useState([]); // catálogo de proveedores (plan suelto)
+  const [proveedorIdSel, setProveedorIdSel] = useState(null); // id cuando se elige uno del catálogo
   const [proveedorSel, setProveedorSel] = useState(''); // key = proveedor_id || nombre
   const [proveedorLibre, setProveedorLibre] = useState('');
   const [planData, setPlanData] = useState(defaultPlan);
@@ -154,6 +158,12 @@ const NuevoPlanPagoPage = () => {
     if (!user || !esSuelto) return;
     getProyectosFromUser(user).then((list) => setProyectos(list || [])).catch(() => setProyectos([]));
   }, [user, esSuelto]);
+
+  // Plan suelto: catálogo de proveedores de la empresa para el autocomplete.
+  useEffect(() => {
+    if (!empresaId || !esSuelto) return;
+    proveedorService.getByEmpresa(empresaId).then((list) => setProveedoresEmpresa(list || [])).catch(() => setProveedoresEmpresa([]));
+  }, [empresaId, esSuelto]);
 
   // "Por avance" solo aplica dentro de una obra (devenga contra sus sub-rubros).
   const frecuencias = useMemo(() => (esSuelto ? FRECUENCIAS.filter((f) => f.value !== 'avance_obra') : FRECUENCIAS), [esSuelto]);
@@ -362,7 +372,7 @@ const NuevoPlanPagoPage = () => {
       //    suelto, va a nivel empresa con la caja (proyecto_id) elegida y el total manual.
       const base = {
         empresa_id: empresaId,
-        proveedor_id: seleccionado ? seleccionado.proveedor_id : null,
+        proveedor_id: seleccionado ? seleccionado.proveedor_id : (esSuelto ? proveedorIdSel : null),
         proveedor_nombre: proveedorNombre,
         nombre: planData.nombre.trim() || null,
         moneda: planData.moneda,
@@ -462,41 +472,67 @@ const NuevoPlanPagoPage = () => {
                       </TextField>
                     )}
 
-                    {/* Proveedor (en vez de cliente): candidatos = proveedores con contrato en la obra. */}
-                    {proveedores.length > 0 ? (
-                      <TextField
-                        select
-                        label="Proveedor *"
-                        value={proveedorSel}
-                        onChange={(e) => { setProveedorSel(e.target.value); setErrors((p) => ({ ...p, proveedor: '' })); }}
-                        error={!!errors.proveedor}
-                        helperText={errors.proveedor || 'Proveedores con contrato en la obra. Elegí uno o cargá otro.'}
-                        fullWidth
-                        SelectProps={{ native: true }}
-                        InputLabelProps={{ shrink: true }}
-                      >
-                        <option value="">Otro (escribir a mano)</option>
-                        {proveedores.map((p) => (
-                          <option key={p.proveedor_id || p.proveedor_nombre} value={p.proveedor_id || p.proveedor_nombre}>
-                            {p.proveedor_nombre}
-                          </option>
-                        ))}
-                      </TextField>
-                    ) : (
-                      <Typography variant="body2" color="text.secondary">
-                        No hay proveedores con contrato asignado en la obra. Escribí el nombre a mano.
-                      </Typography>
-                    )}
-
-                    {!seleccionado && (
-                      <TextField
-                        label="Nombre del proveedor *"
-                        value={proveedorLibre}
-                        onChange={(e) => { setProveedorLibre(e.target.value); setErrors((p) => ({ ...p, proveedor: '' })); }}
-                        error={!!errors.proveedor}
-                        helperText={errors.proveedor}
-                        fullWidth
+                    {/* Proveedor. Plan suelto: autocomplete del catálogo de la empresa
+                        (elegir uno o escribir uno nuevo). Con obra: proveedores con contrato. */}
+                    {esSuelto ? (
+                      <Autocomplete
+                        freeSolo
+                        options={proveedoresEmpresa}
+                        getOptionLabel={(o) => (typeof o === 'string' ? o : (o?.nombre || ''))}
+                        isOptionEqualToValue={(o, v) => (o?._id || o) === (v?._id || v)}
+                        inputValue={proveedorLibre}
+                        onInputChange={(_, v, reason) => { setProveedorLibre(v); if (reason === 'input') setProveedorIdSel(null); setErrors((p) => ({ ...p, proveedor: '' })); }}
+                        onChange={(_, v) => {
+                          if (v && typeof v === 'object') { setProveedorLibre(v.nombre || ''); setProveedorIdSel(v._id || null); }
+                        }}
+                        renderInput={(params) => (
+                          <TextField
+                            {...params}
+                            label="Proveedor *"
+                            error={!!errors.proveedor}
+                            helperText={errors.proveedor || 'Elegí uno de la empresa o escribí uno nuevo.'}
+                            fullWidth
+                          />
+                        )}
                       />
+                    ) : (
+                      <>
+                        {proveedores.length > 0 ? (
+                          <TextField
+                            select
+                            label="Proveedor *"
+                            value={proveedorSel}
+                            onChange={(e) => { setProveedorSel(e.target.value); setErrors((p) => ({ ...p, proveedor: '' })); }}
+                            error={!!errors.proveedor}
+                            helperText={errors.proveedor || 'Proveedores con contrato en la obra. Elegí uno o cargá otro.'}
+                            fullWidth
+                            SelectProps={{ native: true }}
+                            InputLabelProps={{ shrink: true }}
+                          >
+                            <option value="">Otro (escribir a mano)</option>
+                            {proveedores.map((p) => (
+                              <option key={p.proveedor_id || p.proveedor_nombre} value={p.proveedor_id || p.proveedor_nombre}>
+                                {p.proveedor_nombre}
+                              </option>
+                            ))}
+                          </TextField>
+                        ) : (
+                          <Typography variant="body2" color="text.secondary">
+                            No hay proveedores con contrato asignado en la obra. Escribí el nombre a mano.
+                          </Typography>
+                        )}
+
+                        {!seleccionado && (
+                          <TextField
+                            label="Nombre del proveedor *"
+                            value={proveedorLibre}
+                            onChange={(e) => { setProveedorLibre(e.target.value); setErrors((p) => ({ ...p, proveedor: '' })); }}
+                            error={!!errors.proveedor}
+                            helperText={errors.proveedor}
+                            fullWidth
+                          />
+                        )}
+                      </>
                     )}
 
                     <TextField
