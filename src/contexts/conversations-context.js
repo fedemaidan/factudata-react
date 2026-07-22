@@ -312,15 +312,18 @@ export function ConversationsProvider({ children }) {
       );
 
       if (conversationToSelect) {
+        // Con ?messageId= en la URL (deep-link a un mensaje) el load default se
+        // saltea: la carga posicionada la hace el efecto de abajo con loadMessageById.
+        const urlMessageId = getStringParam(router.query.messageId);
         dispatch({ type: ACTIONS.SET_SCROLL_TO_MESSAGE_ID, payload: null });
         dispatch({ type: ACTIONS.SET_HIGHLIGHTED_MESSAGE_ID, payload: null });
         dispatch({ type: ACTIONS.SET_INSIGHT_MESSAGE_IDS, payload: [] });
         dispatch({ type: ACTIONS.SET_CURRENT_INSIGHT_INDEX, payload: -1 });
-        skipDefaultLoadRef.current = false;
+        skipDefaultLoadRef.current = Boolean(urlMessageId);
         dispatch({ type: ACTIONS.SET_SELECTED, payload: conversationToSelect });
       }
     }
-  }, [router.isReady, router.query.conversationId, conversations, selected]);
+  }, [router.isReady, router.query.conversationId, router.query.messageId, conversations, selected]);
 
   const {
     loadMore: loadMoreMessages,
@@ -344,6 +347,36 @@ export function ConversationsProvider({ children }) {
     highlightedMessageId,
     onHighlightedMessageIdCleared: handleHighlightedMessageIdCleared,
   });
+
+  // Deep-link a un mensaje puntual (?conversationId=X&messageId=Y): una vez que
+  // el efecto de conversationId seleccionó la conversación, carga hasta el
+  // mensaje objetivo (loadMessageById usa /jump para traer suficientes) y lo
+  // scrollea/resalta con el mecanismo existente. Vive después de useMessagesFetch
+  // porque necesita loadMessageById.
+  const urlMessageJumpRef = useRef(null);
+  useEffect(() => {
+    if (!router.isReady) {
+      return;
+    }
+    const urlConversationId = getStringParam(router.query.conversationId);
+    const urlMessageId = getStringParam(router.query.messageId);
+    if (!urlConversationId || !urlMessageId) {
+      return;
+    }
+    if (selected?.ultimoMensaje?.id_conversacion !== urlConversationId) {
+      return;
+    }
+    const clave = `${urlConversationId}|${urlMessageId}`;
+    if (urlMessageJumpRef.current === clave) {
+      return;
+    }
+    urlMessageJumpRef.current = clave;
+    dispatch({ type: ACTIONS.SET_SCROLL_TO_MESSAGE_ID, payload: urlMessageId });
+    dispatch({ type: ACTIONS.SET_HIGHLIGHTED_MESSAGE_ID, payload: urlMessageId });
+    loadMessageById(urlConversationId, urlMessageId, selected).catch((error) => {
+      console.error("Error cargando el mensaje del deep-link:", error);
+    });
+  }, [router.isReady, router.query.conversationId, router.query.messageId, selected, loadMessageById]);
 
   // Hook para cargar IDs de insights
   useInsightNavigation({

@@ -26,6 +26,7 @@ import PsychologyIcon from '@mui/icons-material/Psychology';
 import PersonSearchIcon from '@mui/icons-material/PersonSearch';
 import RocketLaunchIcon from '@mui/icons-material/RocketLaunch';
 import SettingsIcon from '@mui/icons-material/Settings';
+import SpeedIcon from '@mui/icons-material/Speed';
 import ScienceIcon from '@mui/icons-material/Science';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import TrackChangesIcon from '@mui/icons-material/TrackChanges';
@@ -146,6 +147,7 @@ const ControlPanelPage = () => {
         { title: 'Templates WhatsApp', description: 'Gestión de templates Meta', icon: WhatsAppIcon, color: 'success', path: '/templatesMeta' },
         { title: 'Eventos', description: 'Historial de eventos del sistema', icon: HistoryIcon, color: 'primary', path: '/eventos' },
         { title: 'ChatGPT Usage', description: 'Costos y consumo de API', icon: PsychologyIcon, color: 'warning', path: '/chatgpt-usage', badge: !loading && stats.chatgptMonth !== null ? `$${stats.chatgptMonth.toFixed(2)}/mes` : null },
+        { title: 'Latencia del Bot', description: 'Métricas de demora por flujo y step', icon: SpeedIcon, color: 'error', path: '/bot-latencia' },
       ],
     },
     {
