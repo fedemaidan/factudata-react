@@ -70,6 +70,7 @@ import clienteService from 'src/services/clienteService';
 import StockMaterialesService from 'src/services/stock/stockMaterialesService';
 import * as XLSX from 'xlsx';
 import { normalizePhone, isValidEmail } from 'src/utils/phone';
+import { CORRALON_ACCIONES } from 'src/constants/accionesCorralon';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 
 function escapeCsvValue(value) {
@@ -271,17 +272,7 @@ function buildCorralonPayload({ nombre, razon_social, cuit, esCliente }) {
     cuit: cuit || '',
     esCliente: Boolean(esCliente),
     fechaRegistroCliente: esCliente ? new Date().toISOString() : null,
-    acciones: [
-      'VER_CAJAS', 'CREAR_INGRESO', 'CREAR_EGRESO',
-      'VER_DRIVE', 'GESTIONAR_MOVIMIENTO',
-      'VER_CLIENTES', 'CREAR_CLIENTE',
-      'VER_COBROS', 'REGISTRAR_COBRO',
-      'VER_SUCURSALES',
-      'VER_ACOPIOS', 'CREAR_ACOPIO',
-      'VER_VENTAS_CONTRA_ENTREGA', 'CREAR_VENTA_CONTRA_ENTREGA',
-      // Stock — para que se vea la entrada en el sidebar
-      'VER_STOCK_MATERIALES', 'VER_STOCK_SOLICITUDES', 'VER_STOCK_MOVIMIENTOS',
-    ],
+    acciones: [...CORRALON_ACCIONES],
     conf_fecha: 'REAL',
     camposObligatorios: ['total'],
     categorias: CORRALON_CATEGORIAS,

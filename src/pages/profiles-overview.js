@@ -363,6 +363,11 @@ const BOOLEAN_FILTER_OPTIONS = [
     const [filtersExpanded, setFiltersExpanded] = useState(false);
     const [sortBy, setSortBy] = useState('created_at');
     const [sortDirection, setSortDirection] = useState('desc');
+    const [passwordValue, setPasswordValue] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
+    const [resetLink, setResetLink] = useState('');
+    const [securityBusy, setSecurityBusy] = useState(false);
+    const [securityFeedback, setSecurityFeedback] = useState(null);
 
     const loadData = useCallback(async () => {
       setLoading(true);
@@ -601,6 +606,58 @@ const BOOLEAN_FILTER_OPTIONS = [
       if (rowid) setSelectedRowId(rowid);
     }, []);
     const handleCloseDetail = useCallback(() => setSelectedRowId(null), []);
+
+    // Al abrir/cerrar o cambiar de perfil, limpiar el panel de seguridad.
+    useEffect(() => {
+      setPasswordValue('');
+      setShowPassword(false);
+      setResetLink('');
+      setSecurityFeedback(null);
+    }, [selectedRowId]);
+
+    const handleToggleShowPassword = useCallback(() => setShowPassword((current) => !current), []);
+
+    const handleSetPassword = useCallback(async () => {
+      if (!selectedRowId) return;
+      if (passwordValue.length < 6) {
+        setSecurityFeedback({ type: 'error', text: 'La contraseña debe tener al menos 6 caracteres' });
+        return;
+      }
+
+      setSecurityBusy(true);
+      setSecurityFeedback(null);
+      try {
+        await profileService.setUserPassword(selectedRowId, passwordValue);
+        setSecurityFeedback({ type: 'success', text: 'Contraseña actualizada correctamente' });
+        setPasswordValue('');
+        setShowPassword(false);
+      } catch (passwordError) {
+        console.error('Error al setear la contraseña:', passwordError);
+        const message = passwordError?.response?.data?.error || 'No se pudo actualizar la contraseña';
+        setSecurityFeedback({ type: 'error', text: message });
+      } finally {
+        setSecurityBusy(false);
+      }
+    }, [selectedRowId, passwordValue]);
+
+    const handleGenerateResetLink = useCallback(async () => {
+      if (!selectedRowId) return;
+
+      setSecurityBusy(true);
+      setSecurityFeedback(null);
+      setResetLink('');
+      try {
+        const result = await profileService.generatePasswordResetLink(selectedRowId);
+        setResetLink(result?.link || '');
+        setSecurityFeedback({ type: 'success', text: 'Link generado. Copialo y enviáselo al usuario.' });
+      } catch (linkError) {
+        console.error('Error al generar el link de reseteo:', linkError);
+        const message = linkError?.response?.data?.error || 'No se pudo generar el link';
+        setSecurityFeedback({ type: 'error', text: message });
+      } finally {
+        setSecurityBusy(false);
+      }
+    }, [selectedRowId]);
     const handleClearError = useCallback(() => setError(null), []);
     const handleCloseCopyMessage = useCallback(() => setCopyMessage(null), []);
 
@@ -878,6 +935,91 @@ const BOOLEAN_FILTER_OPTIONS = [
                       <Typography variant="body2">Email: {selectedRow.email || 'Sin email'}</Typography>
                       <Typography variant="body2">Teléfono: {selectedRow.phone || 'Sin teléfono'}</Typography>
                       <Typography variant="body2">Empresa: {selectedRow.empresaNombre}</Typography>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent>
+                      <Typography variant="subtitle1" fontWeight="bold" gutterBottom>Seguridad / Acceso</Typography>
+                      {selectedRow.user_id ? (
+                        <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
+                          user_id (Firebase Auth): {selectedRow.user_id}
+                        </Typography>
+                      ) : (
+                        <Alert severity="warning" sx={{ mb: 1 }}>
+                          Este perfil no tiene user_id de Firebase Auth. No se puede setear la contraseña directamente; usá el link de reseteo si tiene email.
+                        </Alert>
+                      )}
+
+                      {securityFeedback ? (
+                        <Alert severity={securityFeedback.type} sx={{ mb: 2 }} onClose={() => setSecurityFeedback(null)}>
+                          {securityFeedback.text}
+                        </Alert>
+                      ) : null}
+
+                      <Stack spacing={1.5}>
+                        <Typography variant="subtitle2">Establecer contraseña</Typography>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="Nueva contraseña"
+                          type={showPassword ? 'text' : 'password'}
+                          value={passwordValue}
+                          onChange={(event) => setPasswordValue(event.target.value)}
+                          autoComplete="new-password"
+                          helperText="Mínimo 6 caracteres. Se aplica de inmediato al usuario."
+                          InputProps={{
+                            endAdornment: (
+                              <InputAdornment position="end">
+                                <Button size="small" onClick={handleToggleShowPassword}>
+                                  {showPassword ? 'Ocultar' : 'Mostrar'}
+                                </Button>
+                              </InputAdornment>
+                            ),
+                          }}
+                        />
+                        <Box>
+                          <Button
+                            variant="contained"
+                            onClick={handleSetPassword}
+                            disabled={securityBusy || !selectedRow.user_id || passwordValue.length < 6}
+                          >
+                            {securityBusy ? 'Aplicando…' : 'Establecer contraseña'}
+                          </Button>
+                        </Box>
+
+                        <Divider sx={{ my: 1 }} />
+
+                        <Typography variant="subtitle2">Link de cambio de contraseña</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Genera un link para que el usuario elija su propia contraseña (no la fijás vos).
+                        </Typography>
+                        <Box>
+                          <Button
+                            variant="outlined"
+                            onClick={handleGenerateResetLink}
+                            disabled={securityBusy || !selectedRow.email}
+                          >
+                            {securityBusy ? 'Generando…' : 'Generar link de reseteo'}
+                          </Button>
+                        </Box>
+                        {resetLink ? (
+                          <Stack direction="row" spacing={1} alignItems="flex-start">
+                            <TextField
+                              fullWidth
+                              size="small"
+                              value={resetLink}
+                              InputProps={{ readOnly: true }}
+                              multiline
+                              maxRows={3}
+                            />
+                            <Tooltip title="Copiar link">
+                              <IconButton size="small" onClick={() => handleCopyValue(resetLink, 'Link')}>
+                                <ContentCopyIcon fontSize="inherit" />
+                              </IconButton>
+                            </Tooltip>
+                          </Stack>
+                        ) : null}
+                      </Stack>
                     </CardContent>
                   </Card>
                   <Card>

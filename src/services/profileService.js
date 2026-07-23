@@ -94,6 +94,18 @@ const profileService = {
     }
   },
 
+  // Admin: setea directamente la contraseña de otro usuario.
+  setUserPassword: async (profileId, password) => {
+    const response = await api.post(`/profile/${encodeURIComponent(profileId)}/password`, { password });
+    return response.data;
+  },
+
+  // Admin: genera un link para que el usuario resetee su contraseña.
+  generatePasswordResetLink: async (profileId) => {
+    const response = await api.post(`/profile/${encodeURIComponent(profileId)}/reset-link`);
+    return response.data;
+  },
+
   getProfileByUserId: async (userId) => {
     try {
       if (!userId) return null;
