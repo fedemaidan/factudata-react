@@ -64,22 +64,31 @@ const ReservasObraPage = () => {
   const { setBreadcrumbs } = useBreadcrumbs();
 
   const [reservas, setReservas] = useState([]);
+  const [consolidado, setConsolidado] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [alert, setAlert] = useState({ open: false, message: '', severity: 'info' });
   const [busqueda, setBusqueda] = useState('');
   const [soloActivas, setSoloActivas] = useState(true);
   const [empresaId, setEmpresaId] = useState(null);
 
-  // Dialog Asignar fondos
+  // Dialog Asignar fondos (sobre una reserva EXISTENTE; la creación es explícita)
   const [asignarOpen, setAsignarOpen] = useState(false);
   const [asignarSaving, setAsignarSaving] = useState(false);
+  const [formReserva, setFormReserva] = useState(null);
+  const [formMoneda, setFormMoneda] = useState('ARS');
+  const [formMonto, setFormMonto] = useState('');
+  const [formObs, setFormObs] = useState('');
+
+  // Dialog Nueva reserva (una obra puede tener varias, con nombre propio)
+  const [crearOpen, setCrearOpen] = useState(false);
+  const [crearSaving, setCrearSaving] = useState(false);
   const [proyectos, setProyectos] = useState([]);
   const [perfiles, setPerfiles] = useState([]);
   const [formProyecto, setFormProyecto] = useState(null);
-  const [formMoneda, setFormMoneda] = useState('ARS');
-  const [formMonto, setFormMonto] = useState('');
+  const [formNombre, setFormNombre] = useState('');
+  const [nombreEditado, setNombreEditado] = useState(false);
   const [formResponsable, setFormResponsable] = useState(null);
-  const [formObs, setFormObs] = useState('');
+  const [formParticipantes, setFormParticipantes] = useState([]);
 
   const resolveEmpresaId = useCallback(() => (
     user?.empresa?.id || user?.empresaData?.id || user?.empresa_id
@@ -89,7 +98,9 @@ const ReservasObraPage = () => {
   const accionesEmpresa = user?.empresa?.acciones || user?.empresaData?.acciones || [];
   const permisosOcultos = user?.permisosOcultos || [];
   const tienePermiso = (accion) => accionesEmpresa.includes(accion) && !permisosOcultos.includes(accion);
-  const puedeGestionar = user?.admin || tienePermiso('GESTIONAR_RESERVAS_OBRA');
+  // Gestión solo por permiso explícito (sin bypass de admin): igual que el
+  // requireGestion del backend.
+  const puedeGestionar = tienePermiso('GESTIONAR_RESERVAS_OBRA');
 
   const fetchReservas = useCallback(async () => {
     const empId = resolveEmpresaId();
@@ -104,6 +115,14 @@ const ReservasObraPage = () => {
       setAlert({ open: true, message: 'Error al cargar las reservas', severity: 'error' });
     } finally {
       setIsLoading(false);
+    }
+    // Consolidado del dueño (impacto por obra): solo para gestores; si falla no
+    // bloquea el listado.
+    try {
+      const data = await reservaObraService.consolidado(empId);
+      setConsolidado(data);
+    } catch (err) {
+      setConsolidado(null);
     }
   }, [resolveEmpresaId]);
 
@@ -121,62 +140,111 @@ const ReservasObraPage = () => {
     return () => setBreadcrumbs([]);
   }, [setBreadcrumbs]);
 
-  // Carga diferida de proyectos y perfiles para el dialog de Asignar fondos
-  const handleOpenAsignar = async () => {
-    setAsignarOpen(true);
-    if (proyectos.length === 0) {
-      try {
-        const empresa = await getEmpresaDetailsFromUser(user);
-        const empId = resolveEmpresaId();
-        const [pys, perfs] = await Promise.all([
-          getProyectosByEmpresa(empresa),
-          profileService.getProfileByEmpresa(empId),
-        ]);
-        setProyectos(pys || []);
-        setPerfiles(perfs || []);
-      } catch (err) {
-        console.error('Error cargando proyectos/perfiles:', err);
-      }
+  // Carga diferida de proyectos y perfiles (dialog Nueva reserva)
+  const cargarProyectosYPerfiles = async () => {
+    if (proyectos.length > 0) return;
+    try {
+      const empresa = await getEmpresaDetailsFromUser(user);
+      const empId = resolveEmpresaId();
+      const [pys, perfs] = await Promise.all([
+        getProyectosByEmpresa(empresa),
+        profileService.getProfileByEmpresa(empId),
+      ]);
+      setProyectos(pys || []);
+      setPerfiles(perfs || []);
+    } catch (err) {
+      console.error('Error cargando proyectos/perfiles:', err);
     }
   };
 
+  const handleOpenCrear = async () => {
+    setCrearOpen(true);
+    await cargarProyectosYPerfiles();
+  };
+
+  const nombrePerfil = (p) => [p?.firstName, p?.lastName].filter(Boolean).join(' ') || p?.phone || '';
+
+  const handleCrearReserva = async () => {
+    if (!formProyecto) {
+      setAlert({ open: true, message: 'Elegí la obra de la reserva', severity: 'warning' });
+      return;
+    }
+    const proyectoId = formProyecto._id || formProyecto.id;
+    const nombre = (formNombre || '').trim() || `Reserva de Obra · ${formProyecto.nombre}`;
+    const repetido = reservas.some(
+      (r) => r.proyecto_id === proyectoId && (r.nombre || '').trim().toLowerCase() === nombre.toLowerCase(),
+    );
+    if (repetido) {
+      setAlert({ open: true, message: `Ya existe una reserva llamada "${nombre}" en esa obra. Elegí otro nombre.`, severity: 'warning' });
+      return;
+    }
+    setCrearSaving(true);
+    try {
+      const participantes = [
+        ...formParticipantes
+          .filter((p) => !formResponsable || (p.id || p.user_id) !== (formResponsable.id || formResponsable.user_id))
+          .map((p) => ({
+            user_id: p.id || p.user_id || null,
+            user_phone: p.phone || null,
+            nombre: nombrePerfil(p),
+            rol: 'operador',
+          })),
+      ];
+      const reserva = await reservaObraService.crear({
+        empresaId,
+        proyectoId,
+        proyectoNombre: formProyecto.nombre,
+        nombre,
+        responsableId: formResponsable ? (formResponsable.id || formResponsable.user_id) : null,
+        responsableNombre: formResponsable ? nombrePerfil(formResponsable) : null,
+        participantes: formResponsable
+          ? [...participantes, {
+            user_id: formResponsable.id || formResponsable.user_id || null,
+            user_phone: formResponsable.phone || null,
+            nombre: nombrePerfil(formResponsable),
+            rol: 'responsable',
+          }]
+          : participantes,
+      });
+      setAlert({ open: true, message: `Reserva "${nombre}" creada`, severity: 'success' });
+      setCrearOpen(false);
+      setFormProyecto(null);
+      setFormNombre('');
+      setNombreEditado(false);
+      setFormResponsable(null);
+      setFormParticipantes([]);
+      await fetchReservas();
+      return reserva;
+    } catch (err) {
+      console.error('Error creando reserva:', err);
+      setAlert({ open: true, message: err?.response?.data?.error || err.message || 'Error al crear la reserva', severity: 'error' });
+      return null;
+    } finally {
+      setCrearSaving(false);
+    }
+  };
+
+  const handleOpenAsignar = () => {
+    setAsignarOpen(true);
+  };
+
   const handleAsignarFondos = async () => {
-    if (!formProyecto || !formMonto || Number(formMonto) <= 0) {
-      setAlert({ open: true, message: 'Elegí una obra y un monto mayor a 0', severity: 'warning' });
+    if (!formReserva || !formMonto || Number(formMonto) <= 0) {
+      setAlert({ open: true, message: 'Elegí una reserva y un monto mayor a 0', severity: 'warning' });
       return;
     }
     setAsignarSaving(true);
     try {
-      const proyectoId = formProyecto._id || formProyecto.id;
-      let reserva = reservas.find((r) => r.proyecto_id === proyectoId);
-      if (!reserva) {
-        reserva = await reservaObraService.crear({
-          empresaId,
-          proyectoId,
-          proyectoNombre: formProyecto.nombre,
-          responsableId: formResponsable ? (formResponsable.id || formResponsable.user_id) : null,
-          responsableNombre: formResponsable
-            ? [formResponsable.firstName, formResponsable.lastName].filter(Boolean).join(' ')
-            : null,
-          participantes: formResponsable ? [{
-            user_id: formResponsable.id || formResponsable.user_id || null,
-            user_phone: formResponsable.phone || null,
-            nombre: [formResponsable.firstName, formResponsable.lastName].filter(Boolean).join(' '),
-            rol: 'responsable',
-          }] : [],
-        });
-      }
-      await reservaObraService.asignarFondos(reserva._id || reserva.id, {
+      await reservaObraService.asignarFondos(formReserva._id || formReserva.id, {
         moneda: formMoneda,
         monto: Number(formMonto),
         observacion: formObs || null,
       });
       setAlert({ open: true, message: 'Fondos asignados a la reserva', severity: 'success' });
       setAsignarOpen(false);
-      setFormProyecto(null);
+      setFormReserva(null);
       setFormMonto('');
       setFormObs('');
-      setFormResponsable(null);
       await fetchReservas();
     } catch (err) {
       console.error('Error asignando fondos:', err);
@@ -188,11 +256,17 @@ const ReservasObraPage = () => {
 
   const reservasFiltradas = useMemo(() => {
     const ql = busqueda.toLowerCase();
-    return reservas.filter((r) => {
-      if (soloActivas && !r.activa) return false;
-      if (ql && !(r.proyecto_nombre || '').toLowerCase().includes(ql)) return false;
-      return true;
-    });
+    return reservas
+      .filter((r) => {
+        if (soloActivas && !r.activa) return false;
+        if (ql
+          && !(r.proyecto_nombre || '').toLowerCase().includes(ql)
+          && !(r.nombre || '').toLowerCase().includes(ql)) return false;
+        return true;
+      })
+      // Agrupadas por obra: una obra puede tener varias reservas.
+      .sort((a, b) => (a.proyecto_nombre || '').localeCompare(b.proyecto_nombre || '')
+        || (a.nombre || '').localeCompare(b.nombre || ''));
   }, [reservas, busqueda, soloActivas]);
 
   const totales = useMemo(() => {
@@ -228,9 +302,14 @@ const ReservasObraPage = () => {
                   Refrescar
                 </Button>
                 {puedeGestionar && (
-                  <Button variant="contained" startIcon={<AddCircleOutlineIcon />} onClick={handleOpenAsignar}>
-                    Asignar fondos
-                  </Button>
+                  <>
+                    <Button variant="outlined" startIcon={<AddCircleOutlineIcon />} onClick={handleOpenCrear}>
+                      Nueva reserva
+                    </Button>
+                    <Button variant="contained" startIcon={<AddCircleOutlineIcon />} onClick={handleOpenAsignar}>
+                      Asignar fondos
+                    </Button>
+                  </>
                 )}
               </Box>
             </Box>
@@ -261,8 +340,50 @@ const ReservasObraPage = () => {
               </Card>
             </Stack>
 
+            {/* Consolidado del dueño: impacto del reservado en la caja de cada obra */}
+            {puedeGestionar && consolidado?.obras?.length > 0 && (
+              <Paper variant="outlined" sx={{ borderRadius: 2 }}>
+                <Box sx={{ px: 2, pt: 1.5 }}>
+                  <Typography variant="subtitle2" color="text.secondary">
+                    Impacto en la caja de cada obra (Disponible = Saldo − Reservado)
+                  </Typography>
+                </Box>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Obra</TableCell>
+                      <TableCell align="right">Saldo total caja</TableCell>
+                      <TableCell align="right">Reservado</TableCell>
+                      <TableCell align="right">Disponible real</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {consolidado.obras.map((o) => (
+                      <TableRow key={o.proyecto_id} hover>
+                        <TableCell>
+                          <Typography variant="body2" fontWeight={600}>{o.proyecto_nombre || '—'}</Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {o.reservas.length === 1 ? '1 reserva' : `${o.reservas.length} reservas`}
+                          </Typography>
+                        </TableCell>
+                        <TableCell align="right">
+                          {o.saldo_caja?.ARS != null ? formatCurrency(o.saldo_caja.ARS, 'ARS') : '—'}
+                        </TableCell>
+                        <TableCell align="right" sx={{ color: 'warning.main', fontWeight: 600 }}>
+                          {formatCurrency(o.reservado?.ARS || 0, 'ARS')}
+                        </TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 600, color: (o.disponible?.ARS ?? 0) < 0 ? 'error.main' : 'success.main' }}>
+                          {o.disponible?.ARS != null ? formatCurrency(o.disponible.ARS, 'ARS') : '—'}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </Paper>
+            )}
+
             <TextField
-              placeholder="Buscar obra..."
+              placeholder="Buscar obra o reserva..."
               variant="outlined"
               size="small"
               value={busqueda}
@@ -290,7 +411,7 @@ const ReservasObraPage = () => {
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   {reservas.length === 0
-                    ? 'Usá "Asignar fondos" para crear la primera reserva de una obra'
+                    ? 'Usá "Nueva reserva" para crear la primera reserva de una obra'
                     : 'Probá ajustando la búsqueda o el filtro de activas'}
                 </Typography>
               </Paper>
@@ -299,8 +420,9 @@ const ReservasObraPage = () => {
                 <Table size="small">
                   <TableHead>
                     <TableRow>
-                      <TableCell>Obra / Proyecto</TableCell>
+                      <TableCell>Reserva / Obra</TableCell>
                       <TableCell>Responsable actual</TableCell>
+                      <TableCell>Participantes</TableCell>
                       <TableCell align="right">Saldo ARS</TableCell>
                       <TableCell align="right">Saldo USD</TableCell>
                       <TableCell>Último movimiento</TableCell>
@@ -322,39 +444,58 @@ const ReservasObraPage = () => {
                               </Avatar>
                               <Box sx={{ minWidth: 0 }}>
                                 <Typography variant="body2" fontWeight={600} noWrap>
-                                  {r.proyecto_nombre || r.nombre || '—'}
+                                  {r.nombre || r.proyecto_nombre || '—'}
                                 </Typography>
-                                {r.nombre && r.nombre !== r.proyecto_nombre && (
-                                  <Typography variant="caption" color="text.secondary" noWrap>{r.nombre}</Typography>
+                                {r.proyecto_nombre && r.nombre !== r.proyecto_nombre && (
+                                  <Typography variant="caption" color="text.secondary" noWrap>{r.proyecto_nombre}</Typography>
                                 )}
                               </Box>
                             </Stack>
                           </TableCell>
                           <TableCell>{r.responsable_nombre || '—'}</TableCell>
+                          <TableCell>
+                            <Typography variant="caption" color="text.secondary">
+                              {(r.participantes || []).map((p) => p.nombre || p.user_phone).filter(Boolean).join(', ') || '—'}
+                            </Typography>
+                          </TableCell>
                           <TableCell align="right">
                             {saldoArs === 0 ? (
                               <Typography variant="body2" color="text.secondary">$ 0</Typography>
                             ) : (
-                              <Chip
-                                label={formatCurrency(saldoArs, 'ARS')}
-                                size="small"
-                                color={saldoArs < 0 ? 'error' : 'default'}
-                                variant="outlined"
-                                sx={{ fontWeight: 600 }}
-                              />
+                              <>
+                                <Chip
+                                  label={formatCurrency(saldoArs, 'ARS')}
+                                  size="small"
+                                  color={saldoArs < 0 ? 'error' : 'default'}
+                                  variant="outlined"
+                                  sx={{ fontWeight: 600 }}
+                                />
+                                {saldoArs < 0 && (
+                                  <Typography variant="caption" color="error.main" sx={{ display: 'block' }}>
+                                    A cubrir {formatCurrency(-saldoArs, 'ARS')}
+                                  </Typography>
+                                )}
+                              </>
                             )}
                           </TableCell>
                           <TableCell align="right">
                             {saldoUsd === 0 ? (
                               <Typography variant="body2" color="text.secondary">US$ 0</Typography>
                             ) : (
-                              <Chip
-                                label={formatCurrency(saldoUsd, 'USD')}
-                                size="small"
-                                color={saldoUsd < 0 ? 'error' : 'success'}
-                                variant="outlined"
-                                sx={{ fontWeight: 600 }}
-                              />
+                              <>
+                                <Chip
+                                  label={formatCurrency(saldoUsd, 'USD')}
+                                  size="small"
+                                  color={saldoUsd < 0 ? 'error' : 'success'}
+                                  variant="outlined"
+                                  sx={{ fontWeight: 600 }}
+                                />
+                                {saldoUsd < 0 && (
+                                  <Typography variant="caption" color="error.main" sx={{ display: 'block' }}>
+                                    A cubrir {formatCurrency(-saldoUsd, 'USD')}
+                                  </Typography>
+                                )}
+                              </>
                             )}
                           </TableCell>
                           <TableCell>{r.updatedAt ? formatTimestamp(r.updatedAt) : '—'}</TableCell>
@@ -380,59 +521,126 @@ const ReservasObraPage = () => {
           </Stack>
         </Container>
 
-        {/* Dialog Asignar fondos */}
+        {/* Dialog Asignar fondos (sobre una reserva existente) */}
         <Dialog open={asignarOpen} onClose={() => setAsignarOpen(false)} maxWidth="xs" fullWidth>
           <DialogTitle>Asignar fondos a una Reserva</DialogTitle>
+          <DialogContent>
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              {reservas.filter((r) => r.activa !== false).length === 0 ? (
+                <>
+                  <Typography variant="body2" color="text.secondary">
+                    Todavía no hay reservas. Creá la primera con &quot;Nueva reserva&quot; y después asignale fondos.
+                  </Typography>
+                  <Button
+                    variant="outlined"
+                    startIcon={<AddCircleOutlineIcon />}
+                    onClick={() => { setAsignarOpen(false); handleOpenCrear(); }}
+                  >
+                    Crear reserva
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Autocomplete
+                    options={reservas.filter((r) => r.activa !== false)}
+                    getOptionLabel={(r) => {
+                      const nombre = r?.nombre || 'Reserva de Obra';
+                      return r?.proyecto_nombre && r.nombre !== r.proyecto_nombre
+                        ? `${nombre} · ${r.proyecto_nombre}` : nombre;
+                    }}
+                    groupBy={(r) => r?.proyecto_nombre || 'Sin obra'}
+                    value={formReserva}
+                    onChange={(e, val) => setFormReserva(val)}
+                    renderInput={(params) => <TextField {...params} label="Reserva" size="small" />}
+                  />
+                  <TextField
+                    select
+                    label="Moneda"
+                    value={formMoneda}
+                    onChange={(e) => setFormMoneda(e.target.value)}
+                    size="small"
+                  >
+                    <MenuItem value="ARS">ARS</MenuItem>
+                    <MenuItem value="USD">USD</MenuItem>
+                  </TextField>
+                  <TextField
+                    label="Monto"
+                    type="number"
+                    value={formMonto}
+                    onChange={(e) => setFormMonto(e.target.value)}
+                    size="small"
+                  />
+                  <TextField
+                    label="Observación"
+                    value={formObs}
+                    onChange={(e) => setFormObs(e.target.value)}
+                    size="small"
+                    multiline
+                    rows={2}
+                  />
+                  <Typography variant="caption" color="text.secondary">
+                    Asignar fondos no genera un egreso: es una separación interna del dinero de la obra.
+                  </Typography>
+                </>
+              )}
+            </Stack>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setAsignarOpen(false)}>Cancelar</Button>
+            <Button onClick={handleAsignarFondos} variant="contained" disabled={asignarSaving || !formReserva}>
+              {asignarSaving ? 'Asignando…' : 'Asignar'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Dialog Nueva reserva */}
+        <Dialog open={crearOpen} onClose={() => setCrearOpen(false)} maxWidth="xs" fullWidth>
+          <DialogTitle>Nueva Reserva de Obra</DialogTitle>
           <DialogContent>
             <Stack spacing={2} sx={{ mt: 1 }}>
               <Autocomplete
                 options={proyectos}
                 getOptionLabel={(p) => p?.nombre || ''}
                 value={formProyecto}
-                onChange={(e, val) => setFormProyecto(val)}
+                onChange={(e, val) => {
+                  setFormProyecto(val);
+                  if (!nombreEditado) setFormNombre(val ? `Reserva de Obra · ${val.nombre}` : '');
+                }}
                 renderInput={(params) => <TextField {...params} label="Obra / Proyecto" size="small" />}
               />
               <TextField
-                select
-                label="Moneda"
-                value={formMoneda}
-                onChange={(e) => setFormMoneda(e.target.value)}
+                label="Nombre de la reserva"
+                value={formNombre}
+                onChange={(e) => { setFormNombre(e.target.value); setNombreEditado(true); }}
                 size="small"
-              >
-                <MenuItem value="ARS">ARS</MenuItem>
-                <MenuItem value="USD">USD</MenuItem>
-              </TextField>
-              <TextField
-                label="Monto"
-                type="number"
-                value={formMonto}
-                onChange={(e) => setFormMonto(e.target.value)}
-                size="small"
+                helperText="Con varias reservas en la misma obra, el nombre es lo que las distingue (también en WhatsApp)."
               />
               <Autocomplete
                 options={perfiles}
-                getOptionLabel={(p) => [p?.firstName, p?.lastName].filter(Boolean).join(' ') || p?.phone || ''}
+                getOptionLabel={nombrePerfil}
                 value={formResponsable}
                 onChange={(e, val) => setFormResponsable(val)}
-                renderInput={(params) => <TextField {...params} label="Responsable (al crear la reserva)" size="small" />}
+                renderInput={(params) => <TextField {...params} label="Responsable" size="small" />}
               />
-              <TextField
-                label="Observación"
-                value={formObs}
-                onChange={(e) => setFormObs(e.target.value)}
-                size="small"
-                multiline
-                rows={2}
+              <Autocomplete
+                multiple
+                options={perfiles}
+                getOptionLabel={nombrePerfil}
+                value={formParticipantes}
+                onChange={(e, val) => setFormParticipantes(val)}
+                renderInput={(params) => (
+                  <TextField {...params} label="Participantes" size="small" helperText="Pueden gastar de esta reserva (rol operador)." />
+                )}
               />
               <Typography variant="caption" color="text.secondary">
-                Asignar fondos no genera un egreso: es una separación interna del dinero de la obra.
+                Una obra puede tener varias reservas: una general, por persona o compartida por un grupo.
               </Typography>
             </Stack>
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setAsignarOpen(false)}>Cancelar</Button>
-            <Button onClick={handleAsignarFondos} variant="contained" disabled={asignarSaving}>
-              {asignarSaving ? 'Asignando…' : 'Asignar'}
+            <Button onClick={() => setCrearOpen(false)}>Cancelar</Button>
+            <Button onClick={handleCrearReserva} variant="contained" disabled={crearSaving || !formProyecto}>
+              {crearSaving ? 'Creando…' : 'Crear reserva'}
             </Button>
           </DialogActions>
         </Dialog>

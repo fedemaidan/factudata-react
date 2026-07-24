@@ -630,10 +630,18 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
         </FormControl>
       )}
 
-      <FormControl sx={{ mt: 2 }}>
-        <Checkbox checked={cajaChicaDirecto} onChange={(e) => setCajaChicaDirecto(e.target.checked)} />
-        <ListItemText primary="Caja chica directo" />
-      </FormControl>
+      {/* Caja chica TRAZABLE deprecada (épica Reserva de Obra unificada): el toggle
+          solo se muestra mientras la empresa siga en trazable, para poder pasarla a
+          directo. Una vez en directo no se puede volver (ni activar en empresas nuevas). */}
+      {!empresa.caja_chica_directo && (
+        <FormControl sx={{ mt: 2 }}>
+          <Checkbox checked={cajaChicaDirecto} onChange={(e) => setCajaChicaDirecto(e.target.checked)} />
+          <ListItemText
+            primary="Caja chica directo"
+            secondary="El modo trazable está deprecado: al activar esto, la caja chica deja de generar movimientos compensatorios (recomendado)."
+          />
+        </FormControl>
+      )}
 
       <FormControl sx={{ mt: 2 }}>
         <Checkbox checked={soloDolar} onChange={(e) => setSoloDolar(e.target.checked)} />
