@@ -1,4 +1,4 @@
-import { Box, Card, CardContent, Tooltip, Typography } from '@mui/material';
+import { Card, CardContent, Tooltip, Typography } from '@mui/material';
 
 // Formato de plata completo (ARS) y compacto ($M / $k) — vocabulario del mock.
 export const fmt = (n) => (Number(n) || 0).toLocaleString('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 });
@@ -28,8 +28,10 @@ export const valorizarPesos = (n, info) => {
   return base;
 };
 
-// Formatea un monto según su moneda: ARS con "$"; nativo como "<n> <moneda>".
-export const fmtMoneda = (n, info) => (esMonedaNativa(info) ? `${fmtNum(n)} ${monedaLabel(info)}` : fmt(n));
+// Formatea un monto según su moneda: ARS con "$"; nativo como "<n> <MONEDA>" (código
+// corto "8.896 CAC" / "50 USD"). Sin chip: el sufijo en texto es claro y legible. El
+// subíndice CAC (general/mano_obra) y el equivalente en pesos van en el tooltip.
+export const fmtMoneda = (n, info) => (esMonedaNativa(info) ? `${fmtNum(n)} ${info.moneda}` : fmt(n));
 
 // Moneda "de la obra" para los agregados (totales/KPIs): CAC si está indexada, si no
 // USD/ARS. Los sub-rubros pueden tener monedas mezcladas — esto es la moneda declarada
@@ -41,23 +43,6 @@ export const obraMonedaInfo = (obra) => {
   return null; // ARS
 };
 
-// Chip chico de moneda; en nativo muestra el equivalente en pesos en el tooltip.
-export function MonedaChip({ info }) {
-  if (!esMonedaNativa(info)) return null;
-  return (
-    <Box
-      component="span"
-      sx={{
-        ml: 0.5, px: 0.5, py: 0.1, borderRadius: 0.5, fontSize: '0.65rem', fontWeight: 600,
-        bgcolor: info.moneda === 'USD' ? 'success.light' : 'info.light',
-        color: info.moneda === 'USD' ? 'success.contrastText' : 'info.contrastText',
-        verticalAlign: 'middle', whiteSpace: 'nowrap',
-      }}
-    >
-      {monedaLabel(info)}
-    </Box>
-  );
-}
 
 export const fmtM = (n) => {
   const v = Number(n) || 0;
