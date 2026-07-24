@@ -8,7 +8,7 @@
  * cotizacion_snapshot (el valor del momento en que se agregaron, no el actual).
  */
 
-import { snapshotCacIndice } from 'src/utils/cac/pickCac';
+import { snapshotCacIndice } from '../cac/pickCac';
 
 const num = (v) => {
   const n = Number(v);

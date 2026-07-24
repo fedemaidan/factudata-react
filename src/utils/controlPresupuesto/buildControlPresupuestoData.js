@@ -1,5 +1,5 @@
 import dayjs from 'dayjs';
-import { pickCac } from '../cac/pickCac';
+import { equivalenciaCac } from '../cac/pickCac';
 
 /**
  * Construye el objeto `data` que consumen las plantillas de Control de Presupuesto
@@ -105,7 +105,7 @@ export function buildControlPresupuestoData({
     // La equivalencia guardada es una variante {legacy,estimado,automatico} → se elige la del modo.
     equivOf = (m) => {
       const eq = eqOf(m);
-      const guardado = pickCac(eq.cac, cacModo);
+      const guardado = equivalenciaCac(eq, cacTipo, cacModo);
       if (guardado != null) return num(guardado);
       const pesos = num(eq.ars) || num(m.total);
       return cotizCac > 0 ? pesos / cotizCac : 0;

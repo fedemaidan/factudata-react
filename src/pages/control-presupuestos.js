@@ -117,7 +117,7 @@ import PresupuestoDrawer from 'src/components/PresupuestoDrawer';
 import ExportarPdfMenu from 'src/components/plantillasPdf/ExportarPdfMenu';
 import ExportarExcelMenu from 'src/components/plantillasPdf/ExportarExcelMenu';
 import { buildControlPresupuestoData } from 'src/utils/controlPresupuesto/buildControlPresupuestoData';
-import { snapshotCacIndice } from 'src/utils/cac/pickCac';
+import { snapshotCacIndice, equivalenciaCac } from 'src/utils/cac/pickCac';
 import Tooltip from '@mui/material/Tooltip';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import CloseIcon from '@mui/icons-material/Close';
@@ -2683,7 +2683,10 @@ const ControlPresupuestosPage = () => {
                             )}
                             {movDrawerEquiv.cac && (
                               <TableCell align="right" sx={{ whiteSpace: 'nowrap', color: 'secondary.main' }}>
-                                {eq.cac != null ? Number(eq.cac).toLocaleString('es-AR', { maximumFractionDigits: 2 }) : '—'}
+                                {(() => {
+                                  const eqCac = equivalenciaCac(eq, 'general', cacModo);
+                                  return eqCac != null ? Number(eqCac).toLocaleString('es-AR', { maximumFractionDigits: 2 }) : '—';
+                                })()}
                               </TableCell>
                             )}
                           </TableRow>

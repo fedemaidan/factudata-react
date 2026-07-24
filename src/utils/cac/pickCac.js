@@ -27,4 +27,18 @@ export function snapshotCacIndice(snapshot, cacTipo = 'general', modo = 'legacy'
   return snapshot.cac_indice ?? viejoPorTipo ?? (typeof snapshot.cac === 'number' ? snapshot.cac : null);
 }
 
+// Equivalencia CAC de un nivel de equivalencias de movimiento (total/subtotal), según el
+// subíndice del presupuesto y el modo de la empresa. Soporta el shape nuevo (variantes por
+// subíndice: cac / cac_mano_obra / cac_materiales como {legacy,estimado,automatico}) y el
+// viejo (números). Si falta el campo del subíndice, cae al general (movs pre-subíndices).
+export function equivalenciaCac(eqNivel, cacTipo = 'general', modo = 'legacy') {
+  if (!eqNivel) return null;
+  const campo = cacTipo === 'mano_obra' ? 'cac_mano_obra'
+    : cacTipo === 'materiales' ? 'cac_materiales'
+    : 'cac';
+  const v = pickCac(eqNivel[campo], modo);
+  if (v != null) return v;
+  return campo === 'cac' ? null : pickCac(eqNivel.cac, modo);
+}
+
 export default pickCac;
