@@ -133,6 +133,38 @@ const BOOLEAN_FILTER_OPTIONS = [
     return `${Math.round(seconds / 60)} minutos`;
   }
 
+  // Idem para el timeout por inactividad (null = default global 7 días, 0 = sin límite).
+  const SESSION_IDLE_OPTIONS = [
+    { key: 'default', label: 'Default global (7 días)', seconds: null },
+    { key: 'none', label: 'Sin límite', seconds: 0 },
+    { key: '900', label: '15 minutos', seconds: 900 },
+    { key: '1800', label: '30 minutos', seconds: 1800 },
+    { key: '3600', label: '1 hora', seconds: 3600 },
+    { key: '14400', label: '4 horas', seconds: 14400 },
+    { key: '43200', label: '12 horas', seconds: 43200 },
+    { key: '86400', label: '1 día', seconds: 86400 },
+    { key: 'custom', label: 'Personalizado (minutos)', seconds: null },
+  ];
+
+  const SESSION_IDLE_PRESET_SECONDS = new Set([900, 1800, 3600, 14400, 43200, 86400]);
+
+  function idleSecondsToKey(seconds) {
+    if (seconds == null) return 'default';
+    if (seconds === 0) return 'none';
+    if (SESSION_IDLE_PRESET_SECONDS.has(seconds)) return String(seconds);
+    return 'custom';
+  }
+
+  function describeIdleTimeout(seconds) {
+    if (seconds == null) return 'Default global (7 días)';
+    if (seconds === 0) return 'Sin límite';
+    const match = SESSION_IDLE_OPTIONS.find((option) => option.seconds === seconds);
+    if (match) return match.label;
+    if (seconds % 86400 === 0) return `${seconds / 86400} días`;
+    if (seconds % 3600 === 0) return `${seconds / 3600} horas`;
+    return `${Math.round(seconds / 60)} minutos`;
+  }
+
   function normalizeText(value) {
     return String(value ?? '').trim().toLowerCase();
   }
@@ -413,6 +445,9 @@ const BOOLEAN_FILTER_OPTIONS = [
     const [sessionKey, setSessionKey] = useState('default');
     const [sessionCustomMinutes, setSessionCustomMinutes] = useState('');
     const [savingSession, setSavingSession] = useState(false);
+    const [idleKey, setIdleKey] = useState('default');
+    const [idleCustomMinutes, setIdleCustomMinutes] = useState('');
+    const [savingIdle, setSavingIdle] = useState(false);
     const [passwordValue, setPasswordValue] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [resetLink, setResetLink] = useState('');
@@ -788,7 +823,7 @@ const BOOLEAN_FILTER_OPTIONS = [
       }
     }, [selectionCloseInfo]);
 
-    // Sincroniza el Select de duración con el perfil abierto en el drawer.
+    // Sincroniza los Select de seguridad con el perfil abierto en el drawer.
     useEffect(() => {
       if (!selectedRow) return;
       const seconds = selectedRow.session_max_seconds;
@@ -796,6 +831,13 @@ const BOOLEAN_FILTER_OPTIONS = [
       setSessionCustomMinutes(
         seconds != null && seconds > 0 && !SESSION_PRESET_SECONDS.has(seconds)
           ? String(Math.round(seconds / 60))
+          : ''
+      );
+      const idle = selectedRow.session_idle_seconds;
+      setIdleKey(idleSecondsToKey(idle));
+      setIdleCustomMinutes(
+        idle != null && idle > 0 && !SESSION_IDLE_PRESET_SECONDS.has(idle)
+          ? String(Math.round(idle / 60))
           : ''
       );
     }, [selectedRow]);
@@ -829,6 +871,36 @@ const BOOLEAN_FILTER_OPTIONS = [
         setSavingSession(false);
       }
     }, [selectedRow, sessionKey, sessionCustomMinutes]);
+
+    const handleIdleKeyChange = useCallback((event) => setIdleKey(event.target.value), []);
+    const handleIdleCustomMinutesChange = useCallback((event) => setIdleCustomMinutes(event.target.value), []);
+
+    const handleSaveIdleTimeout = useCallback(async () => {
+      if (!selectedRow) return;
+      let seconds;
+      if (idleKey === 'custom') {
+        const minutes = Number(idleCustomMinutes);
+        if (!Number.isFinite(minutes) || minutes <= 0) {
+          setError('Ingresá una cantidad de minutos válida para la inactividad.');
+          return;
+        }
+        seconds = Math.floor(minutes) * 60;
+      } else {
+        seconds = SESSION_IDLE_OPTIONS.find((option) => option.key === idleKey)?.seconds ?? null;
+      }
+      setSavingIdle(true);
+      setError(null);
+      try {
+        await profileService.updateIdleTimeout(selectedRow.id, seconds);
+        setRows((current) => current.map((row) => (row.id === selectedRow.id ? { ...row, session_idle_seconds: seconds } : row)));
+        setCopyMessage('Timeout por inactividad actualizado.');
+      } catch (saveError) {
+        console.error('Error al actualizar el timeout por inactividad:', saveError);
+        setError(saveError?.response?.data?.error || 'No se pudo actualizar el timeout por inactividad.');
+      } finally {
+        setSavingIdle(false);
+      }
+    }, [selectedRow, idleKey, idleCustomMinutes]);
 
     const handleExportCsv = useCallback(() => {
       const csvRows = [
@@ -1186,6 +1258,36 @@ const BOOLEAN_FILTER_OPTIONS = [
                         <Box>
                           <Button variant="contained" onClick={handleSaveSessionDuration} disabled={savingSession}>
                             {savingSession ? 'Guardando…' : 'Guardar duración'}
+                          </Button>
+                        </Box>
+
+                        <Divider />
+
+                        <Typography variant="body2" color="text.secondary">
+                          Tras cuánto tiempo <strong>sin actividad</strong> se cierra la sesión (cuenta desde la última acción del usuario en el sistema). Actual: <strong>{describeIdleTimeout(selectedRow.session_idle_seconds)}</strong>.
+                        </Typography>
+                        <FormControl fullWidth size="small">
+                          <InputLabel>Inactividad</InputLabel>
+                          <Select label="Inactividad" value={idleKey} onChange={handleIdleKeyChange}>
+                            {SESSION_IDLE_OPTIONS.map((option) => (
+                              <MenuItem key={option.key} value={option.key}>{option.label}</MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                        {idleKey === 'custom' ? (
+                          <TextField
+                            fullWidth
+                            size="small"
+                            type="number"
+                            label="Minutos"
+                            value={idleCustomMinutes}
+                            onChange={handleIdleCustomMinutesChange}
+                            inputProps={{ min: 1 }}
+                          />
+                        ) : null}
+                        <Box>
+                          <Button variant="contained" onClick={handleSaveIdleTimeout} disabled={savingIdle}>
+                            {savingIdle ? 'Guardando…' : 'Guardar inactividad'}
                           </Button>
                         </Box>
                       </Stack>

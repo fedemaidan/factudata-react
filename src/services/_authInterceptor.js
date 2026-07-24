@@ -1,5 +1,17 @@
-import { signOut as firebaseSignOut } from 'firebase/auth';
 import { auth } from 'src/config/firebase';
+import { markActivity, forceSessionLogout } from './sessionActivity';
+
+// Pollers de fondo que NO deben contar como actividad del usuario (para el idle
+// timeout): el refresh de usuario cada 30 min y el sync de conversaciones cada 30s.
+// Se detectan por URL; si matchean, se marcan con el header X-Background para que
+// el backend tampoco los cuente. (Créditos y version-check van por Firestore, no
+// por esta API, así que no hace falta listarlos.)
+const BACKGROUND_URL_PATTERNS = ['/profile/user/', '/conversaciones/sync'];
+const isBackgroundRequest = config => {
+  if (config?.headers?.['X-Background'] === '1' || config?.headers?.['x-background'] === '1') return true;
+  const url = config?.url || '';
+  return BACKGROUND_URL_PATTERNS.some(pattern => url.includes(pattern));
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Interceptores de auth compartidos por TODAS las instancias de axios.
@@ -85,6 +97,14 @@ export const attachAuthInterceptors = api => {
         if (token) {
           config.headers['Authorization'] = `Bearer ${token}`;
         }
+
+        // Actividad = request de usuario que pega a la API. Los de fondo se marcan
+        // con X-Background (para que el backend tampoco los cuente) y no resetean el idle.
+        if (isBackgroundRequest(config)) {
+          config.headers['X-Background'] = '1';
+        } else {
+          markActivity();
+        }
       } catch (error) {
         const fallbackToken = window.localStorage.getItem('authToken');
         if (fallbackToken) {
@@ -103,19 +123,12 @@ export const attachAuthInterceptors = api => {
     async error => {
       const originalRequest = error.config;
 
-      // Sesión invalidada app-level (duración vencida o cierre por admin). Refrescar
-      // el token NO ayuda: el token nuevo mantiene el mismo auth_time y seguiría 401.
-      // Cortamos antes del retry y deslogueamos de verdad.
+      // Sesión invalidada app-level (duración vencida, cierre por admin o inactividad).
+      // Refrescar el token NO ayuda: el token nuevo mantiene el mismo auth_time y
+      // seguiría 401. Cortamos antes del retry y deslogueamos de verdad.
       const sessionCode = error?.response?.data?.code;
-      if (sessionCode === 'SESSION_REVOKED' || sessionCode === 'SESSION_EXPIRED') {
-        await firebaseSignOut(auth).catch(() => {});
-        if (typeof window !== 'undefined') {
-          window.localStorage.removeItem('authToken');
-          window.localStorage.removeItem('MY_APP_STATE');
-          if (!window.location.pathname.startsWith('/auth')) {
-            window.location.href = '/auth/login';
-          }
-        }
+      if (sessionCode === 'SESSION_REVOKED' || sessionCode === 'SESSION_EXPIRED' || sessionCode === 'SESSION_IDLE') {
+        await forceSessionLogout();
         return Promise.reject(error);
       }
 

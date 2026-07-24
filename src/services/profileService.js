@@ -134,6 +134,14 @@ const profileService = {
     );
     return response.data;
   },
+
+  updateIdleTimeout: async (profileId, sessionIdleSeconds) => {
+    const response = await api.put(
+      `/profile/${encodeURIComponent(profileId)}/idle-timeout`,
+      { session_idle_seconds: sessionIdleSeconds }
+    );
+    return response.data;
+  },
 };
 
 export default profileService;
