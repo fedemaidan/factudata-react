@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Box, Button, Card, CardContent, Chip, IconButton, LinearProgress, Stack, Table, TableBody,
-  TableCell, TableHead, TableRow, TextField, Typography,
+  TableCell, TableHead, TableRow, TextField, Tooltip, Typography,
 } from '@mui/material';
 import FormDrawer from 'src/components/controlObra/FormDrawer';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
@@ -15,7 +15,7 @@ import RubroAccionesMenu from 'src/components/controlObra/RubroAccionesMenu';
 import ArmadoCertificadoDrawer from 'src/components/controlObra/ArmadoCertificadoDrawer';
 import AuditoriaDrawer from 'src/components/controlObra/AuditoriaDrawer';
 import ControlObraService from 'src/services/controlObra/controlObraService';
-import { fmt } from 'src/components/controlObra/ui';
+import { fmt, fmtMoneda, MonedaChip, esMonedaNativa, valorizarPesos } from 'src/components/controlObra/ui';
 
 const margenColor = (m) => (m >= 0 ? 'success.main' : 'error.main');
 const fmtFecha = (d) => (d ? new Date(d).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', timeZone: 'UTC' }) : '—');
@@ -107,7 +107,15 @@ export default function EjecucionTab({ obra, ejec, empresaId }) {
                         </Typography>
                       )}
                     </TableCell>
-                    <TableCell align="right">{fmt(s.contrato)}</TableCell>
+                    <TableCell align="right">
+                      {esMonedaNativa(s.moneda_info)
+                        ? (
+                          <Tooltip title={`≈ ${fmt(valorizarPesos(s.contrato, s.moneda_info))} (valorizado)`} arrow>
+                            <span>{fmtMoneda(s.contrato, s.moneda_info)}<MonedaChip info={s.moneda_info} /></span>
+                          </Tooltip>
+                        )
+                        : fmt(s.contrato)}
+                    </TableCell>
                     <TableCell>
                       <Stack direction="row" spacing={1} alignItems="center">
                         <Box sx={{ flex: 1 }}><LinearProgress variant="determinate" value={Math.min(s.avance_pct, 100)} sx={{ height: 6, borderRadius: 3 }} /></Box>
@@ -216,11 +224,15 @@ function CostoCell({ s }) {
   } else {
     caption = contratado != null ? 'contratado' : 'estimado';
   }
+  const cInfo = s.costo_moneda_info;
+  const nativa = esMonedaNativa(cInfo);
   return (
     <TableCell align="right">
-      <Typography variant="body2" component="span" sx={{ fontStyle: soloEstimado ? 'italic' : 'normal' }}>
-        {fmt(total)}
-      </Typography>
+      <Tooltip title={nativa ? `≈ ${fmt(valorizarPesos(total, cInfo))} (valorizado)` : ''} arrow disableHoverListener={!nativa}>
+        <Typography variant="body2" component="span" sx={{ fontStyle: soloEstimado ? 'italic' : 'normal' }}>
+          {nativa ? fmtMoneda(total, cInfo) : fmt(total)}<MonedaChip info={cInfo} />
+        </Typography>
+      </Tooltip>
       <Typography variant="caption" display="block" sx={{ color: captionColor }}>{caption}</Typography>
     </TableCell>
   );

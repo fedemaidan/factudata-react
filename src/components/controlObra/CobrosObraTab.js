@@ -14,7 +14,10 @@ import planCobroService from 'src/services/planCobroService';
 import ControlObraService from 'src/services/controlObra/controlObraService';
 import ConfirmDialog from 'src/components/controlObra/ConfirmDialog';
 
-const money = (n, moneda) => (n || 0).toLocaleString('es-AR', { style: 'currency', currency: moneda === 'USD' ? 'USD' : 'ARS', maximumFractionDigits: 0 });
+// CAC no es una moneda ISO: se muestra como "<n> CAC" (unidades), no con "$".
+const money = (n, moneda) => (moneda === 'CAC'
+  ? `${(Number(n) || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })} CAC`
+  : (n || 0).toLocaleString('es-AR', { style: 'currency', currency: moneda === 'USD' ? 'USD' : 'ARS', maximumFractionDigits: 0 }));
 
 // Pestaña "Cobros" de la obra: muestra el/los plan(es) de cobro asociados (0..N).
 // "Nuevo plan" abre el asistente de creación con la obra ya asignada; "Asociar

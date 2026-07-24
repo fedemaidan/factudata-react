@@ -18,8 +18,7 @@ import ReportesTab from 'src/components/controlObra/ReportesTab';
 import ResumenTab from 'src/components/controlObra/ResumenTab';
 import AsociarProyecto from 'src/components/controlObra/AsociarProyecto';
 import SinPermisoControlObra, { puedeVerControlObra } from 'src/components/controlObra/AccesoControlObra';
-
-const fmt = (n) => (Number(n) || 0).toLocaleString('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 });
+import { fmtMoneda, obraMonedaInfo, monedaLabel } from 'src/components/controlObra/ui';
 
 function ObraDetallePage() {
   const router = useRouter();
@@ -63,7 +62,15 @@ function ObraDetallePage() {
           </MuiLink>
           {obra && (
             <Stack direction="row" spacing={1.5} alignItems="center">
-              <Typography variant="body2" color="text.secondary">Contrato {fmt(obra.total_contrato)} · Perfil {obra.perfil}</Typography>
+              <Typography variant="body2" color="text.secondary">Contrato {fmtMoneda(obra.total_contrato, obraMonedaInfo(obra))} · Perfil {obra.perfil}</Typography>
+              {/* Moneda de la obra — visible en todas las tabs. CAC/USD se muestran en
+                  unidades nativas; los montos de cada tab van en esta moneda. */}
+              <Chip
+                size="small"
+                variant="outlined"
+                color={obraMonedaInfo(obra) ? (obra.moneda === 'USD' ? 'success' : 'info') : 'default'}
+                label={`Moneda: ${monedaLabel(obraMonedaInfo(obra))}`}
+              />
               <AsociarProyecto obra={obra} empresaId={empresaId} />
               <Chip size="small" label={obra.estado} color={obra.estado === 'activa' ? 'info' : 'default'} />
             </Stack>

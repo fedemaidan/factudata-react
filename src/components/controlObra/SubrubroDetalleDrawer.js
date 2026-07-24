@@ -11,7 +11,7 @@ import PersonOutlineIcon from '@mui/icons-material/PersonOutline';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import FormDrawer from 'src/components/controlObra/FormDrawer';
-import { fmt } from 'src/components/controlObra/ui';
+import { fmt, fmtMoneda, esMonedaNativa, valorizarPesos, monedaLabel } from 'src/components/controlObra/ui';
 import NuevoCertificadoDialog from 'src/components/controlObra/NuevoCertificadoDialog';
 import ImputarGastoDialog from 'src/components/controlObra/ImputarGastoDialog';
 import EditarTareaDrawer from 'src/components/controlObra/EditarTareaDrawer';
@@ -85,8 +85,17 @@ export default function SubrubroDetalleDrawer({ obra, subrubro: s, empresaId, on
           {/* Cabecera-resumen: números clave */}
           <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2 }}>
             <Stack direction="row" flexWrap="wrap" useFlexGap rowGap={1.5}>
-              <Metric label="Contrato cliente" value={fmt(s.contrato)} />
-              <Metric label="Costo de referencia" value={s.costo_ref != null ? fmt(s.costo_ref) : '—'} sub={costoResumen} color={s.sobrecosto ? 'error.main' : undefined} />
+              <Metric
+                label="Contrato cliente"
+                value={fmtMoneda(s.contrato, s.moneda_info)}
+                sub={esMonedaNativa(s.moneda_info) ? `≈ ${fmt(valorizarPesos(s.contrato, s.moneda_info))} · ${monedaLabel(s.moneda_info)}` : undefined}
+              />
+              <Metric
+                label="Costo de referencia"
+                value={s.costo_ref != null ? fmtMoneda(s.costo_ref, s.costo_moneda_info) : '—'}
+                sub={esMonedaNativa(s.costo_moneda_info) && s.costo_ref != null ? `≈ ${fmt(valorizarPesos(s.costo_ref, s.costo_moneda_info))} · ${costoResumen}` : costoResumen}
+                color={s.sobrecosto ? 'error.main' : undefined}
+              />
               <Metric label="Gastado real" value={fmt(s.gastado)} color={s.sobrecosto ? 'error.main' : undefined} />
               <Metric label="Certificado" value={fmt(s.certificado)} />
               <Metric label="Margen esperado" value={s.margen_esperado != null ? signo(s.margen_esperado) : '—'} color={s.margen_esperado != null ? margenColor(s.margen_esperado) : undefined} />

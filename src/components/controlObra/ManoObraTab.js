@@ -10,7 +10,10 @@ import FormDrawer from 'src/components/controlObra/FormDrawer';
 import ControlObraService from 'src/services/controlObra/controlObraService';
 
 const fmt = (n) => (Number(n) || 0).toLocaleString('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 });
-const money = (n, moneda) => (Number(n) || 0).toLocaleString('es-AR', { style: 'currency', currency: moneda === 'USD' ? 'USD' : 'ARS', maximumFractionDigits: 0 });
+// CAC no es una moneda ISO: se muestra como "<n> CAC" (unidades), no con "$".
+const money = (n, moneda) => (moneda === 'CAC'
+  ? `${(Number(n) || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })} CAC`
+  : (Number(n) || 0).toLocaleString('es-AR', { style: 'currency', currency: moneda === 'USD' ? 'USD' : 'ARS', maximumFractionDigits: 0 }));
 const COLOR = { borrador: 'default', aprobada: 'info', pagada: 'success', anulada: 'error' };
 const MODALIDAD_LBL = { avance_fisico: 'avance físico', certificado: 'certificado' };
 
