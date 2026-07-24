@@ -3,7 +3,7 @@ import { subDays, addDays } from 'date-fns';
 import { useRouter } from 'next/router';
 import { toJsDate } from 'src/utils/dateSerde';
 
-import { parseQueryParamList, FILTER_ARRAY_KEYS, FILTER_DATE_KEYS, defaultMovimientosFilters } from 'src/utils/parseData';
+import { parseQueryParamList, FILTER_ARRAY_KEYS, FILTER_DATE_KEYS, defaultMovimientosFilters, getCajaMediosPago } from 'src/utils/parseData';
 import { safeRouterReplace } from 'src/utils/safeRouter';
 
 const DEBUG_CAJA_FILTERS = process.env.NODE_ENV !== 'production';
@@ -340,7 +340,8 @@ export function useMovimientosFilters({
       const caja = filters.caja;
       if (!caja) return true;
       const monedaOk = !caja.moneda || mov.moneda === caja.moneda;
-      const medioOk = !caja.medio_pago || mov.medio_pago === caja.medio_pago;
+      const mediosCaja = getCajaMediosPago(caja);
+      const medioOk = mediosCaja.length === 0 || mediosCaja.includes(mov.medio_pago);
       const estadoOk = !caja.estado || mov.estado === caja.estado;
       return monedaOk && medioOk && estadoOk;
     };
@@ -480,7 +481,8 @@ export function useMovimientosFilters({
         const caja = filters.caja;
         if (!caja) return true;
         const monedaOk = !caja.moneda || mov.moneda === caja.moneda;
-        const medioOk = !caja.medio_pago || mov.medio_pago === caja.medio_pago;
+        const mediosCaja = getCajaMediosPago(caja);
+        const medioOk = mediosCaja.length === 0 || mediosCaja.includes(mov.medio_pago);
         const estadoOk = !caja.estado || mov.estado === caja.estado;
         return monedaOk && medioOk && estadoOk;
       }).length,

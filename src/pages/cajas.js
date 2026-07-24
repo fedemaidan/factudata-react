@@ -49,7 +49,7 @@ import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import { getProyectosByEmpresa } from 'src/services/proyectosService';
 import { formatTimestamp } from 'src/utils/formatters';
-import { parseQueryParamList, FILTER_ARRAY_KEYS, FILTER_DATE_KEYS } from 'src/utils/parseData';
+import { parseQueryParamList, FILTER_ARRAY_KEYS, FILTER_DATE_KEYS, getCajaMediosPago } from 'src/utils/parseData';
 import { safeRouterReplace } from 'src/utils/safeRouter';
 import { useMovimientosFilters } from 'src/hooks/useMovimientosFilters';
 import { FilterBarCajaProyecto, SIN_ASIGNAR_SENTINEL } from 'src/components/FilterBarCajaProyecto';
@@ -471,7 +471,7 @@ const buildCajaDashboardParams = ({ filters, caja, page, limit, includeOptions =
   if (filters?.reservaId) params.reserva = filters.reservaId;
 
   if (caja?.moneda) params.cajaMoneda = caja.moneda;
-  if (caja?.medio_pago) params.cajaMedioPago = caja.medio_pago;
+  assignArray('cajaMedioPago', getCajaMediosPago(caja));
   if (caja?.estado) params.cajaEstado = caja.estado;
   if (caja?.type) params.cajaTipo = caja.type;
   assignArray('cajaCategorias', caja?.categorias);
@@ -484,7 +484,7 @@ const buildCajaDashboardParams = ({ filters, caja, page, limit, includeOptions =
 const getCajaTotalsKey = (caja) => JSON.stringify({
   nombre: caja?.nombre || '',
   moneda: caja?.moneda || '',
-  medio_pago: caja?.medio_pago || '',
+  medios_pago: [...getCajaMediosPago(caja)].sort(),
   estado: caja?.estado || '',
   type: caja?.type || '',
   equivalencia: caja?.equivalencia || 'none',
@@ -939,7 +939,7 @@ const CajasPage = () => {
   const [nombreCaja, setNombreCaja] = useState('');
   const [monedaCaja, setMonedaCaja] = useState('ARS');
   const [estadoCaja, setEstadoCaja] = useState('');
-  const [medioPagoCaja, setMedioPagoCaja] = useState('Efectivo');
+  const [mediosPagoCaja, setMediosPagoCaja] = useState([]); // array de strings; vacío = todos
   const [equivalenciaCaja, setEquivalenciaCaja] = useState('none'); // 'none' | 'usd_blue' | ...
   const [categoriasCaja, setCategoriasCaja] = useState([]); // array de strings
   const [asignadosCaja, setAsignadosCaja] = useState([]); // array de strings (puede incluir sentinel __sin_asignar__)
@@ -1335,7 +1335,7 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
     if (!hasReserva) return 0;
     return cajasVirtuales.filter((c) => {
       const mon = c.moneda || 'ARS';
-      const esBase = !c.medio_pago && !c.type && (!c.equivalencia || c.equivalencia === 'none');
+      const esBase = getCajaMediosPago(c).length === 0 && !c.type && (!c.equivalencia || c.equivalencia === 'none');
       const reservadoMon = reservaProyecto?.reservado?.[mon] || 0;
       return esBase && (mon === 'ARS' || reservadoMon !== 0);
     }).length;
@@ -1398,7 +1398,7 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
     setEditandoCaja(index);
     setNombreCaja(caja.nombre);
     setMonedaCaja(caja.moneda);
-    setMedioPagoCaja(caja.medio_pago || '');
+    setMediosPagoCaja(getCajaMediosPago(caja));
     setShowCrearCaja(true);
     setTypeCaja(caja.type || '');
     setEstadoCaja(caja.estado || '');
@@ -1421,7 +1421,7 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
         ...f,
         caja: caja || null,
         ...(caja?.moneda     ? { moneda: []    } : {}),
-        ...(caja?.medio_pago ? { medioPago: [] } : {}),
+        ...(getCajaMediosPago(caja).length > 0 ? { medioPago: [] } : {}),
         ...(caja?.estado     ? { estados: []   } : {}),
         ...(caja?.type       ? { tipo: []      } : {}),
         ...(Array.isArray(caja?.categorias) && caja.categorias.length > 0 ? { categorias: [] } : {}),
@@ -1863,7 +1863,8 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
       setSelectedProjectIds(initialSelectedIds);
 
       const cajaFromUrl = routerRef.current.query.caja ? (() => { try { return JSON.parse(routerRef.current.query.caja); } catch { return null; } })() : null;
-      const cajaDefault = (cajaFromUrl && cajasIniciales.find(c => c.moneda === cajaFromUrl.moneda && c.medio_pago === (cajaFromUrl.medio_pago || '')))
+      const mediosPagoUrl = getCajaMediosPago(cajaFromUrl).join('|');
+      const cajaDefault = (cajaFromUrl && cajasIniciales.find(c => c.moneda === cajaFromUrl.moneda && getCajaMediosPago(c).join('|') === mediosPagoUrl))
         || cajasIniciales[0]
         || null;
       applyCajaSelection(cajaDefault);
@@ -2347,7 +2348,7 @@ const getTime = (v) => {
     const nuevaCaja = {
       nombre: nombreCaja,
       moneda: monedaCaja || '',
-      medio_pago: medioPagoCaja,
+      medios_pago: mediosPagoCaja,
       estado: estadoCaja,
       equivalencia: equivalenciaCaja || 'none',
       type: typeCaja || '',
@@ -2375,7 +2376,7 @@ const getTime = (v) => {
     setSavedViewMode(false);
     setNombreCaja('');
     setMonedaCaja('ARS');
-    setMedioPagoCaja('Efectivo');
+    setMediosPagoCaja([]);
     setEstadoCaja('');
     setEquivalenciaCaja('none');
     setTypeCaja('');
@@ -2761,7 +2762,8 @@ useEffect(() => {
                         // Desglose de Reserva de Obra: solo en la caja base (sin medio/tipo/equivalencia)
                         // de una moneda con reserva, y solo si el usuario puede verla.
                         const cajaReservaMoneda = caja.moneda || 'ARS';
-                        const esCajaBase = !caja.medio_pago && !caja.type && (!caja.equivalencia || caja.equivalencia === 'none');
+                        const mediosPagoCard = getCajaMediosPago(caja);
+                        const esCajaBase = mediosPagoCard.length === 0 && !caja.type && (!caja.equivalencia || caja.equivalencia === 'none');
                         const reservadoCard = reservaProyecto?.reservado?.[cajaReservaMoneda] || 0;
                         const mostrarReservaEnCard = hasReserva && esCajaBase
                           && (cajaReservaMoneda === 'ARS' || reservadoCard !== 0);
@@ -2837,6 +2839,17 @@ useEffect(() => {
                                   {caja.type && (
                                     <Typography variant="caption" color={selected ? 'inherit' : 'text.secondary'} sx={{ fontWeight: 700, textTransform: 'capitalize' }}>
                                       {caja.type}
+                                    </Typography>
+                                  )}
+                                  {mediosPagoCard.length > 0 && (
+                                    <Typography
+                                      variant="caption"
+                                      color={selected ? 'inherit' : 'text.secondary'}
+                                      sx={{ fontWeight: 700, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '60%' }}
+                                      title={mediosPagoCard.join(' + ')}
+                                    >
+                                      {mediosPagoCard.slice(0, 2).join(' + ')}
+                                      {mediosPagoCard.length > 2 ? ` +${mediosPagoCard.length - 2}` : ''}
                                     </Typography>
                                   )}
                                   {caja.baseCalculo === 'subtotal' && (
@@ -3025,8 +3038,13 @@ useEffect(() => {
         </FormControl>
         <FormControl fullWidth sx={{ mt: 2 }}>
           <InputLabel>Medio de pago</InputLabel>
-          <Select value={medioPagoCaja} onChange={(e) => setMedioPagoCaja(e.target.value)}>
-            <MenuItem key="" value="">Todos</MenuItem>
+          <Select
+            multiple
+            value={mediosPagoCaja}
+            onChange={(e) => setMediosPagoCaja(typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value)}
+            label="Medio de pago"
+            renderValue={(selected) => (selected.length === 0 ? 'Todos' : selected.join(', '))}
+          >
             {(empresa?.medios_pago || []).map((medio) => (
               <MenuItem key={medio} value={medio}>{medio}</MenuItem>
             ))}
@@ -3683,7 +3701,7 @@ useEffect(() => {
       { label: 'Agregar nueva caja', icon: <AddCircleIcon fontSize="small" />, onClick: () => { setShowCrearCaja(true); closeAllMenus(); } },
       { label: 'Guardar vista actual como caja', icon: <AccountBalanceWalletIcon fontSize="small" />, onClick: () => {
         setSavedViewMode(true); setEditandoCaja(null);
-        setNombreCaja(''); setMonedaCaja(''); setMedioPagoCaja('');
+        setNombreCaja(''); setMonedaCaja(''); setMediosPagoCaja([]);
         setEstadoCaja(''); setEquivalenciaCaja('none'); setTypeCaja(''); setBaseCalculoCaja('total');
         setCategoriasCaja([]); setAsignadosCaja([]);
         setShowCrearCaja(true); closeAllMenus();

@@ -15,7 +15,7 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import DatePicker from 'react-datepicker';
 import { subDays, startOfMonth, endOfMonth } from 'date-fns';
 import FiltrosGuardadosService from 'src/services/filtrosGuardadosService';
-import { FILTER_ARRAY_KEYS, FILTER_DATE_KEYS, defaultMovimientosFilters } from 'src/utils/parseData';
+import { FILTER_ARRAY_KEYS, FILTER_DATE_KEYS, defaultMovimientosFilters, getCajaMediosPago } from 'src/utils/parseData';
 
 // El calendario de react-datepicker se renderiza en un portal a <body> para
 // escapar el `overflow: hidden` del contenedor de filtros, y con posición fixed
@@ -54,7 +54,6 @@ const defaultFilters = defaultMovimientosFilters;
 // Mapeo de campos de caja virtual → nombre del filtro que bloquean
 const CAJA_SCOPE_FILTER_MAP = {
   moneda:     'moneda',
-  medio_pago: 'medioPago',
   estado:     'estados',
   type:       'tipo',
 };
@@ -62,6 +61,8 @@ const CAJA_SCOPE_FILTER_MAP = {
 // Campos de caja virtual multi-valor → filtro multi-select que bloquean.
 // A diferencia de CAJA_SCOPE_FILTER_MAP, acá el lock viene de un array (puede
 // tener uno o varios valores) y se renderiza como selección fija de esos valores.
+// Los medios de pago también bloquean multi-valor, pero se resuelven aparte con
+// getCajaMediosPago por el fallback al campo legacy `medio_pago`.
 const CAJA_SCOPE_MULTI_FILTER_MAP = {
   categorias: 'categorias',
   asignados: 'asignados',
@@ -139,11 +140,14 @@ export const FilterBarCajaProyecto = ({
   // queda fijado a esos dos valores y deshabilitado para el usuario.
   const cajaScopeMultiLocks = useMemo(() => {
     if (!cajaScope) return {};
-    return Object.entries(CAJA_SCOPE_MULTI_FILTER_MAP).reduce((acc, [cajaKey, filterKey]) => {
+    const locks = Object.entries(CAJA_SCOPE_MULTI_FILTER_MAP).reduce((acc, [cajaKey, filterKey]) => {
       const vals = cajaScope[cajaKey];
       if (Array.isArray(vals) && vals.length > 0) acc[filterKey] = vals;
       return acc;
     }, {});
+    const mediosPago = getCajaMediosPago(cajaScope);
+    if (mediosPago.length > 0) locks.medioPago = mediosPago;
+    return locks;
   }, [cajaScope]);
 
   // Sincronizar drafts cuando los filtros cambian externamente (chips, clearAll, cargar filtro guardado).
