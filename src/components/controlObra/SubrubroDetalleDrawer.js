@@ -1,8 +1,10 @@
-import { useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { Fragment, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Box, Button, Chip, Divider, LinearProgress, Paper, Stack, Typography,
+  Box, Button, Chip, Divider, LinearProgress, Paper, Stack, Table, TableBody,
+  TableCell, TableHead, TableRow, Typography,
 } from '@mui/material';
+import ControlObraService from 'src/services/controlObra/controlObraService';
 import TimelineIcon from '@mui/icons-material/Timeline';
 import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn';
 import PaidIcon from '@mui/icons-material/Paid';
@@ -57,8 +59,17 @@ function Seccion({ icon, title, resumen, actionLabel, onAction, danger }) {
 export default function SubrubroDetalleDrawer({ obra, subrubro: s, empresaId, onClose }) {
   const qc = useQueryClient();
   const [editor, setEditor] = useState(null);
+  const [verMovs, setVerMovs] = useState(false);
   const cerrarEditor = () => setEditor(null);
   const onDone = () => { qc.invalidateQueries({ queryKey: ['control-obra'] }); setEditor(null); };
+
+  // Movimientos (gastos + ingresos) imputados a ESTA tarea, para el detalle.
+  const movsQ = useQuery({
+    queryKey: ['control-obra', 'movs-imputados', obra?._id, s.uid],
+    queryFn: () => ControlObraService.movimientosImputados(obra._id, empresaId, s.uid),
+    enabled: !!obra?._id && !!s.uid,
+  });
+  const movs = movsQ.data || [];
 
   const cp = s.contrato_proveedor;
   const resp = s.responsable;
@@ -69,7 +80,7 @@ export default function SubrubroDetalleDrawer({ obra, subrubro: s, empresaId, on
   return (
     <>
       <FormDrawer
-        open onClose={onClose} width={520}
+        open onClose={onClose} width={720}
         title={s.nombre}
         subtitle={`físico ${s.avance_pct || 0}% · certificado ${s.cert_pct || 0}%`}
         actions={<Button onClick={onClose}>Cerrar</Button>}
@@ -98,6 +109,7 @@ export default function SubrubroDetalleDrawer({ obra, subrubro: s, empresaId, on
               />
               <Metric label="Gastado real" value={fmt(s.gastado)} color={s.sobrecosto ? 'error.main' : undefined} />
               <Metric label="Certificado" value={fmt(s.certificado)} />
+              <Metric label="Cobrado (caja)" value={fmt(s.cobrado_caja || 0)} sub="ingresos imputados" color="success.main" />
               <Metric label="Margen esperado" value={s.margen_esperado != null ? signo(s.margen_esperado) : '—'} color={s.margen_esperado != null ? margenColor(s.margen_esperado) : undefined} />
               <Metric label="Margen realizado" value={signo(s.margen)} color={margenColor(s.margen)} sub="certificado − gastado" />
             </Stack>
@@ -126,13 +138,74 @@ export default function SubrubroDetalleDrawer({ obra, subrubro: s, empresaId, on
             actionLabel="Certificar"
             onAction={() => setEditor('certificar')}
           />
-          <Seccion
-            icon={<PaidIcon fontSize="small" color="action" />}
-            title="Gastos imputados"
-            resumen={`${fmt(s.gastado)} gastado`}
-            actionLabel="Imputar"
-            onAction={() => setEditor('imputar')}
-          />
+          <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2 }}>
+            <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
+              <Stack direction="row" alignItems="center" spacing={1} sx={{ minWidth: 0 }}>
+                <PaidIcon fontSize="small" color="action" />
+                <Box sx={{ minWidth: 0 }}>
+                  <Typography variant="subtitle2" fontWeight={600}>Movimientos imputados</Typography>
+                  <Typography variant="caption" color="text.secondary" display="block">
+                    {fmt(s.gastado)} gastado · {fmt(s.cobrado_caja || 0)} cobrado
+                    {movs.length ? ` · ${movs.length} movimiento(s)` : ''}
+                  </Typography>
+                </Box>
+              </Stack>
+              <Stack direction="row" spacing={0.5} sx={{ flexShrink: 0 }}>
+                {movs.length > 0 && (
+                  <Button size="small" color="inherit" onClick={() => setVerMovs((v) => !v)}>{verMovs ? 'Ocultar' : 'Ver'}</Button>
+                )}
+                <Button size="small" onClick={() => setEditor('imputar')}>Imputar</Button>
+              </Stack>
+            </Stack>
+            {verMovs && movs.length > 0 && (
+              <Box sx={{ mt: 1, overflowX: 'auto' }}>
+                <Table size="small" sx={{ '& td, & th': { px: 0.75, py: 0.4, fontSize: '0.7rem', borderColor: 'grey.100' } }}>
+                  <TableHead>
+                    <TableRow sx={{ '& th': { fontWeight: 700, fontSize: '0.65rem', color: 'text.secondary', whiteSpace: 'nowrap' } }}>
+                      <TableCell>Fecha</TableCell>
+                      <TableCell>Detalle</TableCell>
+                      <TableCell align="right">Comprobante</TableCell>
+                      <TableCell align="right">Monto imputado</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {movs.map((m) => {
+                      const esIng = m.type === 'ingreso';
+                      const comprobante = m.tipo_comprobante ? `${m.tipo_comprobante}${m.nro_comprobante ? ` ${m.nro_comprobante}` : ''}` : '—';
+                      const clasif = [m.categoria, m.subcategoria, m.etapa].filter(Boolean).join(' · ');
+                      return (
+                        <Fragment key={m._id}>
+                          <TableRow>
+                            <TableCell sx={{ whiteSpace: 'nowrap', color: 'text.secondary' }}>{fmtFecha(m.fecha)}</TableCell>
+                            <TableCell sx={{ maxWidth: 220 }}>
+                              <Typography variant="caption" fontWeight={600} noWrap sx={{ display: 'block', fontSize: '0.7rem' }}>
+                                {m.nombre_proveedor || m.subcategoria || m.categoria || 'Movimiento'}
+                              </Typography>
+                              <Typography variant="caption" noWrap sx={{ display: 'block', fontSize: '0.6rem', lineHeight: 1.2 }}>
+                                <Box component="span" sx={{ color: esIng ? 'success.main' : 'error.main', fontWeight: 600 }}>{esIng ? '↑ ingreso' : '↓ gasto'}</Box>
+                                {clasif ? ` · ${clasif}` : ''}{m.pct < 100 ? ` · imputado ${m.pct}%` : ''}
+                              </Typography>
+                            </TableCell>
+                            <TableCell align="right" sx={{ whiteSpace: 'nowrap', color: 'text.secondary' }}>{comprobante}</TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 600, whiteSpace: 'nowrap', color: esIng ? 'success.main' : 'text.primary' }}>
+                              {fmt(m.monto_imputado)}
+                            </TableCell>
+                          </TableRow>
+                          {m.observacion && (
+                            <TableRow>
+                              <TableCell colSpan={4} sx={{ pt: 0, pb: 0.5, borderBottom: 0 }}>
+                                <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.6rem', fontStyle: 'italic' }}>💬 {m.observacion}</Typography>
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </Fragment>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </Box>
+            )}
+          </Paper>
           <Seccion
             icon={<EngineeringIcon fontSize="small" color="action" />}
             title="Proveedor / contrato"

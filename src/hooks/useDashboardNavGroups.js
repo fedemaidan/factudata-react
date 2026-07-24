@@ -14,6 +14,7 @@ import CompareArrowsIcon from "@mui/icons-material/CompareArrows";
 import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
 import ContactsIcon from "@mui/icons-material/Contacts";
 import AssessmentIcon from "@mui/icons-material/Assessment";
+import InsightsIcon from "@mui/icons-material/Insights";
 import SummarizeIcon from "@mui/icons-material/Summarize";
 import ConstructionIcon from "@mui/icons-material/Construction";
 import AutoAwesomeRoundedIcon from "@mui/icons-material/AutoAwesomeRounded";
@@ -24,6 +25,7 @@ import { useAuthContext } from "src/contexts/auth-context";
 import { getProyectosFromUser } from "src/services/proyectosService";
 import { modoLecturaEnProyecto } from "src/utils/permisos/accionesPorProyecto";
 import { getEmpresaDetailsFromUser } from "src/services/empresaService";
+import { vistasVisiblesPara } from "src/config/vistasUtiles";
 
 const icon = (Icon) => (
   <SvgIcon fontSize="small">
@@ -124,6 +126,19 @@ async function buildDefaultGroups({ user, empresa, permisosUsuario }) {
   }
   inicioItems.push({ title: "Reportes", path: "/reportes", icon: icon(AssessmentIcon) });
   groups.push({ id: "inicio", label: "Inicio", alwaysOpen: true, items: inicioItems });
+
+  // ——— VISTAS ÚTILES ———
+  // Dashboards que cruzan varios datasets en un pantallazo (no son cajas ni reportes sueltos).
+  // Data-driven desde el catálogo VISTAS_UTILES, filtrado por la config de empresa y de usuario.
+  const vistasItems = [];
+  if (esAdmin && !esCorralon) {
+    vistasVisiblesPara(empresa, user).forEach((v) => {
+      vistasItems.push({ title: v.title, path: v.path, icon: icon(InsightsIcon) });
+    });
+    // El configurador siempre presente, para poder reactivar vistas apagadas.
+    vistasItems.push({ title: "Configurar vistas", path: "/vistas/configurador", icon: icon(SettingsIcon) });
+  }
+  if (vistasItems.length > 0) groups.push({ id: "vistas", label: "Vistas útiles", items: vistasItems });
 
   // ——— FINANZAS ———
   const finanzasItems = [];
