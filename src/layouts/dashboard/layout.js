@@ -5,7 +5,9 @@ import { withAuthGuard } from 'src/hocs/with-auth-guard';
 import { SideNav } from './side-nav';
 import { TopNav } from './top-nav';
 import { useVersionCheck } from 'src/hooks/use-version-check';
+import { useIdleLogout } from 'src/hooks/use-idle-logout';
 import { getRemoteVersionFromFirestore } from 'src/services/versionService';
+import { useAuthContext } from 'src/contexts/auth-context';
 
 const NAV_WIDTH_EXPANDED = 280;
 const NAV_WIDTH_COLLAPSED = 72;
@@ -44,6 +46,10 @@ export const Layout = withAuthGuard((props) => {
     pollMs: 5 * 60 * 1000, // 5 minutos
     localVersion: process.env.NEXT_PUBLIC_APP_VERSION || '',
   });
+
+  // Logout proactivo por inactividad (config por usuario; backend enforcea igual).
+  const { user } = useAuthContext();
+  useIdleLogout(user?.session_idle_seconds);
   
   const handlePathnameChange = useCallback(() => {
     if (openNav) setOpenNav(false);
