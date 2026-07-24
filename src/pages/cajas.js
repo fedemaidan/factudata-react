@@ -130,6 +130,18 @@ const BRAND_COLORS = {
   cloud: '#F6F6F6',
 };
 
+// Ancho mínimo en el que un saldo de 9 dígitos entra completo a tamaño pleno.
+const CAJA_CARD_MIN = 232;
+
+// El saldo nunca se trunca ni se abrevia: si el número es largo, baja de tamaño.
+const getAmountFontSize = (text) => {
+  const len = (text || '').length;
+  if (len <= 13) return '1.5rem';
+  if (len <= 16) return '1.25rem';
+  if (len <= 19) return '1.05rem';
+  return '0.92rem';
+};
+
 const serializeFilterSet = (f) => {
   const copy = { ...f };
   delete copy.caja;
@@ -599,11 +611,10 @@ const TotalesFiltrados = ({ t, fmt, moneda, totalesFormat = 'full', showUsdBlue 
       <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2} sx={{ flexWrap: 'nowrap' }}>
         <Box
           sx={{
-            p: { xs: 2.25, lg: 1.5 },
+            p: { xs: 2.25, lg: 1.75 },
             borderRadius: 3,
-            width: { xs: '100%', lg: '30%' },
-            minWidth: { xs: '100%', lg: '30%' },
-            maxWidth: { xs: '100%', lg: '30%' },
+            width: '100%',
+            minWidth: 0,
             bgcolor: 'background.paper',
             border: '1px solid',
             borderColor: 'divider',
@@ -623,25 +634,25 @@ const TotalesFiltrados = ({ t, fmt, moneda, totalesFormat = 'full', showUsdBlue 
             <Box
               sx={{
                 display: 'grid',
-                gridTemplateColumns: { xs: '1fr', lg: '3fr 2fr' },
-                gap: { xs: 2, lg: 0 },
+                gridTemplateColumns: '1fr',
+                gap: 1.5,
                 width: '100%',
               }}
             >
               {/* Neto filtrado — flat, sin borde propio */}
-              <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', pr: { lg: 2 }, borderRight: { lg: `1px solid rgba(0,0,0,0.08)` } }}>
+              <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', pb: 1.5, borderBottom: `1px solid rgba(0,0,0,0.08)` }}>
                 <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700, mb: 0.5 }}>
                   Neto filtrado
                 </Typography>
-                <Typography sx={{ fontWeight: 800, lineHeight: 1.05, color: neto >= 0 ? 'success.main' : 'error.main', fontSize: { xs: '1.9rem', lg: '1.45rem' }, whiteSpace: 'nowrap' }}>
+                <Typography sx={{ fontWeight: 800, lineHeight: 1.05, color: neto >= 0 ? 'success.main' : 'error.main', fontSize: getAmountFontSize(netoDisplay), whiteSpace: 'nowrap' }}>
                   {netoDisplay}
                 </Typography>
               </Box>
 
               {/* Ingresos + Egresos — flat, separados solo por un divisor */}
               <Stack
-                divider={<Box sx={{ height: '1px', bgcolor: 'rgba(0,0,0,0.06)', mx: { lg: 1 } }} />}
-                sx={{ width: '100%', pl: { lg: 2 } }}
+                divider={<Box sx={{ height: '1px', bgcolor: 'rgba(0,0,0,0.06)' }} />}
+                sx={{ width: '100%' }}
               >
                 {deltaItems.map(({ label, value, color, Icon }) => (
                   <Box
@@ -659,7 +670,7 @@ const TotalesFiltrados = ({ t, fmt, moneda, totalesFormat = 'full', showUsdBlue 
                         {label}
                       </Typography>
                     </Stack>
-                    <Typography sx={{ fontWeight: 800, color, fontSize: { xs: '1rem', lg: '0.78rem' }, lineHeight: 1.15 }}>
+                    <Typography sx={{ fontWeight: 800, color, fontSize: { xs: '1rem', lg: '0.95rem' }, lineHeight: 1.15, whiteSpace: 'nowrap' }}>
                       {value}
                     </Typography>
                   </Box>
@@ -1330,16 +1341,6 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
     );
   }, [reservaActiva, user]);
   const hasReserva = !!reservaActiva && puedeVerReserva;
-  // Cuántas cards de saldo mostrarán el desglose de reserva (ocupan 2 columnas c/u).
-  const cardsConReserva = useMemo(() => {
-    if (!hasReserva) return 0;
-    return cajasVirtuales.filter((c) => {
-      const mon = c.moneda || 'ARS';
-      const esBase = !c.medio_pago && !c.type && (!c.equivalencia || c.equivalencia === 'none');
-      const reservadoMon = reservaProyecto?.reservado?.[mon] || 0;
-      return esBase && (mon === 'ARS' || reservadoMon !== 0);
-    }).length;
-  }, [hasReserva, cajasVirtuales, reservaProyecto]);
   const reservaFiltroActivo = !!filters?.reservaId;
   const toggleFiltroReserva = useCallback(() => {
     const id = reservaActiva?._id || reservaActiva?.id;
@@ -2735,24 +2736,21 @@ useEffect(() => {
                   </Stack>
                 </Paper>
 
-                <Stack direction={isMobile ? 'column' : 'row'} spacing={1.5} alignItems="stretch">
-                  <Box sx={{ width: { xs: '100%', lg: '70%' }, minWidth: 0, maxWidth: { xs: '100%', lg: '70%' } }}>
+                <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.5} alignItems="stretch">
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
                     <Box
                       sx={{
                         width: '100%',
                         display: 'grid',
-                        gridTemplateColumns: {
-                          xs: `repeat(${Math.max(cajasVirtuales.length, 1)}, minmax(250px, 1fr))`,
-                          lg: `repeat(${Math.max(cajasVirtuales.length + cardsConReserva, 1)}, minmax(0, 1fr))`,
-                        },
-                        gap: 1,
-                        overflowX: { xs: 'auto', lg: 'visible' },
+                        gridTemplateColumns: `repeat(auto-fill, minmax(min(100%, ${CAJA_CARD_MIN}px), 1fr))`,
+                        gap: 1.25,
                         pb: 0.5,
                       }}
                     >
                       {cajasVirtuales.map((caja, index) => {
                         const selected = filters.caja?.nombre === caja.nombre;
                         const totalCaja = calcularTotalParaCaja(caja);
+                        const montoCaja = formatCajaAmount(caja, totalCaja);
                         const tone = getCajaAccent(caja, totalCaja);
                         const ToneIcon = tone.Icon;
                         const totalColor = totalCaja < 0
@@ -2771,7 +2769,7 @@ useEffect(() => {
                             sx={{
                               position: 'relative',
                               minWidth: 0,
-                              gridColumn: { lg: mostrarReservaEnCard ? 'span 2' : 'auto' },
+                              gridColumn: { xs: 'auto', sm: mostrarReservaEnCard ? 'span 2' : 'auto' },
                             }}
                           >
                             <Button
@@ -2782,7 +2780,6 @@ useEffect(() => {
                                 minHeight: 126,
                                 px: 1.5,
                                 py: 1.25,
-                                pr: 5.5,
                                 borderRadius: 2.75,
                                 borderLeftWidth: 4,
                                 borderLeftStyle: 'solid',
@@ -2797,8 +2794,9 @@ useEffect(() => {
                                 boxShadow: selected ? '0 18px 32px rgba(0,151,178,0.18)' : '0 10px 24px rgba(0,0,0,0.04)',
                               }}
                             >
-                              <Stack spacing={0.9} sx={{ minWidth: 0, pr: 0.5, flex: 1, width: '100%' }}>
-                                <Stack direction="row" spacing={1} alignItems="flex-start" sx={{ minWidth: 0, pr: 2 }}>
+                              <Stack spacing={0.9} sx={{ minWidth: 0, flex: 1, width: '100%' }}>
+                                {/* pr reserva el espacio del menú de 3 puntos solo en el renglón que lo cruza */}
+                                <Stack direction="row" spacing={1} alignItems="flex-start" sx={{ minWidth: 0, pr: 4 }}>
                                   <Box sx={{ width: 30, height: 30, borderRadius: 1.75, display: 'grid', placeItems: 'center', bgcolor: selected ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.78)', color: selected ? 'inherit' : tone.color, flexShrink: 0 }}>
                                     <ToneIcon sx={{ fontSize: 17 }} />
                                   </Box>
@@ -2820,15 +2818,15 @@ useEffect(() => {
                                   </Typography>
                                 </Stack>
                                 <Typography
-                                  variant="h5"
                                   sx={{
                                     fontWeight: 800,
                                     color: totalColor,
                                     lineHeight: 1.05,
-                                    pr: 2,
+                                    fontSize: getAmountFontSize(montoCaja),
+                                    whiteSpace: 'nowrap',
                                   }}
                                 >
-                                  {formatCajaAmount(caja, totalCaja)}
+                                  {montoCaja}
                                 </Typography>
                                 <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap">
                                   <Typography variant="caption" color={selected ? 'inherit' : 'text.secondary'} sx={{ fontWeight: 700, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
@@ -2911,9 +2909,8 @@ useEffect(() => {
 
                   <Box
                     sx={{
-                      width: { xs: '100%', lg: '30%' },
-                      minWidth: { xs: '100%', lg: '30%' },
-                      maxWidth: { xs: '100%', lg: '30%' },
+                      width: { xs: '100%', lg: 300 },
+                      flex: { lg: '0 0 300px' },
                       position: { xs: 'static', lg: 'sticky' },
                       top: 12,
                       zIndex: 6,
