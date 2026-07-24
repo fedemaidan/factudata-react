@@ -57,6 +57,8 @@ import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import { buildCompletarPagoUpdateFields, puedeCompletarPagoEgreso } from 'src/utils/movimientoPagoCompleto';
 import { formatCurrencyWithCode } from 'src/utils/formatters';
 import { FILTER_ARRAY_KEYS, getCajaMediosPago } from 'src/utils/parseData';
+import { movimientoMatchesCondiciones, cajaToFiltros, denormalizarEscalares, esCajaVista } from 'src/utils/cajaFiltros';
+import CajaConfigDrawer from 'src/components/caja/CajaConfigDrawer';
 
 
 // tamaños mínimos por columna (px)
@@ -571,9 +573,8 @@ const ProyectoMovimientosPage = () => {
   const [showCrearCaja, setShowCrearCaja] = useState(false);
   const [nombreCaja, setNombreCaja] = useState('');
   const [monedaCaja, setMonedaCaja] = useState('ARS');
-  const [estadoCaja, setEstadoCaja] = useState('');
-  const [medioPagoCaja, setMedioPagoCaja] = useState('Efectivo');
   const [equivalenciaCaja, setEquivalenciaCaja] = useState('none'); // 'none' | 'usd_blue' | ...
+  const [filtrosCaja, setFiltrosCaja] = useState({ match: 'all', condiciones: [] });
   const [editandoCaja, setEditandoCaja] = useState(null); // null o index de la caja
   const [cajaSeleccionada, setCajaSeleccionada] = useState(null);
   const [prefsHydrated, setPrefsHydrated] = useState(false);
@@ -626,7 +627,6 @@ const [openOrdenar, setOpenOrdenar] = useState(false);
 const scrollRef = useRef(null);      // contenedor principal con overflow
 const topScrollRef = useRef(null);   // barra superior "fantasma"
 const tableRef = useRef(null);
-const [typeCaja, setTypeCaja] = useState(''); // '' | 'ingreso' | 'egreso'
 const [baseCalculoCaja, setBaseCalculoCaja] = useState('total'); // 'total' | 'subtotal'
 const [savedViewMode, setSavedViewMode] = useState(false); // true cuando se guarda vista con filtros
 
@@ -984,13 +984,12 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
     setEditandoCaja(index);
     setNombreCaja(caja.nombre);
     setMonedaCaja(caja.moneda);
-    setMedioPagoCaja(getCajaMediosPago(caja)[0] || '');
-    setShowCrearCaja(true);
-    setTypeCaja(caja.type || '');
-    setEstadoCaja(caja.estado || '');
     setBaseCalculoCaja(caja.baseCalculo || 'total');
-    handleCloseCajaMenu();
     setEquivalenciaCaja(caja.equivalencia || 'none');
+    setSavedViewMode(esCajaVista(caja));
+    setFiltrosCaja(cajaToFiltros(caja) || { match: 'all', condiciones: [] });
+    setShowCrearCaja(true);
+    handleCloseCajaMenu();
   };
 
   const applyCajaSelection = useCallback((caja) => {
@@ -1690,14 +1689,13 @@ const movimientosConProrrateo = useMemo(() => {
        }
      
        const mergeMonedas = (caja.equivalencia && caja.equivalencia !== 'none');
-       const mediosCaja = getCajaMediosPago(caja);
+       const filtrosCaja = cajaToFiltros(caja);
 
        const result = allMovs.reduce((acc, mov) => {
-         const matchMedioPago = mediosCaja.length === 0 || mediosCaja.includes(mov.medio_pago);
-         const matchEstado    = caja.estado ? mov.estado === caja.estado : true;
-         const matchType      = caja.type ? mov.type === caja.type : true;
-         const matchMoneda    = mergeMonedas ? true : (caja.moneda ? mov.moneda === caja.moneda : true);
-         if (!matchMedioPago || !matchEstado || !matchType || !matchMoneda) return acc;
+         // moneda: la maneja mergeMonedas / caja.moneda; el resto de las dimensiones
+         // van por el motor de condiciones (mismo que backend y matchCaja).
+         const matchMoneda = mergeMonedas ? true : (caja.moneda ? mov.moneda === caja.moneda : true);
+         if (!matchMoneda || !movimientoMatchesCondiciones(mov, filtrosCaja)) return acc;
      
          let val;
          if (meta.path) {
@@ -1814,40 +1812,32 @@ const movimientosConProrrateo = useMemo(() => {
   }, [csvExportFields, csvFieldOrder, csvSelectedFields, movimientosExportables, proyecto?.nombre]);
 
   const handleGuardarCaja = async () => {
-    // Acá solo se elige un medio de pago; si la caja se configuró con varios
-    // desde /cajas, se preservan en lugar de pisarlos con el único del select.
-    const mediosPagoPrevios = editandoCaja !== null ? getCajaMediosPago(cajasVirtuales[editandoCaja]) : [];
     const nuevaCaja = {
       nombre: nombreCaja,
       moneda: monedaCaja || '',
-      medios_pago: mediosPagoPrevios.length > 1
-        ? mediosPagoPrevios
-        : (medioPagoCaja ? [medioPagoCaja] : []),
-      estado: estadoCaja,
       equivalencia: equivalenciaCaja || 'none',
-      type: typeCaja || '',
       baseCalculo: baseCalculoCaja || 'total',
-      ...(savedViewMode ? { filterSet: serializeFilterSet(filters) } : {}),
+      ...(savedViewMode
+        ? { filterSet: serializeFilterSet(filters) }
+        : { filtros: filtrosCaja, ...denormalizarEscalares(filtrosCaja) }),
     };
-  
+
     const nuevasCajas = [...cajasVirtuales];
-  
+
     if (editandoCaja !== null) {
       nuevasCajas[editandoCaja] = nuevaCaja;
     } else {
       nuevasCajas.push(nuevaCaja);
     }
-  
+
     setCajasVirtuales(nuevasCajas);
     setShowCrearCaja(false);
     setSavedViewMode(false);
     setNombreCaja('');
     setMonedaCaja('ARS');
-    setMedioPagoCaja('Efectivo');
-    setEstadoCaja('');
     setEquivalenciaCaja('none');
-    setTypeCaja('');
     setBaseCalculoCaja('total');
+    setFiltrosCaja({ match: 'all', condiciones: [] });
     setEditandoCaja(null);
     await updateEmpresaDetails(empresa.id, { cajas_virtuales: nuevasCajas });
   };
@@ -2280,98 +2270,32 @@ useEffect(() => {
 )}
 
             </Stack>
-            <Dialog open={showCrearCaja} onClose={() => { setShowCrearCaja(false); setSavedViewMode(false); }}>
-  <DialogTitle>
-    {savedViewMode ? 'Guardar vista actual como caja' : (editandoCaja !== null ? 'Editar caja' : 'Crear vista de caja personalizada')}
-  </DialogTitle>
-  <DialogContent>
-    {savedViewMode && filterChips.length > 0 && (
-      <Box sx={{ mb: 2, p: 1.5, bgcolor: 'action.hover', borderRadius: 1.5 }}>
-        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.75 }}>
-          Filtros activos que se guardarán con esta caja:
-        </Typography>
-        <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
-          {filterChips.map((chip, idx) => (
-            <Chip key={idx} label={chip.label} size="small" variant="outlined" />
-          ))}
-        </Box>
-      </Box>
-    )}
-    <TextField label="Nombre de la caja" fullWidth value={nombreCaja} onChange={(e) => setNombreCaja(e.target.value)} />
-    {!savedViewMode && (
-      <>
-    <FormControl fullWidth sx={{ mt: 2 }}>
-      <InputLabel>Moneda</InputLabel>
-      <Select value={monedaCaja} onChange={(e) => setMonedaCaja(e.target.value)}>
-        <MenuItem value="">Todas</MenuItem>
-        <MenuItem value="ARS">Pesos</MenuItem>
-        <MenuItem value="USD">Dólares</MenuItem>
-      </Select>
-    </FormControl>
-    <FormControl fullWidth sx={{ mt: 2 }}>
-      <InputLabel>Tipo</InputLabel>
-      <Select value={typeCaja} label="Tipo" onChange={(e) => setTypeCaja(e.target.value)}>
-        <MenuItem value="">Todos</MenuItem>
-        <MenuItem value="ingreso">Ingresos</MenuItem>
-        <MenuItem value="egreso">Egresos</MenuItem>
-      </Select>
-    </FormControl>
-    <FormControl fullWidth sx={{ mt: 2 }}>
-      <InputLabel>Medio de pago</InputLabel>
-      <Select value={medioPagoCaja} onChange={(e) => setMedioPagoCaja(e.target.value)}>
-      <MenuItem key="" value="">
-            Todos
-          </MenuItem>
-        {empresa?.medios_pago.map((medio) => (
-          <MenuItem key={medio} value={medio}>
-            {medio}
-          </MenuItem>
-        ))}
-      </Select>
-    </FormControl>
-    {empresa?.con_estados && (
-      <FormControl fullWidth sx={{ mt: 2 }}>
-        <InputLabel>Estado</InputLabel>
-        <Select value={estadoCaja} onChange={(e) => setEstadoCaja(e.target.value)}>
-          <MenuItem value="">Todos</MenuItem>
-          <MenuItem value="Pendiente">Pendiente</MenuItem>
-          <MenuItem value="Pagado">Pagado</MenuItem>
-        </Select>
-      </FormControl>
-    )}
-     <FormControl fullWidth sx={{ mt: 2 }}>
-      <InputLabel>Mostrar como</InputLabel>
-      <Select
-        value={equivalenciaCaja}
-        label="Mostrar como"
-        onChange={(e) => setEquivalenciaCaja(e.target.value)}
-      >
-        <MenuItem value="none">Moneda original</MenuItem>
-        <MenuItem value="usd_blue">USD blue</MenuItem>
-        <MenuItem value="usd_oficial">USD oficial</MenuItem>
-        <MenuItem value="usd_mep_medio">USD mep (medio)</MenuItem>
-      </Select>
-    </FormControl>
-    </>
-    )}
-    <FormControl fullWidth sx={{ mt: 2 }}>
-      <InputLabel>Base de cálculo</InputLabel>
-      <Select
-        value={baseCalculoCaja}
-        label="Base de cálculo"
-        onChange={(e) => setBaseCalculoCaja(e.target.value)}
-      >
-        <MenuItem value="total">Total (con impuestos)</MenuItem>
-        <MenuItem value="subtotal">Subtotal (sin impuestos)</MenuItem>
-      </Select>
-    </FormControl>
-
-  </DialogContent>
-  <DialogActions>
-    <Button onClick={() => { setShowCrearCaja(false); setSavedViewMode(false); }}>Cancelar</Button>
-    <Button onClick={handleGuardarCaja}>Crear</Button>
-  </DialogActions>
-</Dialog>
+            <CajaConfigDrawer
+              open={showCrearCaja}
+              onClose={() => { setShowCrearCaja(false); setSavedViewMode(false); }}
+              savedViewMode={savedViewMode}
+              esEdicion={editandoCaja !== null}
+              filterChips={filterChips}
+              nombreCaja={nombreCaja}
+              onNombreChange={setNombreCaja}
+              monedaCaja={monedaCaja}
+              onMonedaChange={setMonedaCaja}
+              filtrosCaja={filtrosCaja}
+              onFiltrosChange={setFiltrosCaja}
+              equivalenciaCaja={equivalenciaCaja}
+              onEquivalenciaChange={setEquivalenciaCaja}
+              equivalenciaOptions={[
+                { value: 'none', label: 'Moneda original' },
+                { value: 'usd_blue', label: 'USD blue' },
+                { value: 'usd_oficial', label: 'USD oficial' },
+                { value: 'usd_mep_medio', label: 'USD mep (medio)' },
+              ]}
+              baseCalculoCaja={baseCalculoCaja}
+              onBaseCalculoChange={setBaseCalculoCaja}
+              options={options}
+              empresa={empresa}
+              onGuardar={handleGuardarCaja}
+            />
 
 {isMobile && (
   <Drawer
@@ -2991,11 +2915,9 @@ useEffect(() => {
     setEditandoCaja(null);
     setNombreCaja('');
     setMonedaCaja('');
-    setMedioPagoCaja('');
-    setEstadoCaja('');
     setEquivalenciaCaja('none');
-    setTypeCaja('');
     setBaseCalculoCaja('total');
+    setFiltrosCaja({ match: 'all', condiciones: [] });
     setShowCrearCaja(true);
     handleCloseMenu();
   }}>

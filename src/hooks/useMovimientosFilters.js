@@ -3,7 +3,8 @@ import { subDays, addDays } from 'date-fns';
 import { useRouter } from 'next/router';
 import { toJsDate } from 'src/utils/dateSerde';
 
-import { parseQueryParamList, FILTER_ARRAY_KEYS, FILTER_DATE_KEYS, defaultMovimientosFilters, getCajaMediosPago } from 'src/utils/parseData';
+import { parseQueryParamList, FILTER_ARRAY_KEYS, FILTER_DATE_KEYS, defaultMovimientosFilters } from 'src/utils/parseData';
+import { movimientoMatchesCondiciones, cajaToFiltros } from 'src/utils/cajaFiltros';
 import { safeRouterReplace } from 'src/utils/safeRouter';
 
 const DEBUG_CAJA_FILTERS = process.env.NODE_ENV !== 'production';
@@ -339,11 +340,10 @@ export function useMovimientosFilters({
     const matchCaja = (mov) => {
       const caja = filters.caja;
       if (!caja) return true;
+      // moneda ya está aplicada por la selección de tabla base (movimientos vs
+      // movimientosUSD). El resto de las dimensiones van por el motor de condiciones.
       const monedaOk = !caja.moneda || mov.moneda === caja.moneda;
-      const mediosCaja = getCajaMediosPago(caja);
-      const medioOk = mediosCaja.length === 0 || mediosCaja.includes(mov.medio_pago);
-      const estadoOk = !caja.estado || mov.estado === caja.estado;
-      return monedaOk && medioOk && estadoOk;
+      return monedaOk && movimientoMatchesCondiciones(mov, cajaToFiltros(caja));
     };
     const matchEstado = (mov) => {
       if (!filters.estados || filters.estados.length === 0) return true;
@@ -481,10 +481,7 @@ export function useMovimientosFilters({
         const caja = filters.caja;
         if (!caja) return true;
         const monedaOk = !caja.moneda || mov.moneda === caja.moneda;
-        const mediosCaja = getCajaMediosPago(caja);
-        const medioOk = mediosCaja.length === 0 || mediosCaja.includes(mov.medio_pago);
-        const estadoOk = !caja.estado || mov.estado === caja.estado;
-        return monedaOk && medioOk && estadoOk;
+        return monedaOk && movimientoMatchesCondiciones(mov, cajaToFiltros(caja));
       }).length,
       monto: base.filter((mov) => {
         const min = parseFloat(filters.montoMin);
