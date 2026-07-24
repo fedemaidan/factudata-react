@@ -246,6 +246,24 @@ const ReportFiltersBar = ({
             />
           )}
 
+          {/* Asignado */}
+          {filtrosSchema.asignado?.enabled && (
+            <Autocomplete
+              multiple
+              size="small"
+              options={availableOptions.asignados || []}
+              value={filters.asignado || []}
+              onChange={(_, val) => handleChange('asignado', val)}
+              renderTags={(value, getTagProps) =>
+                value.map((option, index) => (
+                  <Chip key={option} label={option} size="small" {...getTagProps({ index })} />
+                ))
+              }
+              renderInput={(params) => <TextField {...params} label="Asignado" />}
+              sx={{ minWidth: 200 }}
+            />
+          )}
+
           {/* Usuarios */}
           {filtrosSchema.usuarios?.enabled && (
             <Autocomplete

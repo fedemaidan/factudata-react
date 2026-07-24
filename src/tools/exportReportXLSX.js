@@ -35,6 +35,7 @@ export function exportReportToXLSX(reportConfig, results, movimientos = [], disp
         break;
       case 'summary_table':
       case 'group_month_matrix':
+      case 'supplier_budgets':
         exportSummaryTable(wb, sheetName, block.data, displayCurrency);
         break;
       case 'movements_table':
@@ -64,6 +65,9 @@ export function exportReportToXLSX(reportConfig, results, movimientos = [], disp
       // Plan de cobros: mismas shapes que metric_cards / summary_table.
       case 'collections_summary':
         exportMetricCards(wb, sheetName, block.data, displayCurrency);
+        break;
+      case 'cashflow_monthly':
+        exportSummaryTable(wb, sheetName, block.data, block.data.displayCurrency || displayCurrency);
         break;
       case 'collections_schedule':
       case 'collections_due_ranges':

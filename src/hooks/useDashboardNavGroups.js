@@ -14,6 +14,7 @@ import CompareArrowsIcon from "@mui/icons-material/CompareArrows";
 import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
 import ContactsIcon from "@mui/icons-material/Contacts";
 import AssessmentIcon from "@mui/icons-material/Assessment";
+import SummarizeIcon from "@mui/icons-material/Summarize";
 import ConstructionIcon from "@mui/icons-material/Construction";
 import AutoAwesomeRoundedIcon from "@mui/icons-material/AutoAwesomeRounded";
 import EventAvailableIcon from "@mui/icons-material/EventAvailable";
@@ -21,6 +22,7 @@ import AssignmentReturnIcon from "@mui/icons-material/AssignmentReturn";
 import MoveToInboxIcon from "@mui/icons-material/MoveToInbox";
 import { useAuthContext } from "src/contexts/auth-context";
 import { getProyectosFromUser } from "src/services/proyectosService";
+import { modoLecturaEnProyecto } from "src/utils/permisos/accionesPorProyecto";
 import { getEmpresaDetailsFromUser } from "src/services/empresaService";
 
 const icon = (Icon) => (
@@ -155,6 +157,10 @@ async function buildDefaultGroups({ user, empresa, permisosUsuario }) {
     // Plan de cobros (PlanCobroModel) es para constructoras. En corralón no aplica.
     finanzasItems.push({ title: "Plan de cobros", path: "/cobros", icon: icon(AttachMoneyIcon) });
   }
+  if (permisosUsuario.includes("VER_PLANES_PAGO") && !esCorralon) {
+    // Planes de pago a proveedores (PlanPago, lado costo). Espejo de "Plan de cobros".
+    finanzasItems.push({ title: "Planes de pago", path: "/pagos-proveedores", icon: icon(PaymentsIcon) });
+  }
   if (esAdmin && !esCorralon) {
     // Control de presupuestos / presupuestos profesionales son de obra (constructora).
     finanzasItems.push({ title: "Control presupuestos", path: "/control-presupuestos", icon: icon(NoteAltIcon) });
@@ -199,7 +205,12 @@ async function buildDefaultGroups({ user, empresa, permisosUsuario }) {
   // ——— OBRAS ———
   if (esAdmin) {
     let proys = await getProyectosFromUser(user);
-    proys = (proys || []).filter((p) => p.activo);
+    // Read-gating por obra (TAR-393): ocultar del sidenav las obras donde la lectura quedó
+    // bloqueada por override (VER_CAJAS/LISTAR quitados y sin VER_MIS). B0-safe: sin override → 'todo'.
+    const userLect = { ...user, empresa: { acciones: empresa?.acciones || [] } };
+    proys = (proys || []).filter(
+      (p) => p.activo && modoLecturaEnProyecto(userLect, p.id) !== "bloqueado"
+    );
     if (proys.length > 0) {
       const finGroup = groups.find((g) => g.id === "finanzas");
       if (finGroup) {
@@ -367,6 +378,7 @@ export function useDashboardNavGroups() {
           id: "sorby-admin",
           label: "Sorby Admin",
           items: [
+            { title: "Resumen del mes", path: "/admin-resumen", icon: icon(SummarizeIcon) },
             { title: "Clientes", path: "/admin-clientes", icon: icon(PeopleIcon) },
             { title: "Cobranzas", path: "/admin-cobranzas", icon: icon(AttachMoneyIcon) },
             { title: "Reportes", path: "/admin-reportes", icon: icon(AssessmentIcon) },

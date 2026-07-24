@@ -7,6 +7,7 @@ import {
   FormControl,
   InputLabel,
   ListItemText,
+  ListSubheader,
   MenuItem,
   Select,
   TextField,
@@ -21,6 +22,7 @@ import { Autocomplete } from "@mui/material";
 import { actualizarSheetsDesdeBaseEmpresa } from "src/services/proyectosService";
 import { getSheetConfigsByEmpresa, syncSheetConfig } from "src/services/sheetConfigService";
 import { FIREBASE_CLIENT_EMAIL } from "src/config/env";
+import { GRUPOS_ACCIONES } from "src/constants/accionesPorVertical";
 
 export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission }) => {
   const comprobante_info_default = {
@@ -178,92 +180,6 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
   };
 
   const { user } = useAuthContext();
-
-  const opcionesAcciones = [
-    "ENVIAR_MENSAJE_BOT",
-    "CREAR_EGRESO",
-    "CREAR_EGRESO_PRORATEADO",
-    "CREAR_EGRESOS_MASIVO",
-    "CREAR_INGRESO",
-    "CREAR_INGRESO_IMAGEN",
-    "VER_CAJAS",
-    "AJUSTAR_CAJAS",
-    "TRANSFERIR_ENTRE_CAJAS",
-    "TRANSFERIR_ENTRE_CAJAS_CHICAS",
-    "CREAR_NUEVO_PROYECTO",
-    "VENDER_DOLARES",
-    "COMPRAR_DOLARES",
-    "VALIDAR_CODIGO",
-    "CONFIRMAR_PAGOS_PENDIENTES",
-    "VER_DRIVE",
-    "CREAR_NOTA_PEDIDO",
-    "MODIFICAR_NOTA_PEDIDO",
-    "ELIMINAR_NOTA_PEDIDO",
-    "RESOLVER_NOTA_PEDIDO",
-    "VER_NOTAS_DE_PEDIDO",
-    "GESTIONAR_MOVIMIENTO",
-    "CREAR_INGRESO_CAJA_CHICA",
-    "VER_MI_CAJA_CHICA",
-    "VER_RESERVAS_OBRA",
-    "GESTIONAR_RESERVAS_OBRA",
-    "LISTAR_MOVIMIENTOS",
-    "ADMIN_USUARIOS",
-    "CREAR_ACOPIO",
-    "CREAR_PRESUPUESTO",
-    "VER_PRESUPUESTOS",
-    "MODIFICAR_PRESUPUESTO",
-    "ELIMINAR_PRESUPUESTO",
-    "VER_ACOPIO",
-    "DESACOPIAR_MANUAL",
-    "INTEGRACION_ODOO",
-    "VER_CUENTAS_PENDIENTES",
-    "VER_UNIDADES",
-    "GESTIONAR_MATERIALES",
-    "GESTIONAR_PLAN_DE_OBRA",
-    "CREAR_OBRA",
-    "CREAR_EGRESO_SIMPLIFICADO",
-    "VER_CONVERSACIONES",
-    "CARGAR_REMITO",
-    "VER_STOCK_MATERIALES",
-    "VER_STOCK_SOLICITUDES",
-    "CREAR_SOLICITUD_MATERIAL",
-    "VER_STOCK_MOVIMIENTOS",
-    "VER_INVENTARIO_PRODUCTOS",
-    "ODOO_GUARDAR_CONFIRMANDO",
-    "ODOO_FACTURAS_PROVEEDOR_NO_EDI",
-    "VER_VALIDACION_BORRADORES",
-    "VER_PRESUPUESTOS_PROFESIONALES",
-    "VER_PLANES_COBRO",
-    "VER_CONTROL_OBRA",
-    "VER_CONTROL_PAGOS",
-    "VER_GASTOS_RECURRENTES",
-    "VER_CUENTA_CORRIENTE_PROVEEDORES",
-    "GESTIONAR_PROVEEDORES",
-    "REPORTE_MANUAL",
-  ];
-
-  const dhnAcciones = [
-    "DHN_SYNC_DRIVE",
-    "DHN_SOLO_LECTURA",
-  ]
-
-  const celulandiaAcciones = [
-    "CELULANDIA_COMPROBANTES",
-    "CELULANDIA_CLIENTES",
-    "CELULANDIA_ENTREGAS",
-    "CELULANDIA_PAGOS",
-    "CELULANDIA_CONCILIACION",
-    "CELULANDIA_CUENTA_CORRIENTE",
-    "CELULANDIA_CHEQUES",
-    "CELULANDIA_ARQUEO_CAJA",
-    "CELULANDIA_EZE_NICO",
-    "CELULANDIA_PROYECCIONES",
-    "CELULANDIA_RESUMEN",
-    "CELULANDIA_BACKUPS"
-  ];
-
-  opcionesAcciones.push(...dhnAcciones);
-  opcionesAcciones.push(...celulandiaAcciones);
 
   const dolarAjuste = [
     "MANUAL",
@@ -427,14 +343,26 @@ export const ConfiguracionGeneral = ({ empresa, updateEmpresaData, hasPermission
             multiple
             value={acciones}
             onChange={handleAccionesChange}
-            renderValue={(selected) => selected.join(", ")}
+            renderValue={(selected) => `${selected.length} seleccionadas`}
+            MenuProps={{ PaperProps: { sx: { maxHeight: 480 } } }}
           >
-            {opcionesAcciones.map((accion) => (
-              <MenuItem key={accion} value={accion}>
-                <Checkbox checked={acciones.indexOf(accion) > -1} />
-                <ListItemText primary={accion} />
-              </MenuItem>
-            ))}
+            {/* flatMap y no un wrapper por grupo: el Select necesita los MenuItem
+                como hijos directos para que `value` siga funcionando. */}
+            {GRUPOS_ACCIONES.flatMap((grupo) => [
+              <ListSubheader
+                key={`sub-${grupo.label}`}
+                sx={{ lineHeight: "32px", fontWeight: 700, color: "text.secondary" }}
+              >
+                {grupo.label} ({grupo.acciones.filter((a) => acciones.includes(a)).length}/
+                {grupo.acciones.length})
+              </ListSubheader>,
+              ...grupo.acciones.map((accion) => (
+                <MenuItem key={accion} value={accion}>
+                  <Checkbox checked={acciones.indexOf(accion) > -1} />
+                  <ListItemText primary={accion} />
+                </MenuItem>
+              )),
+            ])}
           </Select>
         </FormControl>
       )}

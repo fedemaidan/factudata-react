@@ -35,6 +35,8 @@ export default function EditarTareaDrawer({ obra, subrubro, empresaId, onClose, 
   const [form, setForm] = useState({
     nombre: subrubro.nombre || '',
     monto: String(subrubro.contrato ?? subrubro.monto ?? 0),
+    costo_estimado: subrubro.costo_estimado ?? '',
+    costo_directo: subrubro.costo_directo ?? '',
     unidad: subrubro.unidad || '',
     cantidad: subrubro.cantidad ?? '',
     fecha_inicio: inicioInicial,
@@ -64,6 +66,8 @@ export default function EditarTareaDrawer({ obra, subrubro, empresaId, onClose, 
     mutationFn: () => ControlObraService.editarSubrubro(obra._id, subrubro.uid, empresaId, {
       nombre: form.nombre,
       monto: Number(form.monto),
+      costo_estimado: form.costo_estimado === '' ? null : Number(form.costo_estimado),
+      costo_directo: form.costo_directo === '' ? null : Number(form.costo_directo),
       unidad: form.unidad || null,
       cantidad: form.cantidad === '' ? null : Number(form.cantidad),
       duracion_dias: tieneDuracion ? Number(form.duracion_dias) : null,
@@ -91,7 +95,9 @@ export default function EditarTareaDrawer({ obra, subrubro, empresaId, onClose, 
     >
       <Stack spacing={2}>
         <TextField label="Nombre" value={form.nombre} onChange={(e) => set('nombre', e.target.value)} size="small" fullWidth />
-        <TextField label="Monto de contrato" type="number" value={form.monto} onChange={(e) => set('monto', e.target.value)} size="small" fullWidth />
+        <TextField label="Monto de contrato (cliente)" type="number" value={form.monto} onChange={(e) => set('monto', e.target.value)} size="small" fullWidth helperText="Lo que vas a cobrar por este sub-rubro" />
+        <TextField label="Costo estimado (proveedor)" type="number" value={form.costo_estimado} onChange={(e) => set('costo_estimado', e.target.value)} size="small" fullWidth helperText="Parte del costo que es del proveedor; lo refina el contrato. Vacío = sin estimar" />
+        <TextField label="Costo directo (materiales/otros)" type="number" value={form.costo_directo} onChange={(e) => set('costo_directo', e.target.value)} size="small" fullWidth helperText="Parte que NO es del proveedor: materiales/gastos que vas imputando sueltos. Se suma al costo esperado" />
         <Stack direction="row" spacing={1}>
           <TextField label="Unidad" value={form.unidad} onChange={(e) => set('unidad', e.target.value)} size="small" sx={{ flex: 1 }} />
           <TextField label="Cantidad" type="number" value={form.cantidad} onChange={(e) => set('cantidad', e.target.value)} size="small" sx={{ flex: 1 }} />

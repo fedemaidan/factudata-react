@@ -1242,6 +1242,7 @@ function ProveedorDrawer({ open, onClose, proveedorId, proveedorNombreHint, empr
   const [presupuestoDrawerOpen, setPresupuestoDrawerOpen] = useState(false);
   const [etapasEmpresa, setEtapasEmpresa] = useState([]);
   const [proveedoresNombres, setProveedoresNombres] = useState([]);
+  const [cacModoEmpresa, setCacModoEmpresa] = useState('legacy');
 
   // Imputar saldo a favor (reparte monto_sin_imputar entre facturas pendientes)
   const [imputarSaldoFavorLoading, setImputarSaldoFavorLoading] = useState(false);
@@ -1338,7 +1339,10 @@ function ProveedorDrawer({ open, onClose, proveedorId, proveedorNombreHint, empr
     if (!presupuestoDrawerOpen || !empresaId) return;
     if (etapasEmpresa.length === 0) {
       getEmpresaById(empresaId)
-        .then((emp) => setEtapasEmpresa(emp?.etapas || []))
+        .then((emp) => {
+          setEtapasEmpresa(emp?.etapas || []);
+          setCacModoEmpresa(emp?.presupuesto_cac_modo || 'legacy');
+        })
         .catch(() => {});
     }
     if (proveedoresNombres.length === 0) {
@@ -1571,6 +1575,7 @@ function ProveedorDrawer({ open, onClose, proveedorId, proveedorNombreHint, empr
           proyectos={proyectos}
           categorias={categoriasEmpresa || []}
           etapas={etapasEmpresa}
+          cacModo={cacModoEmpresa}
         />
       )}
     </Drawer>

@@ -34,6 +34,7 @@ import {
   DocumentMagnifyingGlassIcon,
   ArrowTopRightOnSquareIcon,
   DocumentArrowDownIcon,
+  LockClosedIcon,
 } from '@heroicons/react/24/outline';
 import ExportarPdfDialog from 'src/components/plantillasPdf/ExportarPdfDialog';
 import { buildComprobanteMovimientoData } from 'src/utils/comprobanteMovimiento/buildComprobanteMovimientoData';
@@ -69,6 +70,7 @@ import ProrrateoDialog from 'src/components/ProrrateoDialog';
 import ConfirmarPagoDialog from 'src/components/pagos/ConfirmarPagoDialog';
 import TransferenciaInternaDialog from 'src/components/TransferenciaInternaDialog';
 import EgresoConCajaPagadoraDialog from 'src/components/EgresoConCajaPagadoraDialog';
+import { accionRecortadaEnObra } from 'src/utils/permisos/accionesPorProyecto';
 import PagoEntreCajasInfo from 'src/components/PagoEntreCajasInfo';
 import MovimientoLogsPanel from 'src/components/movimientos/MovimientoLogsPanel';
 import ComprobanteModal from 'src/components/celulandia/ComprobanteModal';
@@ -295,6 +297,23 @@ const MovementFormPage = () => {
   // En edit mode, priorizar datos del movimiento sobre query params; luego fallback a selección manual.
   const effectiveProyectoId = (isEditMode && movimiento?.proyecto_id) || proyectoId || proyectoManual?.id || null;
   const effectiveProyectoName = (isEditMode && movimiento?.proyecto) || proyectoName || proyectoManual?.nombre || null;
+
+  // Recortes de acciones por obra (TAR-393): gating visual. Solo refleja lo que el admin
+  // quitó en esta obra (no restringe a quien no tiene la acción a nivel global → B0-safe).
+  const recorteObra = useMemo(
+    () => ({
+      egreso: accionRecortadaEnObra(user, effectiveProyectoId, 'CREAR_EGRESO'),
+      ingreso: accionRecortadaEnObra(user, effectiveProyectoId, 'CREAR_INGRESO'),
+      prorrateo: accionRecortadaEnObra(user, effectiveProyectoId, 'CREAR_EGRESO_PRORATEADO'),
+      cajaPagadora: accionRecortadaEnObra(user, effectiveProyectoId, 'CREAR_EGRESO'),
+      editar: accionRecortadaEnObra(user, effectiveProyectoId, 'GESTIONAR_MOVIMIENTO'),
+    }),
+    [user, effectiveProyectoId]
+  );
+
+  // Solo lectura (TAR-393): al editar un movimiento en una obra donde le quitaron
+  // GESTIONAR_MOVIMIENTO, los campos se deshabilitan y no puede guardar (sí ver/exportar).
+  const soloLectura = isEditMode && recorteObra.editar;
 
   // Reserva de Obra del proyecto: habilita marcar el egreso como gasto de la reserva.
   const [reservaProyecto, setReservaProyecto] = useState(null);
@@ -863,6 +882,10 @@ const createdAtStr = (() => {
   };
 
   const handleSubmitForm = async () => {
+    if (soloLectura) {
+      setAlert({ open: true, message: 'No tenés permiso para editar movimientos en esta obra.', severity: 'error' });
+      return;
+    }
     const validationErrors = await formik.validateForm();
     const errorKeys = Object.keys(validationErrors || {});
 
@@ -890,6 +913,17 @@ const createdAtStr = (() => {
     const materialesCheck = materialesInlineRef.current?.validar?.();
     if (materialesCheck && !materialesCheck.ok) {
       setAlert({ open: true, message: materialesCheck.message, severity: 'error' });
+      return;
+    }
+
+    // Gate por-obra (TAR-393): bloquear el guardado si la acción está recortada en esta obra.
+    const tipoActual = formik.values.type;
+    if ((tipoActual === 'egreso' && recorteObra.egreso) || (tipoActual === 'ingreso' && recorteObra.ingreso)) {
+      setAlert({
+        open: true,
+        message: `No tenés permiso para cargar ${tipoActual === 'ingreso' ? 'ingresos' : 'egresos'} en esta obra.`,
+        severity: 'error',
+      });
       return;
     }
 
@@ -1175,13 +1209,11 @@ const createdAtStr = (() => {
   };
 
   const handleOpenEgresoConCajaPagadora = () => {
-    console.log('Debug - Estado para pago entre cajas:', {
-      proyectoId: effectiveProyectoId,
-      total: formik.values.total,
-      type: formik.values.type,
-      proyectosLength: proyectos.length,
-      isEditMode
-    });
+    // Gate por-obra (TAR-393): la caja pagadora carga un egreso en la obra del gasto.
+    if (recorteObra.cajaPagadora) {
+      setAlert({ open: true, message: 'No tenés permiso para cargar egresos en esta obra.', severity: 'error' });
+      return;
+    }
     setOpenEgresoConCajaPagadora(true);
   };
 
@@ -1372,13 +1404,15 @@ const createdAtStr = (() => {
             >
               Ver en tamaño completo
             </button>
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="text-xs font-medium text-neutral-600 hover:underline"
-            >
-              {isEditMode ? 'Reemplazar comprobante' : 'Reemplazar archivo'}
-            </button>
+            {!soloLectura && (
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="text-xs font-medium text-neutral-600 hover:underline"
+              >
+                {isEditMode ? 'Reemplazar comprobante' : 'Reemplazar archivo'}
+              </button>
+            )}
           </div>
           {!isEditMode && nuevoArchivo && (
             <button
@@ -1645,7 +1679,7 @@ const createdAtStr = (() => {
                 <button
                   type="button"
                   onClick={() => handleExtraerDatos()}
-                  disabled={isExtractingData || (!isEditMode && !hasComprobante)}
+                  disabled={isExtractingData || soloLectura || (!isEditMode && !hasComprobante)}
                   className="inline-flex items-center gap-1 rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium text-neutral-800 shadow-sm hover:bg-neutral-50 disabled:opacity-50"
                 >
                   {isExtractingData ? (
@@ -1669,7 +1703,8 @@ const createdAtStr = (() => {
               <div className="relative" ref={accionesRef}>
                 <button
                   type="button"
-                  disabled={isLoading}
+                  disabled={isLoading || soloLectura}
+                  title={soloLectura ? 'No tenés permiso para editar movimientos en esta obra.' : undefined}
                   onClick={() => setAccionesOpen((o) => !o)}
                   className="inline-flex items-center gap-1 rounded-lg border border-primary-main bg-white px-3 py-1.5 text-sm font-medium text-primary-dark shadow-sm hover:bg-primary-lightest disabled:opacity-50"
                 >
@@ -1803,7 +1838,8 @@ const createdAtStr = (() => {
                 <button
                   type="button"
                   onClick={() => setProrrateoOpen(true)}
-                  disabled={isLoading || !formik.values.total}
+                  disabled={isLoading || !formik.values.total || recorteObra.prorrateo}
+                  title={recorteObra.prorrateo ? 'No tenés permiso para prorratear egresos en esta obra.' : undefined}
                   className="inline-flex items-center justify-center gap-1 rounded-lg bg-primary-main px-4 py-1.5 text-sm font-semibold text-white shadow hover:bg-primary-dark disabled:opacity-50"
                 >
                   <ChartPieIcon className="h-4 w-4" aria-hidden />
@@ -1814,7 +1850,8 @@ const createdAtStr = (() => {
                   <button
                     type="button"
                     onClick={isEditMode ? handleSaveOnly : handleSaveAndExport}
-                    disabled={isLoading}
+                    disabled={isLoading || soloLectura}
+                    title={soloLectura ? 'No tenés permiso para editar movimientos en esta obra.' : undefined}
                     className="inline-flex min-w-[5.5rem] items-center justify-center gap-1 rounded-lg border border-primary-main bg-white px-4 py-1.5 text-sm font-semibold text-primary-dark shadow-sm hover:bg-primary-lightest disabled:opacity-50"
                   >
                     {isEditMode ? (
@@ -1835,7 +1872,8 @@ const createdAtStr = (() => {
                   <button
                     type="button"
                     onClick={handleSaveAndReturn}
-                    disabled={isLoading}
+                    disabled={isLoading || soloLectura}
+                    title={soloLectura ? 'No tenés permiso para editar movimientos en esta obra.' : undefined}
                     className="inline-flex min-w-[7rem] items-center justify-center rounded-lg bg-primary-main px-4 py-1.5 text-sm font-semibold text-white shadow hover:bg-primary-dark disabled:opacity-50"
                   >
                     {isLoading && returnAfterSaveRef.current ? <ArrowPathIcon className="h-5 w-5 animate-spin" aria-label="Cargando" /> : 'Guardar y volver'}
@@ -2059,6 +2097,16 @@ const createdAtStr = (() => {
                 className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain"
               >
                 <div className="flex flex-col gap-2 pb-1">
+                  {soloLectura && (
+                    <div className="flex items-start gap-2 rounded-lg border border-warning-main/50 bg-warning-main/10 px-3 py-2">
+                      <LockClosedIcon className="mt-0.5 h-4 w-4 shrink-0 text-warning-dark" aria-hidden />
+                      <p className="text-xs text-neutral-800">
+                        <span className="font-semibold text-neutral-900">Solo lectura:</span> no tenés permiso para editar
+                        movimientos en esta obra. Podés ver el detalle y exportar, pero los campos están deshabilitados.
+                      </p>
+                    </div>
+                  )}
+                  <fieldset disabled={soloLectura} className="flex min-w-0 flex-col gap-2 border-0 p-0 m-0">
                   {modoProrrateo && (
                     <div className="flex items-start gap-2 rounded-lg border border-primary-main/40 bg-primary-main/5 px-3 py-2">
                       <ChartPieIcon className="mt-0.5 h-4 w-4 shrink-0 text-primary-main" aria-hidden />
@@ -2211,6 +2259,7 @@ const createdAtStr = (() => {
                       onError={(message) => setAlert({ open: true, message, severity: 'error' })}
                     />
                   )}
+                  </fieldset>
                 </div>
               </div>
             </form>

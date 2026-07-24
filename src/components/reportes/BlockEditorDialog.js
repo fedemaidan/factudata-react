@@ -16,10 +16,12 @@ const BLOCK_TYPES = [
   { value: 'summary_table', label: 'Tabla Resumen', desc: 'Agrupa movimientos por categoría, proveedor, etapa, mes, etc. con totales.' },
   { value: 'movements_table', label: 'Tabla de Movimientos', desc: 'Lista individual de movimientos con paginación.' },
   { value: 'budget_vs_actual', label: 'Presupuesto vs Real', desc: 'Compara presupuesto de control vs gastos reales por categoría.' },
+  { value: 'supplier_budgets', label: 'Presupuestos por Proveedor', desc: 'Lista presupuestos vinculados a proveedores en distintas obras activas.' },
   { value: 'monthly_budget_control', label: 'Control Presupuestario Mensual', desc: 'Agrupa gastos por mes y por categorías de presupuesto, con total acumulado y % de avance.' },
   { value: 'category_budget_matrix', label: 'Matriz de Presupuestos por Proyecto', desc: 'Para una categoría específica, muestra presupuesto inicial, adicionales, total, recibido y saldo por proyecto.' },
   { value: 'income_budget_control', label: 'Control de Ingresos CAC', desc: 'Muestra presupuesto de ingreso, adicionales, pagos recibidos y saldo CAC valorizado a hoy.' },
   { value: 'chart', label: 'Gráfico', desc: 'Muestra datos agrupados en gráficos de barras, torta, línea o área.' },
+  { value: 'cashflow_monthly', label: 'Cash Flow mensual', desc: 'Compara ingresos, gastos por categoría y neto por mes o por semanas.' },
   { value: 'grouped_detail', label: 'Detalle por Grupo', desc: 'Muestra chips o mini-cards de grupos con tabla de movimientos filtrada al seleccionar.' },
   { value: 'category_subcategory_accordion', label: 'Categorías y Subcategorías', desc: 'Accordion de egresos por categoría con detalle clickeable por subcategoría.' },
   { value: 'subcategory_monthly_evolution', label: 'Evolución mensual por subcategoría', desc: 'Compara mes a mes cómo se distribuyen los egresos entre subcategorías.' },
@@ -194,6 +196,7 @@ function emptyMetrica() {
     filtro_tipo: null,
     formato: 'currency',
     color: 'default',
+    excluir: {},
   };
 }
 
@@ -234,6 +237,7 @@ function defaultBlock(type) {
         resumen_titulo: '',
         mostrar_cantidad_resumen: false,
         mostrar_sin_cotizacion: false,
+        excluir: {},
       };
     case 'budget_vs_actual':
       return {
@@ -244,6 +248,15 @@ function defaultBlock(type) {
         incluir_sin_presupuesto: false,
         mostrar_desglose_presupuestos: false,
         presupuestos_con_campo: null,
+        excluir: {},
+      };
+    case 'supplier_budgets':
+      return {
+        ...base,
+        titulo: 'Presupuestos por Proveedor',
+        mostrar_tipo: 'egreso',
+        solo_obras_activas: true,
+        mostrar_resumen_obras: true,
         excluir: {},
       };
     case 'monthly_budget_control':
@@ -291,6 +304,15 @@ function defaultBlock(type) {
         top_n: 10,
         excluir: {},
       };
+    case 'cashflow_monthly':
+      return {
+        ...base,
+        titulo: 'Cash Flow',
+        periodo: 'mensual',
+        campo_monto: 'total',
+        mostrar_sin_cotizacion: false,
+        excluir: {},
+      };
     case 'grouped_detail':
       return {
         ...base,
@@ -310,6 +332,7 @@ function defaultBlock(type) {
         mostrar_cantidad_movimientos: true,
         desglose_subcategorias: true,
         mostrar_sin_cotizacion: false,
+        ocultar_en_pdf: false,
         excluir: {},
       };
     case 'subcategory_monthly_evolution':
@@ -379,6 +402,40 @@ function sanitizeExcludeValues(values = []) {
     out.push(label);
   }
   return out;
+}
+
+function ExcludeCategoriesControl({ block, onChange, excludeOptions = {}, value, onChangeValue }) {
+  const selected = value || block?.excluir?.categorias || [];
+  const handleChange = (nextValue) => {
+    const sanitized = sanitizeExcludeValues(nextValue);
+    if (onChangeValue) {
+      onChangeValue(sanitized);
+      return;
+    }
+    onChange('excluir', { ...(block.excluir || {}), categorias: sanitized });
+  };
+
+  return (
+    <>
+      <Divider />
+      <Typography variant="subtitle2" fontWeight={600}>Ocultar categorías</Typography>
+      <Autocomplete
+        multiple
+        freeSolo
+        size="small"
+        options={excludeOptions.categorias || []}
+        filterSelectedOptions
+        value={selected}
+        onChange={(_, val) => handleChange(val)}
+        renderTags={(value, getTagProps) =>
+          value.map((option, index) => (
+            <Chip key={option} label={option} size="small" color="error" variant="outlined" {...getTagProps({ index })} />
+          ))
+        }
+        renderInput={(params) => <TextField {...params} label="Excluir categorías" placeholder="Escribí y presioná Enter" />}
+      />
+    </>
+  );
 }
 
 // ─── Componente Principal ───
@@ -496,7 +553,7 @@ const BlockEditorDialog = ({
           </FormControl>
 
           {/* Filtro de tipo (compartido) */}
-          {!['budget_vs_actual', 'monthly_budget_control', 'category_budget_matrix', 'income_budget_control'].includes(block.type) && (
+          {!['budget_vs_actual', 'supplier_budgets', 'monthly_budget_control', 'category_budget_matrix', 'income_budget_control', 'cashflow_monthly'].includes(block.type) && (
             <FormControl size="small" fullWidth>
               <InputLabel>Filtrar por tipo de movimiento</InputLabel>
               <Select
@@ -515,7 +572,7 @@ const BlockEditorDialog = ({
 
           {/* Config específica por tipo */}
           {block.type === 'metric_cards' && (
-            <MetricCardsConfig block={block} onChange={updateBlock} proyectos={proyectos} />
+            <MetricCardsConfig block={block} onChange={updateBlock} proyectos={proyectos} excludeOptions={excludeOptions} />
           )}
           {block.type === 'group_month_matrix' && (
             <GroupMonthMatrixConfig block={block} onChange={updateBlock} />
@@ -524,10 +581,13 @@ const BlockEditorDialog = ({
             <SummaryTableConfig block={block} onChange={updateBlock} excludeOptions={excludeOptions} />
           )}
           {block.type === 'movements_table' && (
-            <MovementsTableConfig block={block} onChange={updateBlock} />
+            <MovementsTableConfig block={block} onChange={updateBlock} excludeOptions={excludeOptions} />
           )}
           {block.type === 'budget_vs_actual' && (
             <BudgetVsActualConfig block={block} onChange={updateBlock} excludeOptions={excludeOptions} />
+          )}
+          {block.type === 'supplier_budgets' && (
+            <SupplierBudgetsConfig block={block} onChange={updateBlock} excludeOptions={excludeOptions} />
           )}
           {block.type === 'monthly_budget_control' && (
             <MonthlyBudgetControlConfig block={block} onChange={updateBlock} presupuestos={presupuestos} />
@@ -540,6 +600,9 @@ const BlockEditorDialog = ({
           )}
           {block.type === 'chart' && (
             <ChartConfig block={block} onChange={updateBlock} excludeOptions={excludeOptions} />
+          )}
+          {block.type === 'cashflow_monthly' && (
+            <CashflowMonthlyConfig block={block} onChange={updateBlock} />
           )}
           {block.type === 'grouped_detail' && (
             <GroupedDetailConfig block={block} onChange={updateBlock} excludeOptions={excludeOptions} />
@@ -623,7 +686,7 @@ function ProyectoMultiSelect({ value = [], onChange, proyectos = [], label = 'Pr
   );
 }
 
-function MetricCardsConfig({ block, onChange, proyectos = [] }) {
+function MetricCardsConfig({ block, onChange, proyectos = [], excludeOptions = {} }) {
   const metricas = block.metricas || [];
 
   const updateMetrica = (idx, field, value) => {
@@ -796,6 +859,11 @@ function MetricCardsConfig({ block, onChange, proyectos = [] }) {
                   : `${(m.filtros_extra.proyectos).length} caja(s) seleccionada(s)`}
               />
             )}
+            <ExcludeCategoriesControl
+              excludeOptions={excludeOptions}
+              value={m.excluir?.categorias || []}
+              onChangeValue={(val) => updateMetrica(idx, 'excluir', { ...(m.excluir || {}), categorias: val })}
+            />
           </Stack>
         </Box>
       ))}
@@ -1102,7 +1170,7 @@ function SummaryTableConfig({ block, onChange, excludeOptions = {} }) {
   );
 }
 
-function MovementsTableConfig({ block, onChange }) {
+function MovementsTableConfig({ block, onChange, excludeOptions = {} }) {
   const selected = block.columnas_visibles || [];
 
   return (
@@ -1152,6 +1220,8 @@ function MovementsTableConfig({ block, onChange }) {
         }
         label="Mostrar avisos de movimientos sin cotización"
       />
+
+      <ExcludeCategoriesControl block={block} onChange={onChange} excludeOptions={excludeOptions} />
 
       <Typography variant="subtitle2" fontWeight={600}>Columnas visibles</Typography>
       <Autocomplete
@@ -1346,6 +1416,84 @@ function BudgetVsActualConfig({ block, onChange, excludeOptions = {} }) {
         Este bloque cruza los presupuestos de control cargados en Sorby con los movimientos reales.
         Hacé click en una fila para ver los movimientos que la componen.
       </Alert>
+    </Stack>
+  );
+}
+
+function SupplierBudgetsConfig({ block, onChange, excludeOptions = {} }) {
+  return (
+    <Stack spacing={2}>
+      <Alert severity="info" variant="outlined" sx={{ py: 0.5 }}>
+        Este bloque usa presupuestos de control con proveedor cargado. Para ver un proveedor puntual,
+        activá el filtro global de Proveedores del reporte y elegilo arriba en la vista.
+      </Alert>
+
+      <FormControl size="small" fullWidth>
+        <InputLabel>Mostrar tipo</InputLabel>
+        <Select
+          value={block.mostrar_tipo || 'egreso'}
+          label="Mostrar tipo"
+          onChange={(e) => onChange('mostrar_tipo', e.target.value)}
+        >
+          <MenuItem value="egreso">Solo Egresos</MenuItem>
+          <MenuItem value="ingreso">Solo Ingresos</MenuItem>
+          <MenuItem value="ambos">Ambos</MenuItem>
+        </Select>
+      </FormControl>
+
+      <FormControlLabel
+        control={
+          <Switch
+            checked={block.solo_obras_activas !== false}
+            onChange={(e) => onChange('solo_obras_activas', e.target.checked)}
+          />
+        }
+        label="Mostrar solo obras activas"
+      />
+
+      <FormControlLabel
+        control={
+          <Switch
+            checked={block.mostrar_resumen_obras !== false}
+            onChange={(e) => onChange('mostrar_resumen_obras', e.target.checked)}
+          />
+        }
+        label="Mostrar resumen por obra"
+      />
+
+      <Divider />
+      <Typography variant="subtitle2" fontWeight={600}>Ocultar items</Typography>
+
+      <Autocomplete
+        multiple
+        freeSolo
+        size="small"
+        options={[]}
+        value={block.excluir?.presupuestos || []}
+        onChange={(_, val) => onChange('excluir', { ...(block.excluir || {}), presupuestos: val })}
+        renderTags={(value, getTagProps) =>
+          value.map((option, index) => (
+            <Chip key={option} label={option} size="small" color="error" variant="outlined" {...getTagProps({ index })} />
+          ))
+        }
+        renderInput={(params) => <TextField {...params} label="Excluir presupuestos" placeholder="Escribí y presioná Enter" />}
+      />
+
+      <Autocomplete
+        multiple
+        freeSolo
+        size="small"
+        options={excludeOptions.proveedores || []}
+        filterSelectedOptions
+        value={block.excluir?.proveedores || []}
+        onChange={(_, val) => onChange('excluir', { ...(block.excluir || {}), proveedores: sanitizeExcludeValues(val) })}
+        renderTags={(value, getTagProps) =>
+          value.map((option, index) => (
+            <Chip key={option} label={option} size="small" color="error" variant="outlined" {...getTagProps({ index })} />
+          ))
+        }
+        renderInput={(params) => <TextField {...params} label="Excluir proveedores" placeholder="Escribí y presioná Enter" />}
+      />
     </Stack>
   );
 }
@@ -1927,6 +2075,53 @@ function IncomeBudgetControlConfig({ block, onChange }) {
   );
 }
 
+function CashflowMonthlyConfig({ block, onChange }) {
+  return (
+    <Stack spacing={2}>
+      <Alert severity="info" variant="outlined">
+        Este bloque arma un cashflow con ingresos, gastos por categoría, total de gastos y neto.
+        Usa los filtros globales del reporte.
+      </Alert>
+
+      <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+        <FormControl size="small" fullWidth>
+          <InputLabel>Periodo</InputLabel>
+          <Select
+            value={block.periodo || 'mensual'}
+            label="Periodo"
+            onChange={(e) => onChange('periodo', e.target.value)}
+          >
+            <MenuItem value="mensual">Mensual</MenuItem>
+            <MenuItem value="semanal">Semanal</MenuItem>
+          </Select>
+        </FormControl>
+        <FormControl size="small" fullWidth>
+          <InputLabel>Monto a usar</InputLabel>
+          <Select
+            value={block.campo_monto || 'total'}
+            label="Monto a usar"
+            onChange={(e) => onChange('campo_monto', e.target.value)}
+          >
+            {CAMPOS.map((campo) => (
+              <MenuItem key={campo.value} value={campo.value}>{campo.label}</MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+      </Stack>
+
+      <FormControlLabel
+        control={
+          <Switch
+            checked={block.mostrar_sin_cotizacion === true}
+            onChange={(e) => onChange('mostrar_sin_cotizacion', e.target.checked)}
+          />
+        }
+        label="Avisar movimientos sin cotización"
+      />
+    </Stack>
+  );
+}
+
 function GroupedDetailConfig({ block, onChange, excludeOptions = {} }) {
   const selected = block.columnas_visibles || [];
 
@@ -2137,6 +2332,16 @@ function CategorySubcategoryAccordionConfig({ block, onChange, excludeOptions = 
           />
         }
         label="Desglosar por subcategoría"
+      />
+
+      <FormControlLabel
+        control={
+          <Switch
+            checked={block.ocultar_en_pdf === true}
+            onChange={(e) => onChange('ocultar_en_pdf', e.target.checked)}
+          />
+        }
+        label="No exportar este bloque en PDF"
       />
 
       <Divider />

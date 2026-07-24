@@ -12,6 +12,46 @@ import { pickCac } from 'src/utils/cac/pickCac';
 
 const MOVEMENT_CURRENCY_OPTS = { minimumFractionDigits: 2, maximumFractionDigits: 2 };
 
+const getFirstValue = (obj, keys) => {
+  for (const key of keys) {
+    const value = obj?.[key];
+    if (value !== undefined && value !== null && value !== '') return value;
+  }
+  return null;
+};
+
+const formatExtraValue = (value) => {
+  if (value === null || value === undefined || value === '') return '-';
+  if (typeof value === 'object') {
+    return value.nombre || value.name || value.label || value.descripcion || '-';
+  }
+  return String(value);
+};
+
+const getDrilldownExtraColumns = (empresaConfig) => {
+  const comprobanteInfo = empresaConfig?.comprobante_info || {};
+  const ingresoInfo = empresaConfig?.ingreso_info || {};
+  const columns = [];
+
+  if (comprobanteInfo.medio_pago === true || ingresoInfo.medio_pago === true) {
+    columns.push({
+      key: 'medio_pago',
+      label: 'Medio de pago',
+      getValue: (m) => getFirstValue(m, ['medio_pago', 'medioPago', 'medio_pago_nombre', 'medioPagoNombre']),
+    });
+  }
+
+  if (comprobanteInfo.detalle === true || ingresoInfo.detalle === true) {
+    columns.push({
+      key: 'detalle',
+      label: 'Detalle',
+      getValue: (m) => getFirstValue(m, ['detalle', 'detalle_pago', 'detallePago']),
+    });
+  }
+
+  return columns;
+};
+
 const formatDate = (d) => {
   if (!d) return '-';
   const date = d?.toDate ? d.toDate() : d?.seconds ? new Date(d.seconds * 1000) : new Date(d);
@@ -23,13 +63,22 @@ const formatDate = (d) => {
  * Dialog que muestra los movimientos que componen un cálculo (drill-down).
  * Se abre al clickear un valor en metric_cards, summary_table, o budget_vs_actual.
  */
-const DrillDownDialog = ({ open, onClose, movimientos = [], titulo = '', displayCurrency = 'ARS', cacModo = 'legacy' }) => {
+const DrillDownDialog = ({
+  open,
+  onClose,
+  movimientos = [],
+  titulo = '',
+  displayCurrency = 'ARS',
+  cacModo = 'legacy',
+  empresaConfig = null,
+}) => {
   const [page, setPage] = useState(0);
   const [imgPreview, setImgPreview] = useState({ open: false, url: null });
   const [showUsd, setShowUsd] = useState(false);
   const [showCac, setShowCac] = useState(false);
   const [nativeCurrencyFilter, setNativeCurrencyFilter] = useState('ALL');
   const rowsPerPage = 25;
+  const extraColumns = useMemo(() => getDrilldownExtraColumns(empresaConfig), [empresaConfig]);
 
   const openImg = (url) => setImgPreview({ open: true, url });
   const closeImg = () => setImgPreview({ open: false, url: null });
@@ -226,7 +275,11 @@ const DrillDownDialog = ({ open, onClose, movimientos = [], titulo = '', display
                 <TableCell sx={{ fontWeight: 700, backgroundColor: 'grey.100' }}>Proveedor</TableCell>
                 <TableCell sx={{ fontWeight: 700, backgroundColor: 'grey.100' }}>Proyecto</TableCell>
                 <TableCell sx={{ fontWeight: 700, backgroundColor: 'grey.100' }}>Subcategoría</TableCell>
-                <TableCell sx={{ fontWeight: 700, backgroundColor: 'grey.100' }}>Usuario</TableCell>
+                {extraColumns.map((col) => (
+                  <TableCell key={col.key} sx={{ fontWeight: 700, backgroundColor: 'grey.100' }}>
+                    {col.label}
+                  </TableCell>
+                ))}
                 <TableCell sx={{ fontWeight: 700, backgroundColor: 'grey.100' }} align="right">
                   Monto ({nativeCurrencyFilter === 'ALL' ? 'original' : nativeCurrencyFilter})
                 </TableCell>
@@ -235,7 +288,7 @@ const DrillDownDialog = ({ open, onClose, movimientos = [], titulo = '', display
                 </TableCell>
                 {showUsd && <TableCell sx={{ fontWeight: 700, backgroundColor: 'grey.100', color: 'success.main' }} align="right">Equiv. USD</TableCell>}
                 {showCac && <TableCell sx={{ fontWeight: 700, backgroundColor: 'grey.100', color: 'secondary.main' }} align="right">CAC</TableCell>}
-                <TableCell sx={{ fontWeight: 700, backgroundColor: 'grey.100' }}>Notas</TableCell>
+                <TableCell sx={{ fontWeight: 700, backgroundColor: 'grey.100' }}>Observación</TableCell>
                 <TableCell sx={{ fontWeight: 700, backgroundColor: 'grey.100', textAlign: 'center' }}>Archivo</TableCell>
               </TableRow>
             </TableHead>
@@ -257,7 +310,16 @@ const DrillDownDialog = ({ open, onClose, movimientos = [], titulo = '', display
                   <TableCell>{m.nombre_proveedor || '-'}</TableCell>
                   <TableCell>{m.proyecto || '-'}</TableCell>
                   <TableCell>{m.subcategoria || '-'}</TableCell>
-                  <TableCell>{m.usuario_nombre || m.usuario || '-'}</TableCell>
+                  {extraColumns.map((col) => (
+                    <TableCell key={col.key}>
+                      <Typography
+                        variant="body2"
+                        sx={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                      >
+                        {formatExtraValue(col.getValue(m))}
+                      </Typography>
+                    </TableCell>
+                  ))}
                   <TableCell align="right" sx={{ whiteSpace: 'nowrap', fontWeight: 500 }}>
                     {formatCurrencyValue(
                       nativeCurrencyFilter === 'ALL'
@@ -305,7 +367,7 @@ const DrillDownDialog = ({ open, onClose, movimientos = [], titulo = '', display
               ))}
               {visibleRows.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={11 + (showUsd ? 1 : 0) + (showCac ? 1 : 0)} align="center">
+                  <TableCell colSpan={10 + extraColumns.length + (showUsd ? 1 : 0) + (showCac ? 1 : 0)} align="center">
                     <Typography variant="body2" color="text.secondary" py={3}>
                       Sin movimientos
                     </Typography>

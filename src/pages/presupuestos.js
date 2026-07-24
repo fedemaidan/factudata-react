@@ -83,6 +83,7 @@ const PresupuestosPage = () => {
   const [proyectos, setProyectos] = useState([]);
   const [categorias, setCategorias] = useState([]);
   const [empresaId, setEmpresaId] = useState(null);
+  const [cacModo, setCacModo] = useState('legacy');
   const [alert, setAlert] = useState({ open: false, message: '', severity: 'info' });
   const [proveedores, setProveedores] = useState([]);
   const [etapas, setEtapas] = useState([]);
@@ -239,6 +240,7 @@ const PresupuestosPage = () => {
 
         setProyectos(proyectosUsuario);
         setEmpresaId(empresa.id);
+        setCacModo(empresa.presupuesto_cac_modo || 'legacy');
         const provNombres = await proveedorService.getNombres(empresa.id);
         setProveedores(provNombres);
 
@@ -698,6 +700,7 @@ const PresupuestosPage = () => {
           categorias={categorias}
           etapas={etapas}
           proveedoresEmpresa={proveedores}
+          cacModo={cacModo}
         />
 
       </Box>
