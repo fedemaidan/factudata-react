@@ -31,6 +31,7 @@ import {
     Refresh as RefreshIcon,
     FileDownloadOutlined as DownloadIcon,
     HistoryToggleOff as HistoryIcon,
+    Sync as SyncIcon,
 } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
@@ -105,6 +106,17 @@ function formatFechaDia(f) {
     if (!f) return '—';
     const [, m, d] = f.split('-');
     return `${d}/${m}`;
+}
+
+// Última sincronización con Notion → "26/07 14:32" (zona AR), o null si nunca.
+function formatLastSync(iso) {
+    if (!iso) return null;
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return null;
+    return d.toLocaleString('es-AR', {
+        timeZone: 'America/Argentina/Buenos_Aires',
+        day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+    });
 }
 
 /**
@@ -537,6 +549,88 @@ function RubroOutcomesTabla({ outcomes }) {
     );
 }
 
+// ─── Ventas por campaña (cohorte CRM × atribución) ────────
+// Mismo desglose que RubroOutcomesTabla pero agrupado por campaña. La campaña se
+// resuelve en el sync joineando la reunión de Notion con el Lead por teléfono
+// (Lead.utm_campaign). "Sin campaña" = orgánico o match de campaña no encontrado.
+
+function CampañaOutcomesTabla({ outcomes }) {
+    const porCampaña = outcomes?.porCampaña || [];
+
+    if (porCampaña.length === 0) {
+        return (
+            <Card sx={{ borderLeft: '4px solid #eab308' }}>
+                <CardHeader
+                    title="📣 Ventas por campaña (cohorte CRM)"
+                    subheader="Sin datos todavía — sincronizá con Notion, o no hay reuniones con campaña atribuida en el período"
+                />
+            </Card>
+        );
+    }
+
+    const totalContactos = porCampaña.reduce((a, r) => a + (r.contactos || 0), 0);
+
+    return (
+        <Card sx={{ borderLeft: '4px solid #eab308' }}>
+            <CardHeader
+                title="📣 Ventas por campaña (cohorte CRM)"
+                subheader={`${porCampaña.length} campaña${porCampaña.length > 1 ? 's' : ''} · agendó / reunión / ganado por cohorte del período · % sobre el paso anterior · "Sin campaña" = orgánico o sin atribución`}
+            />
+            <CardContent sx={{ pt: 0 }}>
+                <TableContainer component={Paper} variant="outlined">
+                    <Table size="small">
+                        <TableHead>
+                            <TableRow>
+                                <TableCell><strong>📣 Campaña</strong></TableCell>
+                                <TableCell align="right"><strong>✅ Agendó</strong></TableCell>
+                                <TableCell align="right"><strong>🤝 Reunión exitosa</strong></TableCell>
+                                <TableCell align="right"><strong>🏆 Ganado</strong></TableCell>
+                            </TableRow>
+                        </TableHead>
+                        <TableBody>
+                            {porCampaña.map(r => {
+                                const sinCamp = r.campaña === 'Sin campaña';
+                                const celda = (val, base, color) => (
+                                    <TableCell align="right">
+                                        <Typography variant="body2" sx={{ color: val > 0 ? color : 'text.disabled', fontWeight: val > 0 ? 700 : 400 }}>
+                                            {val > 0 ? val.toLocaleString('es-AR') : '—'}
+                                        </Typography>
+                                        {val > 0 && base > 0 && (
+                                            <Typography variant="caption" sx={{ display: 'block', lineHeight: 1.15, color: 'text.secondary' }}>
+                                                {pct(val, base)}
+                                            </Typography>
+                                        )}
+                                    </TableCell>
+                                );
+                                return (
+                                    <TableRow key={r.campaña} sx={{ '&:hover': { bgcolor: 'action.hover' }, opacity: sinCamp ? 0.7 : 1 }}>
+                                        <TableCell>
+                                            <Typography variant="body2" sx={{ fontWeight: 600, fontFamily: sinCamp ? 'inherit' : 'monospace', fontStyle: sinCamp ? 'italic' : 'normal' }}>
+                                                {r.campaña}
+                                            </Typography>
+                                        </TableCell>
+                                        {celda(r.agendo || 0, r.contactos || 0, '#10b981')}
+                                        {celda(r.reunionExitosa || 0, r.agendo || 0, '#14b8a6')}
+                                        {celda(r.ganado || 0, r.reunionExitosa || 0, '#eab308')}
+                                    </TableRow>
+                                );
+                            })}
+                            {porCampaña.length > 1 && (
+                                <TableRow sx={{ bgcolor: 'action.hover' }}>
+                                    <TableCell><strong>Total</strong></TableCell>
+                                    <TableCell align="right"><strong>{(outcomes?.totales?.agendo || 0).toLocaleString('es-AR')}</strong></TableCell>
+                                    <TableCell align="right"><strong>{(outcomes?.totales?.reunionExitosa || 0).toLocaleString('es-AR')}</strong></TableCell>
+                                    <TableCell align="right"><strong>{(outcomes?.totales?.ganado || 0).toLocaleString('es-AR')}</strong></TableCell>
+                                </TableRow>
+                            )}
+                        </TableBody>
+                    </Table>
+                </TableContainer>
+            </CardContent>
+        </Card>
+    );
+}
+
 // ─── Tabla por día ────────────────────────────────────────
 
 function TablaDaily({ rows }) {
@@ -831,6 +925,8 @@ const LandingFunnelPage = () => {
     const [campañasFiltro, setCampañasFiltro] = useState([]); // [] = todas
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    const [syncing, setSyncing] = useState(false);
+    const [syncMsg, setSyncMsg] = useState(null); // { severity, text } tras sincronizar
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -869,6 +965,30 @@ const LandingFunnelPage = () => {
 
     useEffect(() => {
         fetchData();
+    }, [fetchData]);
+
+    // Sincronización manual con Notion (botón). Al terminar, refresca los datos
+    // para que las tarjetas y la tabla por campaña reflejen el mirror nuevo.
+    const handleSync = useCallback(async () => {
+        setSyncing(true);
+        setSyncMsg(null);
+        try {
+            const res = await landingStatsService.syncNotion();
+            const r = res?.resumen || {};
+            setSyncMsg({
+                severity: 'success',
+                text: `Sincronizado con Notion: ${r.landing ?? 0} reuniones · ${r.ganados ?? 0} ganados · ${r.purchasesNuevos ?? 0} Purchases · ${r.sinCampaña ?? 0} sin campaña`,
+            });
+            await fetchData();
+        } catch (err) {
+            if (err.response?.status === 409) {
+                setSyncMsg({ severity: 'warning', text: 'Ya hay una sincronización en curso. Probá de nuevo en unos segundos.' });
+            } else {
+                setSyncMsg({ severity: 'error', text: err.response?.data?.error || err.message || 'Error al sincronizar con Notion' });
+            }
+        } finally {
+            setSyncing(false);
+        }
     }, [fetchData]);
 
     const totalesRaw = data?.totales || {};
@@ -989,6 +1109,44 @@ const LandingFunnelPage = () => {
                                     </ToggleButtonGroup>
                                 </Stack>
                             )}
+                            <Tooltip
+                                title={
+                                    syncing
+                                        ? 'Sincronizando con Notion…'
+                                        : outcomes?.lastRunAt
+                                            ? `Última sincronización con Notion: ${formatLastSync(outcomes.lastRunAt)} hs`
+                                            : 'Todavía no se sincronizó con Notion'
+                                }
+                                placement="top"
+                                arrow
+                            >
+                                <Chip
+                                    size="small"
+                                    variant="outlined"
+                                    color={outcomes?.lastRunAt && !syncing ? 'success' : 'default'}
+                                    label={
+                                        syncing
+                                            ? 'Sincronizando…'
+                                            : formatLastSync(outcomes?.lastRunAt)
+                                                ? `Notion: ${formatLastSync(outcomes.lastRunAt)}`
+                                                : 'Nunca sincronizado'
+                                    }
+                                />
+                            </Tooltip>
+                            <Tooltip title="Traer de Notion el estado de las reuniones (reunión exitosa, ganado/perdido y venta por campaña)">
+                                <span>
+                                    <Button
+                                        size="small"
+                                        variant="contained"
+                                        color="success"
+                                        startIcon={syncing ? <CircularProgress size={14} color="inherit" /> : <SyncIcon />}
+                                        onClick={handleSync}
+                                        disabled={syncing}
+                                    >
+                                        Sincronizar con Notion
+                                    </Button>
+                                </span>
+                            </Tooltip>
                             <Tooltip title="Exportar la data del período a CSV">
                                 <span>
                                     <Button
@@ -1015,6 +1173,12 @@ const LandingFunnelPage = () => {
                     {error && (
                         <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
                             {error}
+                        </Alert>
+                    )}
+
+                    {syncMsg && (
+                        <Alert severity={syncMsg.severity} sx={{ mb: 2 }} onClose={() => setSyncMsg(null)}>
+                            {syncMsg.text}
                         </Alert>
                     )}
 
@@ -1077,6 +1241,8 @@ const LandingFunnelPage = () => {
                             </Grid>
 
                             <RubroOutcomesTabla outcomes={outcomes} />
+
+                            <CampañaOutcomesTabla outcomes={outcomes} />
 
                             <AtribucionTabla
                                 extraSteps={totales.extraSteps}

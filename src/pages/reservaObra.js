@@ -1,6 +1,6 @@
 // Detalle de Reserva de Obra (reserva interna de fondos de una obra/proyecto).
 // Concepto distinto de la Caja Chica personal. Ver docs/RESERVA_DE_OBRA_TECNICO.md — Ticket 2.
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Box, Container, Typography, Stack, TextField, MenuItem, Grid,
   Paper, Table, TableBody, TableCell, TableHead, TableRow, Chip, Snackbar, Alert,
@@ -35,6 +35,7 @@ import { useBreadcrumbs } from 'src/contexts/breadcrumbs-context';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import reservaObraService from 'src/services/reservaObraService';
 import profileService from 'src/services/profileService';
+import { getProyectosFromUser } from 'src/services/proyectosService';
 import { formatTimestamp } from 'src/utils/formatters';
 
 const formatCurrency = (amount, moneda = 'ARS') => {
@@ -311,10 +312,50 @@ const ReservaObraDetallePage = () => {
       try {
         const empId = user?.empresa?.id || user?.empresaData?.id || user?.empresa_id;
         const perfs = await profileService.getProfileByEmpresa(empId);
-        setPerfiles(perfs || []);
+        // Resolvemos las obras de cada perfil para filtrar por "acceso a la obra".
+        const perfsConProyectos = await Promise.all(
+          (perfs || []).map(async (prof) => ({ ...prof, proyectosData: await getProyectosFromUser(prof) })),
+        );
+        setPerfiles(perfsConProyectos);
       } catch (err) {
         console.error('Error cargando perfiles:', err);
       }
+    }
+  };
+
+  // Perfiles con acceso a la obra de esta reserva que todavía no participan.
+  const perfilesElegibles = useMemo(() => {
+    const pid = reserva?.proyecto_id;
+    if (!pid) return [];
+    const yaParticipa = (p) => (reserva?.participantes || []).some(
+      (pt) => (p.id && pt.user_id === p.id) || (p.phone && pt.user_phone === p.phone),
+    );
+    return perfiles.filter(
+      (p) => (p.proyectosData || []).some((pr) => (pr.id || pr._id) === pid) && !yaParticipa(p),
+    );
+  }, [perfiles, reserva]);
+
+  const handleAgregarTodosConAcceso = async () => {
+    if (perfilesElegibles.length === 0) return;
+    setPartSaving(true);
+    try {
+      let doc = reserva;
+      for (const p of perfilesElegibles) {
+        doc = await reservaObraService.agregarParticipante(id, {
+          userId: p.id || p.user_id || null,
+          userPhone: p.phone || null,
+          nombre: [p.firstName, p.lastName].filter(Boolean).join(' ') || p.phone || '',
+          rol: 'operador',
+        });
+      }
+      setReserva(doc);
+      setFormPerfil(null);
+      setAlert({ open: true, message: `${perfilesElegibles.length} participante(s) agregado(s)`, severity: 'success' });
+    } catch (err) {
+      console.error('Error agregando participantes:', err);
+      setAlert({ open: true, message: err?.response?.data?.error || 'Error al agregar participantes', severity: 'error' });
+    } finally {
+      setPartSaving(false);
     }
   };
 
@@ -807,11 +848,15 @@ const ReservaObraDetallePage = () => {
                   <Divider />
                   <Typography variant="subtitle2">Agregar participante</Typography>
                   <Autocomplete
-                    options={perfiles}
+                    options={perfilesElegibles}
                     getOptionLabel={(p) => [p?.firstName, p?.lastName].filter(Boolean).join(' ') || p?.phone || ''}
                     value={formPerfil}
                     onChange={(e, val) => setFormPerfil(val)}
-                    renderInput={(params) => <TextField {...params} label="Usuario" size="small" />}
+                    noOptionsText="No hay usuarios con acceso a la obra sin participar"
+                    renderInput={(params) => (
+                      <TextField {...params} label="Usuario" size="small"
+                        helperText="Solo usuarios con acceso a la obra." />
+                    )}
                   />
                   <TextField
                     select
@@ -824,6 +869,14 @@ const ReservaObraDetallePage = () => {
                     <MenuItem value="operador">Operador</MenuItem>
                     <MenuItem value="lector">Lector</MenuItem>
                   </TextField>
+                  <Button
+                    size="small"
+                    variant="text"
+                    onClick={handleAgregarTodosConAcceso}
+                    disabled={partSaving || perfilesElegibles.length === 0}
+                  >
+                    Agregar todos los usuarios con acceso a la obra ({perfilesElegibles.length})
+                  </Button>
                 </>
               )}
             </Stack>
