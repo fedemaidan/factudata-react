@@ -22,7 +22,7 @@ import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import reservaObraService from 'src/services/reservaObraService';
 import profileService from 'src/services/profileService';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
-import { getProyectosByEmpresa } from 'src/services/proyectosService';
+import { getProyectosByEmpresa, getProyectosFromUser } from 'src/services/proyectosService';
 import { formatTimestamp } from 'src/utils/formatters';
 
 const formatCurrency = (amount, moneda = 'ARS') => {
@@ -140,7 +140,9 @@ const ReservasObraPage = () => {
     return () => setBreadcrumbs([]);
   }, [setBreadcrumbs]);
 
-  // Carga diferida de proyectos y perfiles (dialog Nueva reserva)
+  // Carga diferida de proyectos y perfiles (dialog Nueva reserva). A cada perfil le
+  // resolvemos sus obras (proyectosData) para poder filtrar por "acceso a la obra"
+  // (mismo criterio que ProyectoConfigDrawer).
   const cargarProyectosYPerfiles = async () => {
     if (proyectos.length > 0) return;
     try {
@@ -150,12 +152,23 @@ const ReservasObraPage = () => {
         getProyectosByEmpresa(empresa),
         profileService.getProfileByEmpresa(empId),
       ]);
+      const perfsConProyectos = await Promise.all(
+        (perfs || []).map(async (prof) => ({ ...prof, proyectosData: await getProyectosFromUser(prof) })),
+      );
       setProyectos(pys || []);
-      setPerfiles(perfs || []);
+      setPerfiles(perfsConProyectos);
     } catch (err) {
       console.error('Error cargando proyectos/perfiles:', err);
     }
   };
+
+  // Usuarios con acceso a la obra elegida: los asignados a ese proyecto. Sin obra
+  // elegida todavía, no hay a quién listar.
+  const perfilesConAcceso = useMemo(() => {
+    const pid = formProyecto?._id || formProyecto?.id;
+    if (!pid) return [];
+    return perfiles.filter((p) => (p.proyectosData || []).some((pr) => (pr.id || pr._id) === pid));
+  }, [perfiles, formProyecto]);
 
   const handleOpenCrear = async () => {
     setCrearOpen(true);
@@ -340,48 +353,6 @@ const ReservasObraPage = () => {
               </Card>
             </Stack>
 
-            {/* Consolidado del dueño: impacto del reservado en la caja de cada obra */}
-            {puedeGestionar && consolidado?.obras?.length > 0 && (
-              <Paper variant="outlined" sx={{ borderRadius: 2 }}>
-                <Box sx={{ px: 2, pt: 1.5 }}>
-                  <Typography variant="subtitle2" color="text.secondary">
-                    Impacto en la caja de cada obra (Disponible = Saldo − Reservado)
-                  </Typography>
-                </Box>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Obra</TableCell>
-                      <TableCell align="right">Saldo total caja</TableCell>
-                      <TableCell align="right">Reservado</TableCell>
-                      <TableCell align="right">Disponible real</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {consolidado.obras.map((o) => (
-                      <TableRow key={o.proyecto_id} hover>
-                        <TableCell>
-                          <Typography variant="body2" fontWeight={600}>{o.proyecto_nombre || '—'}</Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            {o.reservas.length === 1 ? '1 reserva' : `${o.reservas.length} reservas`}
-                          </Typography>
-                        </TableCell>
-                        <TableCell align="right">
-                          {o.saldo_caja?.ARS != null ? formatCurrency(o.saldo_caja.ARS, 'ARS') : '—'}
-                        </TableCell>
-                        <TableCell align="right" sx={{ color: 'warning.main', fontWeight: 600 }}>
-                          {formatCurrency(o.reservado?.ARS || 0, 'ARS')}
-                        </TableCell>
-                        <TableCell align="right" sx={{ fontWeight: 600, color: (o.disponible?.ARS ?? 0) < 0 ? 'error.main' : 'success.main' }}>
-                          {o.disponible?.ARS != null ? formatCurrency(o.disponible.ARS, 'ARS') : '—'}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </Paper>
-            )}
-
             <TextField
               placeholder="Buscar obra o reserva..."
               variant="outlined"
@@ -518,6 +489,48 @@ const ReservasObraPage = () => {
                 </Table>
               </Paper>
             )}
+
+            {/* Consolidado del dueño: impacto del reservado en la caja de cada obra */}
+            {puedeGestionar && consolidado?.obras?.length > 0 && (
+              <Paper variant="outlined" sx={{ borderRadius: 2 }}>
+                <Box sx={{ px: 2, pt: 1.5 }}>
+                  <Typography variant="subtitle2" color="text.secondary">
+                    Impacto en la caja de cada obra (Disponible = Saldo − Reservado)
+                  </Typography>
+                </Box>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Obra</TableCell>
+                      <TableCell align="right">Saldo total caja</TableCell>
+                      <TableCell align="right">Reservado</TableCell>
+                      <TableCell align="right">Disponible real</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {consolidado.obras.map((o) => (
+                      <TableRow key={o.proyecto_id} hover>
+                        <TableCell>
+                          <Typography variant="body2" fontWeight={600}>{o.proyecto_nombre || '—'}</Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {o.reservas.length === 1 ? '1 reserva' : `${o.reservas.length} reservas`}
+                          </Typography>
+                        </TableCell>
+                        <TableCell align="right">
+                          {o.saldo_caja?.ARS != null ? formatCurrency(o.saldo_caja.ARS, 'ARS') : '—'}
+                        </TableCell>
+                        <TableCell align="right" sx={{ color: 'warning.main', fontWeight: 600 }}>
+                          {formatCurrency(o.reservado?.ARS || 0, 'ARS')}
+                        </TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 600, color: (o.disponible?.ARS ?? 0) < 0 ? 'error.main' : 'success.main' }}>
+                          {o.disponible?.ARS != null ? formatCurrency(o.disponible.ARS, 'ARS') : '—'}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </Paper>
+            )}
           </Stack>
         </Container>
 
@@ -605,6 +618,11 @@ const ReservasObraPage = () => {
                 onChange={(e, val) => {
                   setFormProyecto(val);
                   if (!nombreEditado) setFormNombre(val ? `Reserva de Obra · ${val.nombre}` : '');
+                  // La obra cambió: descarto responsable/participantes que ya no tienen acceso.
+                  const pid = val?._id || val?.id;
+                  const tieneAcceso = (p) => !!pid && (p?.proyectosData || []).some((pr) => (pr.id || pr._id) === pid);
+                  setFormResponsable((r) => (r && tieneAcceso(r) ? r : null));
+                  setFormParticipantes((ps) => ps.filter(tieneAcceso));
                 }}
                 renderInput={(params) => <TextField {...params} label="Obra / Proyecto" size="small" />}
               />
@@ -616,22 +634,44 @@ const ReservasObraPage = () => {
                 helperText="Con varias reservas en la misma obra, el nombre es lo que las distingue (también en WhatsApp)."
               />
               <Autocomplete
-                options={perfiles}
+                options={perfilesConAcceso}
                 getOptionLabel={nombrePerfil}
                 value={formResponsable}
                 onChange={(e, val) => setFormResponsable(val)}
-                renderInput={(params) => <TextField {...params} label="Responsable" size="small" />}
+                disabled={!formProyecto}
+                renderInput={(params) => (
+                  <TextField {...params} label="Responsable" size="small"
+                    helperText={formProyecto ? undefined : 'Elegí primero la obra.'} />
+                )}
               />
               <Autocomplete
                 multiple
-                options={perfiles}
+                options={perfilesConAcceso}
                 getOptionLabel={nombrePerfil}
                 value={formParticipantes}
                 onChange={(e, val) => setFormParticipantes(val)}
+                disabled={!formProyecto}
                 renderInput={(params) => (
                   <TextField {...params} label="Participantes" size="small" helperText="Pueden gastar de esta reserva (rol operador)." />
                 )}
               />
+              {formProyecto && (
+                <Box display="flex" alignItems="center" gap={1}>
+                  <Button
+                    size="small"
+                    variant="text"
+                    onClick={() => setFormParticipantes(perfilesConAcceso)}
+                    disabled={perfilesConAcceso.length === 0 || formParticipantes.length === perfilesConAcceso.length}
+                  >
+                    Todos los usuarios con acceso a la obra ({perfilesConAcceso.length})
+                  </Button>
+                  {formParticipantes.length > 0 && (
+                    <Button size="small" variant="text" color="inherit" onClick={() => setFormParticipantes([])}>
+                      Limpiar
+                    </Button>
+                  )}
+                </Box>
+              )}
               <Typography variant="caption" color="text.secondary">
                 Una obra puede tener varias reservas: una general, por persona o compartida por un grupo.
               </Typography>
