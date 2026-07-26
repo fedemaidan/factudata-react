@@ -345,7 +345,7 @@ const getMovimientoCsvExportFields = () => [
 ];
 
 
-const TotalesFiltrados = ({ t, fmt, moneda, showUsdBlue = false, usdBlue = null, chips = [], onOpenFilters, isMobile = false, showDetails = false, onToggleDetails, baseCalculo = 'total', reserva = null, onVerReserva }) => {
+const TotalesFiltrados = ({ t, fmt, moneda, showUsdBlue = false, usdBlue = null, chips = [], onOpenFilters, isMobile = false, showDetails = false, onToggleDetails, baseCalculo = 'total', reserva = null, reservasNavegables = [], onVerReserva }) => {
   const up = (moneda || '').toUpperCase();
   const ingreso = t[up]?.ingreso ?? 0;
   const egreso  = t[up]?.egreso  ?? 0;
@@ -443,6 +443,11 @@ const TotalesFiltrados = ({ t, fmt, moneda, showUsdBlue = false, usdBlue = null,
                 <Typography variant="body2" sx={{ fontWeight: 700, color: reservado >= 0 ? 'warning.main' : 'error.main' }}>
                   {fmt(up, reservado)}
                 </Typography>
+                {reservado < 0 && (
+                  <Typography variant="caption" color="error.main" sx={{ display: 'block' }}>
+                    A cubrir {fmt(up, -reservado)} (transferencia entre cajas de proyecto)
+                  </Typography>
+                )}
               </Box>
               {disponible >= 0 && (
                 <Box>
@@ -452,12 +457,22 @@ const TotalesFiltrados = ({ t, fmt, moneda, showUsdBlue = false, usdBlue = null,
                   </Typography>
                 </Box>
               )}
-              {onVerReserva && (
-                <Button size="small" variant="text" onClick={onVerReserva} sx={{ ml: 'auto' }}>
-                  Ver Reserva
-                </Button>
-              )}
             </Stack>
+            {/* Una obra puede tener varias reservas: un acceso por cada una visible. */}
+            {reservasNavegables.length > 0 && onVerReserva && (
+              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
+                {reservasNavegables.map((r) => (
+                  <Chip
+                    key={r._id || r.id}
+                    label={r.nombre || `Reserva de Obra · ${r.proyecto_nombre || ''}`}
+                    size="small"
+                    variant="outlined"
+                    clickable
+                    onClick={() => onVerReserva(r)}
+                  />
+                ))}
+              </Stack>
+            )}
           </Box>
         )}
 
@@ -933,21 +948,22 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
       });
     return () => { cancelado = true; };
   }, [empresa?.id, proyectoId]);
-  const reservaActiva = reservaProyecto?.reservas?.[0] || null;
   // "Solo la ven quienes son parte de la reserva" (+ admin / VER_RESERVAS_OBRA).
-  const puedeVerReserva = useMemo(() => {
-    if (!reservaActiva) return false;
+  // Con varias reservas por obra, la visibilidad se evalúa POR reserva.
+  const reservasVisibles = useMemo(() => {
+    const todas = reservaProyecto?.reservas || [];
+    if (todas.length === 0) return [];
     const accionesEmpresa = user?.empresa?.acciones || user?.empresaData?.acciones || [];
     const permisosOcultos = user?.permisosOcultos || [];
     const tienePermiso = (a) => accionesEmpresa.includes(a) && !permisosOcultos.includes(a);
-    if (user?.admin || tienePermiso('VER_RESERVAS_OBRA')) return true;
+    if (user?.admin || tienePermiso('VER_RESERVAS_OBRA')) return todas;
     const userId = user?.id || user?.user_id || user?.uid || null;
     const userPhone = user?.phone || user?.telefono || null;
-    return (reservaActiva.participantes || []).some(
+    return todas.filter((r) => (r.participantes || []).some(
       (p) => (userId && p.user_id === userId) || (userPhone && p.user_phone === userPhone),
-    );
-  }, [reservaActiva, user]);
-  const hasReserva = !!reservaActiva && puedeVerReserva;
+    ));
+  }, [reservaProyecto, user]);
+  const hasReserva = reservasVisibles.length > 0;
 
   useEffect(() => {
     logCajaDebug('Contexto inicial usuario/router', {
@@ -2431,7 +2447,8 @@ useEffect(() => {
                   onToggleDetails={() => setShowTotalsDetails((s) => !s)}
                   baseCalculo={activeCaja?.baseCalculo || 'total'}
                   reserva={reservaProyecto}
-                  onVerReserva={hasReserva ? () => router.push(`/reservaObra?id=${reservaProyecto.reservas[0]._id || reservaProyecto.reservas[0].id}`) : undefined}
+                  reservasNavegables={reservasVisibles}
+                  onVerReserva={hasReserva ? (r) => router.push(`/reservaObra?id=${r._id || r.id}`) : undefined}
                 />
 
               </Stack>

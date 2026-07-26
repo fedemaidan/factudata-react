@@ -1315,21 +1315,25 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
   const activeSortDirection = getSortDirectionForFilters(filters);
 
   // ── Reserva de Obra del proyecto activo ──
-  const reservaActiva = reservaProyecto?.reservas?.[0] || null;
   // "Solo la ven quienes son parte de la reserva" (+ admin / VER_RESERVAS_OBRA).
-  const puedeVerReserva = useMemo(() => {
-    if (!reservaActiva) return false;
+  // Con varias reservas por obra, la visibilidad se evalúa POR reserva.
+  const reservasVisibles = useMemo(() => {
+    const todas = reservaProyecto?.reservas || [];
+    if (todas.length === 0) return [];
     const accionesEmpresa = user?.empresa?.acciones || user?.empresaData?.acciones || [];
     const permisosOcultos = user?.permisosOcultos || [];
     const tienePermiso = (a) => accionesEmpresa.includes(a) && !permisosOcultos.includes(a);
-    if (user?.admin || tienePermiso('VER_RESERVAS_OBRA')) return true;
+    if (user?.admin || tienePermiso('VER_RESERVAS_OBRA')) return todas;
     const userId = user?.id || user?.user_id || user?.uid || null;
     const userPhone = user?.phone || user?.telefono || null;
-    return (reservaActiva.participantes || []).some(
+    return todas.filter((r) => (r.participantes || []).some(
       (p) => (userId && p.user_id === userId) || (userPhone && p.user_phone === userPhone),
-    );
-  }, [reservaActiva, user]);
-  const hasReserva = !!reservaActiva && puedeVerReserva;
+    ));
+  }, [reservaProyecto, user]);
+  const hasReserva = reservasVisibles.length > 0;
+  // El filtro por reserva de la card aplica solo cuando hay UNA reserva visible;
+  // con varias no se elige una al azar: se deriva al listado de reservas.
+  const reservaUnica = reservasVisibles.length === 1 ? reservasVisibles[0] : null;
   // Cuántas cards de saldo mostrarán el desglose de reserva (ocupan 2 columnas c/u).
   const cardsConReserva = useMemo(() => {
     if (!hasReserva) return 0;
@@ -1342,15 +1346,16 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
   }, [hasReserva, cajasVirtuales, reservaProyecto]);
   const reservaFiltroActivo = !!filters?.reservaId;
   const toggleFiltroReserva = useCallback(() => {
-    const id = reservaActiva?._id || reservaActiva?.id;
+    const id = reservaUnica?._id || reservaUnica?.id;
     if (!id) return;
     setFilters((f) => ({ ...f, reservaId: f?.reservaId === id ? undefined : id }));
     setPage(0);
-  }, [reservaActiva, setFilters]);
+  }, [reservaUnica, setFilters]);
   const irADetalleReserva = useCallback(() => {
-    const id = reservaActiva?._id || reservaActiva?.id;
+    const id = reservaUnica?._id || reservaUnica?.id;
     if (id) router.push(`/reservaObra?id=${id}`);
-  }, [reservaActiva, router]);
+    else router.push('/reservasObra');
+  }, [reservaUnica, router]);
   // Limpiar un filtro de reserva que quedó colgado si la reserva ya no se ve
   // (se cambió de proyecto o el usuario no participa).
   useEffect(() => {
@@ -2882,14 +2887,16 @@ useEffect(() => {
                                       <Typography variant="caption" color="inherit" sx={{ opacity: 0.92, lineHeight: 1.25, flex: 1 }}>
                                         {reservaFiltroActivo
                                           ? 'Mostrando solo egresos de la reserva — tocá para quitar'
-                                          : 'Reserva interna del proyecto. Tocá para ver sus egresos.'}
+                                          : reservaUnica
+                                            ? 'Reserva interna del proyecto. Tocá para ver sus egresos.'
+                                            : `Este proyecto tiene ${reservasVisibles.length} reservas internas.`}
                                       </Typography>
                                       <Box
                                         component="span"
                                         onClick={(e) => { e.stopPropagation(); irADetalleReserva(); }}
                                         sx={{ fontSize: '0.68rem', fontWeight: 700, textDecoration: 'underline', whiteSpace: 'nowrap', opacity: 0.95 }}
                                       >
-                                        Ver egresos
+                                        {reservaUnica ? 'Ver egresos' : 'Ver reservas'}
                                       </Box>
                                     </Box>
                                   </Box>
