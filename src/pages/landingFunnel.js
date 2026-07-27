@@ -87,6 +87,12 @@ const METRICAS_OUTCOME = [
 // Embudo completo = pasos del landing (contadores diarios) + outcomes del CRM.
 const METRICAS_FUNNEL = [...METRICAS, ...METRICAS_OUTCOME];
 
+// Columnas para las tablas de atribución + "Datos por día": el mismo embudo del
+// landing pero SIN "dejó email" y CON "reunión concretada" (que sale del mirror
+// de Notion, desglosado por dimensión en outcomeExtraSteps / outcomesByDay).
+const METRICA_REUNION = { key: 'reunionExitosa', label: 'Reunión', emoji: '🤝', color: '#14b8a6', desc: 'Reunión concretada', instrumentado: true };
+const METRICAS_CON_REUNION = [...METRICAS.filter(m => m.key !== 'dejoEmail'), METRICA_REUNION];
+
 // Métricas del flujo VIEJO (modal web) — sólo para la tabla histórica pre 1-jun.
 const METRICAS_HIST = [
     { key: 'visitasLanding', label: 'Visitas',        emoji: '👁️', color: '#6366f1' },
@@ -359,6 +365,7 @@ const RAW_EVENT_A_PASO = {
     agendaron: 'agendo',
     agendo: 'agendo',
     dejo_email: 'dejoEmail',
+    reunion_exitosa: 'reunionExitosa',
 };
 
 function parseAttributionBreakdown(extraSteps, prefix /* 'src' | 'camp' */) {
@@ -377,7 +384,7 @@ function parseAttributionBreakdown(extraSteps, prefix /* 'src' | 'camp' */) {
     return buckets;
 }
 
-function AtribucionTabla({ extraSteps, prefix, title, dimLabel, dimLabels }) {
+function AtribucionTabla({ extraSteps, prefix, title, dimLabel, dimLabels, metricas = METRICAS }) {
     const buckets = parseAttributionBreakdown(extraSteps, prefix);
     const rows = Object.entries(buckets)
         .map(([dim, pasos]) => ({ dim, ...pasos }))
@@ -403,7 +410,7 @@ function AtribucionTabla({ extraSteps, prefix, title, dimLabel, dimLabels }) {
                         <TableHead>
                             <TableRow>
                                 <TableCell><strong>{dimLabel.charAt(0).toUpperCase() + dimLabel.slice(1)}</strong></TableCell>
-                                {METRICAS.map(m => (
+                                {metricas.map(m => (
                                     <TableCell key={m.key} align="right"><strong>{m.emoji} {m.label}</strong></TableCell>
                                 ))}
                                 <TableCell align="right">
@@ -421,11 +428,11 @@ function AtribucionTabla({ extraSteps, prefix, title, dimLabel, dimLabels }) {
                                         <TableCell>
                                             <Typography variant="body2" sx={{ fontFamily: dimLabels?.[r.dim] ? 'inherit' : 'monospace', fontWeight: 600 }}>{dimLabels?.[r.dim] || r.dim}</Typography>
                                         </TableCell>
-                                        {METRICAS.map((m, i) => {
+                                        {metricas.map((m, i) => {
                                             const val = r[m.key] || 0;
                                             const base = r.visita || 0;
-                                            // Paso anterior del embudo (según el orden de METRICAS)
-                                            const prevVal = i > 0 ? (r[METRICAS[i - 1].key] || 0) : 0;
+                                            // Paso anterior del embudo (según el orden de `metricas`)
+                                            const prevVal = i > 0 ? (r[metricas[i - 1].key] || 0) : 0;
                                             const mostrar = m.key !== 'visita' && val > 0;
                                             return (
                                                 <TableCell key={m.key} align="right">
@@ -633,7 +640,7 @@ function CampañaOutcomesTabla({ outcomes }) {
 
 // ─── Tabla por día ────────────────────────────────────────
 
-function TablaDaily({ rows }) {
+function TablaDaily({ rows, metricas = METRICAS }) {
     if (!rows || rows.length === 0) {
         return (
             <Card>
@@ -649,8 +656,8 @@ function TablaDaily({ rows }) {
 
     const filas = [...rows].reverse();
     // Sólo columnas con algún dato, para no saturar con métricas vacías.
-    const metricasVisibles = METRICAS.filter(m => rows.some(r => metricaVal(r, m.key) > 0));
-    const cols = metricasVisibles.length > 0 ? metricasVisibles : METRICAS;
+    const metricasVisibles = metricas.filter(m => rows.some(r => metricaVal(r, m.key) > 0));
+    const cols = metricasVisibles.length > 0 ? metricasVisibles : metricas;
 
     return (
         <Card>
@@ -1027,6 +1034,12 @@ const LandingFunnelPage = () => {
     };
     const metricasFunnel = outcomes ? METRICAS_FUNNEL : METRICAS;
 
+    // "Reunión concretada" por dimensión (sale del mirror de Notion) mezclada en
+    // los extraSteps que consumen las tablas de atribución, y por día para la
+    // tabla "Datos por día".
+    const extraStepsConReunion = { ...(totales.extraSteps || {}), ...(outcomes?.outcomeExtraSteps || {}) };
+    const rowsConReunion = rows.map(r => ({ ...r, reunionExitosa: outcomes?.outcomesByDay?.[r.fecha] || 0 }));
+
     return (
         <>
             <Head>
@@ -1251,7 +1264,8 @@ const LandingFunnelPage = () => {
                                 dimLabel="variante"
                             />
                             <AtribucionTabla
-                                extraSteps={totales.extraSteps}
+                                extraSteps={extraStepsConReunion}
+                                metricas={METRICAS_CON_REUNION}
                                 prefix="flow"
                                 title="🔀 A/B de flujo (WhatsApp vs Web directa)"
                                 dimLabel="flujo"
@@ -1262,25 +1276,28 @@ const LandingFunnelPage = () => {
                                 }}
                             />
                             <AtribucionTabla
-                                extraSteps={totales.extraSteps}
+                                extraSteps={extraStepsConReunion}
+                                metricas={METRICAS_CON_REUNION}
                                 prefix="src"
                                 title="🎯 Atribución por fuente"
                                 dimLabel="fuente"
                             />
                             <AtribucionTabla
-                                extraSteps={totales.extraSteps}
+                                extraSteps={extraStepsConReunion}
+                                metricas={METRICAS_CON_REUNION}
                                 prefix="camp"
                                 title="📣 Atribución por campaña de Meta"
                                 dimLabel="campaña"
                             />
                             <AtribucionTabla
-                                extraSteps={totales.extraSteps}
+                                extraSteps={extraStepsConReunion}
+                                metricas={METRICAS_CON_REUNION}
                                 prefix="content"
                                 title="🖼️ Atribución por anuncio"
                                 dimLabel="anuncio"
                             />
 
-                            <TablaDaily rows={rows} />
+                            <TablaDaily rows={rowsConReunion} metricas={METRICAS_CON_REUNION} />
 
                             <HistoricoSemanal />
 
