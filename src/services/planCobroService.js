@@ -64,9 +64,9 @@ const planCobroService = {
   agregarAnexo: (planId, data) =>
     api.post(`/cobros/${planId}/anexos`, data),
 
-  // Cashflow proyectado agregado (Fase G)
-  getCashflow: (empresaId, proyectoId = null, granularidad = 'mes', { incluirHistorico = false } = {}) =>
-    api.get('/cobros/cashflow', { params: { empresa_id: empresaId, proyecto_id: proyectoId || undefined, granularidad, incluir_historico: incluirHistorico || undefined } }),
+  // Cashflow proyectado agregado (Fase G). `detalle` trae la lista accionable por cuota (vista de gestión, A2).
+  getCashflow: (empresaId, proyectoId = null, granularidad = 'mes', { incluirHistorico = false, detalle = false } = {}) =>
+    api.get('/cobros/cashflow', { params: { empresa_id: empresaId, proyecto_id: proyectoId || undefined, granularidad, incluir_historico: incluirHistorico || undefined, detalle: detalle || undefined } }),
 };
 
 export default planCobroService;
