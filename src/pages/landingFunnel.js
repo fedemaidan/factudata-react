@@ -861,16 +861,43 @@ function HistoricoSemanal() {
 
 // ─── Export CSV ───────────────────────────────────────────
 
-function exportarCSV(rows) {
-    const headers = ['fecha', ...METRICAS.map(m => m.label)];
+// Export CSV. A la tabla diaria original (fecha + METRICAS) se le AGREGA una
+// columna "Reunión" con la reunión concretada por día (de Notion) — nada más se
+// toca de esas columnas. Debajo se agregan las tablas de cohorte del CRM por
+// campaña y por rubro, donde viven "reunión exitosa" y "ganado" (que no se
+// pueden desglosar por día). `outcomes` es lo que devuelve getLandingOutcomes();
+// si es null, la columna Reunión sale en 0 y no aparecen las tablas de abajo.
+function exportarCSV(rows, outcomes) {
     const escapar = (v) => {
         const s = String(v ?? '');
         return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
     };
-    const lineas = [...rows]
+    const linea = (arr) => arr.map(escapar).join(',');
+    const outcomesByDay = outcomes?.outcomesByDay || {};
+    const porCampaña = outcomes?.porCampaña || [];
+    const porRubro = outcomes?.porRubro || [];
+
+    // ── Tabla por día: columnas originales + "Reunión" (Notion) al final ──
+    const headers = ['fecha', ...METRICAS.map(m => m.label), 'Reunión'];
+    const lineasDia = [...(rows || [])]
         .sort((a, b) => (a.fecha < b.fecha ? -1 : 1))
-        .map(r => [r.fecha, ...METRICAS.map(m => metricaVal(r, m.key))].map(escapar).join(','));
-    const csv = [headers.map(escapar).join(','), ...lineas].join('\n');
+        .map(r => linea([r.fecha, ...METRICAS.map(m => metricaVal(r, m.key)), outcomesByDay[r.fecha] || 0]));
+    const bloques = [linea(headers), ...lineasDia];
+
+    // ── Debajo: cohorte del CRM (Notion), donde vive "ganado" ──
+    if (porCampaña.length > 0) {
+        bloques.push('', linea(['Resultados por campaña (cohorte CRM — Notion)']),
+            linea(['Campaña', 'Contactos', 'Agendó', 'Reunión exitosa', 'Ganado']));
+        porCampaña.forEach(r => bloques.push(linea([r.campaña, r.contactos || 0, r.agendo || 0, r.reunionExitosa || 0, r.ganado || 0])));
+    }
+
+    if (porRubro.length > 0) {
+        bloques.push('', linea(['Resultados por rubro (cohorte CRM — Notion)']),
+            linea(['Rubro', 'Contactos', 'Agendó', 'Reunión exitosa', 'Ganado']));
+        porRubro.forEach(r => bloques.push(linea([r.rubro, r.contactos || 0, r.agendo || 0, r.reunionExitosa || 0, r.ganado || 0])));
+    }
+
+    const csv = bloques.join('\n');
     const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -1166,7 +1193,7 @@ const LandingFunnelPage = () => {
                                         size="small"
                                         variant="outlined"
                                         startIcon={<DownloadIcon />}
-                                        onClick={() => exportarCSV(rows)}
+                                        onClick={() => exportarCSV(rows, outcomes)}
                                         disabled={loading || rows.length === 0}
                                     >
                                         Exportar
