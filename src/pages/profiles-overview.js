@@ -100,40 +100,22 @@ const BOOLEAN_FILTER_OPTIONS = [
     empresaValue: '',
   };
 
-  // Opciones de duración de sesión. `key` es el value del Select; `seconds` es lo
-  // que se persiste (null = default global 1 mes, 0 = sin límite).
+  // Opciones de duración ABSOLUTA (tope desde el login, use o no la app).
+  // Escala de horas/días: un tope corto acá cortaría aunque el usuario esté trabajando.
   const SESSION_DURATION_OPTIONS = [
     { key: 'default', label: 'Default global (1 mes)', seconds: null },
     { key: 'none', label: 'Sin límite', seconds: 0 },
-    { key: '900', label: '15 minutos', seconds: 900 },
-    { key: '1800', label: '30 minutos', seconds: 1800 },
     { key: '3600', label: '1 hora', seconds: 3600 },
-    { key: '14400', label: '4 horas', seconds: 14400 },
     { key: '28800', label: '8 horas', seconds: 28800 },
-    { key: '86400', label: '24 horas', seconds: 86400 },
-    { key: 'custom', label: 'Personalizado (minutos)', seconds: null },
+    { key: '86400', label: '1 día', seconds: 86400 },
+    { key: '604800', label: '7 días', seconds: 604800 },
+    { key: '2592000', label: '30 días', seconds: 2592000 },
+    { key: 'custom', label: 'Personalizado', seconds: null },
   ];
 
-  const SESSION_PRESET_SECONDS = new Set([900, 1800, 3600, 14400, 28800, 86400]);
+  const SESSION_PRESET_SECONDS = new Set([3600, 28800, 86400, 604800, 2592000]);
 
-  // Traduce el valor persistido (session_max_seconds) al key del Select.
-  function sessionSecondsToKey(seconds) {
-    if (seconds == null) return 'default';
-    if (seconds === 0) return 'none';
-    if (SESSION_PRESET_SECONDS.has(seconds)) return String(seconds);
-    return 'custom';
-  }
-
-  function describeSessionDuration(seconds) {
-    if (seconds == null) return 'Default global (1 mes)';
-    if (seconds === 0) return 'Sin límite';
-    const match = SESSION_DURATION_OPTIONS.find((option) => option.seconds === seconds);
-    if (match) return match.label;
-    if (seconds % 3600 === 0) return `${seconds / 3600} horas`;
-    return `${Math.round(seconds / 60)} minutos`;
-  }
-
-  // Idem para el timeout por inactividad (null = default global 7 días, 0 = sin límite).
+  // Opciones de INACTIVIDAD. Acá sí tienen sentido los valores cortos.
   const SESSION_IDLE_OPTIONS = [
     { key: 'default', label: 'Default global (7 días)', seconds: null },
     { key: 'none', label: 'Sin límite', seconds: 0 },
@@ -143,26 +125,138 @@ const BOOLEAN_FILTER_OPTIONS = [
     { key: '14400', label: '4 horas', seconds: 14400 },
     { key: '43200', label: '12 horas', seconds: 43200 },
     { key: '86400', label: '1 día', seconds: 86400 },
-    { key: 'custom', label: 'Personalizado (minutos)', seconds: null },
+    { key: '604800', label: '7 días', seconds: 604800 },
+    { key: 'custom', label: 'Personalizado', seconds: null },
   ];
 
-  const SESSION_IDLE_PRESET_SECONDS = new Set([900, 1800, 3600, 14400, 43200, 86400]);
+  const SESSION_IDLE_PRESET_SECONDS = new Set([900, 1800, 3600, 14400, 43200, 86400, 604800]);
 
-  function idleSecondsToKey(seconds) {
-    if (seconds == null) return 'default';
-    if (seconds === 0) return 'none';
-    if (SESSION_IDLE_PRESET_SECONDS.has(seconds)) return String(seconds);
-    return 'custom';
+  // Unidades del input "Personalizado". Todo se persiste en SEGUNDOS.
+  const CUSTOM_UNITS = [
+    { key: 'minutos', label: 'minutos', seconds: 60 },
+    { key: 'horas', label: 'horas', seconds: 3600 },
+    { key: 'dias', label: 'días', seconds: 86400 },
+  ];
+
+  // seconds (custom, >0) → { value, unit } eligiendo la unidad más redonda.
+  function secondsToCustom(seconds) {
+    if (!seconds || seconds <= 0) return { value: '', unit: 'horas' };
+    if (seconds % 86400 === 0) return { value: String(seconds / 86400), unit: 'dias' };
+    if (seconds % 3600 === 0) return { value: String(seconds / 3600), unit: 'horas' };
+    return { value: String(Math.round(seconds / 60)), unit: 'minutos' };
   }
 
-  function describeIdleTimeout(seconds) {
-    if (seconds == null) return 'Default global (7 días)';
+  // { value, unit } → seconds (o null si es inválido).
+  function customToSeconds(value, unit) {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n <= 0) return null;
+    const factor = CUSTOM_UNITS.find((u) => u.key === unit)?.seconds ?? 60;
+    return Math.floor(n) * factor;
+  }
+
+  function describeDuration(seconds, defaultLabel) {
+    if (seconds == null) return defaultLabel;
     if (seconds === 0) return 'Sin límite';
-    const match = SESSION_IDLE_OPTIONS.find((option) => option.seconds === seconds);
-    if (match) return match.label;
     if (seconds % 86400 === 0) return `${seconds / 86400} días`;
     if (seconds % 3600 === 0) return `${seconds / 3600} horas`;
     return `${Math.round(seconds / 60)} minutos`;
+  }
+  const describeSessionDuration = (s) => describeDuration(s, 'Default global (1 mes)');
+  const describeIdleTimeout = (s) => describeDuration(s, 'Default global (7 días)');
+
+  function formatRelativeTime(value) {
+    const date = toValidDate(value);
+    if (!date) return 'Sin actividad';
+    const diffMs = Date.now() - date.getTime();
+    if (diffMs < 60000) return 'hace instantes';
+    const min = Math.floor(diffMs / 60000);
+    if (min < 60) return `hace ${min} min`;
+    const h = Math.floor(min / 60);
+    if (h < 24) return `hace ${h} h`;
+    const d = Math.floor(h / 24);
+    if (d < 30) return `hace ${d} día${d === 1 ? '' : 's'}`;
+    const mo = Math.floor(d / 30);
+    return `hace ${mo} mes${mo === 1 ? '' : 'es'}`;
+  }
+
+  // Control reutilizable: Select de presets + (si "Personalizado") número + unidad.
+  // Se auto-sincroniza cuando cambia valueSeconds; guarda SEGUNDOS vía onSave.
+  function SessionDurationField({ label, options, presetSeconds, valueSeconds, saving, onSave, buttonAdornment }) {
+    const secondsToKey = (seconds) => {
+      if (seconds == null) return 'default';
+      if (seconds === 0) return 'none';
+      if (presetSeconds.has(seconds)) return String(seconds);
+      return 'custom';
+    };
+
+    const [key, setKey] = useState(() => secondsToKey(valueSeconds));
+    const [customValue, setCustomValue] = useState(() => secondsToCustom(valueSeconds).value);
+    const [customUnit, setCustomUnit] = useState(() => secondsToCustom(valueSeconds).unit);
+    const [localError, setLocalError] = useState(null);
+
+    useEffect(() => {
+      setKey(secondsToKey(valueSeconds));
+      const c = secondsToCustom(valueSeconds);
+      setCustomValue(c.value);
+      setCustomUnit(c.unit);
+      setLocalError(null);
+    }, [valueSeconds]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    const handleSave = () => {
+      let seconds;
+      if (key === 'custom') {
+        seconds = customToSeconds(customValue, customUnit);
+        if (seconds == null) { setLocalError('Ingresá un valor válido.'); return; }
+      } else {
+        seconds = options.find((o) => o.key === key)?.seconds ?? null;
+      }
+      setLocalError(null);
+      onSave(seconds);
+    };
+
+    return (
+      <Stack spacing={2}>
+        <FormControl fullWidth size="small">
+          <InputLabel>{label}</InputLabel>
+          <Select label={label} value={key} onChange={(e) => setKey(e.target.value)}>
+            {options.map((option) => (
+              <MenuItem key={option.key} value={option.key}>{option.label}</MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+        {key === 'custom' ? (
+          <Stack direction="row" spacing={1}>
+            <TextField
+              fullWidth
+              size="small"
+              type="number"
+              label="Cantidad"
+              value={customValue}
+              onChange={(e) => setCustomValue(e.target.value)}
+              error={Boolean(localError)}
+              helperText={localError || ''}
+              inputProps={{ min: 1 }}
+            />
+            <FormControl size="small" sx={{ minWidth: 130 }}>
+              <InputLabel>Unidad</InputLabel>
+              <Select label="Unidad" value={customUnit} onChange={(e) => setCustomUnit(e.target.value)}>
+                {CUSTOM_UNITS.map((u) => (
+                  <MenuItem key={u.key} value={u.key}>{u.label}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Stack>
+        ) : null}
+        <Box>
+          <Stack direction="row" spacing={2} alignItems="center" useFlexGap flexWrap="wrap">
+            <Button variant="contained" onClick={handleSave} disabled={saving}>
+              {saving ? 'Guardando…' : 'Guardar'}
+            </Button>
+            {buttonAdornment || null}
+          </Stack>
+        </Box>
+      </Stack>
+    );
   }
 
   function normalizeText(value) {
@@ -442,11 +536,7 @@ const BOOLEAN_FILTER_OPTIONS = [
     const [selectedIds, setSelectedIds] = useState(() => new Set());
     const [confirmCloseOpen, setConfirmCloseOpen] = useState(false);
     const [closingSessions, setClosingSessions] = useState(false);
-    const [sessionKey, setSessionKey] = useState('default');
-    const [sessionCustomMinutes, setSessionCustomMinutes] = useState('');
     const [savingSession, setSavingSession] = useState(false);
-    const [idleKey, setIdleKey] = useState('default');
-    const [idleCustomMinutes, setIdleCustomMinutes] = useState('');
     const [savingIdle, setSavingIdle] = useState(false);
     const [passwordValue, setPasswordValue] = useState('');
     const [showPassword, setShowPassword] = useState(false);
@@ -823,41 +913,8 @@ const BOOLEAN_FILTER_OPTIONS = [
       }
     }, [selectionCloseInfo]);
 
-    // Sincroniza los Select de seguridad con el perfil abierto en el drawer.
-    useEffect(() => {
+    const handleSaveSessionDuration = useCallback(async (seconds) => {
       if (!selectedRow) return;
-      const seconds = selectedRow.session_max_seconds;
-      setSessionKey(sessionSecondsToKey(seconds));
-      setSessionCustomMinutes(
-        seconds != null && seconds > 0 && !SESSION_PRESET_SECONDS.has(seconds)
-          ? String(Math.round(seconds / 60))
-          : ''
-      );
-      const idle = selectedRow.session_idle_seconds;
-      setIdleKey(idleSecondsToKey(idle));
-      setIdleCustomMinutes(
-        idle != null && idle > 0 && !SESSION_IDLE_PRESET_SECONDS.has(idle)
-          ? String(Math.round(idle / 60))
-          : ''
-      );
-    }, [selectedRow]);
-
-    const handleSessionKeyChange = useCallback((event) => setSessionKey(event.target.value), []);
-    const handleSessionCustomMinutesChange = useCallback((event) => setSessionCustomMinutes(event.target.value), []);
-
-    const handleSaveSessionDuration = useCallback(async () => {
-      if (!selectedRow) return;
-      let seconds;
-      if (sessionKey === 'custom') {
-        const minutes = Number(sessionCustomMinutes);
-        if (!Number.isFinite(minutes) || minutes <= 0) {
-          setError('Ingresá una cantidad de minutos válida.');
-          return;
-        }
-        seconds = Math.floor(minutes) * 60;
-      } else {
-        seconds = SESSION_DURATION_OPTIONS.find((option) => option.key === sessionKey)?.seconds ?? null;
-      }
       setSavingSession(true);
       setError(null);
       try {
@@ -870,24 +927,10 @@ const BOOLEAN_FILTER_OPTIONS = [
       } finally {
         setSavingSession(false);
       }
-    }, [selectedRow, sessionKey, sessionCustomMinutes]);
+    }, [selectedRow]);
 
-    const handleIdleKeyChange = useCallback((event) => setIdleKey(event.target.value), []);
-    const handleIdleCustomMinutesChange = useCallback((event) => setIdleCustomMinutes(event.target.value), []);
-
-    const handleSaveIdleTimeout = useCallback(async () => {
+    const handleSaveIdleTimeout = useCallback(async (seconds) => {
       if (!selectedRow) return;
-      let seconds;
-      if (idleKey === 'custom') {
-        const minutes = Number(idleCustomMinutes);
-        if (!Number.isFinite(minutes) || minutes <= 0) {
-          setError('Ingresá una cantidad de minutos válida para la inactividad.');
-          return;
-        }
-        seconds = Math.floor(minutes) * 60;
-      } else {
-        seconds = SESSION_IDLE_OPTIONS.find((option) => option.key === idleKey)?.seconds ?? null;
-      }
       setSavingIdle(true);
       setError(null);
       try {
@@ -900,7 +943,7 @@ const BOOLEAN_FILTER_OPTIONS = [
       } finally {
         setSavingIdle(false);
       }
-    }, [selectedRow, idleKey, idleCustomMinutes]);
+    }, [selectedRow]);
 
     const handleExportCsv = useCallback(() => {
       const csvRows = [
@@ -1180,6 +1223,7 @@ const BOOLEAN_FILTER_OPTIONS = [
                                   <Typography variant="caption" display="block">Perfil: {formatDateTime(row.created_at)}</Typography>
                                   <Typography variant="caption" display="block">Empresa: {formatDateTime(row.empresa?.createdAt)}</Typography>
                                   <Typography variant="caption" display="block">Última interacción: {formatDateTime(row.last_interaction_timestamp)}</Typography>
+                                  <Typography variant="caption" display="block" color={row.last_activity_at ? 'text.secondary' : 'text.disabled'}>Última actividad web: {row.last_activity_at ? `${formatDateTime(row.last_activity_at)} (${formatRelativeTime(row.last_activity_at)})` : 'Sin actividad'}</Typography>
                                 </TableCell>
                                 <TableCell align="right"><Button size="small" data-rowid={row.id} onClick={handleOpenDetail}>Ver detalle</Button></TableCell>
                               </TableRow>
@@ -1227,70 +1271,48 @@ const BOOLEAN_FILTER_OPTIONS = [
                         <Typography variant="subtitle1" fontWeight="bold">Seguridad · Sesión</Typography>
                       </Stack>
                       <Typography variant="body2" color="text.secondary" mb={2}>
-                        Cuánto dura la sesión desde el último login con credenciales. Pasado ese tiempo,
-                        el usuario tiene que volver a iniciar sesión. Actual: <strong>{describeSessionDuration(selectedRow.session_max_seconds)}</strong>.
+                        Cuánto dura la sesión desde el último login con credenciales, use o no la app.
+                        Pasado ese tiempo, el usuario tiene que volver a iniciar sesión.
+                        Actual: <strong>{describeSessionDuration(selectedRow.session_max_seconds)}</strong>.
                       </Typography>
-                      <Stack spacing={2}>
-                        <FormControl fullWidth size="small">
-                          <InputLabel>Duración máxima de sesión</InputLabel>
-                          <Select label="Duración máxima de sesión" value={sessionKey} onChange={handleSessionKeyChange}>
-                            {SESSION_DURATION_OPTIONS.map((option) => (
-                              <MenuItem key={option.key} value={option.key}>{option.label}</MenuItem>
-                            ))}
-                          </Select>
-                        </FormControl>
-                        {sessionKey === 'custom' ? (
-                          <TextField
-                            fullWidth
-                            size="small"
-                            type="number"
-                            label="Minutos"
-                            value={sessionCustomMinutes}
-                            onChange={handleSessionCustomMinutesChange}
-                            inputProps={{ min: 1 }}
-                          />
-                        ) : null}
-                        {!selectedRow.user_id ? (
-                          <Typography variant="caption" color="text.secondary">
-                            Este perfil no tiene acceso web (sin user_id); la duración se aplicará si en el futuro ingresa a la plataforma.
-                          </Typography>
-                        ) : null}
-                        <Box>
-                          <Button variant="contained" onClick={handleSaveSessionDuration} disabled={savingSession}>
-                            {savingSession ? 'Guardando…' : 'Guardar duración'}
-                          </Button>
-                        </Box>
-
-                        <Divider />
-
-                        <Typography variant="body2" color="text.secondary">
-                          Tras cuánto tiempo <strong>sin actividad</strong> se cierra la sesión (cuenta desde la última acción del usuario en el sistema). Actual: <strong>{describeIdleTimeout(selectedRow.session_idle_seconds)}</strong>.
+                      <SessionDurationField
+                        label="Duración máxima de sesión"
+                        options={SESSION_DURATION_OPTIONS}
+                        presetSeconds={SESSION_PRESET_SECONDS}
+                        valueSeconds={selectedRow.session_max_seconds}
+                        saving={savingSession}
+                        onSave={handleSaveSessionDuration}
+                      />
+                      {!selectedRow.user_id ? (
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+                          Este perfil no tiene acceso web (sin user_id); se aplicará si en el futuro ingresa a la plataforma.
                         </Typography>
-                        <FormControl fullWidth size="small">
-                          <InputLabel>Inactividad</InputLabel>
-                          <Select label="Inactividad" value={idleKey} onChange={handleIdleKeyChange}>
-                            {SESSION_IDLE_OPTIONS.map((option) => (
-                              <MenuItem key={option.key} value={option.key}>{option.label}</MenuItem>
-                            ))}
-                          </Select>
-                        </FormControl>
-                        {idleKey === 'custom' ? (
-                          <TextField
-                            fullWidth
-                            size="small"
-                            type="number"
-                            label="Minutos"
-                            value={idleCustomMinutes}
-                            onChange={handleIdleCustomMinutesChange}
-                            inputProps={{ min: 1 }}
-                          />
-                        ) : null}
-                        <Box>
-                          <Button variant="contained" onClick={handleSaveIdleTimeout} disabled={savingIdle}>
-                            {savingIdle ? 'Guardando…' : 'Guardar inactividad'}
-                          </Button>
-                        </Box>
-                      </Stack>
+                      ) : null}
+
+                      <Divider sx={{ my: 2 }} />
+
+                      <Typography variant="body2" color="text.secondary" mb={2}>
+                        Tras cuánto tiempo <strong>sin actividad</strong> se cierra la sesión (el reloj se
+                        reinicia con cada acción del usuario). Actual: <strong>{describeIdleTimeout(selectedRow.session_idle_seconds)}</strong>.
+                      </Typography>
+                      <SessionDurationField
+                        label="Inactividad"
+                        options={SESSION_IDLE_OPTIONS}
+                        presetSeconds={SESSION_IDLE_PRESET_SECONDS}
+                        valueSeconds={selectedRow.session_idle_seconds}
+                        saving={savingIdle}
+                        onSave={handleSaveIdleTimeout}
+                        buttonAdornment={
+                          <Tooltip title={selectedRow.last_activity_at ? `Actividad web: ${formatDateTime(selectedRow.last_activity_at)}` : 'Sin actividad web registrada'}>
+                            <Chip
+                              size="small"
+                              variant="outlined"
+                              color={selectedRow.last_activity_at ? 'default' : 'warning'}
+                              label={`Última actividad: ${formatRelativeTime(selectedRow.last_activity_at)}`}
+                            />
+                          </Tooltip>
+                        }
+                      />
                     </CardContent>
                   </Card>
                   <Card>
