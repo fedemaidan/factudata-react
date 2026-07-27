@@ -863,11 +863,13 @@ function HistoricoSemanal() {
 
 // Export CSV. A la tabla diaria original (fecha + METRICAS) se le AGREGA una
 // columna "Reunión" con la reunión concretada por día (de Notion) — nada más se
-// toca de esas columnas. Debajo se agregan las tablas de cohorte del CRM por
-// campaña y por rubro, donde viven "reunión exitosa" y "ganado" (que no se
-// pueden desglosar por día). `outcomes` es lo que devuelve getLandingOutcomes();
-// si es null, la columna Reunión sale en 0 y no aparecen las tablas de abajo.
-function exportarCSV(rows, outcomes) {
+// toca de esas columnas. Debajo se agregan: las tablas de cohorte del CRM por
+// campaña y por rubro (donde viven "reunión exitosa" y "ganado"), y el embudo
+// completo desglosado por campaña / anuncio / flujo (mismos pasos que las tablas
+// de atribución en pantalla, hasta "reunión concretada"). `outcomes` es lo que
+// devuelve getLandingOutcomes(); `extraSteps` es el mapa de atribución mergeado
+// (extraSteps del landing + reunión concretada de Notion, alias extraStepsConReunion).
+function exportarCSV(rows, outcomes, extraSteps = {}) {
     const escapar = (v) => {
         const s = String(v ?? '');
         return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
@@ -896,6 +898,31 @@ function exportarCSV(rows, outcomes) {
             linea(['Rubro', 'Contactos', 'Agendó', 'Reunión exitosa', 'Ganado']));
         porRubro.forEach(r => bloques.push(linea([r.rubro, r.contactos || 0, r.agendo || 0, r.reunionExitosa || 0, r.ganado || 0])));
     }
+
+    // ── Embudo completo desglosado por dimensión (mismos pasos que las tablas
+    // de atribución en pantalla, hasta "reunión concretada"). Cada bloque sólo
+    // incluye el tráfico que traía esa dimensión, así que sus totales NO coinciden
+    // entre bloques (una visita sin campaña no aparece en "por campaña", etc.). ──
+    const colsAtrib = METRICAS_CON_REUNION;
+    const bloqueEmbudo = (prefix, titulo, dimHeader, dimLabels) => {
+        const buckets = parseAttributionBreakdown(extraSteps, prefix);
+        const dims = Object.keys(buckets).sort(
+            (a, b) => (buckets[b].visita || buckets[b].fueWhatsapp || 0) - (buckets[a].visita || buckets[a].fueWhatsapp || 0)
+        );
+        if (dims.length === 0) return;
+        bloques.push('', linea([titulo]), linea([dimHeader, ...colsAtrib.map(m => m.label)]));
+        dims.forEach(dim => {
+            const p = buckets[dim];
+            bloques.push(linea([dimLabels?.[dim] || dim, ...colsAtrib.map(m => p[m.key] || 0)]));
+        });
+    };
+    bloqueEmbudo('camp', 'Embudo por campaña', 'Campaña');
+    bloqueEmbudo('content', 'Embudo por anuncio', 'Anuncio');
+    bloqueEmbudo('flow', 'Embudo por flujo', 'Flujo', {
+        wa: 'WhatsApp',
+        web: 'Web directa',
+        wa_sin_atribuir: 'WhatsApp sin atribuir',
+    });
 
     const csv = bloques.join('\n');
     const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
@@ -1193,7 +1220,7 @@ const LandingFunnelPage = () => {
                                         size="small"
                                         variant="outlined"
                                         startIcon={<DownloadIcon />}
-                                        onClick={() => exportarCSV(rows, outcomes)}
+                                        onClick={() => exportarCSV(rows, outcomes, extraStepsConReunion)}
                                         disabled={loading || rows.length === 0}
                                     >
                                         Exportar
