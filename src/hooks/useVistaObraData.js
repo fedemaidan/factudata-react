@@ -103,6 +103,7 @@ export function useVistaObraData(user) {
 
   return {
     empresaId,
+    empresa: empresaQuery.data || null,
     proyectos,
     movimientos: movimientosQuery.data || [],
     presupuestos: presupuestosQuery.data || [],

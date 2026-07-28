@@ -3,21 +3,23 @@
 // muestran los números de esa obra. Todo en USD.
 
 import PropTypes from 'prop-types';
-import { Card, CardContent, Chip, LinearProgress, Stack, Typography, Box, Grid } from '@mui/material';
+import { Card, CardContent, Chip, LinearProgress, Stack, Typography, Box, Grid, IconButton, Tooltip } from '@mui/material';
 import WalletIcon from '@mui/icons-material/AccountBalanceWalletOutlined';
 import PaymentsIcon from '@mui/icons-material/PaymentsOutlined';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import SquareFootIcon from '@mui/icons-material/SquareFoot';
+import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 
 import { fmtUsdCompact, fmtUsdM2, fmtPct } from './format';
 
-function CardShell({ icon, titulo, children }) {
+function CardShell({ icon, titulo, action, children }) {
   return (
     <Card variant="outlined" sx={{ height: '100%', borderRadius: 3 }}>
       <CardContent>
         <Stack direction="row" spacing={0.75} alignItems="center" sx={{ color: 'text.secondary', mb: 1 }}>
           {icon}
           <Typography variant="caption" sx={{ fontWeight: 500 }}>{titulo}</Typography>
+          {action}
         </Stack>
         {children}
       </CardContent>
@@ -25,7 +27,7 @@ function CardShell({ icon, titulo, children }) {
   );
 }
 
-CardShell.propTypes = { icon: PropTypes.node, titulo: PropTypes.string, children: PropTypes.node };
+CardShell.propTypes = { icon: PropTypes.node, titulo: PropTypes.string, action: PropTypes.node, children: PropTypes.node };
 
 function LineaM2({ label, value }) {
   return (
@@ -38,7 +40,7 @@ function LineaM2({ label, value }) {
 
 LineaM2.propTypes = { label: PropTypes.string, value: PropTypes.number };
 
-export default function KpiCards({ totales }) {
+export default function KpiCards({ totales, onEditM2 }) {
   const pctGastado = totales.pctGastado != null ? Math.min(totales.pctGastado, 1.2) : 0;
   const gastoColor = totales.pctGastado > 1 ? 'error' : totales.pctGastado > 0.85 ? 'warning' : 'success';
 
@@ -90,7 +92,17 @@ export default function KpiCards({ totales }) {
       </Grid>
 
       <Grid item xs={12} sm={6} md={3}>
-        <CardShell icon={<SquareFootIcon fontSize="small" />} titulo="Por m²">
+        <CardShell
+          icon={<SquareFootIcon fontSize="small" />}
+          titulo="Por m²"
+          action={onEditM2 && (
+            <Tooltip title="Editar valores por m²">
+              <IconButton size="small" onClick={onEditM2} sx={{ ml: 'auto', p: 0.25, color: 'text.disabled' }}>
+                <EditOutlinedIcon sx={{ fontSize: 15 }} />
+              </IconButton>
+            </Tooltip>
+          )}
+        >
           <Box sx={{ mt: 0.5 }}>
             <LineaM2 label="Costo/m²" value={totales.costoM2} />
             <LineaM2 label="Precio/m²" value={totales.precioM2} />
@@ -109,4 +121,5 @@ export default function KpiCards({ totales }) {
 
 KpiCards.propTypes = {
   totales: PropTypes.object.isRequired,
+  onEditM2: PropTypes.func,
 };

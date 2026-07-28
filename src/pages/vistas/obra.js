@@ -2,7 +2,7 @@
 // Un pantallazo por obra —o todas juntas— cruzando cajas, cobros y presupuestos.
 // Todo dolarizado. Reusa los datasets de reportes vía useVistaObraData.
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import {
@@ -10,6 +10,7 @@ import {
   LinearProgress, Alert, Link as MuiLink,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBackIosNew';
+import { useQueryClient } from '@tanstack/react-query';
 
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useAuthContext } from 'src/contexts/auth-context';
@@ -18,11 +19,14 @@ import { buildObraRows, buildTotales, buildDetalle } from 'src/utils/vistaObra/a
 import KpiCards from 'src/sections/vistaObra/KpiCards';
 import ObrasTable from 'src/sections/vistaObra/ObrasTable';
 import ObraDetalle from 'src/sections/vistaObra/ObraDetalle';
+import ProyectoConfigDrawer from 'src/components/cajaProyecto/ProyectoConfigDrawer';
 
 function VistaUnicaObra() {
   const { user } = useAuthContext();
   const router = useRouter();
-  const { proyectos, movimientos, presupuestos, planes, dolar, loading, error } = useVistaObraData(user);
+  const queryClient = useQueryClient();
+  const { empresa, proyectos, movimientos, presupuestos, planes, dolar, loading, error } = useVistaObraData(user);
+  const [configOpen, setConfigOpen] = useState(false);
 
   const selectedId = router.query.obra || '';
 
@@ -49,6 +53,7 @@ function VistaUnicaObra() {
   };
 
   const selectedRow = selectedId ? rows.find((r) => r.proyectoId === selectedId) : null;
+  const selectedProyecto = selectedId ? proyectos.find((p) => p.id === selectedId) : null;
 
   return (
     <DashboardLayout title="Vista de obra">
@@ -89,7 +94,7 @@ function VistaUnicaObra() {
 
         {/* Las 4 tarjetas: siempre arriba, filtradas o de cartera */}
         <Box mb={3}>
-          <KpiCards totales={totales} />
+          <KpiCards totales={totales} onEditM2={selectedProyecto ? () => setConfigOpen(true) : undefined} />
         </Box>
 
         {/* Abajo: tabla de obras (Todas) o detalle (una obra) */}
@@ -105,6 +110,20 @@ function VistaUnicaObra() {
           </Typography>
         )}
       </Container>
+
+      {selectedProyecto && (
+        <ProyectoConfigDrawer
+          open={configOpen}
+          onClose={() => setConfigOpen(false)}
+          proyecto={selectedProyecto}
+          empresa={empresa}
+          initialTab={2}
+          onProyectoUpdated={() => {
+            // Refrescar proyectos para recalcular m²/análisis con los nuevos valores.
+            queryClient.invalidateQueries({ queryKey: ['vistaObra', 'proyectos'] });
+          }}
+        />
+      )}
     </DashboardLayout>
   );
 }

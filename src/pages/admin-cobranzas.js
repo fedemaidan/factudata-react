@@ -222,6 +222,8 @@ const AdminCobranzas = () => {
         numero_cuota: row.numero_cuota,
         importe_cobrado: monto,
         importe_esperado: row.importe_esperado,
+        // "Pago total" cierra el período (pagado) aunque el monto sea menor. T?
+        cerrar_periodo: form.tipo === 'total',
         moneda: row.moneda,
         caja: form.caja,
         medio_pago: form.medio_pago,
