@@ -593,149 +593,65 @@ const TotalesFiltrados = ({ t, fmt, moneda, totalesFormat = 'full', showUsdBlue 
     { label: 'Egresos',  value: formatTotalValue(up, egreso),  color: 'error.main',   Icon: SouthWestRoundedIcon },
   ];
   const netoDisplay = formatTotalValue(up, neto);
+  const inShare = totalPeriodo > 0 ? Math.round((ingreso / totalPeriodo) * 100) : 0;
 
+  // Panel "hero" (estilo Ramp/Mercury): el total ocupa el espacio ancho con jerarquía.
   return (
-    <Stack spacing={1.5} sx={{ mb: 2 }}>
-      <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2} sx={{ flexWrap: 'nowrap' }}>
-        <Box
-          sx={{
-            p: { xs: 2.25, lg: 1.5 },
-            borderRadius: 3,
-            width: { xs: '100%', lg: '30%' },
-            minWidth: { xs: '100%', lg: '30%' },
-            maxWidth: { xs: '100%', lg: '30%' },
-            bgcolor: 'background.paper',
-            border: '1px solid',
-            borderColor: 'divider',
-            boxShadow: '0 18px 40px rgba(30, 68, 105, 0.08)',
-            backgroundImage: `linear-gradient(180deg, ${BRAND_COLORS.cloud}, rgba(255,255,255,0.98))`,
-            minHeight: { xs: 'auto', lg: 126 },
-            display: 'flex',
-          }}
-        >
-          <Stack spacing={{ xs: 2, lg: 1.25 }} sx={{ width: '100%' }}>
-            {/* Título con moneda integrada */}
-            <Typography sx={{ fontSize: '0.64rem', fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: BRAND_COLORS.teal, whiteSpace: 'nowrap', lineHeight: 1.05 }}>
-              Totales filtrados{baseCalculo === 'subtotal' ? ' (neto)' : ''}&nbsp;·&nbsp;{up}
-            </Typography>
+    <Stack spacing={{ xs: 2, lg: 2.25 }} sx={{ width: '100%', height: '100%', justifyContent: 'center' }}>
+      <Box>
+        <Typography sx={{ fontSize: '0.66rem', fontWeight: 800, letterSpacing: '0.07em', textTransform: 'uppercase', color: BRAND_COLORS.teal, mb: 1 }}>
+          Totales filtrados{baseCalculo === 'subtotal' ? ' (neto)' : ''}&nbsp;·&nbsp;{up}
+        </Typography>
+        <Typography sx={{ fontWeight: 800, lineHeight: 1, letterSpacing: '-0.02em', color: neto >= 0 ? 'success.main' : 'error.main', fontSize: { xs: '2rem', lg: '2.6rem' }, whiteSpace: 'nowrap' }}>
+          {netoDisplay}
+        </Typography>
+        <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600 }}>
+          Neto del período filtrado
+        </Typography>
+      </Box>
 
-            {/* Layout flat: neto a la izquierda, ing/egr a la derecha — sin sub-tarjetas */}
-            <Box
-              sx={{
-                display: 'grid',
-                gridTemplateColumns: { xs: '1fr', lg: '3fr 2fr' },
-                gap: { xs: 2, lg: 0 },
-                width: '100%',
-              }}
-            >
-              {/* Neto filtrado — flat, sin borde propio */}
-              <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', pr: { lg: 2 }, borderRight: { lg: `1px solid rgba(0,0,0,0.08)` } }}>
-                <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700, mb: 0.5 }}>
-                  Neto filtrado
-                </Typography>
-                <Typography sx={{ fontWeight: 800, lineHeight: 1.05, color: neto >= 0 ? 'success.main' : 'error.main', fontSize: { xs: '1.9rem', lg: '1.45rem' }, whiteSpace: 'nowrap' }}>
-                  {netoDisplay}
-                </Typography>
-              </Box>
-
-              {/* Ingresos + Egresos — flat, separados solo por un divisor */}
-              <Stack
-                divider={<Box sx={{ height: '1px', bgcolor: 'rgba(0,0,0,0.06)', mx: { lg: 1 } }} />}
-                sx={{ width: '100%', pl: { lg: 2 } }}
-              >
-                {deltaItems.map(({ label, value, color, Icon }) => (
-                  <Box
-                    key={label}
-                    sx={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      py: 0.6,
-                      width: '100%',
-                    }}
-                  >
-                    <Stack direction="row" spacing={0.4} alignItems="center" sx={{ mb: 0.3 }}>
-                      <Icon sx={{ fontSize: 13, color, flexShrink: 0 }} />
-                      <Typography sx={{ textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 800, color: 'text.secondary', fontSize: '0.6rem', lineHeight: 1, whiteSpace: 'nowrap' }}>
-                        {label}
-                      </Typography>
-                    </Stack>
-                    <Typography sx={{ fontWeight: 800, color, fontSize: { xs: '1rem', lg: '0.78rem' }, lineHeight: 1.15 }}>
-                      {value}
-                    </Typography>
-                  </Box>
-                ))}
-              </Stack>
-            </Box>
-
-            {chips.length > 0 && (
-              <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: 'wrap' }}>
-                <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>
-                  Filtros activos
-                </Typography>
-                <Box sx={{ display: 'flex', gap: 1, maxWidth: isMobile ? 220 : 'none', overflowX: isMobile ? 'auto' : 'visible' }}>
-                  {chips.map((chip, idx) => (
-                    <Chip
-                      key={`${chip.label}-${idx}`}
-                      label={chip.label}
-                      onDelete={(e) => { e.stopPropagation(); chip.onDelete(); }}
-                      onClick={() => onOpenFilters?.()}
-                      size="small"
-                      variant="outlined"
-                      clickable
-                      sx={{ bgcolor: 'rgba(255,255,255,0.92)' }}
-                    />
-                  ))}
-                </Box>
-              </Stack>
-            )}
-
-            {isMobile && (
-              <Button size="small" variant="text" onClick={onToggleDetails} sx={{ alignSelf: 'flex-start' }}>
-                {showDetails ? 'Ocultar detalle' : 'Ver detalle'}
-              </Button>
-            )}
-          </Stack>
+      {totalPeriodo > 0 && (
+        <Box sx={{ display: 'flex', height: 8, borderRadius: 99, overflow: 'hidden', bgcolor: 'rgba(0,0,0,0.06)', maxWidth: 520 }}>
+          <Box sx={{ width: `${inShare}%`, bgcolor: 'success.main' }} />
+          <Box sx={{ flex: 1, bgcolor: 'error.main' }} />
         </Box>
+      )}
 
-        {showUsdBlue && usdBlue && (
-          <Box
-            sx={{
-              p: 2.5,
-              borderRadius: 3,
-              flex: 0.9,
-              minWidth: 260,
-              bgcolor: 'background.paper',
-              border: '1px solid',
-              borderColor: 'divider',
-              boxShadow: '0 18px 40px rgba(91, 84, 165, 0.06)',
-            }}
-          >
-            <Typography sx={{ fontSize: '0.72rem', fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color: BRAND_COLORS.teal, mb: 1 }}>
-              Totales USD blue
-            </Typography>
-            <Typography variant="h5" sx={{ fontWeight: 800, color: (usdBlue.neto ?? 0) >= 0 ? 'success.main' : 'error.main', mb: 1.25 }}>
-              {fmt('USD', usdBlue.neto)}
-            </Typography>
-            <Stack spacing={1}>
-              <Typography variant="body2" sx={{ color: 'success.main', fontWeight: 700 }}>
-                + {fmt('USD', usdBlue.ingreso)}
-              </Typography>
-              <Typography variant="body2" sx={{ color: 'error.main', fontWeight: 700 }}>
-                - {fmt('USD', usdBlue.egreso)}
+      <Stack direction="row" spacing={{ xs: 3, lg: 4 }} flexWrap="wrap" useFlexGap>
+        {deltaItems.map(({ label, value, color, Icon }) => (
+          <Box key={label}>
+            <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mb: 0.25 }}>
+              <Icon sx={{ fontSize: 14, color }} />
+              <Typography sx={{ textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 800, color: 'text.secondary', fontSize: '0.62rem' }}>
+                {label}
               </Typography>
             </Stack>
+            <Typography sx={{ fontWeight: 800, color, fontSize: '1.15rem', whiteSpace: 'nowrap' }}>
+              {value}
+            </Typography>
           </Box>
-        )}
+        ))}
       </Stack>
 
-      {isMobile && showDetails && (
-        <Stack direction="row" spacing={1.5} flexWrap="wrap">
-          <Typography sx={{ color: 'success.main', fontWeight: 700 }}>
-            + {fmt(up, ingreso)}
+      {chips.length > 0 && (
+        <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: 'wrap' }}>
+          <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>
+            Filtros activos
           </Typography>
-          <Typography sx={{ color: 'error.main', fontWeight: 700 }}>
-            - {fmt(up, egreso)}
-          </Typography>
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+            {chips.map((chip, idx) => (
+              <Chip
+                key={`${chip.label}-${idx}`}
+                label={chip.label}
+                onDelete={(e) => { e.stopPropagation(); chip.onDelete(); }}
+                onClick={() => onOpenFilters?.()}
+                size="small"
+                variant="outlined"
+                clickable
+                sx={{ bgcolor: 'rgba(255,255,255,0.92)' }}
+              />
+            ))}
+          </Box>
         </Stack>
       )}
     </Stack>
@@ -951,7 +867,6 @@ const CajasPage = () => {
   const [detalleMov, setDetalleMov] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [showTotalsDetails, setShowTotalsDetails] = useState(false);
   const [mobileActionAnchor, setMobileActionAnchor] = useState(null);
   const [mobileActionMov, setMobileActionMov] = useState(null);
   const [comentarioInput, setComentarioInput] = useState('');
@@ -1334,16 +1249,6 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
   // El filtro por reserva de la card aplica solo cuando hay UNA reserva visible;
   // con varias no se elige una al azar: se deriva al listado de reservas.
   const reservaUnica = reservasVisibles.length === 1 ? reservasVisibles[0] : null;
-  // Cuántas cards de saldo mostrarán el desglose de reserva (ocupan 2 columnas c/u).
-  const cardsConReserva = useMemo(() => {
-    if (!hasReserva) return 0;
-    return cajasVirtuales.filter((c) => {
-      const mon = c.moneda || 'ARS';
-      const esBase = !c.medio_pago && !c.type && (!c.equivalencia || c.equivalencia === 'none');
-      const reservadoMon = reservaProyecto?.reservado?.[mon] || 0;
-      return esBase && (mon === 'ARS' || reservadoMon !== 0);
-    }).length;
-  }, [hasReserva, cajasVirtuales, reservaProyecto]);
   const reservaFiltroActivo = !!filters?.reservaId;
   const toggleFiltroReserva = useCallback(() => {
     const id = reservaUnica?._id || reservaUnica?.id;
@@ -2740,29 +2645,49 @@ useEffect(() => {
                   </Stack>
                 </Paper>
 
-                <Stack direction={isMobile ? 'column' : 'row'} spacing={1.5} alignItems="stretch">
-                  <Box sx={{ width: { xs: '100%', lg: '70%' }, minWidth: 0, maxWidth: { xs: '100%', lg: '70%' } }}>
-                    <Box
-                      sx={{
-                        width: '100%',
-                        display: 'grid',
-                        gridTemplateColumns: {
-                          xs: `repeat(${Math.max(cajasVirtuales.length, 1)}, minmax(250px, 1fr))`,
-                          lg: `repeat(${Math.max(cajasVirtuales.length + cardsConReserva, 1)}, minmax(0, 1fr))`,
-                        },
-                        gap: 1,
-                        overflowX: { xs: 'auto', lg: 'visible' },
-                        pb: 0.5,
-                      }}
-                    >
+                <Box
+                  sx={{
+                    display: 'flex',
+                    flexDirection: { xs: 'column', lg: 'row' },
+                    borderRadius: 3,
+                    border: '1px solid',
+                    borderColor: 'rgba(118,117,134,0.16)',
+                    overflow: 'hidden',
+                    bgcolor: 'background.paper',
+                    boxShadow: '0 14px 34px rgba(30,68,105,0.06)',
+                  }}
+                >
+                  {/* Hero: resumen del período filtrado; ocupa el ancho con jerarquía */}
+                  <Box sx={{ flex: 1, minWidth: 0, p: { xs: 2.5, lg: 3 }, backgroundImage: `linear-gradient(160deg, ${BRAND_COLORS.cloud}, rgba(255,255,255,0.98))` }}>
+                    <TotalesFiltrados
+                      t={totalesDetallados}
+                      fmt={formatByCurrency}
+                      moneda={activeTotalsCurrency}
+                      totalesFormat={totalesFormat}
+                      chips={filterChips}
+                      onOpenFilters={() => setFiltersOpen((o) => !o)}
+                      isMobile={isMobile}
+                      baseCalculo={activeCaja?.baseCalculo || 'total'}
+                    />
+                  </Box>
+
+                  {/* Lista de cajas: compacta, nada oculto, saldo pegado al nombre */}
+                  <Box sx={{ flex: { lg: '0 0 400px' }, width: { xs: '100%', lg: 400 }, borderLeft: { lg: '1px solid' }, borderTop: { xs: '1px solid', lg: 'none' }, borderColor: 'divider', display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                    <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 2.25, pt: 2, pb: 1 }}>
+                      <Typography sx={{ fontSize: '0.66rem', fontWeight: 800, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'text.secondary' }}>
+                        Cajas
+                      </Typography>
+                      <Box sx={{ fontSize: '0.66rem', fontWeight: 800, color: BRAND_COLORS.teal, bgcolor: 'rgba(0,151,178,0.10)', borderRadius: 99, px: 1.1, py: 0.15 }}>
+                        {cajasVirtuales.length}
+                      </Box>
+                    </Stack>
+                    <Box sx={{ display: 'flex', flexDirection: 'column' }}>
                       {cajasVirtuales.map((caja, index) => {
                         const selected = filters.caja?.nombre === caja.nombre;
                         const totalCaja = calcularTotalParaCaja(caja);
                         const tone = getCajaAccent(caja, totalCaja);
                         const ToneIcon = tone.Icon;
-                        const totalColor = totalCaja < 0
-                          ? (selected ? '#FFCDD2' : '#E53935')
-                          : (selected ? 'inherit' : tone.color);
+                        const monedaLabel = (caja.equivalencia && caja.equivalencia !== 'none') ? caja.equivalencia.replaceAll('_', ' ') : (caja.moneda || 'ARS');
                         // Desglose de Reserva de Obra: solo en la caja base (sin medio/tipo/equivalencia)
                         // de una moneda con reserva, y solo si el usuario puede verla.
                         const cajaReservaMoneda = caja.moneda || 'ARS';
@@ -2771,182 +2696,101 @@ useEffect(() => {
                         const mostrarReservaEnCard = hasReserva && esCajaBase
                           && (cajaReservaMoneda === 'ARS' || reservadoCard !== 0);
                         return (
-                          <Box
-                            key={`${caja.nombre}-${index}`}
-                            sx={{
-                              position: 'relative',
-                              minWidth: 0,
-                              gridColumn: { lg: mostrarReservaEnCard ? 'span 2' : 'auto' },
-                            }}
-                          >
-                            <Button
-                              fullWidth
-                              variant={selected ? 'contained' : 'outlined'}
+                          <Box key={`${caja.nombre}-${index}`}>
+                            <Box
                               onClick={() => onSelectCaja(caja)}
                               sx={{
-                                minHeight: 126,
-                                px: 1.5,
-                                py: 1.25,
-                                pr: 5.5,
-                                borderRadius: 2.75,
-                                borderLeftWidth: 4,
-                                borderLeftStyle: 'solid',
-                                borderLeftColor: tone.borderColor,
-                                alignItems: 'flex-start',
-                                justifyContent: 'space-between',
-                                textAlign: 'left',
-                                textTransform: 'none',
-                                bgcolor: selected ? undefined : 'transparent',
-                                backgroundImage: selected ? undefined : tone.bg,
-                                borderColor: selected ? undefined : 'rgba(118,117,134,0.18)',
-                                boxShadow: selected ? '0 18px 32px rgba(0,151,178,0.18)' : '0 10px 24px rgba(0,0,0,0.04)',
+                                position: 'relative',
+                                display: 'grid',
+                                gridTemplateColumns: '30px 1fr auto 28px',
+                                gap: 1,
+                                alignItems: 'center',
+                                px: 2.25,
+                                py: 1.1,
+                                cursor: 'pointer',
+                                borderTop: '1px solid',
+                                borderColor: 'divider',
+                                bgcolor: selected ? 'rgba(99,91,255,0.06)' : 'transparent',
+                                '&:hover': { bgcolor: selected ? 'rgba(99,91,255,0.09)' : 'rgba(0,0,0,0.02)' },
+                                '&::before': selected ? { content: '""', position: 'absolute', left: 0, top: 6, bottom: 6, width: 3, borderRadius: '0 3px 3px 0', bgcolor: tone.color } : undefined,
                               }}
                             >
-                              <Stack spacing={0.9} sx={{ minWidth: 0, pr: 0.5, flex: 1, width: '100%' }}>
-                                <Stack direction="row" spacing={1} alignItems="flex-start" sx={{ minWidth: 0, pr: 2 }}>
-                                  <Box sx={{ width: 30, height: 30, borderRadius: 1.75, display: 'grid', placeItems: 'center', bgcolor: selected ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.78)', color: selected ? 'inherit' : tone.color, flexShrink: 0 }}>
-                                    <ToneIcon sx={{ fontSize: 17 }} />
-                                  </Box>
-                                  <Typography
-                                    variant="body2"
-                                    sx={{
-                                      fontWeight: 800,
-                                      minWidth: 0,
-                                      overflow: 'hidden',
-                                      textOverflow: 'ellipsis',
-                                      display: '-webkit-box',
-                                      WebkitLineClamp: 2,
-                                      WebkitBoxOrient: 'vertical',
-                                      lineHeight: 1.15,
-                                      maxWidth: '100%',
-                                    }}
-                                  >
-                                    {caja.nombre}
-                                  </Typography>
-                                </Stack>
-                                <Typography
-                                  variant="h5"
-                                  sx={{
-                                    fontWeight: 800,
-                                    color: totalColor,
-                                    lineHeight: 1.05,
-                                    pr: 2,
-                                  }}
-                                >
-                                  {formatCajaAmount(caja, totalCaja)}
+                              <Box sx={{ width: 30, height: 30, borderRadius: 1.5, display: 'grid', placeItems: 'center', bgcolor: 'rgba(0,0,0,0.04)', color: tone.color, flexShrink: 0 }}>
+                                <ToneIcon sx={{ fontSize: 16 }} />
+                              </Box>
+                              <Box sx={{ minWidth: 0 }}>
+                                <Typography variant="body2" sx={{ fontWeight: 800, lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {caja.nombre}
                                 </Typography>
-                                <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap">
-                                  <Typography variant="caption" color={selected ? 'inherit' : 'text.secondary'} sx={{ fontWeight: 700, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
-                                    {(caja.equivalencia && caja.equivalencia !== 'none') ? caja.equivalencia.replaceAll('_', ' ') : (caja.moneda || 'ARS')}
+                                <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mt: 0.1, flexWrap: 'wrap' }}>
+                                  <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+                                    {mostrarReservaEnCard ? 'Saldo total caja' : 'Saldo actual'}
                                   </Typography>
                                   {caja.type && (
-                                    <Typography variant="caption" color={selected ? 'inherit' : 'text.secondary'} sx={{ fontWeight: 700, textTransform: 'capitalize' }}>
-                                      {caja.type}
-                                    </Typography>
+                                    <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'capitalize' }}>· {caja.type}</Typography>
                                   )}
                                   {caja.baseCalculo === 'subtotal' && (
-                                    <Chip size="small" label="neto" color="info" variant="outlined" sx={{ height: 16, fontSize: '0.6rem' }} />
+                                    <Chip size="small" label="neto" color="info" variant="outlined" sx={{ height: 15, fontSize: '0.55rem' }} />
                                   )}
                                   {caja.filterSet && (
-                                    <Chip size="small" label="vista" color="secondary" variant="outlined" sx={{ height: 16, fontSize: '0.6rem' }} />
+                                    <Chip size="small" label="vista" color="secondary" variant="outlined" sx={{ height: 15, fontSize: '0.55rem' }} />
                                   )}
                                 </Stack>
-                                <Typography variant="caption" color={selected ? 'inherit' : 'text.secondary'} sx={{ opacity: 0.9 }}>
-                                  {mostrarReservaEnCard ? 'Saldo total caja' : 'Saldo actual'}
+                              </Box>
+                              <Box sx={{ textAlign: 'right', minWidth: 0 }}>
+                                <Typography sx={{ fontWeight: 800, fontSize: '0.95rem', lineHeight: 1.15, color: totalCaja < 0 ? 'error.main' : 'text.primary', whiteSpace: 'nowrap' }}>
+                                  {formatCajaAmount(caja, totalCaja)}
                                 </Typography>
+                                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, textTransform: 'uppercase' }}>
+                                  {monedaLabel}
+                                </Typography>
+                              </Box>
+                              <IconButton
+                                size="small"
+                                onClick={(event) => { event.stopPropagation(); handleOpenCajaMenu(event, index); }}
+                                sx={{ color: 'text.disabled' }}
+                              >
+                                <MoreVertIcon fontSize="small" />
+                              </IconButton>
+                            </Box>
 
-                                {mostrarReservaEnCard && (
-                                  <Box
-                                    onClick={(e) => { e.stopPropagation(); toggleFiltroReserva(); }}
-                                    sx={{ mt: 0.75, pt: 1.25, borderTop: '1px solid', borderColor: selected ? 'rgba(255,255,255,0.28)' : 'rgba(0,0,0,0.10)', cursor: 'pointer', width: '100%' }}
-                                  >
-                                    <Box
-                                      sx={{
-                                        display: 'grid',
-                                        gridTemplateColumns: '1fr 1px 1fr',
-                                        gap: 1.5,
-                                        alignItems: 'center',
-                                        mb: 1.25,
-                                      }}
-                                    >
-                                      <Box sx={{ minWidth: 0 }}>
-                                        <Stack direction="row" spacing={0.5} alignItems="center" sx={{ flexWrap: 'wrap', mb: 0.25 }}>
-                                          <Typography variant="caption" color="inherit" sx={{ opacity: 0.82 }}>Reservado</Typography>
-                                          <Chip label="Reserva interna" size="small" sx={{ height: 16, fontSize: '0.55rem', bgcolor: selected ? 'rgba(255,255,255,0.2)' : 'rgba(99,91,255,0.10)', color: 'inherit' }} />
-                                        </Stack>
-                                        <Typography variant="h6" color="inherit" sx={{ fontWeight: 800, lineHeight: 1.15 }}>{formatByCurrency(cajaReservaMoneda, reservadoCard)}</Typography>
-                                      </Box>
-                                      <Box sx={{ width: '1px', height: 36, bgcolor: selected ? 'rgba(255,255,255,0.22)' : 'rgba(0,0,0,0.12)' }} />
-                                      <Box sx={{ minWidth: 0 }}>
-                                        <Typography variant="caption" color="inherit" sx={{ opacity: 0.82, display: 'block', mb: 0.25 }}>Disponible en Caja General</Typography>
-                                        <Typography variant="h6" color={selected ? 'inherit' : (totalCaja - reservadoCard < 0 ? 'error.main' : 'inherit')} sx={{ fontWeight: 800, lineHeight: 1.15 }}>{formatByCurrency(cajaReservaMoneda, totalCaja - reservadoCard)}</Typography>
-                                      </Box>
-                                    </Box>
-                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, py: 0.75, px: 1, borderRadius: 1.5, bgcolor: reservaFiltroActivo ? (selected ? 'rgba(255,255,255,0.22)' : 'rgba(99,91,255,0.14)') : (selected ? 'rgba(255,255,255,0.12)' : 'rgba(99,91,255,0.06)') }}>
-                                      <LockOutlinedIcon sx={{ fontSize: 14, opacity: 0.85 }} />
-                                      <Typography variant="caption" color="inherit" sx={{ opacity: 0.92, lineHeight: 1.25, flex: 1 }}>
-                                        {reservaFiltroActivo
-                                          ? 'Mostrando solo egresos de la reserva — tocá para quitar'
-                                          : reservaUnica
-                                            ? 'Reserva interna del proyecto. Tocá para ver sus egresos.'
-                                            : `Este proyecto tiene ${reservasVisibles.length} reservas internas.`}
-                                      </Typography>
-                                      <Box
-                                        component="span"
-                                        onClick={(e) => { e.stopPropagation(); irADetalleReserva(); }}
-                                        sx={{ fontSize: '0.68rem', fontWeight: 700, textDecoration: 'underline', whiteSpace: 'nowrap', opacity: 0.95 }}
-                                      >
-                                        {reservaUnica ? 'Ver egresos' : 'Ver reservas'}
-                                      </Box>
-                                    </Box>
+                            {selected && mostrarReservaEnCard && (
+                              <Box
+                                onClick={(e) => { e.stopPropagation(); toggleFiltroReserva(); }}
+                                sx={{ px: 2.25, py: 1.25, bgcolor: 'rgba(99,91,255,0.04)', borderTop: '1px solid', borderColor: 'divider', cursor: 'pointer' }}
+                              >
+                                <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1px 1fr', gap: 1.5, alignItems: 'center', mb: 1 }}>
+                                  <Box sx={{ minWidth: 0 }}>
+                                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.25 }}>Reservado</Typography>
+                                    <Typography variant="subtitle2" sx={{ fontWeight: 800, lineHeight: 1.15 }}>{formatByCurrency(cajaReservaMoneda, reservadoCard)}</Typography>
                                   </Box>
-                                )}
-                              </Stack>
-                            </Button>
-                            <IconButton
-                              size="small"
-                              onClick={(event) => handleOpenCajaMenu(event, index)}
-                              sx={{ position: 'absolute', right: 8, top: 8, bgcolor: 'rgba(255,255,255,0.72)', '&:hover': { bgcolor: 'rgba(255,255,255,0.92)' } }}
-                            >
-                              <MoreVertIcon fontSize="small" />
-                            </IconButton>
+                                  <Box sx={{ width: '1px', height: 32, bgcolor: 'rgba(0,0,0,0.12)' }} />
+                                  <Box sx={{ minWidth: 0 }}>
+                                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.25 }}>Disponible en Caja General</Typography>
+                                    <Typography variant="subtitle2" sx={{ fontWeight: 800, lineHeight: 1.15, color: totalCaja - reservadoCard < 0 ? 'error.main' : 'text.primary' }}>{formatByCurrency(cajaReservaMoneda, totalCaja - reservadoCard)}</Typography>
+                                  </Box>
+                                </Box>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, py: 0.75, px: 1, borderRadius: 1.5, bgcolor: reservaFiltroActivo ? 'rgba(99,91,255,0.14)' : 'rgba(99,91,255,0.06)' }}>
+                                  <LockOutlinedIcon sx={{ fontSize: 14, opacity: 0.85 }} />
+                                  <Typography variant="caption" sx={{ opacity: 0.92, lineHeight: 1.25, flex: 1 }}>
+                                    {reservaFiltroActivo
+                                      ? 'Mostrando solo egresos de la reserva — tocá para quitar'
+                                      : reservaUnica
+                                        ? 'Reserva interna del proyecto. Tocá para ver sus egresos.'
+                                        : `Este proyecto tiene ${reservasVisibles.length} reservas internas.`}
+                                  </Typography>
+                                  <Box component="span" onClick={(e) => { e.stopPropagation(); irADetalleReserva(); }} sx={{ fontSize: '0.68rem', fontWeight: 700, textDecoration: 'underline', whiteSpace: 'nowrap' }}>
+                                    {reservaUnica ? 'Ver egresos' : 'Ver reservas'}
+                                  </Box>
+                                </Box>
+                              </Box>
+                            )}
                           </Box>
                         );
                       })}
                     </Box>
                   </Box>
-
-                  <Box
-                    sx={{
-                      width: { xs: '100%', lg: '30%' },
-                      minWidth: { xs: '100%', lg: '30%' },
-                      maxWidth: { xs: '100%', lg: '30%' },
-                      position: { xs: 'static', lg: 'sticky' },
-                      top: 12,
-                      zIndex: 6,
-                      borderRadius: 2,
-                      backdropFilter: 'blur(8px)',
-                      flexShrink: 0,
-                    }}
-                  >
-                  <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 3, borderColor: 'rgba(118,117,134,0.16)', background: 'rgba(255,255,255,0.7)' }}>
-                    <TotalesFiltrados
-                      t={totalesDetallados}
-                      fmt={formatByCurrency}
-                      moneda={activeTotalsCurrency}
-                      totalesFormat={totalesFormat}
-                      showUsdBlue={false}
-                      usdBlue={totalesUsdBlue}
-                      chips={filterChips}
-                      onOpenFilters={() => setFiltersOpen((o) => !o)}
-                      isMobile={isMobile}
-                      showDetails={showTotalsDetails}
-                      onToggleDetails={() => setShowTotalsDetails((s) => !s)}
-                      baseCalculo={activeCaja?.baseCalculo || 'total'}
-                    />
-                  </Paper>
-                  </Box>
-                </Stack>
+                </Box>
 
                 {isMobile ? (
                   <Drawer
