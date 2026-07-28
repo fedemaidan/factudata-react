@@ -2672,7 +2672,7 @@ useEffect(() => {
                   </Box>
 
                   {/* Lista de cajas: compacta, nada oculto, saldo pegado al nombre */}
-                  <Box sx={{ flex: { lg: '0 0 400px' }, width: { xs: '100%', lg: 400 }, borderLeft: { lg: '1px solid' }, borderTop: { xs: '1px solid', lg: 'none' }, borderColor: 'divider', display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                  <Box sx={{ flex: { lg: '0 0 40%' }, width: { xs: '100%', lg: '40%' }, minWidth: { lg: 360 }, borderLeft: { lg: '1px solid' }, borderTop: { xs: '1px solid', lg: 'none' }, borderColor: 'divider', display: 'flex', flexDirection: 'column' }}>
                     <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 2.25, pt: 2, pb: 1 }}>
                       <Typography sx={{ fontSize: '0.66rem', fontWeight: 800, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'text.secondary' }}>
                         Cajas
