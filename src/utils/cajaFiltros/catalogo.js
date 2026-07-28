@@ -4,10 +4,12 @@
  * + OPERADORES_POR_TIPO). Agregar un campo filtrable = una entrada acá.
  */
 
-// key → { label, campoMov (campo del movimiento), tipo, optionsKey?, opciones?, soloSiConEstados? }
+// key → { label, campoMov (campo del movimiento), tipo, optionsKey?, opciones?, soloSiConEstados?, dependeDe? }
+// `dependeDe`: el campo se scopea a un padre (subcategoría depende de la categoría elegida). Sus
+// opciones salen de options.subcategoriasByCategoria acotado a las categorías elegidas con "es".
 export const CAMPOS = [
   { key: 'categoria',     label: 'Categoría',        campoMov: 'categoria',        tipo: 'select', optionsKey: 'categorias' },
-  { key: 'subcategoria',  label: 'Subcategoría',     campoMov: 'subcategoria',     tipo: 'select', optionsKey: 'subcategorias' },
+  { key: 'subcategoria',  label: 'Subcategoría',     campoMov: 'subcategoria',     tipo: 'select', optionsKey: 'subcategorias', dependeDe: 'categoria' },
   { key: 'medio_pago',    label: 'Medio de pago',    campoMov: 'medio_pago',       tipo: 'select', optionsKey: 'mediosPago' },
   { key: 'tipo',          label: 'Tipo',             campoMov: 'type',             tipo: 'select', opciones: ['ingreso', 'egreso'] },
   { key: 'estado',        label: 'Estado',           campoMov: 'estado',           tipo: 'select', opciones: ['Pendiente', 'Pagado'], soloSiConEstados: true },

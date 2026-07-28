@@ -16,10 +16,30 @@ import {
  * `options` = options del backend (categorias, mediosPago, asignados, ...).
  */
 
-const opcionesDeCampo = (campoKey, options, empresa) => {
+// Valores elegidos con "es" para un campo, mirando las condiciones hermanas.
+// Sirve de scope para los campos dependientes (subcategoría ← categoría).
+const valoresElegidosDe = (condiciones, campoKey) =>
+  (Array.isArray(condiciones) ? condiciones : [])
+    .filter((c) => c?.campo === campoKey && c?.operador === 'es')
+    .flatMap((c) => (Array.isArray(c?.valores) ? c.valores : []))
+    .filter(Boolean);
+
+const opcionesDeCampo = (campoKey, options, empresa, condiciones) => {
   const meta = getCampoMeta(campoKey);
   if (!meta) return [];
   if (Array.isArray(meta.opciones)) return meta.opciones;
+
+  // Campo dependiente: sus opciones salen del padre elegido (subcategoría por
+  // categoría). Sin categoría elegida → sin opciones (obliga a elegirla primero).
+  if (meta.dependeDe === 'categoria') {
+    const porCategoria = options?.subcategoriasByCategoria;
+    const cats = valoresElegidosDe(condiciones, 'categoria');
+    if (!porCategoria || cats.length === 0) return [];
+    const set = new Set();
+    cats.forEach((cat) => (porCategoria[cat] || []).forEach((s) => set.add(s)));
+    return Array.from(set).sort((a, b) => String(a).localeCompare(String(b), 'es', { sensitivity: 'base' }));
+  }
+
   const fromBackend = options?.[meta.optionsKey];
   if (Array.isArray(fromBackend) && fromBackend.length > 0) return fromBackend;
   // Fallbacks desde la empresa cuando el backend todavía no trajo options.
@@ -150,6 +170,7 @@ const CajaFilterBuilder = ({ value, onChange, options, empresa }) => {
                 // eslint-disable-next-line react/no-array-index-key
                 key={idx}
                 cond={cond}
+                condiciones={condiciones}
                 campos={camposDisponibles}
                 options={options}
                 empresa={empresa}
@@ -184,7 +205,7 @@ const CajaFilterBuilder = ({ value, onChange, options, empresa }) => {
   );
 };
 
-const FilaCondicion = ({ cond, campos, options, empresa, onCampo, onOperador, onPatch, onQuitar }) => {
+const FilaCondicion = ({ cond, condiciones, campos, options, empresa, onCampo, onOperador, onPatch, onQuitar }) => {
   const meta = getCampoMeta(cond.campo);
   const tipo = meta?.tipo;
   const operadores = getOperadores(tipo);
@@ -213,7 +234,7 @@ const FilaCondicion = ({ cond, campos, options, empresa, onCampo, onOperador, on
       </FormControl>
 
       <Box sx={{ flex: '1 1 auto', minWidth: 0, width: '100%' }}>
-        <ValorCondicion cond={cond} meta={meta} opMeta={opMeta} options={options} empresa={empresa} onPatch={onPatch} />
+        <ValorCondicion cond={cond} condiciones={condiciones} meta={meta} opMeta={opMeta} options={options} empresa={empresa} onPatch={onPatch} />
       </Box>
 
       <IconButton
@@ -234,14 +255,17 @@ const FilaCondicion = ({ cond, campos, options, empresa, onCampo, onOperador, on
   );
 };
 
-const ValorCondicion = ({ cond, meta, opMeta, options, empresa, onPatch }) => {
+const ValorCondicion = ({ cond, condiciones, meta, opMeta, options, empresa, onPatch }) => {
   if (!meta || !opMeta || opMeta.sinValor) {
     return <Box sx={{ height: 40 }} />;
   }
 
   if (meta.tipo === 'select') {
-    const opciones = opcionesDeCampo(meta.key, options, empresa);
+    const opciones = opcionesDeCampo(meta.key, options, empresa, condiciones);
     const valores = Array.isArray(cond.valores) ? cond.valores : [];
+    // Campo dependiente sin padre elegido: sin opciones y con hint (obliga a elegir la categoría antes).
+    const faltaPadre = meta.dependeDe === 'categoria'
+      && valoresElegidosDe(condiciones, 'categoria').length === 0;
     return (
       <Autocomplete
         multiple
@@ -252,8 +276,16 @@ const ValorCondicion = ({ cond, meta, opMeta, options, empresa, onPatch }) => {
         value={valores}
         onChange={(_, v) => onPatch({ valores: v })}
         ChipProps={{ size: 'small' }}
+        noOptionsText={faltaPadre ? 'Elegí una categoría primero' : 'Sin opciones'}
         renderInput={(params) => (
-          <TextField {...params} placeholder={valores.length === 0 ? 'Elegí uno o varios' : undefined} />
+          <TextField
+            {...params}
+            placeholder={
+              faltaPadre
+                ? 'Elegí una categoría primero'
+                : (valores.length === 0 ? 'Elegí uno o varios' : undefined)
+            }
+          />
         )}
       />
     );
