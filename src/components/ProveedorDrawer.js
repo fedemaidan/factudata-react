@@ -1409,11 +1409,11 @@ function ProveedorDrawer({ open, onClose, proveedorId, proveedorNombreHint, empr
                 <Typography variant="h6" sx={{ fontWeight: 600, lineHeight: 1.2 }}>
                   {proveedor.nombre}
                 </Typography>
-                <Chip
-                  label={proveedor.tipo === 'mano_de_obra' ? 'Mano de obra' : 'Materiales'}
-                  size="small"
-                  variant="outlined"
-                />
+                {/* Sólo si es contratista: el default 'materiales' no distingue
+                    configurado de nunca tocado, y las categorías están en Datos. */}
+                {proveedor.tipo === 'mano_de_obra' && (
+                  <Chip label="Mano de obra" size="small" variant="outlined" />
+                )}
                 {proveedor.archivado && (
                   <Chip label="Archivado" size="small" color="default" />
                 )}

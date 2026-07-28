@@ -31,6 +31,7 @@ import {
     Refresh as RefreshIcon,
     FileDownloadOutlined as DownloadIcon,
     HistoryToggleOff as HistoryIcon,
+    Sync as SyncIcon,
 } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
@@ -86,6 +87,12 @@ const METRICAS_OUTCOME = [
 // Embudo completo = pasos del landing (contadores diarios) + outcomes del CRM.
 const METRICAS_FUNNEL = [...METRICAS, ...METRICAS_OUTCOME];
 
+// Columnas para las tablas de atribución + "Datos por día": el mismo embudo del
+// landing pero SIN "dejó email" y CON "reunión concretada" (que sale del mirror
+// de Notion, desglosado por dimensión en outcomeExtraSteps / outcomesByDay).
+const METRICA_REUNION = { key: 'reunionExitosa', label: 'Reunión', emoji: '🤝', color: '#14b8a6', desc: 'Reunión concretada', instrumentado: true };
+const METRICAS_CON_REUNION = [...METRICAS.filter(m => m.key !== 'dejoEmail'), METRICA_REUNION];
+
 // Métricas del flujo VIEJO (modal web) — sólo para la tabla histórica pre 1-jun.
 const METRICAS_HIST = [
     { key: 'visitasLanding', label: 'Visitas',        emoji: '👁️', color: '#6366f1' },
@@ -105,6 +112,17 @@ function formatFechaDia(f) {
     if (!f) return '—';
     const [, m, d] = f.split('-');
     return `${d}/${m}`;
+}
+
+// Última sincronización con Notion → "26/07 14:32" (zona AR), o null si nunca.
+function formatLastSync(iso) {
+    if (!iso) return null;
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return null;
+    return d.toLocaleString('es-AR', {
+        timeZone: 'America/Argentina/Buenos_Aires',
+        day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+    });
 }
 
 /**
@@ -347,6 +365,7 @@ const RAW_EVENT_A_PASO = {
     agendaron: 'agendo',
     agendo: 'agendo',
     dejo_email: 'dejoEmail',
+    reunion_exitosa: 'reunionExitosa',
 };
 
 function parseAttributionBreakdown(extraSteps, prefix /* 'src' | 'camp' */) {
@@ -365,7 +384,7 @@ function parseAttributionBreakdown(extraSteps, prefix /* 'src' | 'camp' */) {
     return buckets;
 }
 
-function AtribucionTabla({ extraSteps, prefix, title, dimLabel, dimLabels }) {
+function AtribucionTabla({ extraSteps, prefix, title, dimLabel, dimLabels, metricas = METRICAS }) {
     const buckets = parseAttributionBreakdown(extraSteps, prefix);
     const rows = Object.entries(buckets)
         .map(([dim, pasos]) => ({ dim, ...pasos }))
@@ -391,7 +410,7 @@ function AtribucionTabla({ extraSteps, prefix, title, dimLabel, dimLabels }) {
                         <TableHead>
                             <TableRow>
                                 <TableCell><strong>{dimLabel.charAt(0).toUpperCase() + dimLabel.slice(1)}</strong></TableCell>
-                                {METRICAS.map(m => (
+                                {metricas.map(m => (
                                     <TableCell key={m.key} align="right"><strong>{m.emoji} {m.label}</strong></TableCell>
                                 ))}
                                 <TableCell align="right">
@@ -409,11 +428,11 @@ function AtribucionTabla({ extraSteps, prefix, title, dimLabel, dimLabels }) {
                                         <TableCell>
                                             <Typography variant="body2" sx={{ fontFamily: dimLabels?.[r.dim] ? 'inherit' : 'monospace', fontWeight: 600 }}>{dimLabels?.[r.dim] || r.dim}</Typography>
                                         </TableCell>
-                                        {METRICAS.map((m, i) => {
+                                        {metricas.map((m, i) => {
                                             const val = r[m.key] || 0;
                                             const base = r.visita || 0;
-                                            // Paso anterior del embudo (según el orden de METRICAS)
-                                            const prevVal = i > 0 ? (r[METRICAS[i - 1].key] || 0) : 0;
+                                            // Paso anterior del embudo (según el orden de `metricas`)
+                                            const prevVal = i > 0 ? (r[metricas[i - 1].key] || 0) : 0;
                                             const mostrar = m.key !== 'visita' && val > 0;
                                             return (
                                                 <TableCell key={m.key} align="right">
@@ -537,9 +556,91 @@ function RubroOutcomesTabla({ outcomes }) {
     );
 }
 
+// ─── Ventas por campaña (cohorte CRM × atribución) ────────
+// Mismo desglose que RubroOutcomesTabla pero agrupado por campaña. La campaña se
+// resuelve en el sync joineando la reunión de Notion con el Lead por teléfono
+// (Lead.utm_campaign). "Sin campaña" = orgánico o match de campaña no encontrado.
+
+function CampañaOutcomesTabla({ outcomes }) {
+    const porCampaña = outcomes?.porCampaña || [];
+
+    if (porCampaña.length === 0) {
+        return (
+            <Card sx={{ borderLeft: '4px solid #eab308' }}>
+                <CardHeader
+                    title="📣 Ventas por campaña (cohorte CRM)"
+                    subheader="Sin datos todavía — sincronizá con Notion, o no hay reuniones con campaña atribuida en el período"
+                />
+            </Card>
+        );
+    }
+
+    const totalContactos = porCampaña.reduce((a, r) => a + (r.contactos || 0), 0);
+
+    return (
+        <Card sx={{ borderLeft: '4px solid #eab308' }}>
+            <CardHeader
+                title="📣 Ventas por campaña (cohorte CRM)"
+                subheader={`${porCampaña.length} campaña${porCampaña.length > 1 ? 's' : ''} · agendó / reunión / ganado por cohorte del período · % sobre el paso anterior · "Sin campaña" = orgánico o sin atribución`}
+            />
+            <CardContent sx={{ pt: 0 }}>
+                <TableContainer component={Paper} variant="outlined">
+                    <Table size="small">
+                        <TableHead>
+                            <TableRow>
+                                <TableCell><strong>📣 Campaña</strong></TableCell>
+                                <TableCell align="right"><strong>✅ Agendó</strong></TableCell>
+                                <TableCell align="right"><strong>🤝 Reunión exitosa</strong></TableCell>
+                                <TableCell align="right"><strong>🏆 Ganado</strong></TableCell>
+                            </TableRow>
+                        </TableHead>
+                        <TableBody>
+                            {porCampaña.map(r => {
+                                const sinCamp = r.campaña === 'Sin campaña';
+                                const celda = (val, base, color) => (
+                                    <TableCell align="right">
+                                        <Typography variant="body2" sx={{ color: val > 0 ? color : 'text.disabled', fontWeight: val > 0 ? 700 : 400 }}>
+                                            {val > 0 ? val.toLocaleString('es-AR') : '—'}
+                                        </Typography>
+                                        {val > 0 && base > 0 && (
+                                            <Typography variant="caption" sx={{ display: 'block', lineHeight: 1.15, color: 'text.secondary' }}>
+                                                {pct(val, base)}
+                                            </Typography>
+                                        )}
+                                    </TableCell>
+                                );
+                                return (
+                                    <TableRow key={r.campaña} sx={{ '&:hover': { bgcolor: 'action.hover' }, opacity: sinCamp ? 0.7 : 1 }}>
+                                        <TableCell>
+                                            <Typography variant="body2" sx={{ fontWeight: 600, fontFamily: sinCamp ? 'inherit' : 'monospace', fontStyle: sinCamp ? 'italic' : 'normal' }}>
+                                                {r.campaña}
+                                            </Typography>
+                                        </TableCell>
+                                        {celda(r.agendo || 0, r.contactos || 0, '#10b981')}
+                                        {celda(r.reunionExitosa || 0, r.agendo || 0, '#14b8a6')}
+                                        {celda(r.ganado || 0, r.reunionExitosa || 0, '#eab308')}
+                                    </TableRow>
+                                );
+                            })}
+                            {porCampaña.length > 1 && (
+                                <TableRow sx={{ bgcolor: 'action.hover' }}>
+                                    <TableCell><strong>Total</strong></TableCell>
+                                    <TableCell align="right"><strong>{(outcomes?.totales?.agendo || 0).toLocaleString('es-AR')}</strong></TableCell>
+                                    <TableCell align="right"><strong>{(outcomes?.totales?.reunionExitosa || 0).toLocaleString('es-AR')}</strong></TableCell>
+                                    <TableCell align="right"><strong>{(outcomes?.totales?.ganado || 0).toLocaleString('es-AR')}</strong></TableCell>
+                                </TableRow>
+                            )}
+                        </TableBody>
+                    </Table>
+                </TableContainer>
+            </CardContent>
+        </Card>
+    );
+}
+
 // ─── Tabla por día ────────────────────────────────────────
 
-function TablaDaily({ rows }) {
+function TablaDaily({ rows, metricas = METRICAS }) {
     if (!rows || rows.length === 0) {
         return (
             <Card>
@@ -555,8 +656,8 @@ function TablaDaily({ rows }) {
 
     const filas = [...rows].reverse();
     // Sólo columnas con algún dato, para no saturar con métricas vacías.
-    const metricasVisibles = METRICAS.filter(m => rows.some(r => metricaVal(r, m.key) > 0));
-    const cols = metricasVisibles.length > 0 ? metricasVisibles : METRICAS;
+    const metricasVisibles = metricas.filter(m => rows.some(r => metricaVal(r, m.key) > 0));
+    const cols = metricasVisibles.length > 0 ? metricasVisibles : metricas;
 
     return (
         <Card>
@@ -760,16 +861,70 @@ function HistoricoSemanal() {
 
 // ─── Export CSV ───────────────────────────────────────────
 
-function exportarCSV(rows) {
-    const headers = ['fecha', ...METRICAS.map(m => m.label)];
+// Export CSV. A la tabla diaria original (fecha + METRICAS) se le AGREGA una
+// columna "Reunión" con la reunión concretada por día (de Notion) — nada más se
+// toca de esas columnas. Debajo se agregan: las tablas de cohorte del CRM por
+// campaña y por rubro (donde viven "reunión exitosa" y "ganado"), y el embudo
+// completo desglosado por campaña / anuncio / flujo (mismos pasos que las tablas
+// de atribución en pantalla, hasta "reunión concretada"). `outcomes` es lo que
+// devuelve getLandingOutcomes(); `extraSteps` es el mapa de atribución mergeado
+// (extraSteps del landing + reunión concretada de Notion, alias extraStepsConReunion).
+function exportarCSV(rows, outcomes, extraSteps = {}) {
     const escapar = (v) => {
         const s = String(v ?? '');
         return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
     };
-    const lineas = [...rows]
+    const linea = (arr) => arr.map(escapar).join(',');
+    const outcomesByDay = outcomes?.outcomesByDay || {};
+    const porCampaña = outcomes?.porCampaña || [];
+    const porRubro = outcomes?.porRubro || [];
+
+    // ── Tabla por día: columnas originales + "Reunión" (Notion) al final ──
+    const headers = ['fecha', ...METRICAS.map(m => m.label), 'Reunión'];
+    const lineasDia = [...(rows || [])]
         .sort((a, b) => (a.fecha < b.fecha ? -1 : 1))
-        .map(r => [r.fecha, ...METRICAS.map(m => metricaVal(r, m.key))].map(escapar).join(','));
-    const csv = [headers.map(escapar).join(','), ...lineas].join('\n');
+        .map(r => linea([r.fecha, ...METRICAS.map(m => metricaVal(r, m.key)), outcomesByDay[r.fecha] || 0]));
+    const bloques = [linea(headers), ...lineasDia];
+
+    // ── Debajo: cohorte del CRM (Notion), donde vive "ganado" ──
+    if (porCampaña.length > 0) {
+        bloques.push('', linea(['Resultados por campaña (cohorte CRM — Notion)']),
+            linea(['Campaña', 'Contactos', 'Agendó', 'Reunión exitosa', 'Ganado']));
+        porCampaña.forEach(r => bloques.push(linea([r.campaña, r.contactos || 0, r.agendo || 0, r.reunionExitosa || 0, r.ganado || 0])));
+    }
+
+    if (porRubro.length > 0) {
+        bloques.push('', linea(['Resultados por rubro (cohorte CRM — Notion)']),
+            linea(['Rubro', 'Contactos', 'Agendó', 'Reunión exitosa', 'Ganado']));
+        porRubro.forEach(r => bloques.push(linea([r.rubro, r.contactos || 0, r.agendo || 0, r.reunionExitosa || 0, r.ganado || 0])));
+    }
+
+    // ── Embudo completo desglosado por dimensión (mismos pasos que las tablas
+    // de atribución en pantalla, hasta "reunión concretada"). Cada bloque sólo
+    // incluye el tráfico que traía esa dimensión, así que sus totales NO coinciden
+    // entre bloques (una visita sin campaña no aparece en "por campaña", etc.). ──
+    const colsAtrib = METRICAS_CON_REUNION;
+    const bloqueEmbudo = (prefix, titulo, dimHeader, dimLabels) => {
+        const buckets = parseAttributionBreakdown(extraSteps, prefix);
+        const dims = Object.keys(buckets).sort(
+            (a, b) => (buckets[b].visita || buckets[b].fueWhatsapp || 0) - (buckets[a].visita || buckets[a].fueWhatsapp || 0)
+        );
+        if (dims.length === 0) return;
+        bloques.push('', linea([titulo]), linea([dimHeader, ...colsAtrib.map(m => m.label)]));
+        dims.forEach(dim => {
+            const p = buckets[dim];
+            bloques.push(linea([dimLabels?.[dim] || dim, ...colsAtrib.map(m => p[m.key] || 0)]));
+        });
+    };
+    bloqueEmbudo('camp', 'Embudo por campaña', 'Campaña');
+    bloqueEmbudo('content', 'Embudo por anuncio', 'Anuncio');
+    bloqueEmbudo('flow', 'Embudo por flujo', 'Flujo', {
+        wa: 'WhatsApp',
+        web: 'Web directa',
+        wa_sin_atribuir: 'WhatsApp sin atribuir',
+    });
+
+    const csv = bloques.join('\n');
     const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -831,6 +986,8 @@ const LandingFunnelPage = () => {
     const [campañasFiltro, setCampañasFiltro] = useState([]); // [] = todas
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    const [syncing, setSyncing] = useState(false);
+    const [syncMsg, setSyncMsg] = useState(null); // { severity, text } tras sincronizar
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -871,6 +1028,30 @@ const LandingFunnelPage = () => {
         fetchData();
     }, [fetchData]);
 
+    // Sincronización manual con Notion (botón). Al terminar, refresca los datos
+    // para que las tarjetas y la tabla por campaña reflejen el mirror nuevo.
+    const handleSync = useCallback(async () => {
+        setSyncing(true);
+        setSyncMsg(null);
+        try {
+            const res = await landingStatsService.syncNotion();
+            const r = res?.resumen || {};
+            setSyncMsg({
+                severity: 'success',
+                text: `Sincronizado con Notion: ${r.landing ?? 0} reuniones · ${r.ganados ?? 0} ganados · ${r.purchasesNuevos ?? 0} Purchases · ${r.sinCampaña ?? 0} sin campaña`,
+            });
+            await fetchData();
+        } catch (err) {
+            if (err.response?.status === 409) {
+                setSyncMsg({ severity: 'warning', text: 'Ya hay una sincronización en curso. Probá de nuevo en unos segundos.' });
+            } else {
+                setSyncMsg({ severity: 'error', text: err.response?.data?.error || err.message || 'Error al sincronizar con Notion' });
+            }
+        } finally {
+            setSyncing(false);
+        }
+    }, [fetchData]);
+
     const totalesRaw = data?.totales || {};
     const rows = data?.rows || [];
     const rangoActivo = RANGOS_PRESET.find(r => r.key === rangoKey);
@@ -906,6 +1087,12 @@ const LandingFunnelPage = () => {
         ganado: outcomes?.totales?.ganado ?? 0,
     };
     const metricasFunnel = outcomes ? METRICAS_FUNNEL : METRICAS;
+
+    // "Reunión concretada" por dimensión (sale del mirror de Notion) mezclada en
+    // los extraSteps que consumen las tablas de atribución, y por día para la
+    // tabla "Datos por día".
+    const extraStepsConReunion = { ...(totales.extraSteps || {}), ...(outcomes?.outcomeExtraSteps || {}) };
+    const rowsConReunion = rows.map(r => ({ ...r, reunionExitosa: outcomes?.outcomesByDay?.[r.fecha] || 0 }));
 
     return (
         <>
@@ -989,13 +1176,51 @@ const LandingFunnelPage = () => {
                                     </ToggleButtonGroup>
                                 </Stack>
                             )}
+                            <Tooltip
+                                title={
+                                    syncing
+                                        ? 'Sincronizando con Notion…'
+                                        : outcomes?.lastRunAt
+                                            ? `Última sincronización con Notion: ${formatLastSync(outcomes.lastRunAt)} hs`
+                                            : 'Todavía no se sincronizó con Notion'
+                                }
+                                placement="top"
+                                arrow
+                            >
+                                <Chip
+                                    size="small"
+                                    variant="outlined"
+                                    color={outcomes?.lastRunAt && !syncing ? 'success' : 'default'}
+                                    label={
+                                        syncing
+                                            ? 'Sincronizando…'
+                                            : formatLastSync(outcomes?.lastRunAt)
+                                                ? `Notion: ${formatLastSync(outcomes.lastRunAt)}`
+                                                : 'Nunca sincronizado'
+                                    }
+                                />
+                            </Tooltip>
+                            <Tooltip title="Traer de Notion el estado de las reuniones (reunión exitosa, ganado/perdido y venta por campaña)">
+                                <span>
+                                    <Button
+                                        size="small"
+                                        variant="contained"
+                                        color="success"
+                                        startIcon={syncing ? <CircularProgress size={14} color="inherit" /> : <SyncIcon />}
+                                        onClick={handleSync}
+                                        disabled={syncing}
+                                    >
+                                        Sincronizar con Notion
+                                    </Button>
+                                </span>
+                            </Tooltip>
                             <Tooltip title="Exportar la data del período a CSV">
                                 <span>
                                     <Button
                                         size="small"
                                         variant="outlined"
                                         startIcon={<DownloadIcon />}
-                                        onClick={() => exportarCSV(rows)}
+                                        onClick={() => exportarCSV(rows, outcomes, extraStepsConReunion)}
                                         disabled={loading || rows.length === 0}
                                     >
                                         Exportar
@@ -1015,6 +1240,12 @@ const LandingFunnelPage = () => {
                     {error && (
                         <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
                             {error}
+                        </Alert>
+                    )}
+
+                    {syncMsg && (
+                        <Alert severity={syncMsg.severity} sx={{ mb: 2 }} onClose={() => setSyncMsg(null)}>
+                            {syncMsg.text}
                         </Alert>
                     )}
 
@@ -1078,6 +1309,8 @@ const LandingFunnelPage = () => {
 
                             <RubroOutcomesTabla outcomes={outcomes} />
 
+                            <CampañaOutcomesTabla outcomes={outcomes} />
+
                             <AtribucionTabla
                                 extraSteps={totales.extraSteps}
                                 prefix="lp"
@@ -1085,7 +1318,8 @@ const LandingFunnelPage = () => {
                                 dimLabel="variante"
                             />
                             <AtribucionTabla
-                                extraSteps={totales.extraSteps}
+                                extraSteps={extraStepsConReunion}
+                                metricas={METRICAS_CON_REUNION}
                                 prefix="flow"
                                 title="🔀 A/B de flujo (WhatsApp vs Web directa)"
                                 dimLabel="flujo"
@@ -1096,25 +1330,28 @@ const LandingFunnelPage = () => {
                                 }}
                             />
                             <AtribucionTabla
-                                extraSteps={totales.extraSteps}
+                                extraSteps={extraStepsConReunion}
+                                metricas={METRICAS_CON_REUNION}
                                 prefix="src"
                                 title="🎯 Atribución por fuente"
                                 dimLabel="fuente"
                             />
                             <AtribucionTabla
-                                extraSteps={totales.extraSteps}
+                                extraSteps={extraStepsConReunion}
+                                metricas={METRICAS_CON_REUNION}
                                 prefix="camp"
                                 title="📣 Atribución por campaña de Meta"
                                 dimLabel="campaña"
                             />
                             <AtribucionTabla
-                                extraSteps={totales.extraSteps}
+                                extraSteps={extraStepsConReunion}
+                                metricas={METRICAS_CON_REUNION}
                                 prefix="content"
                                 title="🖼️ Atribución por anuncio"
                                 dimLabel="anuncio"
                             />
 
-                            <TablaDaily rows={rows} />
+                            <TablaDaily rows={rowsConReunion} metricas={METRICAS_CON_REUNION} />
 
                             <HistoricoSemanal />
 

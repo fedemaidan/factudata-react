@@ -1,7 +1,8 @@
 // Resolver espejo del bot (TAR-393): acciones efectivas de un usuario EN una obra.
 //   efectivo(user, obra) = empresa.acciones − permisosOcultos − permisosOcultosPorProyecto[obra]
-// Todo sustractivo: la capa por-obra solo puede quitar. admin bypassa; la membresía
-// (proyectos) decide qué obras aplican (proyectos vacío = todas, fallback existente).
+// Todo sustractivo: la capa por-obra solo puede quitar. El admin se trata IGUAL que cualquier
+// usuario (membresía + recorte por obra le aplican). La membresía (proyectos) decide qué obras
+// aplican (proyectos vacío = todas, fallback existente).
 
 // Set core configurable por obra.
 export const ACCIONES_POR_PROYECTO = [
@@ -37,20 +38,17 @@ const accionesGlobales = (user) =>
 
 export function accionesEnProyecto(user, proyectoId) {
   const global = accionesGlobales(user);
-  if (user?.admin) return [...global];
   if (!proyectoId || !esMiembro(user, proyectoId)) return [];
   const ocultas = (user?.permisosOcultosPorProyecto || {})[String(proyectoId)] || [];
   return global.filter((a) => !ocultas.includes(a));
 }
 
 export function tieneAccionEnProyecto(user, proyectoId, accion) {
-  if (user?.admin) return true;
   return accionesEnProyecto(user, proyectoId).includes(accion);
 }
 
 // todo / solo_mio / bloqueado — misma precedencia de lectura que el bot.
 export function modoLecturaEnProyecto(user, proyectoId) {
-  if (user?.admin) return 'todo';
   const efectivas = accionesEnProyecto(user, proyectoId);
   if (efectivas.includes('VER_CAJAS') || efectivas.includes('LISTAR_MOVIMIENTOS')) return 'todo';
   if (efectivas.includes('VER_MIS_MOVIMIENTOS')) return 'solo_mio';
@@ -61,7 +59,6 @@ export function modoLecturaEnProyecto(user, proyectoId) {
 // pero fue RECORTADA en esta obra. Así el gate refleja los recortes por-obra sin cambiar el
 // comportamiento actual para quien no tiene la acción a nivel global (B0-safe).
 export function accionRecortadaEnObra(user, proyectoId, accion) {
-  if (user?.admin) return false;
   if (!proyectoId) return false; // sin obra en scope no hay recorte que aplicar
   const globalHas = accionesGlobales(user).includes(accion);
   if (!globalHas) return false;

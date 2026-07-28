@@ -1,6 +1,6 @@
 // Detalle de Reserva de Obra (reserva interna de fondos de una obra/proyecto).
 // Concepto distinto de la Caja Chica personal. Ver docs/RESERVA_DE_OBRA_TECNICO.md — Ticket 2.
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Box, Container, Typography, Stack, TextField, MenuItem, Grid,
   Paper, Table, TableBody, TableCell, TableHead, TableRow, Chip, Snackbar, Alert,
@@ -35,6 +35,7 @@ import { useBreadcrumbs } from 'src/contexts/breadcrumbs-context';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import reservaObraService from 'src/services/reservaObraService';
 import profileService from 'src/services/profileService';
+import { getProyectosFromUser } from 'src/services/proyectosService';
 import { formatTimestamp } from 'src/utils/formatters';
 
 const formatCurrency = (amount, moneda = 'ARS') => {
@@ -58,6 +59,7 @@ const TIPO_MOV = {
   asignacion: { label: 'Asignación', color: 'success' },
   reposicion: { label: 'Reposición', color: 'success' },
   ajuste: { label: 'Ajuste', color: 'warning' },
+  desasignacion: { label: 'Desasignación', color: 'info' },
   egreso: { label: 'Egreso', color: 'error' },
 };
 
@@ -77,8 +79,8 @@ const ReservaObraDetallePage = () => {
   const [busqueda, setBusqueda] = useState('');
   const [filtroTipo, setFiltroTipo] = useState('');
 
-  // Dialog genérico de operación de ledger: asignacion | reposicion | ajuste
-  const [ledgerDialog, setLedgerDialog] = useState(null); // null | 'asignacion' | 'reposicion' | 'ajuste'
+  // Dialog genérico de operación de ledger: asignacion | reposicion | ajuste | desasignacion
+  const [ledgerDialog, setLedgerDialog] = useState(null); // null | 'asignacion' | 'reposicion' | 'ajuste' | 'desasignacion'
   const [ledgerSaving, setLedgerSaving] = useState(false);
   const [formMoneda, setFormMoneda] = useState('ARS');
   const [formMonto, setFormMonto] = useState('');
@@ -106,6 +108,11 @@ const ReservaObraDetallePage = () => {
     router.push(`/movementForm?${params.toString()}`);
   };
 
+  // Dialog de nombre de la reserva
+  const [nombreOpen, setNombreOpen] = useState(false);
+  const [nombreValue, setNombreValue] = useState('');
+  const [nombreSaving, setNombreSaving] = useState(false);
+
   // Dialog de participantes
   const [partOpen, setPartOpen] = useState(false);
   const [partSaving, setPartSaving] = useState(false);
@@ -117,7 +124,7 @@ const ReservaObraDetallePage = () => {
   const accionesEmpresa = user?.empresa?.acciones || user?.empresaData?.acciones || [];
   const permisosOcultos = user?.permisosOcultos || [];
   const tienePermiso = (accion) => accionesEmpresa.includes(accion) && !permisosOcultos.includes(accion);
-  const puedeGestionar = user?.admin || tienePermiso('GESTIONAR_RESERVAS_OBRA');
+  const puedeGestionar = tienePermiso('GESTIONAR_RESERVAS_OBRA');
 
   const fetchReserva = useCallback(async () => {
     if (!id) return;
@@ -147,7 +154,7 @@ const ReservaObraDetallePage = () => {
     setBreadcrumbs([
       { label: 'Inicio', href: '/', icon: <HomeIcon fontSize="small" /> },
       { label: 'Reservas por obra', href: '/reservasObra', icon: <LockIcon fontSize="small" /> },
-      { label: reserva ? `Reserva de Obra · ${reserva.proyecto_nombre || ''}` : 'Reserva de Obra', icon: <LockIcon fontSize="small" /> },
+      { label: reserva ? (reserva.nombre || `Reserva de Obra · ${reserva.proyecto_nombre || ''}`) : 'Reserva de Obra', icon: <LockIcon fontSize="small" /> },
     ]);
     return () => setBreadcrumbs([]);
   }, [reserva, setBreadcrumbs]);
@@ -170,6 +177,7 @@ const ReservaObraDetallePage = () => {
       const payload = { moneda: formMoneda, monto, observacion: formObs || null };
       if (ledgerDialog === 'asignacion') await reservaObraService.asignarFondos(id, payload);
       else if (ledgerDialog === 'reposicion') await reservaObraService.registrarReposicion(id, payload);
+      else if (ledgerDialog === 'desasignacion') await reservaObraService.desasignarFondos(id, payload);
       else await reservaObraService.registrarAjuste(id, payload);
       setAlert({ open: true, message: 'Movimiento registrado', severity: 'success' });
       setLedgerDialog(null);
@@ -278,16 +286,76 @@ const ReservaObraDetallePage = () => {
     }
   };
 
+  const handleGuardarNombre = async () => {
+    const nombre = (nombreValue || '').trim();
+    if (!nombre) {
+      setAlert({ open: true, message: 'El nombre no puede quedar vacío', severity: 'warning' });
+      return;
+    }
+    setNombreSaving(true);
+    try {
+      const doc = await reservaObraService.actualizar(id, { nombre });
+      setReserva(doc);
+      setNombreOpen(false);
+      setAlert({ open: true, message: 'Nombre actualizado', severity: 'success' });
+    } catch (err) {
+      console.error('Error renombrando reserva:', err);
+      setAlert({ open: true, message: err?.response?.data?.error || 'Error al renombrar la reserva', severity: 'error' });
+    } finally {
+      setNombreSaving(false);
+    }
+  };
+
   const handleOpenParticipantes = async () => {
     setPartOpen(true);
     if (perfiles.length === 0) {
       try {
         const empId = user?.empresa?.id || user?.empresaData?.id || user?.empresa_id;
         const perfs = await profileService.getProfileByEmpresa(empId);
-        setPerfiles(perfs || []);
+        // Resolvemos las obras de cada perfil para filtrar por "acceso a la obra".
+        const perfsConProyectos = await Promise.all(
+          (perfs || []).map(async (prof) => ({ ...prof, proyectosData: await getProyectosFromUser(prof) })),
+        );
+        setPerfiles(perfsConProyectos);
       } catch (err) {
         console.error('Error cargando perfiles:', err);
       }
+    }
+  };
+
+  // Perfiles con acceso a la obra de esta reserva que todavía no participan.
+  const perfilesElegibles = useMemo(() => {
+    const pid = reserva?.proyecto_id;
+    if (!pid) return [];
+    const yaParticipa = (p) => (reserva?.participantes || []).some(
+      (pt) => (p.id && pt.user_id === p.id) || (p.phone && pt.user_phone === p.phone),
+    );
+    return perfiles.filter(
+      (p) => (p.proyectosData || []).some((pr) => (pr.id || pr._id) === pid) && !yaParticipa(p),
+    );
+  }, [perfiles, reserva]);
+
+  const handleAgregarTodosConAcceso = async () => {
+    if (perfilesElegibles.length === 0) return;
+    setPartSaving(true);
+    try {
+      let doc = reserva;
+      for (const p of perfilesElegibles) {
+        doc = await reservaObraService.agregarParticipante(id, {
+          userId: p.id || p.user_id || null,
+          userPhone: p.phone || null,
+          nombre: [p.firstName, p.lastName].filter(Boolean).join(' ') || p.phone || '',
+          rol: 'operador',
+        });
+      }
+      setReserva(doc);
+      setFormPerfil(null);
+      setAlert({ open: true, message: `${perfilesElegibles.length} participante(s) agregado(s)`, severity: 'success' });
+    } catch (err) {
+      console.error('Error agregando participantes:', err);
+      setAlert({ open: true, message: err?.response?.data?.error || 'Error al agregar participantes', severity: 'error' });
+    } finally {
+      setPartSaving(false);
     }
   };
 
@@ -330,12 +398,13 @@ const ReservaObraDetallePage = () => {
     asignacion: 'Agregar fondos',
     reposicion: 'Reposición',
     ajuste: 'Ajuste / Arqueo',
+    desasignacion: 'Desasignar fondos',
   };
 
   return (
     <>
       <Head>
-        <title>{reserva ? `Reserva de Obra · ${reserva.proyecto_nombre || ''}` : 'Reserva de Obra'}</title>
+        <title>{reserva ? (reserva.nombre || `Reserva de Obra · ${reserva.proyecto_nombre || ''}`) : 'Reserva de Obra'}</title>
       </Head>
       <Box component="main" sx={{ flexGrow: 1, py: 3 }}>
         <Container maxWidth="xl">
@@ -350,8 +419,30 @@ const ReservaObraDetallePage = () => {
             </Paper>
           ) : (
             <Stack spacing={2.5}>
+              {/* Bache cross-proyecto: se gastó más de lo reservado. La reserva no se
+                  transfiere entre obras; el bache se cubre entre cajas de proyecto. */}
+              {['ARS', 'USD'].some((mon) => (reserva.saldos?.[mon]?.reservado || 0) < 0) && (
+                <Alert severity="warning">
+                  {['ARS', 'USD']
+                    .filter((mon) => (reserva.saldos?.[mon]?.reservado || 0) < 0)
+                    .map((mon) => `Esta reserva está en negativo: falta cubrir ${formatCurrency(-(reserva.saldos?.[mon]?.reservado || 0), mon)}.`)
+                    .join(' ')}
+                  {' '}Se gastó más de lo reservado; se cubre transfiriendo entre las cajas de proyecto.
+                </Alert>
+              )}
               <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1}>
                 <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap alignItems="center">
+                  <Chip
+                    icon={<LockOutlinedIcon />}
+                    label={reserva.nombre || 'Reserva de Obra'}
+                    size="small"
+                    variant="outlined"
+                    sx={{ fontWeight: 600 }}
+                    onDelete={puedeGestionar ? () => { setNombreValue(reserva.nombre || ''); setNombreOpen(true); } : undefined}
+                    deleteIcon={puedeGestionar ? (
+                      <Tooltip title="Editar nombre"><EditOutlinedIcon fontSize="small" /></Tooltip>
+                    ) : undefined}
+                  />
                   <Chip icon={<FolderOutlinedIcon />} label={`Proyecto: ${reserva.proyecto_nombre || '—'}`} size="small" variant="outlined" />
                   <Chip icon={<PersonOutlineIcon />} label={`Responsable actual: ${reserva.responsable_nombre || '—'}`} size="small" variant="outlined" />
                   {chip && <Chip label={chip.label} color={chip.color} size="small" />}
@@ -444,6 +535,16 @@ const ReservaObraDetallePage = () => {
                     Ajuste / Arqueo
                   </Button>
                 )}
+                {puedeGestionar && (
+                  <Button
+                    variant="outlined"
+                    color="warning"
+                    startIcon={<LockOpenOutlinedIcon />}
+                    onClick={() => { resetForm(); setLedgerDialog('desasignacion'); }}
+                  >
+                    Desasignar fondos
+                  </Button>
+                )}
                 <Box flexGrow={1} />
                 {puedeGestionar && (
                   <Button
@@ -493,6 +594,7 @@ const ReservaObraDetallePage = () => {
                         <MenuItem value="egreso">Egreso</MenuItem>
                         <MenuItem value="ajuste">Ajuste</MenuItem>
                         <MenuItem value="reposicion">Reposición</MenuItem>
+                        <MenuItem value="desasignacion">Desasignación</MenuItem>
                       </TextField>
                       {(busqueda || filtroTipo) && (
                         <Button size="small" variant="text" onClick={() => { setBusqueda(''); setFiltroTipo(''); }}>
@@ -530,7 +632,7 @@ const ReservaObraDetallePage = () => {
                           <TableBody>
                             {movsVista.map((m, index) => {
                               const tipoChip = TIPO_MOV[m.tipo] || { label: m.tipo, color: 'default' };
-                              const esEgreso = m.tipo === 'egreso' || m.tipo === 'ajuste';
+                              const esEgreso = m.tipo === 'egreso' || m.tipo === 'ajuste' || m.tipo === 'desasignacion';
                               const montoMostrado = esEgreso && m.monto > 0 ? -m.monto : m.monto;
                               return (
                                 <TableRow key={m._id || index} hover>
@@ -636,10 +738,17 @@ const ReservaObraDetallePage = () => {
                 multiline
                 rows={2}
               />
+              {ledgerDialog === 'desasignacion' && (
+                <Typography variant="caption" color="text.secondary">
+                  Máximo desasignable: {formatCurrency(Math.max(0, reserva?.saldos?.[formMoneda]?.reservado || 0), formMoneda)}
+                </Typography>
+              )}
               <Typography variant="caption" color="text.secondary">
                 {ledgerDialog === 'ajuste'
                   ? 'El ajuste registra una diferencia de arqueo. Puede ser positivo o negativo.'
-                  : 'No genera un egreso: es una separación interna del dinero de la obra.'}
+                  : ledgerDialog === 'desasignacion'
+                    ? 'Devuelve fondos reservados al disponible de la obra. No genera movimientos de caja.'
+                    : 'No genera un egreso: es una separación interna del dinero de la obra.'}
               </Typography>
             </Stack>
           </DialogContent>
@@ -687,6 +796,29 @@ const ReservaObraDetallePage = () => {
           </DialogActions>
         </Dialog>
 
+        {/* Dialog nombre de la reserva */}
+        <Dialog open={nombreOpen} onClose={() => setNombreOpen(false)} maxWidth="xs" fullWidth>
+          <DialogTitle>Nombre de la Reserva</DialogTitle>
+          <DialogContent>
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              <TextField
+                label="Nombre"
+                value={nombreValue}
+                onChange={(e) => setNombreValue(e.target.value)}
+                size="small"
+                autoFocus
+                helperText="Con varias reservas en la misma obra, el nombre es lo que las distingue (también en WhatsApp)."
+              />
+            </Stack>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setNombreOpen(false)}>Cancelar</Button>
+            <Button onClick={handleGuardarNombre} variant="contained" disabled={nombreSaving}>
+              {nombreSaving ? 'Guardando…' : 'Guardar'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
         {/* Dialog participantes */}
         <Dialog open={partOpen} onClose={() => setPartOpen(false)} maxWidth="xs" fullWidth>
           <DialogTitle>Participantes de la Reserva</DialogTitle>
@@ -716,11 +848,15 @@ const ReservaObraDetallePage = () => {
                   <Divider />
                   <Typography variant="subtitle2">Agregar participante</Typography>
                   <Autocomplete
-                    options={perfiles}
+                    options={perfilesElegibles}
                     getOptionLabel={(p) => [p?.firstName, p?.lastName].filter(Boolean).join(' ') || p?.phone || ''}
                     value={formPerfil}
                     onChange={(e, val) => setFormPerfil(val)}
-                    renderInput={(params) => <TextField {...params} label="Usuario" size="small" />}
+                    noOptionsText="No hay usuarios con acceso a la obra sin participar"
+                    renderInput={(params) => (
+                      <TextField {...params} label="Usuario" size="small"
+                        helperText="Solo usuarios con acceso a la obra." />
+                    )}
                   />
                   <TextField
                     select
@@ -733,6 +869,14 @@ const ReservaObraDetallePage = () => {
                     <MenuItem value="operador">Operador</MenuItem>
                     <MenuItem value="lector">Lector</MenuItem>
                   </TextField>
+                  <Button
+                    size="small"
+                    variant="text"
+                    onClick={handleAgregarTodosConAcceso}
+                    disabled={partSaving || perfilesElegibles.length === 0}
+                  >
+                    Agregar todos los usuarios con acceso a la obra ({perfilesElegibles.length})
+                  </Button>
                 </>
               )}
             </Stack>

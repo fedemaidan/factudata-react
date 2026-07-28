@@ -16,6 +16,11 @@ import {
   CircularProgress,
   Alert,
   Stack,
+  InputAdornment,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import SaveIcon from '@mui/icons-material/Save';
@@ -23,14 +28,16 @@ import EditIcon from '@mui/icons-material/Edit';
 import PeopleIcon from '@mui/icons-material/People';
 import PersonIcon from '@mui/icons-material/Person';
 import DescriptionIcon from '@mui/icons-material/Description';
+import SquareFootOutlinedIcon from '@mui/icons-material/SquareFootOutlined';
 import { updateProyecto } from 'src/services/proyectosService';
 import { getProyectosFromUser } from 'src/services/proyectosService';
 import profileService from 'src/services/profileService';
+import { MONEDAS } from 'src/components/presupuestosProfesionales/constants';
 
 const DRAWER_WIDTH = 400;
 
-export default function ProyectoConfigDrawer({ open, onClose, proyecto, empresa, onProyectoUpdated }) {
-  const [tab, setTab] = useState(0);
+export default function ProyectoConfigDrawer({ open, onClose, proyecto, empresa, onProyectoUpdated, initialTab = 0 }) {
+  const [tab, setTab] = useState(initialTab);
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState(null); // { severity, message }
 
@@ -39,6 +46,12 @@ export default function ProyectoConfigDrawer({ open, onClose, proyecto, empresa,
 
   // ── Tab 1: Datos cliente ──
   const [datosCliente, setDatosCliente] = useState('');
+
+  // ── Tab: Costo por m² (TAR-439) ──
+  const [superficieM2, setSuperficieM2] = useState('');
+  const [costoObjetivoM2, setCostoObjetivoM2] = useState('');
+  const [costoMaximoM2, setCostoMaximoM2] = useState('');
+  const [monedaObjetivo, setMonedaObjetivo] = useState('ARS');
 
   // ── Tab 2: Usuarios ──
   const [usuarios, setUsuarios] = useState([]); // todos los de la empresa
@@ -50,8 +63,13 @@ export default function ProyectoConfigDrawer({ open, onClose, proyecto, empresa,
     if (!open || !proyecto) return;
     setNombre(proyecto.nombre || '');
     setDatosCliente(proyecto.datos_facturacion_cliente || '');
+    setSuperficieM2(proyecto.superficie_total_m2 ?? '');
+    setCostoObjetivoM2(proyecto.costo_objetivo_m2 ?? '');
+    setCostoMaximoM2(proyecto.costo_maximo_m2 ?? '');
+    setMonedaObjetivo(proyecto.moneda_objetivo || 'ARS');
     setFeedback(null);
-  }, [open, proyecto]);
+    setTab(initialTab);
+  }, [open, proyecto, initialTab]);
 
   // Cargar usuarios de la empresa
   useEffect(() => {
@@ -127,6 +145,45 @@ export default function ProyectoConfigDrawer({ open, onClose, proyecto, empresa,
     }
   }, [proyecto, datosCliente, onProyectoUpdated]);
 
+  // ── Guardar costo por m² (TAR-439) ──
+  const handleGuardarCostoM2 = useCallback(async () => {
+    if (!proyecto?.id) return;
+    setSaving(true);
+    setFeedback(null);
+    try {
+      // Normalizar '' → null y sellar la fecha solo si cambió algún dato de costo.
+      const numOrNull = (v) => (v === '' || v === null || v === undefined ? null : Number(v));
+      const superficie = numOrNull(superficieM2);
+      const objetivoM2 = numOrNull(costoObjetivoM2);
+      const maximoM2 = numOrNull(costoMaximoM2);
+      const moneda = monedaObjetivo || 'ARS';
+      const costosCambiaron =
+        superficie !== (proyecto.superficie_total_m2 ?? null) ||
+        objetivoM2 !== (proyecto.costo_objetivo_m2 ?? null) ||
+        maximoM2 !== (proyecto.costo_maximo_m2 ?? null) ||
+        moneda !== (proyecto.moneda_objetivo ?? 'ARS');
+      const fechaActualizacionCostos = costosCambiaron
+        ? new Date().toISOString()
+        : (proyecto.fecha_actualizacion_costos ?? null);
+
+      const cambios = {
+        superficie_total_m2: superficie,
+        costo_objetivo_m2: objetivoM2,
+        costo_maximo_m2: maximoM2,
+        moneda_objetivo: moneda,
+        fecha_actualizacion_costos: fechaActualizacionCostos,
+      };
+      await updateProyecto(proyecto.id, { ...proyecto, ...cambios });
+      setFeedback({ severity: 'success', message: 'Valores por m² actualizados' });
+      onProyectoUpdated?.({ ...proyecto, ...cambios });
+    } catch (e) {
+      console.error(e);
+      setFeedback({ severity: 'error', message: 'Error al actualizar los valores por m²' });
+    } finally {
+      setSaving(false);
+    }
+  }, [proyecto, superficieM2, costoObjetivoM2, costoMaximoM2, monedaObjetivo, onProyectoUpdated]);
+
   // ── Guardar usuarios ──
   const handleGuardarUsuarios = useCallback(async () => {
     if (!proyecto?.id) return;
@@ -182,6 +239,7 @@ export default function ProyectoConfigDrawer({ open, onClose, proyecto, empresa,
         >
           <Tab icon={<EditIcon />} label="Nombre" iconPosition="start" sx={{ minHeight: 48 }} />
           <Tab icon={<DescriptionIcon />} label="Cliente" iconPosition="start" sx={{ minHeight: 48 }} />
+          <Tab icon={<SquareFootOutlinedIcon />} label="m²" iconPosition="start" sx={{ minHeight: 48 }} />
           <Tab icon={<PeopleIcon />} label="Usuarios" iconPosition="start" sx={{ minHeight: 48 }} />
         </Tabs>
 
@@ -242,8 +300,80 @@ export default function ProyectoConfigDrawer({ open, onClose, proyecto, empresa,
             </Stack>
           )}
 
-          {/* Tab 2 – Usuarios */}
+          {/* Tab 2 – Costo por m² (TAR-439) */}
           {tab === 2 && (
+            <Stack spacing={2}>
+              <Typography variant="body2" color="text.secondary">
+                Datos para seguir el gasto por metro cuadrado de la obra. Todos opcionales; la superficie es la que habilita el cálculo.
+              </Typography>
+              <TextField
+                fullWidth
+                type="number"
+                label="Superficie total"
+                value={superficieM2}
+                onChange={(e) => setSuperficieM2(e.target.value)}
+                InputProps={{ endAdornment: <InputAdornment position="end">m²</InputAdornment> }}
+              />
+              <TextField
+                fullWidth
+                type="number"
+                label="Costo objetivo por m²"
+                value={costoObjetivoM2}
+                onChange={(e) => setCostoObjetivoM2(e.target.value)}
+                InputProps={{
+                  startAdornment: <InputAdornment position="start">{monedaObjetivo === 'USD' ? 'U$S' : '$'}</InputAdornment>,
+                  endAdornment: <InputAdornment position="end">/m²</InputAdornment>,
+                }}
+              />
+              <TextField
+                fullWidth
+                type="number"
+                label="Tope máximo por m²"
+                value={costoMaximoM2}
+                onChange={(e) => setCostoMaximoM2(e.target.value)}
+                helperText={
+                  (costoMaximoM2 !== '' && costoObjetivoM2 !== '' &&
+                    Number(costoMaximoM2) < Number(costoObjetivoM2))
+                    ? 'El tope es menor que el objetivo'
+                    : undefined
+                }
+                InputProps={{
+                  startAdornment: <InputAdornment position="start">{monedaObjetivo === 'USD' ? 'U$S' : '$'}</InputAdornment>,
+                  endAdornment: <InputAdornment position="end">/m²</InputAdornment>,
+                }}
+              />
+              <FormControl fullWidth>
+                <InputLabel id="drawer-moneda-objetivo-label">Moneda del valor objetivo</InputLabel>
+                <Select
+                  labelId="drawer-moneda-objetivo-label"
+                  label="Moneda del valor objetivo"
+                  value={monedaObjetivo || 'ARS'}
+                  onChange={(e) => setMonedaObjetivo(e.target.value)}
+                >
+                  {MONEDAS.map((m) => (
+                    <MenuItem key={m} value={m}>{m}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <Typography variant="caption" color="text.secondary">
+                Última actualización:{' '}
+                {proyecto?.fecha_actualizacion_costos
+                  ? new Date(proyecto.fecha_actualizacion_costos).toLocaleDateString('es-AR')
+                  : '—'}
+              </Typography>
+              <Button
+                variant="contained"
+                startIcon={<SaveIcon />}
+                onClick={handleGuardarCostoM2}
+                disabled={saving}
+              >
+                {saving ? 'Guardando…' : 'Guardar valores por m²'}
+              </Button>
+            </Stack>
+          )}
+
+          {/* Tab 3 – Usuarios */}
+          {tab === 3 && (
             <Stack spacing={2}>
               <Typography variant="body2" color="text.secondary">
                 Seleccioná qué usuarios tienen acceso a este proyecto.

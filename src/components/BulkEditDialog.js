@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
-  Button, TextField, FormControl, InputLabel, Select, MenuItem,
+  Button, TextField, FormControl, FormHelperText, InputLabel, Select, MenuItem,
   Autocomplete, Stack, Typography, Chip, InputAdornment,
   Box, Alert, LinearProgress, ToggleButtonGroup, ToggleButton,
 } from '@mui/material';
@@ -61,6 +61,7 @@ const BulkEditDialog = ({ open, onClose, selectedCount, selectedIds, onDone, opt
   const [phase, setPhase] = useState('form'); // 'form' | 'polling' | 'done' | 'error'
   const [job, setJob] = useState(null);       // { total, completed, errors, status, result }
   const [errorMsg, setErrorMsg] = useState('');
+  const [formError, setFormError] = useState(''); // validación inline (T4: categoría/subcategoría)
   const pollRef = useRef(null);
 
   const visibleFields = useMemo(() =>
@@ -85,8 +86,13 @@ const BulkEditDialog = ({ open, onClose, selectedCount, selectedIds, onDone, opt
       if (field.optionsKey === 'categorias') {
         return cates.map((c) => (typeof c === 'string' ? c : c?.name)).filter(Boolean);
       }
-      const subs = cates
-        .flatMap((c) => (typeof c === 'string' ? [] : (c?.subcategorias || [])))
+      // Subcategorías: dependen de la categoría elegida en este mismo diálogo (T4).
+      // Sin categoría seleccionada → sin opciones (el campo queda bloqueado).
+      const catSel = values.categoria;
+      if (!catSel) return [];
+      const cat = cates.find((c) => (typeof c === 'string' ? c : c?.name) === catSel);
+      const subs = (cat && typeof cat !== 'string' ? (cat.subcategorias || []) : [])
+        .map((s) => (typeof s === 'string' ? s : s?.name))
         .filter(Boolean);
       return [...new Set(subs)];
     }
@@ -186,6 +192,17 @@ const BulkEditDialog = ({ open, onClose, selectedCount, selectedIds, onDone, opt
     });
     if (Object.keys(campos).length === 0) return;
 
+    // T4: una subcategoría solo puede asignarse si pertenece a la categoría elegida.
+    if (campos.subcategoria) {
+      const subField = visibleFields.find((f) => f.name === 'subcategoria');
+      const validSubs = subField ? getOptions(subField) : [];
+      if (!campos.categoria || !validSubs.includes(campos.subcategoria)) {
+        setFormError('La subcategoría seleccionada no corresponde a la categoría elegida. Revisá la combinación antes de guardar.');
+        return;
+      }
+    }
+    setFormError('');
+
     setPhase('polling');
     setJob({ total: selectedCount, completed: 0, errors: [], status: 'pending' });
     setErrorMsg('');
@@ -212,6 +229,7 @@ const BulkEditDialog = ({ open, onClose, selectedCount, selectedIds, onDone, opt
     setPhase('form');
     setJob(null);
     setErrorMsg('');
+    setFormError('');
     if (phase === 'done') onDone?.();
     onClose();
   };
@@ -323,12 +341,23 @@ const BulkEditDialog = ({ open, onClose, selectedCount, selectedIds, onDone, opt
     }
 
     if (field.type === 'select') {
+      // Subcategoría depende de la categoría (T4): bloqueada hasta elegir categoría.
+      const subcatBloqueada = field.name === 'subcategoria' && !values.categoria;
+      const onSelectChange = (e) => {
+        const val = e.target.value;
+        setValue(field.name, val);
+        // Al cambiar la categoría, limpiar la subcategoría previa (evita combos inválidos).
+        if (field.name === 'categoria') setValue('subcategoria', '');
+      };
       return (
-        <FormControl fullWidth size="small">
+        <FormControl fullWidth size="small" disabled={subcatBloqueada}>
           <InputLabel>{field.label}</InputLabel>
-          <Select label={field.label} value={values[field.name] || ''} onChange={(e) => setValue(field.name, e.target.value)}>
+          <Select label={field.label} value={values[field.name] || ''} onChange={onSelectChange}>
             {opts.map((opt) => <MenuItem key={opt} value={opt}>{opt}</MenuItem>)}
           </Select>
+          {subcatBloqueada && (
+            <FormHelperText>Primero seleccioná una categoría para elegir una subcategoría.</FormHelperText>
+          )}
         </FormControl>
       );
     }
@@ -405,6 +434,9 @@ const BulkEditDialog = ({ open, onClose, selectedCount, selectedIds, onDone, opt
         )}
 
         {/* ── Formulario (solo en fase form) ── */}
+        {phase === 'form' && formError && (
+          <Alert severity="warning" sx={{ mb: 2 }}>{formError}</Alert>
+        )}
         {phase === 'form' && (
           <>
             <Typography variant="subtitle2" sx={{ mb: 1 }}>

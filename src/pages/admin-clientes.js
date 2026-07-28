@@ -29,8 +29,14 @@ import adminSuscripcionService from 'src/services/adminSuscripcionService';
 import FichaComercialDrawer from 'src/components/admin/FichaComercialDrawer';
 
 const PERIODICIDADES = ['mensual', 'bimestral', 'semestral', 'anual'];
-const fmtMoney = (n, mon = 'ARS') => (n == null ? '—' : `${Number(n).toLocaleString('es-AR')} ${mon}`);
+const fmtMoney = (n, mon = 'ARS') => (n == null ? '—' : `${Number(n).toLocaleString('es-AR', { maximumFractionDigits: 0 })} ${mon}`);
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('es-AR') : '—');
+// Fecha pura 'YYYY-MM-DD' → 'dd/MM/yyyy' SIN conversión de zona horaria (TAR-497 T6b).
+const fmtFechaPura = (s) => {
+  if (!s) return '—';
+  const [y, m, d] = String(s).split('-');
+  return d ? `${d}/${m}/${y}` : fmtDate(s);
+};
 
 const SORT = {
   nombre: (r) => (r.nombre || '').toLowerCase(),
@@ -117,8 +123,8 @@ const AdminClientes = () => {
       MP: r.paga_por_mp ? 'Sí' : 'No',
       Semana: r.suscripcion?.semana_pago ?? '',
       Caja: r.suscripcion?.caja_default || '',
-      'Mensual eq.': r.ingreso_mensual_equivalente ?? '',
-      'Próximo cobro': r.proximo_cobro ? new Date(r.proximo_cobro).toLocaleDateString('es-AR') : '',
+      'Mensual eq.': r.ingreso_mensual_equivalente != null ? Math.round(r.ingreso_mensual_equivalente) : '',
+      'Próximo cobro': r.proximo_cobro_str ? fmtFechaPura(r.proximo_cobro_str) : (r.proximo_cobro ? new Date(r.proximo_cobro).toLocaleDateString('es-AR') : ''),
       'Requiere factura': r.requiere_factura ? 'Sí' : 'No',
       Estado: r.estado,
       empresaId: r.id,
@@ -227,7 +233,7 @@ const AdminClientes = () => {
                       <TableCell align="center">{r.paga_por_mp ? <Chip label="MP" size="small" color="info" variant="outlined" /> : '—'}</TableCell>
                       <TableCell align="right">{fmtMoney(r.ingreso_mensual_equivalente, r.suscripcion?.moneda)}</TableCell>
                       <TableCell>
-                        {fmtDate(r.proximo_cobro)}
+                        {r.proximo_cobro_str ? fmtFechaPura(r.proximo_cobro_str) : fmtDate(r.proximo_cobro)}
                         {r.proximo_cobro_importe ? (
                           <Typography variant="caption" color="text.secondary" display="block">
                             {fmtMoney(r.proximo_cobro_importe, r.suscripcion?.moneda)}

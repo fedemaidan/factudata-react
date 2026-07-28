@@ -67,7 +67,7 @@ import dayjs from 'dayjs';
 import 'dayjs/locale/es';
 import presupuestoService from 'src/services/presupuestoService';
 import MonedasService from 'src/services/monedasService';
-import { snapshotCacIndice } from 'src/utils/cac/pickCac';
+import { snapshotCacIndice, equivalenciaCac } from 'src/utils/cac/pickCac';
 import { formatCurrency } from 'src/utils/formatters';
 import {
   PRESUPUESTO_ADJUNTOS_MAX,
@@ -2823,6 +2823,9 @@ const PresupuestoDrawer = ({
                                 ? dayjs.unix(fechaSecs).format('DD/MM/YY')
                                 : mov.fecha_factura ? dayjs(mov.fecha_factura).format('DD/MM/YY') : '—';
                               const eq = mov.equivalencias?.[campo] || mov.equivalencias?.total || {};
+                              // Equivalencia CAC del subíndice del presupuesto, en la variante del modo
+                              // de la empresa (los movs nuevos guardan {legacy,estimado,automatico}).
+                              const eqCac = equivalenciaCac(eq, presupuesto?.cac_tipo, cacModo);
                               const detalle = mov.nombre_proveedor || 'Sin proveedor';
                               const obs = mov.observacion;
                               const comprobante = mov.tipo_comprobante ? `${mov.tipo_comprobante}${mov.nro_comprobante ? ` ${mov.nro_comprobante}` : ''}` : '';
@@ -2877,21 +2880,21 @@ const PresupuestoDrawer = ({
                                     )}
                                     {equivToggles.cac && (
                                       <TableCell align="right" sx={{ whiteSpace: 'nowrap', color: 'secondary.main' }}>
-                                        {eq.cac != null ? Number(eq.cac).toLocaleString('es-AR', { maximumFractionDigits: 2 }) : '—'}
+                                        {eqCac != null ? Number(eqCac).toLocaleString('es-AR', { maximumFractionDigits: 2 }) : '—'}
                                       </TableCell>
                                     )}
                                     {equivToggles.arsActualizado && (
                                       <TableCell align="right" sx={{ whiteSpace: 'nowrap', color: 'warning.dark' }}>
-                                        {eq.cac != null && cacActualEfectivo
-                                          ? `$${Number(eq.cac * cacActualEfectivo).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
+                                        {eqCac != null && cacActualEfectivo
+                                          ? `$${Number(eqCac * cacActualEfectivo).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
                                           : '—'}
                                       </TableCell>
                                     )}
                                     {equivToggles.diferencia && (
                                       <TableCell align="right" sx={{ whiteSpace: 'nowrap', color: 'info.main' }}>
-                                        {eq.cac != null && cacActualEfectivo ? (() => {
+                                        {eqCac != null && cacActualEfectivo ? (() => {
                                           const arsNominal = eq.ars != null ? Number(eq.ars) : montoNativo;
-                                          const diff = Number(eq.cac * cacActualEfectivo) - arsNominal;
+                                          const diff = Number(eqCac * cacActualEfectivo) - arsNominal;
                                           return `(+$${Number(diff).toLocaleString('es-AR', { maximumFractionDigits: 0 })})`;
                                         })() : '—'}
                                       </TableCell>

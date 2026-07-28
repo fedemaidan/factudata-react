@@ -19,8 +19,9 @@ const landingStatsService = {
 
     /**
      * Resultados comerciales (reunión exitosa + ganados) de la cohorte del
-     * landing, total y por rubro. Vienen del CRM (ContactoSDR/ReunionSDR), no
-     * de los contadores diarios, así que requiere un rango exacto desde/hasta.
+     * landing: total, por rubro y por campaña, más `lastRunAt` (frescura del
+     * dato). Se leen del mirror local de Notion (Registro de Reuniones), que se
+     * refresca con `syncNotion()`. Requiere un rango exacto desde/hasta.
      */
     getLandingOutcomes: async ({ desde, hasta, segmento } = {}) => {
         const params = new URLSearchParams();
@@ -28,6 +29,17 @@ const landingStatsService = {
         params.set('hasta', hasta);
         if (segmento) params.set('segmento', segmento);
         const { data } = await api.get(`/funnel/landing-outcomes?${params.toString()}`);
+        return data;
+    },
+
+    /**
+     * Dispara la sincronización manual del embudo landing con Notion (el botón
+     * "Sincronizar con Notion"). Devuelve { lastRunAt, resumen }. Con
+     * `{ dryRun: true }` reporta qué pasaría sin escribir ni disparar Purchases.
+     * Un 409 significa que ya hay un sync en curso.
+     */
+    syncNotion: async ({ dryRun = false } = {}) => {
+        const { data } = await api.post('/funnel/sync-notion', { dryRun });
         return data;
     },
 

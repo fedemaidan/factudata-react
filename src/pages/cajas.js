@@ -49,10 +49,12 @@ import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import { getProyectosByEmpresa } from 'src/services/proyectosService';
 import { formatTimestamp } from 'src/utils/formatters';
-import { parseQueryParamList, FILTER_ARRAY_KEYS, FILTER_DATE_KEYS } from 'src/utils/parseData';
+import { parseQueryParamList, FILTER_ARRAY_KEYS, FILTER_DATE_KEYS, getCajaMediosPago } from 'src/utils/parseData';
+import CajaConfigDrawer from 'src/components/caja/CajaConfigDrawer';
+import { cajaToFiltros, filtrosToParam, denormalizarEscalares, describirCondiciones, esCajaVista, getCampoMeta } from 'src/utils/cajaFiltros';
 import { safeRouterReplace } from 'src/utils/safeRouter';
 import { useMovimientosFilters } from 'src/hooks/useMovimientosFilters';
-import { FilterBarCajaProyecto, SIN_ASIGNAR_SENTINEL } from 'src/components/FilterBarCajaProyecto';
+import { FilterBarCajaProyecto } from 'src/components/FilterBarCajaProyecto';
 import ErrorBoundary from 'src/components/ErrorBoundary';
 import AsistenteFlotanteProyecto from 'src/components/asistenteFlotanteProyecto';
 import TransferenciaInternaDialog from 'src/components/TransferenciaInternaDialog';
@@ -484,12 +486,11 @@ const buildCajaDashboardParams = ({ filters, caja, page, limit, includeOptions =
   if (filters?.facturaCliente) params.facturaCliente = filters.facturaCliente;
   if (filters?.reservaId) params.reserva = filters.reservaId;
 
+  // moneda queda como scope dedicado (elige el dataset USD/ARS). El resto de las
+  // dimensiones viajan en cajaFiltros (constructor de filtros, TAR-633).
   if (caja?.moneda) params.cajaMoneda = caja.moneda;
-  if (caja?.medio_pago) params.cajaMedioPago = caja.medio_pago;
-  if (caja?.estado) params.cajaEstado = caja.estado;
-  if (caja?.type) params.cajaTipo = caja.type;
-  assignArray('cajaCategorias', caja?.categorias);
-  assignArray('cajaAsignados', caja?.asignados);
+  const cajaFiltrosParam = filtrosToParam(cajaToFiltros(caja));
+  if (cajaFiltrosParam) params.cajaFiltros = cajaFiltrosParam;
   if (caja?.baseCalculo && caja.baseCalculo !== 'total') params.baseCalculo = caja.baseCalculo;
 
   return params;
@@ -498,14 +499,39 @@ const buildCajaDashboardParams = ({ filters, caja, page, limit, includeOptions =
 const getCajaTotalsKey = (caja) => JSON.stringify({
   nombre: caja?.nombre || '',
   moneda: caja?.moneda || '',
-  medio_pago: caja?.medio_pago || '',
-  estado: caja?.estado || '',
-  type: caja?.type || '',
   equivalencia: caja?.equivalencia || 'none',
   baseCalculo: caja?.baseCalculo || 'total',
-  categorias: Array.isArray(caja?.categorias) ? [...caja.categorias].sort() : [],
-  asignados: Array.isArray(caja?.asignados) ? [...caja.asignados].sort() : [],
+  // Descriptor de filtros (no resuelve relativas → key estable día a día).
+  filtros: cajaToFiltros(caja) || null,
 });
+
+// campoMov de una condición → key del FilterBar a limpiar al activar la caja
+// (evita que un valor persistido contradiga la caja y devuelva 0).
+const CAMPO_MOV_A_FILTRO = {
+  categoria: ['categorias'],
+  subcategoria: ['subcategorias'],
+  medio_pago: ['medioPago'],
+  type: ['tipo'],
+  estado: ['estados'],
+  asignado: ['asignados'],
+  nombre_proveedor: ['proveedores'],
+  nombre_user: ['usuarios'],
+  total: ['montoMin', 'montoMax'],
+  fecha_factura: ['fechaDesde', 'fechaHasta'],
+};
+
+const limpiarDimensionesDeCaja = (caja) => {
+  const filtros = cajaToFiltros(caja);
+  if (!filtros) return {};
+  const reset = {};
+  filtros.condiciones.forEach((cond) => {
+    const meta = getCampoMeta(cond.campo);
+    (CAMPO_MOV_A_FILTRO[meta?.campoMov] || []).forEach((key) => {
+      reset[key] = key.startsWith('monto') ? '' : (key.startsWith('fecha') ? null : []);
+    });
+  });
+  return reset;
+};
 
 const getCajaNetFromTotals = (caja, totals = EMPTY_CAJA_TOTALS) => {
   const equivalencia = caja?.equivalencia || 'none';
@@ -858,11 +884,9 @@ const CajasPage = () => {
   const [showCrearCaja, setShowCrearCaja] = useState(false);
   const [nombreCaja, setNombreCaja] = useState('');
   const [monedaCaja, setMonedaCaja] = useState('ARS');
-  const [estadoCaja, setEstadoCaja] = useState('');
-  const [medioPagoCaja, setMedioPagoCaja] = useState('Efectivo');
   const [equivalenciaCaja, setEquivalenciaCaja] = useState('none'); // 'none' | 'usd_blue' | ...
-  const [categoriasCaja, setCategoriasCaja] = useState([]); // array de strings
-  const [asignadosCaja, setAsignadosCaja] = useState([]); // array de strings (puede incluir sentinel __sin_asignar__)
+  // TAR-633: constructor de filtros de la caja (reemplaza medio/estado/tipo/categorías/asignado)
+  const [filtrosCaja, setFiltrosCaja] = useState({ match: 'all', condiciones: [] });
   const [editandoCaja, setEditandoCaja] = useState(null); // null o index de la caja
   // cajaSeleccionada eliminado: filters.caja es la única fuente de verdad
   const [prefsHydrated, setPrefsHydrated] = useState(false);
@@ -917,7 +941,6 @@ const [totalesFormat, setTotalesFormat] = useState('full');
 const scrollRef = useRef(null);      // contenedor principal con overflow
 const topScrollRef = useRef(null);   // barra superior "fantasma"
 const tableRef = useRef(null);
-const [typeCaja, setTypeCaja] = useState(''); // '' | 'ingreso' | 'egreso'
 const [baseCalculoCaja, setBaseCalculoCaja] = useState('total');
 const [savedViewMode, setSavedViewMode] = useState(false);
 
@@ -1234,32 +1257,37 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
   const activeSortDirection = getSortDirectionForFilters(filters);
 
   // ── Reserva de Obra del proyecto activo ──
-  const reservaActiva = reservaProyecto?.reservas?.[0] || null;
   // "Solo la ven quienes son parte de la reserva" (+ admin / VER_RESERVAS_OBRA).
-  const puedeVerReserva = useMemo(() => {
-    if (!reservaActiva) return false;
+  // Con varias reservas por obra, la visibilidad se evalúa POR reserva.
+  const reservasVisibles = useMemo(() => {
+    const todas = reservaProyecto?.reservas || [];
+    if (todas.length === 0) return [];
     const accionesEmpresa = user?.empresa?.acciones || user?.empresaData?.acciones || [];
     const permisosOcultos = user?.permisosOcultos || [];
     const tienePermiso = (a) => accionesEmpresa.includes(a) && !permisosOcultos.includes(a);
-    if (user?.admin || tienePermiso('VER_RESERVAS_OBRA')) return true;
+    if (user?.admin || tienePermiso('VER_RESERVAS_OBRA')) return todas;
     const userId = user?.id || user?.user_id || user?.uid || null;
     const userPhone = user?.phone || user?.telefono || null;
-    return (reservaActiva.participantes || []).some(
+    return todas.filter((r) => (r.participantes || []).some(
       (p) => (userId && p.user_id === userId) || (userPhone && p.user_phone === userPhone),
-    );
-  }, [reservaActiva, user]);
-  const hasReserva = !!reservaActiva && puedeVerReserva;
+    ));
+  }, [reservaProyecto, user]);
+  const hasReserva = reservasVisibles.length > 0;
+  // El filtro por reserva de la card aplica solo cuando hay UNA reserva visible;
+  // con varias no se elige una al azar: se deriva al listado de reservas.
+  const reservaUnica = reservasVisibles.length === 1 ? reservasVisibles[0] : null;
   const reservaFiltroActivo = !!filters?.reservaId;
   const toggleFiltroReserva = useCallback(() => {
-    const id = reservaActiva?._id || reservaActiva?.id;
+    const id = reservaUnica?._id || reservaUnica?.id;
     if (!id) return;
     setFilters((f) => ({ ...f, reservaId: f?.reservaId === id ? undefined : id }));
     setPage(0);
-  }, [reservaActiva, setFilters]);
+  }, [reservaUnica, setFilters]);
   const irADetalleReserva = useCallback(() => {
-    const id = reservaActiva?._id || reservaActiva?.id;
+    const id = reservaUnica?._id || reservaUnica?.id;
     if (id) router.push(`/reservaObra?id=${id}`);
-  }, [reservaActiva, router]);
+    else router.push('/reservasObra');
+  }, [reservaUnica, router]);
   // Limpiar un filtro de reserva que quedó colgado si la reserva ya no se ve
   // (se cambió de proyecto o el usuario no participa).
   useEffect(() => {
@@ -1307,34 +1335,28 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
     setEditandoCaja(index);
     setNombreCaja(caja.nombre);
     setMonedaCaja(caja.moneda);
-    setMedioPagoCaja(caja.medio_pago || '');
-    setShowCrearCaja(true);
-    setTypeCaja(caja.type || '');
-    setEstadoCaja(caja.estado || '');
     setBaseCalculoCaja(caja.baseCalculo || 'total');
-    setCategoriasCaja(Array.isArray(caja.categorias) ? caja.categorias : []);
-    setAsignadosCaja(Array.isArray(caja.asignados) ? caja.asignados : []);
-    handleCloseCajaMenu();
     setEquivalenciaCaja(caja.equivalencia || 'none');
+    // Cajas "vista guardada" (filterSet) se editan como vista; el resto usa el builder.
+    setSavedViewMode(esCajaVista(caja));
+    setFiltrosCaja(cajaToFiltros(caja) || { match: 'all', condiciones: [] });
+    setShowCrearCaja(true);
+    handleCloseCajaMenu();
   };
 
   const applyCajaSelection = useCallback((caja) => {
-    if (caja?.filterSet) {
+    if (esCajaVista(caja)) {
       const restoredFilters = deserializeFilterSet(caja.filterSet);
       setFilters((f) => ({ ...f, ...restoredFilters, caja }));
     } else {
-      // Limpiar las dimensiones que la caja controla por scope para que
-      // no queden chips activos que contradigan lo que el backend consulta.
-      // Si la caja no define una dimensión, el filtro del usuario se preserva.
+      // La barra de filtros queda libre (los filtros de la caja se muestran como
+      // chips read-only y combinan con AND). Pero limpiamos de la barra las
+      // dimensiones que la caja restringe: un valor persistido que las contradiga
+      // daría 0 resultados en silencio (ej. caja "categoría no es X" + barra "categoría es X").
       setFilters((f) => ({
         ...f,
         caja: caja || null,
-        ...(caja?.moneda     ? { moneda: []    } : {}),
-        ...(caja?.medio_pago ? { medioPago: [] } : {}),
-        ...(caja?.estado     ? { estados: []   } : {}),
-        ...(caja?.type       ? { tipo: []      } : {}),
-        ...(Array.isArray(caja?.categorias) && caja.categorias.length > 0 ? { categorias: [] } : {}),
-        ...(Array.isArray(caja?.asignados) && caja.asignados.length > 0 ? { asignados: [] } : {}),
+        ...limpiarDimensionesDeCaja(caja),
       }));
     }
   }, [setFilters]);
@@ -1772,7 +1794,8 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
       setSelectedProjectIds(initialSelectedIds);
 
       const cajaFromUrl = routerRef.current.query.caja ? (() => { try { return JSON.parse(routerRef.current.query.caja); } catch { return null; } })() : null;
-      const cajaDefault = (cajaFromUrl && cajasIniciales.find(c => c.moneda === cajaFromUrl.moneda && c.medio_pago === (cajaFromUrl.medio_pago || '')))
+      const mediosPagoUrl = getCajaMediosPago(cajaFromUrl).join('|');
+      const cajaDefault = (cajaFromUrl && cajasIniciales.find(c => c.moneda === cajaFromUrl.moneda && getCajaMediosPago(c).join('|') === mediosPagoUrl))
         || cajasIniciales[0]
         || null;
       applyCajaSelection(cajaDefault);
@@ -1947,6 +1970,7 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
   };
 
   const activeCaja = useMemo(() => filters.caja || null, [filters.caja]);
+  const cajaChips = useMemo(() => describirCondiciones(cajaToFiltros(activeCaja)), [activeCaja]);
   const activeTotalsCurrency = useMemo(() => {
     if (activeCaja?.equivalencia && activeCaja.equivalencia !== 'none') {
       const meta = EQUIV_META[activeCaja.equivalencia];
@@ -2256,19 +2280,20 @@ const getTime = (v) => {
     const nuevaCaja = {
       nombre: nombreCaja,
       moneda: monedaCaja || '',
-      medio_pago: medioPagoCaja,
-      estado: estadoCaja,
       equivalencia: equivalenciaCaja || 'none',
-      type: typeCaja || '',
       baseCalculo: baseCalculoCaja || 'total',
-      categorias: Array.isArray(categoriasCaja) ? categoriasCaja : [],
-      asignados: Array.isArray(asignadosCaja) ? asignadosCaja : [],
-      ...(savedViewMode ? { filterSet: serializeFilterSet(filters) } : {}),
+      ...(savedViewMode
+        ? { filterSet: serializeFilterSet(filters) }
+        : {
+          // TAR-633: filtros = fuente de verdad; los escalares se denormalizan
+          // para los consumidores legacy (cobros, tabla base).
+          filtros: filtrosCaja,
+          ...denormalizarEscalares(filtrosCaja),
+        }),
     };
-    
-  
+
     const nuevasCajas = [...cajasVirtuales];
-  
+
     if (editandoCaja !== null) {
       nuevasCajas[editandoCaja] = nuevaCaja;
       // Si la caja editada es la activa, actualizar filters.caja para reflejar el nuevo objeto
@@ -2278,19 +2303,15 @@ const getTime = (v) => {
     } else {
       nuevasCajas.push(nuevaCaja);
     }
-  
+
     setCajasVirtuales(nuevasCajas);
     setShowCrearCaja(false);
     setSavedViewMode(false);
     setNombreCaja('');
     setMonedaCaja('ARS');
-    setMedioPagoCaja('Efectivo');
-    setEstadoCaja('');
     setEquivalenciaCaja('none');
-    setTypeCaja('');
     setBaseCalculoCaja('total');
-    setCategoriasCaja([]);
-    setAsignadosCaja([]);
+    setFiltrosCaja({ match: 'all', condiciones: [] });
     setEditandoCaja(null);
     await updateEmpresaDetails(empresa.id, { cajas_virtuales: nuevasCajas });
   };
@@ -2668,7 +2689,8 @@ useEffect(() => {
                         // Desglose de Reserva de Obra: solo en la caja base (sin medio/tipo/equivalencia)
                         // de una moneda con reserva, y solo si el usuario puede verla.
                         const cajaReservaMoneda = caja.moneda || 'ARS';
-                        const esCajaBase = !caja.medio_pago && !caja.type && (!caja.equivalencia || caja.equivalencia === 'none');
+                        const mediosPagoCard = getCajaMediosPago(caja);
+                        const esCajaBase = mediosPagoCard.length === 0 && !caja.type && (!caja.equivalencia || caja.equivalencia === 'none');
                         const reservadoCard = reservaProyecto?.reservado?.[cajaReservaMoneda] || 0;
                         const mostrarReservaEnCard = hasReserva && esCajaBase
                           && (cajaReservaMoneda === 'ARS' || reservadoCard !== 0);
@@ -2746,6 +2768,17 @@ useEffect(() => {
                                       {caja.type}
                                     </Typography>
                                   )}
+                                  {mediosPagoCard.length > 0 && (
+                                    <Typography
+                                      variant="caption"
+                                      color={selected ? 'inherit' : 'text.secondary'}
+                                      sx={{ fontWeight: 700, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '60%' }}
+                                      title={mediosPagoCard.join(' + ')}
+                                    >
+                                      {mediosPagoCard.slice(0, 2).join(' + ')}
+                                      {mediosPagoCard.length > 2 ? ` +${mediosPagoCard.length - 2}` : ''}
+                                    </Typography>
+                                  )}
                                   {caja.baseCalculo === 'subtotal' && (
                                     <Chip size="small" label="neto" color="info" variant="outlined" sx={{ height: 16, fontSize: '0.6rem' }} />
                                   )}
@@ -2789,14 +2822,16 @@ useEffect(() => {
                                       <Typography variant="caption" color="inherit" sx={{ opacity: 0.92, lineHeight: 1.25, flex: 1 }}>
                                         {reservaFiltroActivo
                                           ? 'Mostrando solo egresos de la reserva — tocá para quitar'
-                                          : 'Reserva interna del proyecto. Tocá para ver sus egresos.'}
+                                          : reservaUnica
+                                            ? 'Reserva interna del proyecto. Tocá para ver sus egresos.'
+                                            : `Este proyecto tiene ${reservasVisibles.length} reservas internas.`}
                                       </Typography>
                                       <Box
                                         component="span"
                                         onClick={(e) => { e.stopPropagation(); irADetalleReserva(); }}
                                         sx={{ fontSize: '0.68rem', fontWeight: 700, textDecoration: 'underline', whiteSpace: 'nowrap', opacity: 0.95 }}
                                       >
-                                        Ver egresos
+                                        {reservaUnica ? 'Ver egresos' : 'Ver reservas'}
                                       </Box>
                                     </Box>
                                   </Box>
@@ -2847,7 +2882,6 @@ useEffect(() => {
                         onToggleExpanded={() => setFiltersOpen(false)}
                         empresaId={empresa?.id}
                         userId={authUserUid}
-                        cajaScope={activeCaja}
                       />
                       <Stack direction="row" justifyContent="flex-end" spacing={1} sx={{ mt: 2 }}>
                         <Button variant="text" onClick={() => setFiltersOpen(false)}>Cancelar</Button>
@@ -2866,8 +2900,17 @@ useEffect(() => {
                     onToggleExpanded={() => setFiltersOpen((o) => !o)}
                     empresaId={empresa?.id}
                     userId={authUserUid}
-                    cajaScope={activeCaja}
                   />
+                )}
+                {cajaChips.length > 0 && (
+                  <Stack direction="row" spacing={0.75} alignItems="center" sx={{ flexWrap: 'wrap', gap: 0.75, mt: 0.5 }}>
+                    <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>
+                      Filtros de la caja:
+                    </Typography>
+                    {cajaChips.map((chip, i) => (
+                      <Chip key={i} label={chip} size="small" variant="outlined" sx={{ fontWeight: 600 }} />
+                    ))}
+                  </Stack>
                 )}
               </Stack>
             </Paper>
@@ -2880,116 +2923,33 @@ useEffect(() => {
   <MenuItem onClick={() => handleEditarCaja(cajaMenuIndex)}>Editar</MenuItem>
   <MenuItem onClick={() => handleEliminarCaja(cajaMenuIndex)}>Eliminar</MenuItem>
 </Menu>
-            <Dialog open={showCrearCaja} onClose={() => { setShowCrearCaja(false); setSavedViewMode(false); }}>
-  <DialogTitle>{savedViewMode ? 'Guardar vista actual como caja' : (editandoCaja !== null ? 'Editar caja' : 'Crear vista de caja personalizada')}</DialogTitle>
-  <DialogContent>
-    {savedViewMode && filterChips.length > 0 && (
-      <Box sx={{ mb: 2, p: 1.5, bgcolor: 'rgba(35,181,211,0.07)', borderRadius: 2, border: '1px solid rgba(35,181,211,0.25)' }}>
-        <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', display: 'block', mb: 0.75 }}>Filtros que se guardarán en esta caja:</Typography>
-        <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
-          {filterChips.map((chip, idx) => <Chip key={idx} label={chip.label} size="small" variant="outlined" />)}
-        </Box>
-      </Box>
-    )}
-    <TextField label="Nombre de la caja" fullWidth value={nombreCaja} onChange={(e) => setNombreCaja(e.target.value)} />
-    {!savedViewMode && (
-      <>
-        <FormControl fullWidth sx={{ mt: 2 }}>
-          <InputLabel>Moneda</InputLabel>
-          <Select value={monedaCaja} onChange={(e) => setMonedaCaja(e.target.value)}>
-            <MenuItem value="">Todas</MenuItem>
-            <MenuItem value="ARS">Pesos</MenuItem>
-            <MenuItem value="USD">Dólares</MenuItem>
-          </Select>
-        </FormControl>
-        <FormControl fullWidth sx={{ mt: 2 }}>
-          <InputLabel>Tipo</InputLabel>
-          <Select value={typeCaja} label="Tipo" onChange={(e) => setTypeCaja(e.target.value)}>
-            <MenuItem value="">Todos</MenuItem>
-            <MenuItem value="ingreso">Ingresos</MenuItem>
-            <MenuItem value="egreso">Egresos</MenuItem>
-          </Select>
-        </FormControl>
-        <FormControl fullWidth sx={{ mt: 2 }}>
-          <InputLabel>Medio de pago</InputLabel>
-          <Select value={medioPagoCaja} onChange={(e) => setMedioPagoCaja(e.target.value)}>
-            <MenuItem key="" value="">Todos</MenuItem>
-            {(empresa?.medios_pago || []).map((medio) => (
-              <MenuItem key={medio} value={medio}>{medio}</MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-        <FormControl fullWidth sx={{ mt: 2 }}>
-          <InputLabel>Categorías</InputLabel>
-          <Select
-            multiple
-            value={categoriasCaja}
-            onChange={(e) => setCategoriasCaja(typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value)}
-            label="Categorías"
-            renderValue={(selected) => (selected.length === 0 ? 'Todas' : selected.join(', '))}
-          >
-            {(Array.isArray(empresa?.categorias) ? empresa.categorias : [])
-              .map((c) => (typeof c === 'string' ? c : c?.name))
-              .filter(Boolean)
-              .map((nombre) => (
-                <MenuItem key={nombre} value={nombre}>{nombre}</MenuItem>
-              ))}
-          </Select>
-        </FormControl>
-        <FormControl fullWidth sx={{ mt: 2 }}>
-          <InputLabel>Asignado</InputLabel>
-          <Select
-            multiple
-            value={asignadosCaja}
-            onChange={(e) => setAsignadosCaja(typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value)}
-            label="Asignado"
-            renderValue={(selected) => (
-              selected.length === 0
-                ? 'Todos'
-                : selected.map((v) => (v === SIN_ASIGNAR_SENTINEL ? 'Sin asignar' : v)).join(', ')
-            )}
-          >
-            <MenuItem value={SIN_ASIGNAR_SENTINEL}>Sin asignar</MenuItem>
-            {(Array.isArray(empresa?.asignados) ? empresa.asignados.filter(Boolean) : []).map((nombre) => (
-              <MenuItem key={nombre} value={nombre}>{nombre}</MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-        {empresa?.con_estados && (
-          <FormControl fullWidth sx={{ mt: 2 }}>
-            <InputLabel>Estado</InputLabel>
-            <Select value={estadoCaja} onChange={(e) => setEstadoCaja(e.target.value)}>
-              <MenuItem value="">Todos</MenuItem>
-              <MenuItem value="Pendiente">Pendiente</MenuItem>
-              <MenuItem value="Pagado">Pagado</MenuItem>
-            </Select>
-          </FormControl>
-        )}
-        <FormControl fullWidth sx={{ mt: 2 }}>
-          <InputLabel>Mostrar como</InputLabel>
-          <Select value={equivalenciaCaja} label="Mostrar como" onChange={(e) => setEquivalenciaCaja(e.target.value)}>
-            <MenuItem value="none">Moneda original</MenuItem>
-            <MenuItem value="usd_blue">USD blue</MenuItem>
-            <MenuItem value="usd_oficial">USD oficial</MenuItem>
-            <MenuItem value="usd_mep_medio">USD mep (medio)</MenuItem>
-            <MenuItem value="usd_referencia">USD (Tipo de Cambio utilizado en el movimiento)</MenuItem>
-          </Select>
-        </FormControl>
-      </>
-    )}
-    <FormControl fullWidth sx={{ mt: 2 }}>
-      <InputLabel>Base de cálculo</InputLabel>
-      <Select value={baseCalculoCaja} label="Base de cálculo" onChange={(e) => setBaseCalculoCaja(e.target.value)}>
-        <MenuItem value="total">Total (con impuestos)</MenuItem>
-        <MenuItem value="subtotal">Subtotal (sin impuestos)</MenuItem>
-      </Select>
-    </FormControl>
-  </DialogContent>
-  <DialogActions>
-    <Button onClick={() => { setShowCrearCaja(false); setSavedViewMode(false); }}>Cancelar</Button>
-    <Button onClick={handleGuardarCaja}>{editandoCaja !== null ? 'Guardar' : 'Crear'}</Button>
-  </DialogActions>
-</Dialog>
+            <CajaConfigDrawer
+              open={showCrearCaja}
+              onClose={() => { setShowCrearCaja(false); setSavedViewMode(false); }}
+              savedViewMode={savedViewMode}
+              esEdicion={editandoCaja !== null}
+              filterChips={filterChips}
+              nombreCaja={nombreCaja}
+              onNombreChange={setNombreCaja}
+              monedaCaja={monedaCaja}
+              onMonedaChange={setMonedaCaja}
+              filtrosCaja={filtrosCaja}
+              onFiltrosChange={setFiltrosCaja}
+              equivalenciaCaja={equivalenciaCaja}
+              onEquivalenciaChange={setEquivalenciaCaja}
+              equivalenciaOptions={[
+                { value: 'none', label: 'Moneda original' },
+                { value: 'usd_blue', label: 'USD blue' },
+                { value: 'usd_oficial', label: 'USD oficial' },
+                { value: 'usd_mep_medio', label: 'USD mep (medio)' },
+                { value: 'usd_referencia', label: 'USD (Tipo de Cambio utilizado en el movimiento)' },
+              ]}
+              baseCalculoCaja={baseCalculoCaja}
+              onBaseCalculoChange={setBaseCalculoCaja}
+              options={options}
+              empresa={empresa}
+              onGuardar={handleGuardarCaja}
+            />
             <Paper>
               <Snackbar open={alert.open} autoHideDuration={6000} onClose={handleCloseAlert}>
                 <Alert onClose={handleCloseAlert} severity={alert.severity} sx={{ width: '100%' }}>
@@ -3570,9 +3530,8 @@ useEffect(() => {
       { label: 'Agregar nueva caja', icon: <AddCircleIcon fontSize="small" />, onClick: () => { setShowCrearCaja(true); closeAllMenus(); } },
       { label: 'Guardar vista actual como caja', icon: <AccountBalanceWalletIcon fontSize="small" />, onClick: () => {
         setSavedViewMode(true); setEditandoCaja(null);
-        setNombreCaja(''); setMonedaCaja(''); setMedioPagoCaja('');
-        setEstadoCaja(''); setEquivalenciaCaja('none'); setTypeCaja(''); setBaseCalculoCaja('total');
-        setCategoriasCaja([]); setAsignadosCaja([]);
+        setNombreCaja(''); setMonedaCaja(''); setEquivalenciaCaja('none'); setBaseCalculoCaja('total');
+        setFiltrosCaja({ match: 'all', condiciones: [] });
         setShowCrearCaja(true); closeAllMenus();
       } },
     ],

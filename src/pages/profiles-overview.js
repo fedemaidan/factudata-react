@@ -8,10 +8,16 @@ import {
   Button,
   Card,
   CardContent,
+  Checkbox,
   Chip,
   CircularProgress,
   Collapse,
   Container,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
   Divider,
   Drawer,
   FormControl,
@@ -47,6 +53,8 @@ import CloseIcon from '@mui/icons-material/Close';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import LogoutIcon from '@mui/icons-material/Logout';
+import ShieldOutlinedIcon from '@mui/icons-material/ShieldOutlined';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
@@ -54,6 +62,7 @@ import { es } from 'date-fns/locale';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import profileService from 'src/services/profileService';
 import { getAllEmpresas } from 'src/services/empresaService';
+import { useAuthContext } from 'src/contexts/auth-context';
 
 const BOOLEAN_FILTER_OPTIONS = [
     { value: 'all', label: 'Todos' },
@@ -90,6 +99,165 @@ const BOOLEAN_FILTER_OPTIONS = [
     empresaOperator: 'contains',
     empresaValue: '',
   };
+
+  // Opciones de duración ABSOLUTA (tope desde el login, use o no la app).
+  // Escala de horas/días: un tope corto acá cortaría aunque el usuario esté trabajando.
+  const SESSION_DURATION_OPTIONS = [
+    { key: 'default', label: 'Default global (1 mes)', seconds: null },
+    { key: 'none', label: 'Sin límite', seconds: 0 },
+    { key: '3600', label: '1 hora', seconds: 3600 },
+    { key: '28800', label: '8 horas', seconds: 28800 },
+    { key: '86400', label: '1 día', seconds: 86400 },
+    { key: '604800', label: '7 días', seconds: 604800 },
+    { key: '2592000', label: '30 días', seconds: 2592000 },
+    { key: 'custom', label: 'Personalizado', seconds: null },
+  ];
+
+  const SESSION_PRESET_SECONDS = new Set([3600, 28800, 86400, 604800, 2592000]);
+
+  // Opciones de INACTIVIDAD. Acá sí tienen sentido los valores cortos.
+  const SESSION_IDLE_OPTIONS = [
+    { key: 'default', label: 'Default global (7 días)', seconds: null },
+    { key: 'none', label: 'Sin límite', seconds: 0 },
+    { key: '900', label: '15 minutos', seconds: 900 },
+    { key: '1800', label: '30 minutos', seconds: 1800 },
+    { key: '3600', label: '1 hora', seconds: 3600 },
+    { key: '14400', label: '4 horas', seconds: 14400 },
+    { key: '43200', label: '12 horas', seconds: 43200 },
+    { key: '86400', label: '1 día', seconds: 86400 },
+    { key: '604800', label: '7 días', seconds: 604800 },
+    { key: 'custom', label: 'Personalizado', seconds: null },
+  ];
+
+  const SESSION_IDLE_PRESET_SECONDS = new Set([900, 1800, 3600, 14400, 43200, 86400, 604800]);
+
+  // Unidades del input "Personalizado". Todo se persiste en SEGUNDOS.
+  const CUSTOM_UNITS = [
+    { key: 'minutos', label: 'minutos', seconds: 60 },
+    { key: 'horas', label: 'horas', seconds: 3600 },
+    { key: 'dias', label: 'días', seconds: 86400 },
+  ];
+
+  // seconds (custom, >0) → { value, unit } eligiendo la unidad más redonda.
+  function secondsToCustom(seconds) {
+    if (!seconds || seconds <= 0) return { value: '', unit: 'horas' };
+    if (seconds % 86400 === 0) return { value: String(seconds / 86400), unit: 'dias' };
+    if (seconds % 3600 === 0) return { value: String(seconds / 3600), unit: 'horas' };
+    return { value: String(Math.round(seconds / 60)), unit: 'minutos' };
+  }
+
+  // { value, unit } → seconds (o null si es inválido).
+  function customToSeconds(value, unit) {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n <= 0) return null;
+    const factor = CUSTOM_UNITS.find((u) => u.key === unit)?.seconds ?? 60;
+    return Math.floor(n) * factor;
+  }
+
+  function describeDuration(seconds, defaultLabel) {
+    if (seconds == null) return defaultLabel;
+    if (seconds === 0) return 'Sin límite';
+    if (seconds % 86400 === 0) return `${seconds / 86400} días`;
+    if (seconds % 3600 === 0) return `${seconds / 3600} horas`;
+    return `${Math.round(seconds / 60)} minutos`;
+  }
+  const describeSessionDuration = (s) => describeDuration(s, 'Default global (1 mes)');
+  const describeIdleTimeout = (s) => describeDuration(s, 'Default global (7 días)');
+
+  function formatRelativeTime(value) {
+    const date = toValidDate(value);
+    if (!date) return 'Sin actividad';
+    const diffMs = Date.now() - date.getTime();
+    if (diffMs < 60000) return 'hace instantes';
+    const min = Math.floor(diffMs / 60000);
+    if (min < 60) return `hace ${min} min`;
+    const h = Math.floor(min / 60);
+    if (h < 24) return `hace ${h} h`;
+    const d = Math.floor(h / 24);
+    if (d < 30) return `hace ${d} día${d === 1 ? '' : 's'}`;
+    const mo = Math.floor(d / 30);
+    return `hace ${mo} mes${mo === 1 ? '' : 'es'}`;
+  }
+
+  // Control reutilizable: Select de presets + (si "Personalizado") número + unidad.
+  // Se auto-sincroniza cuando cambia valueSeconds; guarda SEGUNDOS vía onSave.
+  function SessionDurationField({ label, options, presetSeconds, valueSeconds, saving, onSave, buttonAdornment }) {
+    const secondsToKey = (seconds) => {
+      if (seconds == null) return 'default';
+      if (seconds === 0) return 'none';
+      if (presetSeconds.has(seconds)) return String(seconds);
+      return 'custom';
+    };
+
+    const [key, setKey] = useState(() => secondsToKey(valueSeconds));
+    const [customValue, setCustomValue] = useState(() => secondsToCustom(valueSeconds).value);
+    const [customUnit, setCustomUnit] = useState(() => secondsToCustom(valueSeconds).unit);
+    const [localError, setLocalError] = useState(null);
+
+    useEffect(() => {
+      setKey(secondsToKey(valueSeconds));
+      const c = secondsToCustom(valueSeconds);
+      setCustomValue(c.value);
+      setCustomUnit(c.unit);
+      setLocalError(null);
+    }, [valueSeconds]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    const handleSave = () => {
+      let seconds;
+      if (key === 'custom') {
+        seconds = customToSeconds(customValue, customUnit);
+        if (seconds == null) { setLocalError('Ingresá un valor válido.'); return; }
+      } else {
+        seconds = options.find((o) => o.key === key)?.seconds ?? null;
+      }
+      setLocalError(null);
+      onSave(seconds);
+    };
+
+    return (
+      <Stack spacing={2}>
+        <FormControl fullWidth size="small">
+          <InputLabel>{label}</InputLabel>
+          <Select label={label} value={key} onChange={(e) => setKey(e.target.value)}>
+            {options.map((option) => (
+              <MenuItem key={option.key} value={option.key}>{option.label}</MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+        {key === 'custom' ? (
+          <Stack direction="row" spacing={1}>
+            <TextField
+              fullWidth
+              size="small"
+              type="number"
+              label="Cantidad"
+              value={customValue}
+              onChange={(e) => setCustomValue(e.target.value)}
+              error={Boolean(localError)}
+              helperText={localError || ''}
+              inputProps={{ min: 1 }}
+            />
+            <FormControl size="small" sx={{ minWidth: 130 }}>
+              <InputLabel>Unidad</InputLabel>
+              <Select label="Unidad" value={customUnit} onChange={(e) => setCustomUnit(e.target.value)}>
+                {CUSTOM_UNITS.map((u) => (
+                  <MenuItem key={u.key} value={u.key}>{u.label}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Stack>
+        ) : null}
+        <Box>
+          <Stack direction="row" spacing={2} alignItems="center" useFlexGap flexWrap="wrap">
+            <Button variant="contained" onClick={handleSave} disabled={saving}>
+              {saving ? 'Guardando…' : 'Guardar'}
+            </Button>
+            {buttonAdornment || null}
+          </Stack>
+        </Box>
+      </Stack>
+    );
+  }
 
   function normalizeText(value) {
     return String(value ?? '').trim().toLowerCase();
@@ -346,6 +514,8 @@ const BOOLEAN_FILTER_OPTIONS = [
   };
 
   function ProfilesOverviewPage() {
+    const { user } = useAuthContext();
+    const isAdmin = Boolean(user?.admin);
     const [rows, setRows] = useState([]);
     const [empresas, setEmpresas] = useState([]);
     const [selectedEmpresa, setSelectedEmpresa] = useState(null);
@@ -363,6 +533,16 @@ const BOOLEAN_FILTER_OPTIONS = [
     const [filtersExpanded, setFiltersExpanded] = useState(false);
     const [sortBy, setSortBy] = useState('created_at');
     const [sortDirection, setSortDirection] = useState('desc');
+    const [selectedIds, setSelectedIds] = useState(() => new Set());
+    const [confirmCloseOpen, setConfirmCloseOpen] = useState(false);
+    const [closingSessions, setClosingSessions] = useState(false);
+    const [savingSession, setSavingSession] = useState(false);
+    const [savingIdle, setSavingIdle] = useState(false);
+    const [passwordValue, setPasswordValue] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
+    const [resetLink, setResetLink] = useState('');
+    const [securityBusy, setSecurityBusy] = useState(false);
+    const [securityFeedback, setSecurityFeedback] = useState(null);
 
     const loadData = useCallback(async () => {
       setLoading(true);
@@ -467,6 +647,26 @@ const BOOLEAN_FILTER_OPTIONS = [
       const start = page * rowsPerPage;
       return sortedRows.slice(start, start + rowsPerPage);
     }, [sortedRows, page, rowsPerPage]);
+
+    // Set de ids visibles según los filtros aplicados. La selección se mantiene
+    // acotada a este set: "seleccionar todos" y el cierre masivo respetan filtros.
+    const filteredIdSet = useMemo(() => new Set(sortedRows.map((row) => row.id)), [sortedRows]);
+
+    useEffect(() => {
+      setSelectedIds((current) => {
+        if (current.size === 0) return current;
+        let changed = false;
+        const next = new Set();
+        current.forEach((id) => {
+          if (filteredIdSet.has(id)) next.add(id);
+          else changed = true;
+        });
+        return changed ? next : current;
+      });
+    }, [filteredIdSet]);
+
+    const allVisibleSelected = sortedRows.length > 0 && selectedIds.size === sortedRows.length;
+    const someVisibleSelected = selectedIds.size > 0 && !allVisibleSelected;
 
     const selectedRow = useMemo(() => {
       if (!selectedRowId) return null;
@@ -601,8 +801,149 @@ const BOOLEAN_FILTER_OPTIONS = [
       if (rowid) setSelectedRowId(rowid);
     }, []);
     const handleCloseDetail = useCallback(() => setSelectedRowId(null), []);
+
+    // Al abrir/cerrar o cambiar de perfil, limpiar el panel de seguridad.
+    useEffect(() => {
+      setPasswordValue('');
+      setShowPassword(false);
+      setResetLink('');
+      setSecurityFeedback(null);
+    }, [selectedRowId]);
+
+    const handleToggleShowPassword = useCallback(() => setShowPassword((current) => !current), []);
+
+    const handleSetPassword = useCallback(async () => {
+      if (!selectedRowId) return;
+      if (passwordValue.length < 6) {
+        setSecurityFeedback({ type: 'error', text: 'La contraseña debe tener al menos 6 caracteres' });
+        return;
+      }
+
+      setSecurityBusy(true);
+      setSecurityFeedback(null);
+      try {
+        await profileService.setUserPassword(selectedRowId, passwordValue);
+        setSecurityFeedback({ type: 'success', text: 'Contraseña actualizada correctamente' });
+        setPasswordValue('');
+        setShowPassword(false);
+      } catch (passwordError) {
+        console.error('Error al setear la contraseña:', passwordError);
+        const message = passwordError?.response?.data?.error || 'No se pudo actualizar la contraseña';
+        setSecurityFeedback({ type: 'error', text: message });
+      } finally {
+        setSecurityBusy(false);
+      }
+    }, [selectedRowId, passwordValue]);
+
+    const handleGenerateResetLink = useCallback(async () => {
+      if (!selectedRowId) return;
+
+      setSecurityBusy(true);
+      setSecurityFeedback(null);
+      setResetLink('');
+      try {
+        const result = await profileService.generatePasswordResetLink(selectedRowId);
+        setResetLink(result?.link || '');
+        setSecurityFeedback({ type: 'success', text: 'Link generado. Copialo y enviáselo al usuario.' });
+      } catch (linkError) {
+        console.error('Error al generar el link de reseteo:', linkError);
+        const message = linkError?.response?.data?.error || 'No se pudo generar el link';
+        setSecurityFeedback({ type: 'error', text: message });
+      } finally {
+        setSecurityBusy(false);
+      }
+    }, [selectedRowId]);
     const handleClearError = useCallback(() => setError(null), []);
     const handleCloseCopyMessage = useCallback(() => setCopyMessage(null), []);
+
+    const handleToggleRowSelection = useCallback((rowId) => {
+      setSelectedIds((current) => {
+        const next = new Set(current);
+        if (next.has(rowId)) next.delete(rowId);
+        else next.add(rowId);
+        return next;
+      });
+    }, []);
+
+    // Selecciona/deselecciona TODAS las filas filtradas (todas las páginas), no solo
+    // la página visible: respeta los filtros aplicados.
+    const handleToggleSelectAll = useCallback(() => {
+      setSelectedIds((current) => {
+        if (current.size === sortedRows.length) return new Set();
+        return new Set(sortedRows.map((row) => row.id));
+      });
+    }, [sortedRows]);
+
+    const handleOpenConfirmClose = useCallback(() => setConfirmCloseOpen(true), []);
+    const handleCloseConfirmClose = useCallback(() => {
+      if (!closingSessions) setConfirmCloseOpen(false);
+    }, [closingSessions]);
+
+    // Deriva de la selección: perfiles seleccionados con user_id (los únicos a los que
+    // se les puede cerrar sesión web) y cuántos se omiten por no tener user_id.
+    const selectionCloseInfo = useMemo(() => {
+      const selectedRows = rows.filter((row) => selectedIds.has(row.id));
+      const withUserId = selectedRows.filter((row) => row.user_id);
+      return {
+        userIds: withUserId.map((row) => row.user_id),
+        skipped: selectedRows.length - withUserId.length,
+        includesSelf: withUserId.some((row) => row.user_id === user?.user_id || row.user_id === user?.id),
+      };
+    }, [rows, selectedIds, user]);
+
+    const handleConfirmCloseSessions = useCallback(async () => {
+      const { userIds } = selectionCloseInfo;
+      if (!userIds.length) {
+        setConfirmCloseOpen(false);
+        setError('Ninguno de los perfiles seleccionados tiene acceso web (user_id).');
+        return;
+      }
+      setClosingSessions(true);
+      setError(null);
+      try {
+        await profileService.closeSessions(userIds);
+        setCopyMessage(`Se cerró la sesión de ${userIds.length} usuario${userIds.length === 1 ? '' : 's'}.`);
+        setSelectedIds(new Set());
+        setConfirmCloseOpen(false);
+      } catch (closeError) {
+        console.error('Error al cerrar sesiones:', closeError);
+        setError(closeError?.response?.data?.error || 'No se pudieron cerrar las sesiones.');
+      } finally {
+        setClosingSessions(false);
+      }
+    }, [selectionCloseInfo]);
+
+    const handleSaveSessionDuration = useCallback(async (seconds) => {
+      if (!selectedRow) return;
+      setSavingSession(true);
+      setError(null);
+      try {
+        await profileService.updateSessionDuration(selectedRow.id, seconds);
+        setRows((current) => current.map((row) => (row.id === selectedRow.id ? { ...row, session_max_seconds: seconds } : row)));
+        setCopyMessage('Duración de sesión actualizada.');
+      } catch (saveError) {
+        console.error('Error al actualizar la duración de sesión:', saveError);
+        setError(saveError?.response?.data?.error || 'No se pudo actualizar la duración de sesión.');
+      } finally {
+        setSavingSession(false);
+      }
+    }, [selectedRow]);
+
+    const handleSaveIdleTimeout = useCallback(async (seconds) => {
+      if (!selectedRow) return;
+      setSavingIdle(true);
+      setError(null);
+      try {
+        await profileService.updateIdleTimeout(selectedRow.id, seconds);
+        setRows((current) => current.map((row) => (row.id === selectedRow.id ? { ...row, session_idle_seconds: seconds } : row)));
+        setCopyMessage('Timeout por inactividad actualizado.');
+      } catch (saveError) {
+        console.error('Error al actualizar el timeout por inactividad:', saveError);
+        setError(saveError?.response?.data?.error || 'No se pudo actualizar el timeout por inactividad.');
+      } finally {
+        setSavingIdle(false);
+      }
+    }, [selectedRow]);
 
     const handleExportCsv = useCallback(() => {
       const csvRows = [
@@ -661,6 +1002,10 @@ const BOOLEAN_FILTER_OPTIONS = [
                 {error ? <Alert severity="error" onClose={handleClearError}>{error}</Alert> : null}
                 {copyMessage ? <Alert severity="success" onClose={handleCloseCopyMessage}>{copyMessage}</Alert> : null}
 
+                {!isAdmin ? (
+                  <Alert severity="error">Esta pantalla está disponible solo para administradores.</Alert>
+                ) : (
+                <>
                 <Grid container spacing={2}>
                   <Grid item xs={12} md={3}><StatCard title="Perfiles cargados" value={summary.totalProfiles} subtitle={`${summary.filteredProfiles} visibles`} icon={<PeopleIcon />} /></Grid>
                   <Grid item xs={12} md={3}><StatCard title="Empresas visibles" value={summary.empresasVisibles} subtitle={`${empresas.length} empresas totales`} icon={<BusinessIcon />} /></Grid>
@@ -765,10 +1110,30 @@ const BOOLEAN_FILTER_OPTIONS = [
 
                 <Card>
                   <CardContent sx={{ pb: 0 }}>
-                    <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={2} mb={2}>
+                    <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', md: 'center' }} spacing={2} mb={2}>
                       <Typography variant="h6">Resultados</Typography>
                       <Chip color="primary" label={`${sortedRows.length} perfiles`} />
                     </Stack>
+
+                    {selectedIds.size > 0 ? (
+                      <Stack
+                        direction={{ xs: 'column', sm: 'row' }}
+                        alignItems={{ xs: 'stretch', sm: 'center' }}
+                        justifyContent="space-between"
+                        spacing={1.5}
+                        sx={{ mb: 2, p: 1.5, borderRadius: 1, bgcolor: 'action.selected' }}
+                      >
+                        <Typography variant="body2" fontWeight="medium">
+                          {selectedIds.size} seleccionado{selectedIds.size === 1 ? '' : 's'}
+                        </Typography>
+                        <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                          <Button size="small" onClick={() => setSelectedIds(new Set())}>Limpiar selección</Button>
+                          <Button size="small" variant="contained" color="warning" startIcon={<LogoutIcon />} onClick={handleOpenConfirmClose}>
+                            Cerrar sesión ({selectedIds.size})
+                          </Button>
+                        </Stack>
+                      </Stack>
+                    ) : null}
                   </CardContent>
 
                   {loading ? (
@@ -787,6 +1152,14 @@ const BOOLEAN_FILTER_OPTIONS = [
                         <Table stickyHeader size="small">
                           <TableHead>
                             <TableRow>
+                              <TableCell padding="checkbox">
+                                <Checkbox
+                                  checked={allVisibleSelected}
+                                  indeterminate={someVisibleSelected}
+                                  onChange={handleToggleSelectAll}
+                                  inputProps={{ 'aria-label': 'Seleccionar todos los perfiles filtrados' }}
+                                />
+                              </TableCell>
                               <TableCell><TableSortLabel active={sortBy === 'fullName'} direction={sortBy === 'fullName' ? sortDirection : 'asc'} onClick={() => handleRequestSort('fullName')}>Perfil</TableSortLabel></TableCell>
                               <TableCell><TableSortLabel active={sortBy === 'empresaNombre'} direction={sortBy === 'empresaNombre' ? sortDirection : 'asc'} onClick={() => handleRequestSort('empresaNombre')}>Empresa</TableSortLabel></TableCell>
                               <TableCell><TableSortLabel active={sortBy === 'confirmed'} direction={sortBy === 'confirmed' ? sortDirection : 'desc'} onClick={() => handleRequestSort('confirmed')}>Flags perfil</TableSortLabel></TableCell>
@@ -797,7 +1170,14 @@ const BOOLEAN_FILTER_OPTIONS = [
                           </TableHead>
                           <TableBody>
                             {paginatedRows.map((row) => (
-                              <TableRow key={row.id} hover sx={getRowStatusSx(row)}>
+                              <TableRow key={row.id} hover selected={selectedIds.has(row.id)} sx={getRowStatusSx(row)}>
+                                <TableCell padding="checkbox">
+                                  <Checkbox
+                                    checked={selectedIds.has(row.id)}
+                                    onChange={() => handleToggleRowSelection(row.id)}
+                                    inputProps={{ 'aria-label': `Seleccionar ${row.fullName || row.id}` }}
+                                  />
+                                </TableCell>
                                 <TableCell sx={{ minWidth: 240 }}>
                                   <Typography variant="subtitle2">{row.fullName || 'Sin nombre'}</Typography>
                                   <Stack direction="row" spacing={1} alignItems="center" useFlexGap flexWrap="wrap">
@@ -843,6 +1223,7 @@ const BOOLEAN_FILTER_OPTIONS = [
                                   <Typography variant="caption" display="block">Perfil: {formatDateTime(row.created_at)}</Typography>
                                   <Typography variant="caption" display="block">Empresa: {formatDateTime(row.empresa?.createdAt)}</Typography>
                                   <Typography variant="caption" display="block">Última interacción: {formatDateTime(row.last_interaction_timestamp)}</Typography>
+                                  <Typography variant="caption" display="block" color={row.last_activity_at ? 'text.secondary' : 'text.disabled'}>Última actividad web: {row.last_activity_at ? `${formatDateTime(row.last_activity_at)} (${formatRelativeTime(row.last_activity_at)})` : 'Sin actividad'}</Typography>
                                 </TableCell>
                                 <TableCell align="right"><Button size="small" data-rowid={row.id} onClick={handleOpenDetail}>Ver detalle</Button></TableCell>
                               </TableRow>
@@ -855,6 +1236,8 @@ const BOOLEAN_FILTER_OPTIONS = [
                     </>
                   )}
                 </Card>
+                </>
+                )}
               </Stack>
             </Container>
           </Box>
@@ -880,6 +1263,143 @@ const BOOLEAN_FILTER_OPTIONS = [
                       <Typography variant="body2">Empresa: {selectedRow.empresaNombre}</Typography>
                     </CardContent>
                   </Card>
+
+                  <Card>
+                    <CardContent>
+                      <Stack direction="row" spacing={1} alignItems="center" mb={1}>
+                        <ShieldOutlinedIcon fontSize="small" color="action" />
+                        <Typography variant="subtitle1" fontWeight="bold">Seguridad · Sesión</Typography>
+                      </Stack>
+                      <Typography variant="body2" color="text.secondary" mb={2}>
+                        Cuánto dura la sesión desde el último login con credenciales, use o no la app.
+                        Pasado ese tiempo, el usuario tiene que volver a iniciar sesión.
+                        Actual: <strong>{describeSessionDuration(selectedRow.session_max_seconds)}</strong>.
+                      </Typography>
+                      <SessionDurationField
+                        label="Duración máxima de sesión"
+                        options={SESSION_DURATION_OPTIONS}
+                        presetSeconds={SESSION_PRESET_SECONDS}
+                        valueSeconds={selectedRow.session_max_seconds}
+                        saving={savingSession}
+                        onSave={handleSaveSessionDuration}
+                      />
+                      {!selectedRow.user_id ? (
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+                          Este perfil no tiene acceso web (sin user_id); se aplicará si en el futuro ingresa a la plataforma.
+                        </Typography>
+                      ) : null}
+
+                      <Divider sx={{ my: 2 }} />
+
+                      <Typography variant="body2" color="text.secondary" mb={2}>
+                        Tras cuánto tiempo <strong>sin actividad</strong> se cierra la sesión (el reloj se
+                        reinicia con cada acción del usuario). Actual: <strong>{describeIdleTimeout(selectedRow.session_idle_seconds)}</strong>.
+                      </Typography>
+                      <SessionDurationField
+                        label="Inactividad"
+                        options={SESSION_IDLE_OPTIONS}
+                        presetSeconds={SESSION_IDLE_PRESET_SECONDS}
+                        valueSeconds={selectedRow.session_idle_seconds}
+                        saving={savingIdle}
+                        onSave={handleSaveIdleTimeout}
+                        buttonAdornment={
+                          <Tooltip title={selectedRow.last_activity_at ? `Actividad web: ${formatDateTime(selectedRow.last_activity_at)}` : 'Sin actividad web registrada'}>
+                            <Chip
+                              size="small"
+                              variant="outlined"
+                              color={selectedRow.last_activity_at ? 'default' : 'warning'}
+                              label={`Última actividad: ${formatRelativeTime(selectedRow.last_activity_at)}`}
+                            />
+                          </Tooltip>
+                        }
+                      />
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent>
+                      <Typography variant="subtitle1" fontWeight="bold" gutterBottom>Seguridad / Acceso</Typography>
+                      {selectedRow.user_id ? (
+                        <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
+                          user_id (Firebase Auth): {selectedRow.user_id}
+                        </Typography>
+                      ) : (
+                        <Alert severity="warning" sx={{ mb: 1 }}>
+                          Este perfil no tiene user_id de Firebase Auth. No se puede setear la contraseña directamente; usá el link de reseteo si tiene email.
+                        </Alert>
+                      )}
+
+                      {securityFeedback ? (
+                        <Alert severity={securityFeedback.type} sx={{ mb: 2 }} onClose={() => setSecurityFeedback(null)}>
+                          {securityFeedback.text}
+                        </Alert>
+                      ) : null}
+
+                      <Stack spacing={1.5}>
+                        <Typography variant="subtitle2">Establecer contraseña</Typography>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="Nueva contraseña"
+                          type={showPassword ? 'text' : 'password'}
+                          value={passwordValue}
+                          onChange={(event) => setPasswordValue(event.target.value)}
+                          autoComplete="new-password"
+                          helperText="Mínimo 6 caracteres. Se aplica de inmediato al usuario."
+                          InputProps={{
+                            endAdornment: (
+                              <InputAdornment position="end">
+                                <Button size="small" onClick={handleToggleShowPassword}>
+                                  {showPassword ? 'Ocultar' : 'Mostrar'}
+                                </Button>
+                              </InputAdornment>
+                            ),
+                          }}
+                        />
+                        <Box>
+                          <Button
+                            variant="contained"
+                            onClick={handleSetPassword}
+                            disabled={securityBusy || !selectedRow.user_id || passwordValue.length < 6}
+                          >
+                            {securityBusy ? 'Aplicando…' : 'Establecer contraseña'}
+                          </Button>
+                        </Box>
+
+                        <Divider sx={{ my: 1 }} />
+
+                        <Typography variant="subtitle2">Link de cambio de contraseña</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Genera un link para que el usuario elija su propia contraseña (no la fijás vos).
+                        </Typography>
+                        <Box>
+                          <Button
+                            variant="outlined"
+                            onClick={handleGenerateResetLink}
+                            disabled={securityBusy || !selectedRow.email}
+                          >
+                            {securityBusy ? 'Generando…' : 'Generar link de reseteo'}
+                          </Button>
+                        </Box>
+                        {resetLink ? (
+                          <Stack direction="row" spacing={1} alignItems="flex-start">
+                            <TextField
+                              fullWidth
+                              size="small"
+                              value={resetLink}
+                              InputProps={{ readOnly: true }}
+                              multiline
+                              maxRows={3}
+                            />
+                            <Tooltip title="Copiar link">
+                              <IconButton size="small" onClick={() => handleCopyValue(resetLink, 'Link')}>
+                                <ContentCopyIcon fontSize="inherit" />
+                              </IconButton>
+                            </Tooltip>
+                          </Stack>
+                        ) : null}
+                      </Stack>
+                    </CardContent>
+                  </Card>
                   <Card>
                     <CardContent>
                       <Typography variant="subtitle2" gutterBottom>Profile</Typography>
@@ -896,6 +1416,38 @@ const BOOLEAN_FILTER_OPTIONS = [
               ) : null}
             </Box>
           </Drawer>
+
+          <Dialog open={confirmCloseOpen} onClose={handleCloseConfirmClose} maxWidth="xs" fullWidth>
+            <DialogTitle>Cerrar sesión de usuarios</DialogTitle>
+            <DialogContent>
+              <DialogContentText component="div">
+                Se cerrará la sesión de <strong>{selectionCloseInfo.userIds.length}</strong> usuario
+                {selectionCloseInfo.userIds.length === 1 ? '' : 's'}. Tendrán que volver a iniciar sesión en su próxima acción.
+                {selectionCloseInfo.skipped > 0 ? (
+                  <Box component="span" sx={{ display: 'block', mt: 1 }}>
+                    {selectionCloseInfo.skipped} perfil{selectionCloseInfo.skipped === 1 ? '' : 'es'} de la selección no tiene acceso web y se omitirá{selectionCloseInfo.skipped === 1 ? '' : 'n'}.
+                  </Box>
+                ) : null}
+                {selectionCloseInfo.includesSelf ? (
+                  <Box component="span" sx={{ display: 'block', mt: 1, color: 'warning.main' }}>
+                    Atención: tu propio usuario está en la selección; también se cerrará tu sesión.
+                  </Box>
+                ) : null}
+              </DialogContentText>
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={handleCloseConfirmClose} disabled={closingSessions}>Cancelar</Button>
+              <Button
+                variant="contained"
+                color="warning"
+                startIcon={<LogoutIcon />}
+                onClick={handleConfirmCloseSessions}
+                disabled={closingSessions || selectionCloseInfo.userIds.length === 0}
+              >
+                {closingSessions ? 'Cerrando…' : 'Cerrar sesión'}
+              </Button>
+            </DialogActions>
+          </Dialog>
         </>
       </LocalizationProvider>
     );

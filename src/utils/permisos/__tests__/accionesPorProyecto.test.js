@@ -25,9 +25,13 @@ describe('tieneAccionEnProyecto — matriz P/B', () => {
   test('P1 heredado → true', () => {
     expect(tieneAccionEnProyecto(baseUser(), OBRA_A, 'CREAR_EGRESO')).toBe(true);
   });
-  test('P2 admin con todo quitado → true', () => {
+  test('P2 admin respeta el recorte por obra → false en la obra recortada, true en otra', () => {
     const u = baseUser({ admin: true, permisosOcultosPorProyecto: { [OBRA_A]: ['CREAR_EGRESO'] } });
-    expect(tieneAccionEnProyecto(u, OBRA_A, 'CREAR_EGRESO')).toBe(true);
+    expect(tieneAccionEnProyecto(u, OBRA_A, 'CREAR_EGRESO')).toBe(false);
+    expect(tieneAccionEnProyecto(u, OBRA_B, 'CREAR_EGRESO')).toBe(true);
+  });
+  test('P2b admin igual que usuario normal: no miembro → false', () => {
+    expect(tieneAccionEnProyecto(baseUser({ admin: true, proyectos: [OBRA_B] }), OBRA_A, 'CREAR_EGRESO')).toBe(false);
   });
   test('B1 quitada en obra A → false en A, true en B', () => {
     const u = baseUser({ permisosOcultosPorProyecto: { [OBRA_A]: ['CREAR_EGRESO'] } });
@@ -74,16 +78,17 @@ describe('accionRecortadaEnObra — gating visual B0-safe', () => {
   test('sin obra en scope → false', () => {
     expect(accionRecortadaEnObra(baseUser(), null, 'CREAR_EGRESO')).toBe(false);
   });
-  test('admin → false', () => {
+  test('admin con recorte en la obra → true (ya no bypassa)', () => {
     const u = baseUser({ admin: true, permisosOcultosPorProyecto: { [OBRA_A]: ['CREAR_EGRESO'] } });
-    expect(accionRecortadaEnObra(u, OBRA_A, 'CREAR_EGRESO')).toBe(false);
+    expect(accionRecortadaEnObra(u, OBRA_A, 'CREAR_EGRESO')).toBe(true);
   });
 });
 
 describe('accionesEnProyecto', () => {
-  test('admin → techo global completo', () => {
+  test('admin → resta el recorte por-obra del techo global', () => {
     const u = baseUser({ admin: true, permisosOcultosPorProyecto: { [OBRA_A]: ['VER_CAJAS'] } });
-    expect(accionesEnProyecto(u, OBRA_A)).toEqual(expect.arrayContaining(['VER_CAJAS']));
+    expect(accionesEnProyecto(u, OBRA_A)).not.toContain('VER_CAJAS');
+    expect(accionesEnProyecto(u, OBRA_B)).toContain('VER_CAJAS');
   });
   test('no miembro → vacío', () => {
     expect(accionesEnProyecto(baseUser({ proyectos: [OBRA_B] }), OBRA_A)).toEqual([]);

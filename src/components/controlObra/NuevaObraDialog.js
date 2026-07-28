@@ -213,22 +213,6 @@ export default function NuevaObraDialog({ open, onClose, empresaId, proyectoId: 
                   Leyendo el archivo… esto puede tardar unos segundos.
                 </Typography>
               )}
-              {warnings.length > 0 && (
-                <Box sx={{ p: 1.5, borderRadius: 1, bgcolor: 'warning.light', color: 'warning.contrastText' }}>
-                  <Typography variant="caption" fontWeight={600} display="block" mb={0.5}>
-                    La obra se creó. Revisá esto que no pudimos interpretar:
-                  </Typography>
-                  {warnings.map((w, i) => (
-                    <Typography key={i} variant="caption" display="block">· {w}</Typography>
-                  ))}
-                  <Button
-                    size="small" sx={{ mt: 1 }} variant="contained"
-                    onClick={() => onCreated(crear.data?.obra?._id)}
-                  >
-                    Ir a la obra
-                  </Button>
-                </Box>
-              )}
             </Stack>
           )}
 
@@ -262,6 +246,26 @@ export default function NuevaObraDialog({ open, onClose, empresaId, proyectoId: 
               ))}
               <Button size="small" onClick={() => setRubros((rs) => [...rs, { nombre: '', subrubros: [{ nombre: '', monto: '' }] }])}>+ rubro</Button>
             </>
+          )}
+
+          {/* Avisos de la creación — sirven a cualquier origen: lo que no se pudo
+              interpretar del archivo, o los presupuestos ambiguos que quedaron en
+              una tarea "Sin desagregar" y conviene reasignar. */}
+          {warnings.length > 0 && (
+            <Box sx={{ p: 1.5, borderRadius: 1, bgcolor: 'warning.light', color: 'warning.contrastText' }}>
+              <Typography variant="caption" fontWeight={600} display="block" mb={0.5}>
+                La obra se creó. Revisá esto:
+              </Typography>
+              {warnings.map((w, i) => (
+                <Typography key={i} variant="caption" display="block">· {w}</Typography>
+              ))}
+              <Button
+                size="small" sx={{ mt: 1 }} variant="contained"
+                onClick={() => onCreated(crear.data?.obra?._id || crear.data?._id)}
+              >
+                Ir a la obra
+              </Button>
+            </Box>
           )}
       </Stack>
       {error && <Typography color="error" variant="body2" mt={1}>{error}</Typography>}
