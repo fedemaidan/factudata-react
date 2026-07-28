@@ -51,22 +51,6 @@ const logFilterBar = (label, payload) => {
 // defaultFilters importado como defaultMovimientosFilters desde parseData.js
 const defaultFilters = defaultMovimientosFilters;
 
-// Mapeo de campos de caja virtual → nombre del filtro que bloquean
-const CAJA_SCOPE_FILTER_MAP = {
-  moneda:     'moneda',
-  medio_pago: 'medioPago',
-  estado:     'estados',
-  type:       'tipo',
-};
-
-// Campos de caja virtual multi-valor → filtro multi-select que bloquean.
-// A diferencia de CAJA_SCOPE_FILTER_MAP, acá el lock viene de un array (puede
-// tener uno o varios valores) y se renderiza como selección fija de esos valores.
-const CAJA_SCOPE_MULTI_FILTER_MAP = {
-  categorias: 'categorias',
-  asignados: 'asignados',
-};
-
 // Sentinel para movimientos con asignado=null (espejo del backend).
 export const SIN_ASIGNAR_SENTINEL = '__sin_asignar__';
 const SIN_ASIGNAR_LABEL = 'Sin asignar';
@@ -109,7 +93,6 @@ export const FilterBarCajaProyecto = ({
   showCodigoSync = false,
   searchRequiresSubmit = false,
   searchMinLength = 0,
-  cajaScope = null,    // caja virtual activa; bloquea sus dimensiones en el FilterBar
 }) => {
   const [focusField, setFocusField] = useState(null);
 
@@ -124,27 +107,6 @@ export const FilterBarCajaProyecto = ({
   // cuando una limpieza externa (chip, clearAll) sincroniza los drafts hacia abajo.
   const lastCommitRef = useRef({ palabras: filters.palabras || '', observacion: filters.observacion || '', codigoSync: filters.codigoSync || '' });
   const debounceTimerRef = useRef(null);
-
-  // filterName → valor fijo de la caja activa (solo para dimensiones que la caja define)
-  const cajaScopeLocks = useMemo(() => {
-    if (!cajaScope) return {};
-    return Object.entries(CAJA_SCOPE_FILTER_MAP).reduce((acc, [cajaKey, filterKey]) => {
-      if (cajaScope[cajaKey]) acc[filterKey] = cajaScope[cajaKey];
-      return acc;
-    }, {});
-  }, [cajaScope]);
-
-  // Locks multi-valor: la caja fija varios valores del mismo filtro a la vez.
-  // p.ej. caja con categorias=['Materiales','Mano de obra'] → el filtro categorias
-  // queda fijado a esos dos valores y deshabilitado para el usuario.
-  const cajaScopeMultiLocks = useMemo(() => {
-    if (!cajaScope) return {};
-    return Object.entries(CAJA_SCOPE_MULTI_FILTER_MAP).reduce((acc, [cajaKey, filterKey]) => {
-      const vals = cajaScope[cajaKey];
-      if (Array.isArray(vals) && vals.length > 0) acc[filterKey] = vals;
-      return acc;
-    }, {});
-  }, [cajaScope]);
 
   // Sincronizar drafts cuando los filtros cambian externamente (chips, clearAll, cargar filtro guardado).
   useEffect(() => {
@@ -397,23 +359,17 @@ export const FilterBarCajaProyecto = ({
 
       const isSub = filtro.name === 'subcategorias';
       const isSubDisabled = isSub && !(Array.isArray(filters.categorias) && filters.categorias.length > 0);
-      const cajaLockValue = cajaScopeLocks[filtro.name];
-      const cajaMultiLockValues = cajaScopeMultiLocks[filtro.name];
-      const isLockedByCaja = !!cajaLockValue || (Array.isArray(cajaMultiLockValues) && cajaMultiLockValues.length > 0);
-      const isDisabled = isSubDisabled || isLockedByCaja;
-      const tooltipTitle = isLockedByCaja
-        ? `Fijado por la caja "${cajaScope?.nombre}"`
-        : isSubDisabled
-          ? 'Seleccioná una categoría primero para filtrar por subcategoría'
-          : '';
+      // TAR-633: se eliminó el "lock por caja" — la barra queda libre y los filtros
+      // de la caja se muestran como chips read-only (combinan con AND).
+      const isDisabled = isSubDisabled;
+      const tooltipTitle = isSubDisabled
+        ? 'Seleccioná una categoría primero para filtrar por subcategoría'
+        : '';
       let selectOptions = isSub ? subcategoriasDisponibles : (filtro.options || options[filtro.optionsKey] || []);
       if (filtro.includeSinAsignar && !selectOptions.includes(SIN_ASIGNAR_SENTINEL)) {
         selectOptions = [SIN_ASIGNAR_SENTINEL, ...selectOptions];
       }
-      let displayValue;
-      if (cajaMultiLockValues) displayValue = cajaMultiLockValues;
-      else if (cajaLockValue) displayValue = [cajaLockValue];
-      else displayValue = toArrLocal(value);
+      const displayValue = toArrLocal(value);
       const renderOptLabel = (opt) => (opt === SIN_ASIGNAR_SENTINEL ? SIN_ASIGNAR_LABEL : opt);
 
       return (
