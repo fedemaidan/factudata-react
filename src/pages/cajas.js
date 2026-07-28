@@ -2649,16 +2649,11 @@ useEffect(() => {
                   sx={{
                     display: 'flex',
                     flexDirection: { xs: 'column', lg: 'row' },
-                    borderRadius: 3,
-                    border: '1px solid',
-                    borderColor: 'rgba(118,117,134,0.16)',
-                    overflow: 'hidden',
-                    bgcolor: 'background.paper',
-                    boxShadow: '0 14px 34px rgba(30,68,105,0.06)',
+                    alignItems: 'stretch',
                   }}
                 >
                   {/* Hero: resumen del período filtrado; ocupa el ancho con jerarquía */}
-                  <Box sx={{ flex: 1, minWidth: 0, p: { xs: 2.5, lg: 3 }, backgroundImage: `linear-gradient(160deg, ${BRAND_COLORS.cloud}, rgba(255,255,255,0.98))` }}>
+                  <Box sx={{ flex: 1, minWidth: 0, py: { xs: 1, lg: 1.5 }, pr: { lg: 4 }, pb: { xs: 2.5, lg: 1.5 } }}>
                     <TotalesFiltrados
                       t={totalesDetallados}
                       fmt={formatByCurrency}
