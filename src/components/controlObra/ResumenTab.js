@@ -14,7 +14,7 @@ import PriceCheckIcon from '@mui/icons-material/PriceCheck';
 import PaymentsIcon from '@mui/icons-material/Payments';
 import SaveIcon from '@mui/icons-material/Save';
 import ControlObraService from 'src/services/controlObra/controlObraService';
-import { KpiCard, fmt, fmtM } from 'src/components/controlObra/ui';
+import { KpiCard, fmt, fmtM, obraMonedaInfo, esMonedaNativa, monedaLabel } from 'src/components/controlObra/ui';
 
 // Fila de una columna del tablero (label izquierda, monto derecha).
 function LadoRow({ label, value, color = 'text.primary', strong = false, sub = null }) {
@@ -70,23 +70,31 @@ export default function ResumenTab({ obra, ejec, certs = [], empresaId }) {
   const curva = curvaQ.data || { meses: [], certificado: [], cobrado: [], plan: [] };
 
   const row = (carteraQ.data || []).find((o) => o._id === obra._id) || {};
-  const total = obra.total_contrato || 0;
-  const avance = row.avance_pct ?? (total ? ((ejec?.totales?.valor_avance || 0) / total) * 100 : 0);
-  const certAprob = (certs || []).filter((c) => c.estado === 'aprobado').reduce((s, c) => s + (c.monto_total || 0), 0);
-  const cobrado = row.cobrado || 0;
+  // Obra CAC/USD: contrato y costo están en unidades nativas; gastado/cobrado son pesos
+  // reales de caja. Para que TODO sea comparable (y el margen tenga sentido), acá se usan
+  // los totales VALORIZADOS a pesos (ejec.*_pesos). El indicador de moneda lo aclara.
+  const oInfo = obraMonedaInfo(obra);
+  const esNativa = esMonedaNativa(oInfo);
+  const tot = ejec?.totales || {};
+  const total = esNativa ? (tot.contrato_pesos || 0) : (obra.total_contrato || 0);
+  const avance = row.avance_pct ?? (total ? ((tot.valor_avance || 0) / (obra.total_contrato || 1)) * 100 : 0);
+  const certAprob = esNativa
+    ? (tot.certificado_pesos || 0)
+    : (certs || []).filter((c) => c.estado === 'aprobado').reduce((s, c) => s + (c.monto_total || 0), 0);
+  const cobrado = row.cobrado || 0; // caja → ya en pesos
 
   // Pendiente de cobro — aditivo, desglosado por fuente (el label ya no miente).
   const pendiente = row.pendiente || 0;
   const pendienteCert = row.pendiente_certificados || 0;
   const pendientePlanes = row.pendiente_planes || 0;
 
-  // Lado gastar (T2 en getEjecucion).
-  const gastado = ejec?.totales?.gastado || 0;
-  const costoRef = ejec?.totales?.costo_ref || 0; // proveedor + directo
-  const costoProveedor = ejec?.totales?.costo_proveedor || 0; // parte del proveedor (contratado o estimado)
-  const costoDirecto = ejec?.totales?.costo_directo || 0; // parte directa (materiales/gastos sueltos)
-  const margen = ejec?.totales?.margen || 0; // realizado (certificado − gastado)
-  const margenEsperado = ejec?.totales?.margen_esperado || 0; // proyectado (contrato − costo_ref)
+  // Lado gastar (T2 en getEjecucion) — valorizado a pesos si la obra es nativa.
+  const gastado = tot.gastado || 0; // caja → ya en pesos
+  const costoRef = esNativa ? (tot.costo_ref_pesos || 0) : (tot.costo_ref || 0);
+  const costoProveedor = tot.costo_proveedor || 0; // parte del proveedor (contratado o estimado)
+  const costoDirecto = tot.costo_directo || 0; // parte directa (materiales/gastos sueltos)
+  const margen = esNativa ? (tot.margen_pesos || 0) : (tot.margen || 0); // realizado (certificado − gastado)
+  const margenEsperado = esNativa ? (tot.margen_esperado_pesos || 0) : (tot.margen_esperado || 0); // proyectado
 
   // Composición del cobro: cuánto se espera por certificación + Σ planes.
   const esperadoCert = row.esperado_certificados; // null si sin declarar
@@ -140,8 +148,17 @@ export default function ResumenTab({ obra, ejec, certs = [], empresaId }) {
 
   return (
     <Box>
+      {esNativa && (
+        <Box sx={{ mb: 1.5, px: 1.5, py: 1, borderRadius: 1, bgcolor: 'action.hover', display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+          <Chip size="small" color="info" variant="outlined" label={`Contrato en ${monedaLabel(oInfo)}`} />
+          <Typography variant="caption" color="text.secondary">
+            El contrato y el costo están indexados a {monedaLabel(oInfo)}. Los importes de abajo se muestran
+            <strong> valorizados a pesos</strong> para poder compararlos con lo gastado y cobrado de caja.
+          </Typography>
+        </Box>
+      )}
       <Stack direction="row" spacing={2} flexWrap="wrap" mb={3} useFlexGap>
-        <KpiCard label="Contrato" value={fmtM(total)} sub="presupuesto total" />
+        <KpiCard label="Contrato" value={fmtM(total)} sub={esNativa ? `${monedaLabel(oInfo)} · en pesos` : 'presupuesto total'} />
         <KpiCard label="Avance físico" value={`${avance.toFixed(1)}%`} sub="ponderado por monto" />
         <KpiCard label="Certificado" value={fmtM(certAprob)} sub={`${total ? ((certAprob / total) * 100).toFixed(0) : 0}% · aprobado`} color="warning.main" />
         <KpiCard label="Cobrado" value={fmtM(cobrado)} sub={`${total ? ((cobrado / total) * 100).toFixed(0) : 0}% del contrato`} color="success.main" />

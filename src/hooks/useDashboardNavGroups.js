@@ -14,16 +14,19 @@ import CompareArrowsIcon from "@mui/icons-material/CompareArrows";
 import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
 import ContactsIcon from "@mui/icons-material/Contacts";
 import AssessmentIcon from "@mui/icons-material/Assessment";
+import InsightsIcon from "@mui/icons-material/Insights";
 import SummarizeIcon from "@mui/icons-material/Summarize";
 import ConstructionIcon from "@mui/icons-material/Construction";
 import AutoAwesomeRoundedIcon from "@mui/icons-material/AutoAwesomeRounded";
 import EventAvailableIcon from "@mui/icons-material/EventAvailable";
 import AssignmentReturnIcon from "@mui/icons-material/AssignmentReturn";
 import MoveToInboxIcon from "@mui/icons-material/MoveToInbox";
+import ReportProblemIcon from "@mui/icons-material/ReportProblem";
 import { useAuthContext } from "src/contexts/auth-context";
 import { getProyectosFromUser } from "src/services/proyectosService";
 import { modoLecturaEnProyecto } from "src/utils/permisos/accionesPorProyecto";
 import { getEmpresaDetailsFromUser } from "src/services/empresaService";
+import { vistasVisiblesPara } from "src/config/vistasUtiles";
 
 const icon = (Icon) => (
   <SvgIcon fontSize="small">
@@ -125,6 +128,19 @@ async function buildDefaultGroups({ user, empresa, permisosUsuario }) {
   inicioItems.push({ title: "Reportes", path: "/reportes", icon: icon(AssessmentIcon) });
   groups.push({ id: "inicio", label: "Inicio", alwaysOpen: true, items: inicioItems });
 
+  // ——— VISTAS ÚTILES ———
+  // Dashboards que cruzan varios datasets en un pantallazo (no son cajas ni reportes sueltos).
+  // Data-driven desde el catálogo VISTAS_UTILES, filtrado por la config de empresa y de usuario.
+  const vistasItems = [];
+  if (esAdmin && !esCorralon) {
+    vistasVisiblesPara(empresa, user).forEach((v) => {
+      vistasItems.push({ title: v.title, path: v.path, icon: icon(InsightsIcon) });
+    });
+    // El configurador siempre presente, para poder reactivar vistas apagadas.
+    vistasItems.push({ title: "Configurar vistas", path: "/vistas/configurador", icon: icon(SettingsIcon) });
+  }
+  if (vistasItems.length > 0) groups.push({ id: "vistas", label: "Vistas útiles", items: vistasItems });
+
   // ——— FINANZAS ———
   const finanzasItems = [];
   if (esAdmin) {
@@ -138,6 +154,12 @@ async function buildDefaultGroups({ user, empresa, permisosUsuario }) {
   }
   if (esAdmin && permisosUsuario.includes("VER_MI_CAJA_CHICA")) {
     finanzasItems.push({ title: "Todas las cajas chicas", path: "/perfilesEmpresa", icon: icon(AttachMoneyIcon) });
+  }
+  if (!esCorralon) {
+    // "Mis reservas": vista del participante (total + desglose por obra). No exige
+    // VER_RESERVAS_OBRA: un operador puede participar de reservas sin permiso global;
+    // la página muestra vacío si no participa en ninguna.
+    finanzasItems.push({ title: "Mis reservas", path: "/misReservas", icon: icon(AccountBalanceWallet) });
   }
   if (permisosUsuario.includes("VER_RESERVAS_OBRA") && !esCorralon) {
     // Reserva de Obra: reserva interna de fondos por obra (≠ caja chica personal).
@@ -381,7 +403,9 @@ export function useDashboardNavGroups() {
             { title: "Resumen del mes", path: "/admin-resumen", icon: icon(SummarizeIcon) },
             { title: "Clientes", path: "/admin-clientes", icon: icon(PeopleIcon) },
             { title: "Cobranzas", path: "/admin-cobranzas", icon: icon(AttachMoneyIcon) },
+            { title: "Deuda / Mora", path: "/admin-mora", icon: icon(ReportProblemIcon) },
             { title: "Reportes", path: "/admin-reportes", icon: icon(AssessmentIcon) },
+            { title: "Configuración", path: "/admin-config", icon: icon(SettingsIcon) },
           ],
         });
       }

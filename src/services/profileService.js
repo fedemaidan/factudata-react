@@ -94,6 +94,18 @@ const profileService = {
     }
   },
 
+  // Admin: setea directamente la contraseña de otro usuario.
+  setUserPassword: async (profileId, password) => {
+    const response = await api.post(`/profile/${encodeURIComponent(profileId)}/password`, { password });
+    return response.data;
+  },
+
+  // Admin: genera un link para que el usuario resetee su contraseña.
+  generatePasswordResetLink: async (profileId) => {
+    const response = await api.post(`/profile/${encodeURIComponent(profileId)}/reset-link`);
+    return response.data;
+  },
+
   getProfileByUserId: async (userId) => {
     try {
       if (!userId) return null;
@@ -106,6 +118,29 @@ const profileService = {
       console.error('Error al obtener perfil por user_id:', err);
       throw err; // propaga para que el caller pueda reintentar
     }
+  },
+
+  // Acciones destructivas de gestión de sesión: re-lanzan el error para que la UI
+  // muestre fallos reales (a diferencia de las lecturas que devuelven valor neutro).
+  closeSessions: async (userIds) => {
+    const response = await api.post('/profile/sessions/close', { userIds });
+    return response.data;
+  },
+
+  updateSessionDuration: async (profileId, sessionMaxSeconds) => {
+    const response = await api.put(
+      `/profile/${encodeURIComponent(profileId)}/session-duration`,
+      { session_max_seconds: sessionMaxSeconds }
+    );
+    return response.data;
+  },
+
+  updateIdleTimeout: async (profileId, sessionIdleSeconds) => {
+    const response = await api.put(
+      `/profile/${encodeURIComponent(profileId)}/idle-timeout`,
+      { session_idle_seconds: sessionIdleSeconds }
+    );
+    return response.data;
   },
 };
 

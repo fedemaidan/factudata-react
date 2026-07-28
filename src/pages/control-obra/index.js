@@ -47,7 +47,9 @@ function MisObrasPage() {
   const onEliminar = (o) => { cerrarMenu(); setConfirmDel(o); };
 
   const obras = carteraQ.data || [];
-  const totalContrato = obras.reduce((a, o) => a + (o.total_contrato || 0), 0);
+  // Contrato en pesos (valorizado si la obra es CAC/USD) para sumar en una sola escala
+  // junto al cobrado/pendiente de caja.
+  const totalContrato = obras.reduce((a, o) => a + (o.contrato_pesos ?? o.total_contrato ?? 0), 0);
   const totalCobrado = obras.reduce((a, o) => a + (o.cobrado || 0), 0);
   const totalPendiente = obras.reduce((a, o) => a + (o.pendiente || 0), 0);
 
@@ -103,7 +105,14 @@ function MisObrasPage() {
                   >
                     <TableCell>{o.titulo || '(sin título)'}</TableCell>
                     <TableCell><Chip size="small" label={o.estado} color={o.estado === 'activa' ? 'info' : 'default'} /></TableCell>
-                    <TableCell align="right">{fmt(o.total_contrato)}</TableCell>
+                    <TableCell align="right">
+                      {fmt(o.contrato_pesos ?? o.total_contrato)}
+                      {o.moneda_nativa && (
+                        <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 0.5 }}>
+                          {o.indexacion === 'CAC' ? 'CAC' : 'nativo'}
+                        </Typography>
+                      )}
+                    </TableCell>
                     <TableCell align="right" sx={{ minWidth: 120 }}>
                       <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end">
                         <Box sx={{ width: 60 }}><LinearProgress variant="determinate" value={Math.min(o.avance_pct, 100)} /></Box>

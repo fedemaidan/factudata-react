@@ -131,6 +131,13 @@ const ControlObraService = {
   },
   reimputarAplicar: async (obraId, data) => unwrap(await api.post(`${BASE}/${obraId}/reimputar-aplicar`, data)),
 
+  // Movimientos (egresos + ingresos) imputados a la obra, filtrables por sub-rubro.
+  movimientosImputados: async (obraId, empresa_id, subrubro_uid) => {
+    const res = await api.get(`${BASE}/${obraId}/movimientos-imputados`, { params: { empresa_id, ...(subrubro_uid ? { subrubro_uid } : {}) } });
+    if (res.status !== 200) throw new Error('Error al obtener los movimientos imputados');
+    return Array.isArray(res.data?.items) ? res.data.items : [];
+  },
+
   /* ---------- Mano de obra (Fase 3) ---------- */
   listarOrdenes: async (obraId, empresa_id) => {
     const res = await api.get(`${BASE}/${obraId}/ordenes-pago`, { params: { empresa_id } });

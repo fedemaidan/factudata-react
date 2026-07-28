@@ -57,6 +57,36 @@ const adminSuscripcionService = {
     return data;
   },
 
+  /** Deuda acumulada por cliente hasta una fecha de corte (default hoy). T6a. */
+  async deudaGeneral(hasta) {
+    const params = hasta ? `?hasta=${encodeURIComponent(hasta)}` : '';
+    const { data } = await api.get(`/admin/cobranzas/deuda${params}`);
+    return data;
+  },
+
+  /** Vista de Mora: deuda vencida hasta fin del mes anterior (default). T6a. */
+  async mora(hasta) {
+    const params = hasta ? `?hasta=${encodeURIComponent(hasta)}` : '';
+    const { data } = await api.get(`/admin/mora${params}`);
+    return data;
+  },
+
+  /** Guarda/actualiza la nota de seguimiento de un período (texto vacío la borra). T8. */
+  async setNotaCobranza(empresaClienteId, periodo, texto) {
+    const { data } = await api.post('/admin/cobranzas/nota', {
+      empresa_cliente_id: empresaClienteId, periodo, texto,
+    });
+    return data;
+  },
+
+  /** Cierra (o reabre) el saldo de un período parcial → queda pagado. T11b. */
+  async cerrarParcial(empresaClienteId, periodo, justificacion, cerrar = true) {
+    const { data } = await api.post('/admin/cobranzas/cerrar-parcial', {
+      empresa_cliente_id: empresaClienteId, periodo, justificacion, cerrar,
+    });
+    return data;
+  },
+
   /**
    * Posponer un vencimiento N meses. `periodo` = período ORIGINAL del vencimiento.
    * `cascada=true` mueve esa cuota y todas las siguientes; false solo esa. `meses=0` deshace.
@@ -65,6 +95,17 @@ const adminSuscripcionService = {
     const { data } = await api.post('/admin/cobranzas/posponer', {
       empresa_cliente_id: empresaClienteId, periodo, meses, cascada,
     });
+    return data;
+  },
+
+  // ─── Configuración global (T7) ───────────────────────────────────────
+  async getConfig() {
+    const { data } = await api.get('/admin/config');
+    return data;
+  },
+
+  async setConfig(payload) {
+    const { data } = await api.put('/admin/config', payload);
     return data;
   },
 

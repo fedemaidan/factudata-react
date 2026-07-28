@@ -170,8 +170,13 @@ const CajaTablaCell = ({ colKey, mov, amountColor, ctx, isProrrateo = false }) =
       );
     case 'obra':
       return cell(ellipsis(COLS.obra), <Tooltip title={mov.obra || ''}><span>{mov.obra || '—'}</span></Tooltip>);
-    case 'cliente':
-      return cell(ellipsis(COLS.cliente), <Tooltip title={mov.cliente || ''}><span>{mov.cliente || '—'}</span></Tooltip>);
+    case 'cliente': {
+      // En la Caja Sorby Admin el cliente vive en empresa_cliente_nombre (solo lo
+      // usa Sorby, nunca los movimientos de un corralón). Fallback al cliente del
+      // producto para no cambiar el comportamiento del resto. TAR-497 T1.
+      const clienteTxt = mov.empresa_cliente_nombre || mov.cliente || '—';
+      return cell(ellipsis(COLS.cliente), <Tooltip title={clienteTxt === '—' ? '' : clienteTxt}><span>{clienteTxt}</span></Tooltip>);
+    }
     case 'observacion':
       return cell(ellipsis(COLS.observacion), <Tooltip title={mov.observacion || ''}><span>{mov.observacion}</span></Tooltip>);
     case 'detalle':

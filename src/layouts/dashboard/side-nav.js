@@ -36,7 +36,7 @@ export const SideNav = (props) => {
   const { groups, empresa, navType, permisos } = useDashboardNavGroups();
 
   const [openGroups, setOpenGroups] = useState({
-    finanzas: true, materiales: true, obras: true,
+    vistas: true, finanzas: true, materiales: true, obras: true,
     revision: true, gestion: true, configuracion: false,
   });
   const toggleGroup = (id) => setOpenGroups((prev) => ({ ...prev, [id]: !prev[id] }));
