@@ -57,6 +57,40 @@ const TABS = [
   { key: 'archivados', label: 'Archivados' },
 ];
 
+// El tipo que le sirve al usuario son las categorías configuradas del proveedor.
+// `tipo` sólo distingue contratistas: su default 'materiales' no permite saber si
+// alguien lo eligió o nunca se tocó, así que no se muestra como si fuera un dato.
+const etiquetasTipo = (prov) => {
+  const categorias = (prov.categorias || []).filter(Boolean);
+  return prov.tipo === 'mano_de_obra' ? ['Mano de obra', ...categorias] : categorias;
+};
+
+const CeldaTipo = ({ prov }) => {
+  const etiquetas = etiquetasTipo(prov);
+  if (!etiquetas.length) return <Typography variant="body2" color="text.disabled">—</Typography>;
+
+  const visibles = etiquetas.slice(0, 2);
+  const ocultas = etiquetas.length - visibles.length;
+  const esManoDeObra = prov.tipo === 'mano_de_obra';
+
+  return (
+    <Tooltip title={etiquetas.join(' · ')}>
+      <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+        {visibles.map((etiqueta, i) => (
+          <Chip
+            key={etiqueta}
+            label={etiqueta}
+            size="small"
+            variant="outlined"
+            color={i === 0 && esManoDeObra ? 'primary' : 'default'}
+          />
+        ))}
+        {ocultas > 0 && <Chip label={`+${ocultas}`} size="small" variant="outlined" />}
+      </Stack>
+    </Tooltip>
+  );
+};
+
 const renderEstadoCC = (resumen) => {
   if (!resumen) return <Chip size="small" label="—" variant="outlined" />;
   const saldo = resumen.saldo || 0;
@@ -94,7 +128,7 @@ function ProveedoresContent({ empresa, refreshKey }) {
   // Selección múltiple (sólo activa en tab Con deuda para ajuste de cuentas)
   const [seleccionados, setSeleccionados] = useState(() => new Set());
   const [ajusteDialogOpen, setAjusteDialogOpen] = useState(false);
-  const [filtroTipo, setFiltroTipo] = useState('todos'); // 'todos' | 'materiales' | 'mano_de_obra'
+  const [filtroTipo, setFiltroTipo] = useState('todos'); // 'todos' | 'mano_de_obra' | `cat:<categoria>`
 
   // Paginación de la lista (client-side) para no renderizar cientos de filas a la vez.
   const [page, setPage] = useState(0);
@@ -155,8 +189,13 @@ function ProveedoresContent({ empresa, refreshKey }) {
       if (tab === 'todos'      && archivado) return false;
       if (tab === 'archivados' && !archivado) return false;
 
-      // Filtro tipo
-      if (filtroTipo !== 'todos' && p.tipo !== filtroTipo) return false;
+      // Filtro tipo: contratistas o una categoría (que matchea también sus subcategorías)
+      if (filtroTipo === 'mano_de_obra' && p.tipo !== 'mano_de_obra') return false;
+      if (filtroTipo.startsWith('cat:')) {
+        const categoria = filtroTipo.slice(4);
+        const match = (p.categorias || []).some((c) => c === categoria || c.startsWith(`${categoria} - `));
+        if (!match) return false;
+      }
 
       // Búsqueda
       if (q) {
@@ -412,12 +451,14 @@ function ProveedoresContent({ empresa, refreshKey }) {
             InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment> }}
             sx={{ flex: 1 }}
           />
-          <FormControl size="small" sx={{ minWidth: 160 }}>
+          <FormControl size="small" sx={{ minWidth: 200 }}>
             <InputLabel>Tipo</InputLabel>
             <Select value={filtroTipo} label="Tipo" onChange={(e) => setFiltroTipo(e.target.value)}>
               <MenuItem value="todos">Todos</MenuItem>
-              <MenuItem value="materiales">Materiales</MenuItem>
               <MenuItem value="mano_de_obra">Mano de obra</MenuItem>
+              {(empresa?.categorias || []).map((cat) => (
+                <MenuItem key={cat.name} value={`cat:${cat.name}`}>{cat.name}</MenuItem>
+              ))}
             </Select>
           </FormControl>
         </Stack>
@@ -580,14 +621,7 @@ function ProveedoresContent({ empresa, refreshKey }) {
                         <Typography variant="caption" color="text.secondary">{prov.alias.join(', ')}</Typography>
                       )}
                     </TableCell>
-                    <TableCell>
-                      <Chip
-                        label={prov.tipo === 'mano_de_obra' ? 'Mano de obra' : 'Materiales'}
-                        size="small"
-                        variant="outlined"
-                        color={prov.tipo === 'mano_de_obra' ? 'primary' : 'default'}
-                      />
-                    </TableCell>
+                    <TableCell><CeldaTipo prov={prov} /></TableCell>
                     <TableCell align="right">
                       {(() => {
                         const saldo = r?.saldo || 0;
