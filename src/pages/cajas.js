@@ -132,6 +132,8 @@ const BRAND_COLORS = {
 
 // Ancho mínimo en el que un saldo de 9 dígitos entra completo a tamaño pleno.
 const CAJA_CARD_MIN = 232;
+// Tope de ancho: con 1-2 cajas evita que se estiren a lo ancho de la pantalla.
+const CAJA_CARD_MAX = 300;
 
 // El saldo nunca se trunca ni se abrevia: si el número es largo, baja de tamaño.
 const getAmountFontSize = (text) => {
@@ -561,12 +563,11 @@ const getCajaAccent = (caja, amount) => {
 };
 
 
-const TotalesFiltrados = ({ t, fmt, moneda, totalesFormat = 'full', showUsdBlue = false, usdBlue = null, chips = [], onOpenFilters, isMobile = false, showDetails = false, onToggleDetails, baseCalculo = 'total' }) => {
+const TotalesFiltrados = ({ t, fmt, moneda, totalesFormat = 'full', chips = [], onOpenFilters, isMobile = false, baseCalculo = 'total' }) => {
   const up = (moneda || '').toUpperCase();
   const ingreso = t[up]?.ingreso ?? 0;
   const egreso  = t[up]?.egreso  ?? 0;
   const neto    = ingreso - egreso;
-  const totalPeriodo = ingreso + egreso;
 
   const abbreviateAmount = (currencyCode, amount) => {
     const absVal = Math.abs(amount);
@@ -600,156 +601,64 @@ const TotalesFiltrados = ({ t, fmt, moneda, totalesFormat = 'full', showUsdBlue 
     return fmt(currencyCode, amount);
   };
 
-  const deltaItems = [
-    { label: 'Ingresos', value: formatTotalValue(up, ingreso), color: 'success.main', Icon: NorthEastRoundedIcon },
-    { label: 'Egresos',  value: formatTotalValue(up, egreso),  color: 'error.main',   Icon: SouthWestRoundedIcon },
-  ];
   const netoDisplay = formatTotalValue(up, neto);
+  const segmentos = [
+    { label: 'Neto filtrado', value: netoDisplay, color: neto >= 0 ? 'success.main' : 'error.main', Icon: null, fontSize: getAmountFontSize(netoDisplay) },
+    { label: 'Ingresos', value: formatTotalValue(up, ingreso), color: 'success.main', Icon: NorthEastRoundedIcon, fontSize: '1rem' },
+    { label: 'Egresos',  value: formatTotalValue(up, egreso),  color: 'error.main',   Icon: SouthWestRoundedIcon, fontSize: '1rem' },
+  ];
+
+  // Franja flat (no card): línea sutil arriba/abajo, con neto + ingresos/egresos en fila.
+  const divider = (
+    <Box sx={{ bgcolor: 'divider', alignSelf: 'stretch', flexShrink: 0, width: { xs: '100%', sm: '1px' }, height: { xs: '1px', sm: 'auto' } }} />
+  );
 
   return (
-    <Stack spacing={1.5} sx={{ mb: 2 }}>
-      <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2} sx={{ flexWrap: 'nowrap' }}>
-        <Box
-          sx={{
-            p: { xs: 2.25, lg: 1.75 },
-            borderRadius: 3,
-            width: '100%',
-            minWidth: 0,
-            bgcolor: 'background.paper',
-            border: '1px solid',
-            borderColor: 'divider',
-            boxShadow: '0 18px 40px rgba(30, 68, 105, 0.08)',
-            backgroundImage: `linear-gradient(180deg, ${BRAND_COLORS.cloud}, rgba(255,255,255,0.98))`,
-            minHeight: { xs: 'auto', lg: 126 },
-            display: 'flex',
-          }}
-        >
-          <Stack spacing={{ xs: 2, lg: 1.25 }} sx={{ width: '100%' }}>
-            {/* Título con moneda integrada */}
-            <Typography sx={{ fontSize: '0.64rem', fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: BRAND_COLORS.teal, whiteSpace: 'nowrap', lineHeight: 1.05 }}>
-              Totales filtrados{baseCalculo === 'subtotal' ? ' (neto)' : ''}&nbsp;·&nbsp;{up}
-            </Typography>
+    <Box sx={{ mt: 0.5, py: 1.5, borderTop: '1px solid', borderBottom: '1px solid', borderColor: 'divider' }}>
+      <Stack spacing={1.25}>
+        <Typography sx={{ fontSize: '0.64rem', fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: BRAND_COLORS.teal, lineHeight: 1 }}>
+          Totales filtrados{baseCalculo === 'subtotal' ? ' (neto)' : ''}&nbsp;·&nbsp;{up}
+        </Typography>
 
-            {/* Layout flat: neto a la izquierda, ing/egr a la derecha — sin sub-tarjetas */}
-            <Box
-              sx={{
-                display: 'grid',
-                gridTemplateColumns: '1fr',
-                gap: 1.5,
-                width: '100%',
-              }}
-            >
-              {/* Neto filtrado — flat, sin borde propio */}
-              <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', pb: 1.5, borderBottom: `1px solid rgba(0,0,0,0.08)` }}>
-                <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700, mb: 0.5 }}>
-                  Neto filtrado
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} divider={divider} sx={{ alignItems: { sm: 'center' } }}>
+          {segmentos.map(({ label, value, color, Icon, fontSize }) => (
+            <Box key={label} sx={{ minWidth: 0 }}>
+              <Stack direction="row" spacing={0.4} alignItems="center" sx={{ mb: 0.25 }}>
+                {Icon && <Icon sx={{ fontSize: 14, color, flexShrink: 0 }} />}
+                <Typography sx={{ textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 800, color: 'text.secondary', fontSize: '0.62rem', lineHeight: 1, whiteSpace: 'nowrap' }}>
+                  {label}
                 </Typography>
-                <Typography sx={{ fontWeight: 800, lineHeight: 1.05, color: neto >= 0 ? 'success.main' : 'error.main', fontSize: getAmountFontSize(netoDisplay), whiteSpace: 'nowrap' }}>
-                  {netoDisplay}
-                </Typography>
-              </Box>
-
-              {/* Ingresos + Egresos — flat, separados solo por un divisor */}
-              <Stack
-                divider={<Box sx={{ height: '1px', bgcolor: 'rgba(0,0,0,0.06)' }} />}
-                sx={{ width: '100%' }}
-              >
-                {deltaItems.map(({ label, value, color, Icon }) => (
-                  <Box
-                    key={label}
-                    sx={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      py: 0.6,
-                      width: '100%',
-                    }}
-                  >
-                    <Stack direction="row" spacing={0.4} alignItems="center" sx={{ mb: 0.3 }}>
-                      <Icon sx={{ fontSize: 13, color, flexShrink: 0 }} />
-                      <Typography sx={{ textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 800, color: 'text.secondary', fontSize: '0.6rem', lineHeight: 1, whiteSpace: 'nowrap' }}>
-                        {label}
-                      </Typography>
-                    </Stack>
-                    <Typography sx={{ fontWeight: 800, color, fontSize: { xs: '1rem', lg: '0.95rem' }, lineHeight: 1.15, whiteSpace: 'nowrap' }}>
-                      {value}
-                    </Typography>
-                  </Box>
-                ))}
               </Stack>
+              <Typography sx={{ fontWeight: 800, color, fontSize, lineHeight: 1.1, whiteSpace: 'nowrap' }}>
+                {value}
+              </Typography>
             </Box>
+          ))}
+        </Stack>
 
-            {chips.length > 0 && (
-              <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: 'wrap' }}>
-                <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>
-                  Filtros activos
-                </Typography>
-                <Box sx={{ display: 'flex', gap: 1, maxWidth: isMobile ? 220 : 'none', overflowX: isMobile ? 'auto' : 'visible' }}>
-                  {chips.map((chip, idx) => (
-                    <Chip
-                      key={`${chip.label}-${idx}`}
-                      label={chip.label}
-                      onDelete={(e) => { e.stopPropagation(); chip.onDelete(); }}
-                      onClick={() => onOpenFilters?.()}
-                      size="small"
-                      variant="outlined"
-                      clickable
-                      sx={{ bgcolor: 'rgba(255,255,255,0.92)' }}
-                    />
-                  ))}
-                </Box>
-              </Stack>
-            )}
-
-            {isMobile && (
-              <Button size="small" variant="text" onClick={onToggleDetails} sx={{ alignSelf: 'flex-start' }}>
-                {showDetails ? 'Ocultar detalle' : 'Ver detalle'}
-              </Button>
-            )}
+        {chips.length > 0 && (
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: 'wrap' }}>
+            <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>
+              Filtros activos
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 1, maxWidth: isMobile ? 220 : 'none', overflowX: isMobile ? 'auto' : 'visible' }}>
+              {chips.map((chip, idx) => (
+                <Chip
+                  key={`${chip.label}-${idx}`}
+                  label={chip.label}
+                  onDelete={(e) => { e.stopPropagation(); chip.onDelete(); }}
+                  onClick={() => onOpenFilters?.()}
+                  size="small"
+                  variant="outlined"
+                  clickable
+                  sx={{ bgcolor: 'rgba(255,255,255,0.92)' }}
+                />
+              ))}
+            </Box>
           </Stack>
-        </Box>
-
-        {showUsdBlue && usdBlue && (
-          <Box
-            sx={{
-              p: 2.5,
-              borderRadius: 3,
-              flex: 0.9,
-              minWidth: 260,
-              bgcolor: 'background.paper',
-              border: '1px solid',
-              borderColor: 'divider',
-              boxShadow: '0 18px 40px rgba(91, 84, 165, 0.06)',
-            }}
-          >
-            <Typography sx={{ fontSize: '0.72rem', fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', color: BRAND_COLORS.teal, mb: 1 }}>
-              Totales USD blue
-            </Typography>
-            <Typography variant="h5" sx={{ fontWeight: 800, color: (usdBlue.neto ?? 0) >= 0 ? 'success.main' : 'error.main', mb: 1.25 }}>
-              {fmt('USD', usdBlue.neto)}
-            </Typography>
-            <Stack spacing={1}>
-              <Typography variant="body2" sx={{ color: 'success.main', fontWeight: 700 }}>
-                + {fmt('USD', usdBlue.ingreso)}
-              </Typography>
-              <Typography variant="body2" sx={{ color: 'error.main', fontWeight: 700 }}>
-                - {fmt('USD', usdBlue.egreso)}
-              </Typography>
-            </Stack>
-          </Box>
         )}
       </Stack>
-
-      {isMobile && showDetails && (
-        <Stack direction="row" spacing={1.5} flexWrap="wrap">
-          <Typography sx={{ color: 'success.main', fontWeight: 700 }}>
-            + {fmt(up, ingreso)}
-          </Typography>
-          <Typography sx={{ color: 'error.main', fontWeight: 700 }}>
-            - {fmt(up, egreso)}
-          </Typography>
-        </Stack>
-      )}
-    </Stack>
+    </Box>
   );
 };
 
@@ -962,7 +871,6 @@ const CajasPage = () => {
   const [detalleMov, setDetalleMov] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [showTotalsDetails, setShowTotalsDetails] = useState(false);
   const [mobileActionAnchor, setMobileActionAnchor] = useState(null);
   const [mobileActionMov, setMobileActionMov] = useState(null);
   const [comentarioInput, setComentarioInput] = useState('');
@@ -2736,13 +2644,14 @@ useEffect(() => {
                   </Stack>
                 </Paper>
 
-                <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.5} alignItems="stretch">
-                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                <Box>
+                  <Box sx={{ minWidth: 0 }}>
                     <Box
                       sx={{
                         width: '100%',
                         display: 'grid',
-                        gridTemplateColumns: `repeat(auto-fill, minmax(min(100%, ${CAJA_CARD_MIN}px), 1fr))`,
+                        gridTemplateColumns: `repeat(auto-fill, minmax(min(100%, ${CAJA_CARD_MIN}px), ${CAJA_CARD_MAX}px))`,
+                        justifyContent: 'center',
                         gap: 1.25,
                         pb: 0.5,
                       }}
@@ -2790,8 +2699,8 @@ useEffect(() => {
                                 textTransform: 'none',
                                 bgcolor: selected ? undefined : 'transparent',
                                 backgroundImage: selected ? undefined : tone.bg,
-                                borderColor: selected ? undefined : 'rgba(118,117,134,0.18)',
-                                boxShadow: selected ? '0 18px 32px rgba(0,151,178,0.18)' : '0 10px 24px rgba(0,0,0,0.04)',
+                                borderColor: selected ? undefined : 'rgba(118,117,134,0.12)',
+                                boxShadow: selected ? '0 10px 22px rgba(0,151,178,0.16)' : 'none',
                               }}
                             >
                               <Stack spacing={0.9} sx={{ minWidth: 0, flex: 1, width: '100%' }}>
@@ -2907,36 +2816,17 @@ useEffect(() => {
                     </Box>
                   </Box>
 
-                  <Box
-                    sx={{
-                      width: { xs: '100%', lg: 300 },
-                      flex: { lg: '0 0 300px' },
-                      position: { xs: 'static', lg: 'sticky' },
-                      top: 12,
-                      zIndex: 6,
-                      borderRadius: 2,
-                      backdropFilter: 'blur(8px)',
-                      flexShrink: 0,
-                    }}
-                  >
-                  <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 3, borderColor: 'rgba(118,117,134,0.16)', background: 'rgba(255,255,255,0.7)' }}>
-                    <TotalesFiltrados
-                      t={totalesDetallados}
-                      fmt={formatByCurrency}
-                      moneda={activeTotalsCurrency}
-                      totalesFormat={totalesFormat}
-                      showUsdBlue={false}
-                      usdBlue={totalesUsdBlue}
-                      chips={filterChips}
-                      onOpenFilters={() => setFiltersOpen((o) => !o)}
-                      isMobile={isMobile}
-                      showDetails={showTotalsDetails}
-                      onToggleDetails={() => setShowTotalsDetails((s) => !s)}
-                      baseCalculo={activeCaja?.baseCalculo || 'total'}
-                    />
-                  </Paper>
-                  </Box>
-                </Stack>
+                  <TotalesFiltrados
+                    t={totalesDetallados}
+                    fmt={formatByCurrency}
+                    moneda={activeTotalsCurrency}
+                    totalesFormat={totalesFormat}
+                    chips={filterChips}
+                    onOpenFilters={() => setFiltersOpen((o) => !o)}
+                    isMobile={isMobile}
+                    baseCalculo={activeCaja?.baseCalculo || 'total'}
+                  />
+                </Box>
 
                 {isMobile ? (
                   <Drawer
