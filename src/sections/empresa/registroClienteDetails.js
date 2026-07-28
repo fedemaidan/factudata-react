@@ -537,6 +537,7 @@ export const RegistroClienteDetails = ({ empresa }) => {
                       <MenuItem value="">—</MenuItem>
                       <MenuItem value="facu">Facu</MenuItem>
                       <MenuItem value="fede">Fede</MenuItem>
+                      <MenuItem value="lucha">Lucha</MenuItem>
                       <MenuItem value="otro">Otro</MenuItem>
                     </TextField>
                   </Grid>

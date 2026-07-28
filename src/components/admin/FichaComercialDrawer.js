@@ -17,7 +17,7 @@ import MoneyField from 'src/components/MoneyField';
 const PERIODICIDADES = ['mensual', 'bimestral', 'semestral', 'anual'];
 const PLANES = ['Plan Independiente', 'Plan Básico', 'Plan Intermedio', 'Plan Premium'];
 const CAJAS = ['facu', 'fede', 'puente', 'lucha'];
-const fmtMoney = (n, mon = 'ARS') => (n == null ? '—' : `${Number(n).toLocaleString('es-AR')} ${mon}`);
+const fmtMoney = (n, mon = 'ARS') => (n == null ? '—' : `${Number(n).toLocaleString('es-AR', { maximumFractionDigits: 0 })} ${mon}`);
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('es-AR') : '—');
 const fmtDateTime = (d) => (d ? new Date(d).toLocaleString('es-AR') : '—');
 const toInput = (d) => (d ? new Date(d).toISOString().slice(0, 10) : '');
@@ -62,6 +62,7 @@ export default function FichaComercialDrawer({ empresaId, open, onClose, onSaved
         periodicidad: s.periodicidad || 'mensual', en_cuotas: !!s.en_cuotas, cantidad_cuotas: s.cantidad_cuotas ?? '',
         fecha_inicio: toInput(s.fecha_inicio), semana_pago: s.semana_pago ?? '', caja_default: s.caja_default || '',
         paga_por_mp: !!s.paga_por_mp, mp_name: s.mp_name || '',
+        comision_mp_pct: s.comision_mp_pct != null ? String(Math.round(s.comision_mp_pct * 10000) / 100) : '',
         requiere_factura: !!s.requiere_factura, responsable_facturacion: s.responsable_facturacion || '',
         razon_social_facturacion: s.razon_social_facturacion || '', cuit_facturacion: s.cuit_facturacion || '',
       });
@@ -101,6 +102,7 @@ export default function FichaComercialDrawer({ empresaId, open, onClose, onSaved
           caja_default: form.caja_default || null,
           paga_por_mp: form.paga_por_mp,
           mp_name: form.mp_name || null,
+          comision_mp_pct: form.comision_mp_pct !== '' && form.comision_mp_pct != null ? Number(form.comision_mp_pct) / 100 : null,
           requiere_factura: form.requiere_factura,
           responsable_facturacion: form.responsable_facturacion || null,
           razon_social_facturacion: form.razon_social_facturacion || null,
@@ -263,13 +265,14 @@ export default function FichaComercialDrawer({ empresaId, open, onClose, onSaved
                   <Grid item xs={6} sm={3}><TextField label="Caja" select size="small" fullWidth value={form.caja_default} onChange={(ev) => setF('caja_default', ev.target.value)}><MenuItem value="">—</MenuItem>{CAJAS.map((c) => <MenuItem key={c} value={c}>{c}</MenuItem>)}</TextField></Grid>
                   <Grid item xs={6} sm={3}><FormControlLabel control={<Switch checked={form.paga_por_mp} onChange={(ev) => setF('paga_por_mp', ev.target.checked)} />} label="Paga por MP" /></Grid>
                   {form.paga_por_mp && <Grid item xs={6} sm={3}><TextField label="MP Name" size="small" fullWidth value={form.mp_name} onChange={(ev) => setF('mp_name', ev.target.value)} /></Grid>}
+                  {form.paga_por_mp && <Grid item xs={6} sm={3}><TextField label="Comisión MP % (opcional)" type="number" size="small" fullWidth value={form.comision_mp_pct} onChange={(ev) => setF('comision_mp_pct', ev.target.value)} helperText="Vacío = usa la general" /></Grid>}
                 </Grid>
 
                 <Divider />
                 <Typography variant="subtitle2" color="text.secondary">Facturación</Typography>
                 <Grid container spacing={2} alignItems="center">
                   <Grid item xs={12} sm={4}><FormControlLabel control={<Switch checked={form.requiere_factura} onChange={(ev) => setF('requiere_factura', ev.target.checked)} />} label="Requiere factura" /></Grid>
-                  <Grid item xs={12} sm={4}><TextField label="Responsable" select size="small" fullWidth value={form.responsable_facturacion} onChange={(ev) => setF('responsable_facturacion', ev.target.value)}><MenuItem value="">—</MenuItem><MenuItem value="facu">Facu</MenuItem><MenuItem value="fede">Fede</MenuItem><MenuItem value="otro">Otro</MenuItem></TextField></Grid>
+                  <Grid item xs={12} sm={4}><TextField label="Responsable" select size="small" fullWidth value={form.responsable_facturacion} onChange={(ev) => setF('responsable_facturacion', ev.target.value)}><MenuItem value="">—</MenuItem><MenuItem value="facu">Facu</MenuItem><MenuItem value="fede">Fede</MenuItem><MenuItem value="lucha">Lucha</MenuItem><MenuItem value="otro">Otro</MenuItem></TextField></Grid>
                   <Grid item xs={12} sm={4}><TextField label="CUIT facturación" size="small" fullWidth value={form.cuit_facturacion} onChange={(ev) => setF('cuit_facturacion', ev.target.value)} /></Grid>
                   <Grid item xs={12}><TextField label="Razón social facturación" size="small" fullWidth value={form.razon_social_facturacion} onChange={(ev) => setF('razon_social_facturacion', ev.target.value)} /></Grid>
                 </Grid>

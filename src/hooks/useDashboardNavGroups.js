@@ -21,6 +21,7 @@ import AutoAwesomeRoundedIcon from "@mui/icons-material/AutoAwesomeRounded";
 import EventAvailableIcon from "@mui/icons-material/EventAvailable";
 import AssignmentReturnIcon from "@mui/icons-material/AssignmentReturn";
 import MoveToInboxIcon from "@mui/icons-material/MoveToInbox";
+import ReportProblemIcon from "@mui/icons-material/ReportProblem";
 import { useAuthContext } from "src/contexts/auth-context";
 import { getProyectosFromUser } from "src/services/proyectosService";
 import { modoLecturaEnProyecto } from "src/utils/permisos/accionesPorProyecto";
@@ -402,7 +403,9 @@ export function useDashboardNavGroups() {
             { title: "Resumen del mes", path: "/admin-resumen", icon: icon(SummarizeIcon) },
             { title: "Clientes", path: "/admin-clientes", icon: icon(PeopleIcon) },
             { title: "Cobranzas", path: "/admin-cobranzas", icon: icon(AttachMoneyIcon) },
+            { title: "Deuda / Mora", path: "/admin-mora", icon: icon(ReportProblemIcon) },
             { title: "Reportes", path: "/admin-reportes", icon: icon(AssessmentIcon) },
+            { title: "Configuración", path: "/admin-config", icon: icon(SettingsIcon) },
           ],
         });
       }

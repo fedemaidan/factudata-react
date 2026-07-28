@@ -44,13 +44,20 @@ import EventBusyIcon from '@mui/icons-material/EventBusy';
 import EventAvailableIcon from '@mui/icons-material/EventAvailable';
 import UpdateIcon from '@mui/icons-material/Update';
 import RestoreIcon from '@mui/icons-material/Restore';
+import DoneAllIcon from '@mui/icons-material/DoneAll';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import adminSuscripcionService from 'src/services/adminSuscripcionService';
 import FichaComercialDrawer from 'src/components/admin/FichaComercialDrawer';
 import MoneyField from 'src/components/MoneyField';
 
-const fmtMoney = (n, mon = 'ARS') => (n == null ? '—' : `${Number(n).toLocaleString('es-AR')} ${mon}`);
+const fmtMoney = (n, mon = 'ARS') => (n == null ? '—' : `${Number(n).toLocaleString('es-AR', { maximumFractionDigits: 0 })} ${mon}`);
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('es-AR') : '—');
+// Fecha pura 'YYYY-MM-DD' → 'dd/MM/yyyy' SIN conversión de zona horaria (TAR-497 T6b).
+const fmtFechaPura = (s) => {
+  if (!s) return '—';
+  const [y, m, d] = String(s).split('-');
+  return d ? `${d}/${m}/${y}` : fmtDate(s);
+};
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const currentMonth = () => {
   const d = new Date();
@@ -67,7 +74,6 @@ const ESTADO_CHIP = {
 const ESTADOS = ['pendiente', 'pago_parcial', 'pagado', 'vencido', 'omitido'];
 
 const MOTIVOS = ['descuento', 'bonificacion', 'comision', 'dif_cambio', 'ajuste', 'otro'];
-const MP_FEE = 0.05; // costo Mercado Pago (debe coincidir con SORBY_MP_COMISION del backend)
 
 const SORT = {
   cliente: (r) => (r.empresa_nombre || '').toLowerCase(),
@@ -83,9 +89,13 @@ const AdminCobranzas = () => {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
-  const [fEstado, setFEstado] = useState('');
+  const [fEstado, setFEstado] = useState([]); // multiestado; [] = todos menos omitidas (T11b)
   const [fSemana, setFSemana] = useState('');
   const [fMp, setFMp] = useState('');
+  const [deuda, setDeuda] = useState({}); // empresa_id → deuda_total acumulada (T6a)
+  const [deudaTotal, setDeudaTotal] = useState(0);
+  const [notaEdit, setNotaEdit] = useState(null); // { empresaId, periodo, texto } (T8)
+  const [comisionGeneral, setComisionGeneral] = useState(0.0629); // % MP general, fracción (T7)
   const [orderBy, setOrderBy] = useState('vencimiento');
   const [order, setOrder] = useState('asc');
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
@@ -104,7 +114,15 @@ const AdminCobranzas = () => {
   const cargar = useCallback(async () => {
     try {
       setLoading(true);
-      setRows(await adminSuscripcionService.cobranzas(periodo));
+      const [cob, deu] = await Promise.all([
+        adminSuscripcionService.cobranzas(periodo),
+        adminSuscripcionService.deudaGeneral(),
+      ]);
+      setRows(cob);
+      const map = {};
+      (deu.clientes || []).forEach((c) => { map[c.empresa_id] = c.deuda_total; });
+      setDeuda(map);
+      setDeudaTotal(deu.total || 0);
     } catch (e) {
       setSnackbar({ open: true, message: 'Error al cargar cobranzas', severity: 'error' });
     } finally {
@@ -114,10 +132,20 @@ const AdminCobranzas = () => {
 
   useEffect(() => { cargar(); }, [cargar]);
 
+  // Comisión MP general (fallback si el cliente no tiene override). T7.
+  useEffect(() => {
+    adminSuscripcionService.getConfig()
+      .then((c) => { if (c?.comision_mp_general != null) setComisionGeneral(c.comision_mp_general); })
+      .catch(() => {});
+  }, []);
+
   const handleSort = (key) => {
     if (orderBy === key) setOrder((o) => (o === 'asc' ? 'desc' : 'asc'));
     else { setOrderBy(key); setOrder('asc'); }
   };
+
+  // % pre-cargado: override del cliente si tiene, si no la comisión general. T7.
+  const pctInicial = (row) => String(round2(((row.comision_mp_pct != null ? row.comision_mp_pct : comisionGeneral) * 100)));
 
   const abrirCobro = (row) => {
     setDialog({ row, mode: 'registrar' });
@@ -126,6 +154,7 @@ const AdminCobranzas = () => {
       monto: String(row.saldo || row.importe_esperado || ''),
       caja: 'facu',
       medio_pago: row.paga_por_mp ? 'mp' : 'transferencia',
+      comision_pct: pctInicial(row),
       facturado: false,
       factura_a_nombre_de: '',
       motivo_diferencia: '',
@@ -139,6 +168,7 @@ const AdminCobranzas = () => {
       monto: String(cobro.importe_cobrado ?? ''),
       caja: cobro.caja_key || 'facu',
       medio_pago: cobro.medio_pago || 'transferencia',
+      comision_pct: String(round2(((cobro.comision_mp_pct != null ? cobro.comision_mp_pct : (row.comision_mp_pct != null ? row.comision_mp_pct : comisionGeneral)) * 100))),
       facturado: !!cobro.facturado,
       factura_a_nombre_de: '',
       motivo_diferencia: '',
@@ -163,6 +193,8 @@ const AdminCobranzas = () => {
           importe_cobrado: monto,
           caja: form.caja,
           medio_pago: form.medio_pago,
+          comision_mp_pct: form.medio_pago === 'mp' && form.comision_pct !== '' && form.comision_pct != null
+            ? Number(form.comision_pct) / 100 : undefined,
           facturado: form.facturado,
           factura_a_nombre_de: form.factura_a_nombre_de || null,
         });
@@ -193,6 +225,8 @@ const AdminCobranzas = () => {
         moneda: row.moneda,
         caja: form.caja,
         medio_pago: form.medio_pago,
+        comision_mp_pct: form.medio_pago === 'mp' && form.comision_pct !== '' && form.comision_pct != null
+          ? Number(form.comision_pct) / 100 : undefined,
         facturado: form.facturado,
         factura_a_nombre_de: form.factura_a_nombre_de || null,
         motivo_diferencia: diff ? form.motivo_diferencia : null,
@@ -236,6 +270,39 @@ const AdminCobranzas = () => {
     }
   };
 
+  // Guarda la nota de seguimiento del período (T8). Se dispara al salir del campo.
+  const guardarNota = async () => {
+    if (!notaEdit) return;
+    const { empresaId, periodo: per, texto } = notaEdit;
+    const row = rows.find((r) => r.empresa_id === empresaId && r.periodo === per);
+    setNotaEdit(null);
+    const limpio = (texto || '').trim();
+    if ((row?.nota || '') === limpio) return; // sin cambios
+    try {
+      await adminSuscripcionService.setNotaCobranza(empresaId, per, limpio);
+      setRows((rs) => rs.map((r) => (
+        r.empresa_id === empresaId && r.periodo === per ? { ...r, nota: limpio || null } : r
+      )));
+    } catch (e) {
+      setSnackbar({ open: true, message: 'Error al guardar la nota', severity: 'error' });
+    }
+  };
+
+  // Cierra el saldo de un parcial (T11b): queda como pagada, sin tocar la caja.
+  const cerrarParcialAction = async (row) => {
+    cerrarMenu();
+    try {
+      setSaving(true);
+      await adminSuscripcionService.cerrarParcial(row.empresa_id, row.periodo, 'cierre manual');
+      setSnackbar({ open: true, message: 'Saldo cerrado — queda como pagada', severity: 'success' });
+      await cargar();
+    } catch (e) {
+      setSnackbar({ open: true, message: e?.response?.data?.error || 'Error al cerrar el saldo', severity: 'error' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const abrirPosponer = (row) => {
     setPosponerState({ row });
     setPosMeses('3');
@@ -267,7 +334,8 @@ const AdminCobranzas = () => {
 
   const filtered = rows.filter((r) => {
     if (q && !(r.empresa_nombre || '').toLowerCase().includes(q.toLowerCase())) return false;
-    if (fEstado && r.estado !== fEstado) return false;
+    if (fEstado.length > 0) { if (!fEstado.includes(r.estado)) return false; }
+    else if (r.estado === 'omitido') return false; // omitidas ocultas por default (T11b)
     if (fSemana && String(r.semana_pago || '') !== fSemana) return false;
     if (fMp === 'si' && !r.paga_por_mp) return false;
     if (fMp === 'no' && r.paga_por_mp) return false;
@@ -320,8 +388,9 @@ const AdminCobranzas = () => {
                 { k: 'Esperado', v: fmtMoney(round2(tot.esperado)), c: 'text.primary' },
                 { k: 'Cobrado', v: fmtMoney(round2(tot.cobrado)), c: 'success.main' },
                 { k: 'Vencido', v: fmtMoney(round2(tot.vencido)), c: 'error.main' },
+                { k: 'Deuda total general', v: fmtMoney(round2(deudaTotal)), c: 'error.main' },
               ].map((m) => (
-                <Grid item xs={6} sm={4} key={m.k}>
+                <Grid item xs={6} sm={3} key={m.k}>
                   <Card variant="outlined" sx={{ p: 2 }}>
                     <Typography variant="caption" color="text.secondary">{m.k}</Typography>
                     <Typography variant="h5" sx={{ color: m.c }}>{m.v}</Typography>
@@ -336,8 +405,8 @@ const AdminCobranzas = () => {
                 <Grid item xs={6} sm={3} key={est}>
                   <Card
                     variant="outlined"
-                    sx={{ p: 2, cursor: 'pointer', borderColor: fEstado === est ? 'primary.main' : undefined }}
-                    onClick={() => setFEstado((s) => (s === est ? '' : est))}
+                    sx={{ p: 2, cursor: 'pointer', borderColor: fEstado.includes(est) ? 'primary.main' : undefined }}
+                    onClick={() => setFEstado((s) => (s.includes(est) ? s.filter((x) => x !== est) : [...s, est]))}
                   >
                     <Stack direction="row" alignItems="center" justifyContent="space-between">
                       <Chip label={ESTADO_CHIP[est].label} size="small" color={ESTADO_CHIP[est].color} variant="outlined" />
@@ -355,8 +424,18 @@ const AdminCobranzas = () => {
                 onChange={(e) => setQ(e.target.value)}
                 InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon /></InputAdornment> }}
               />
-              <TextField {...selProps} label="Estado" value={fEstado} onChange={(e) => setFEstado(e.target.value)}>
-                <MenuItem value="">Todos</MenuItem>
+              <TextField
+                {...selProps} label="Estado" value={fEstado}
+                SelectProps={{
+                  multiple: true,
+                  displayEmpty: true,
+                  renderValue: (sel) => (sel.length
+                    ? sel.map((s) => ESTADO_CHIP[s]?.label || s).join(', ')
+                    : 'Todos (menos omitidas)'),
+                }}
+                InputLabelProps={{ shrink: true }}
+                onChange={(e) => setFEstado(typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value)}
+              >
                 {ESTADOS.map((est) => <MenuItem key={est} value={est}>{ESTADO_CHIP[est].label}</MenuItem>)}
               </TextField>
               <TextField {...selProps} label="Semana" value={fSemana} onChange={(e) => setFSemana(e.target.value)}>
@@ -368,8 +447,8 @@ const AdminCobranzas = () => {
                 <MenuItem value="si">Sí</MenuItem>
                 <MenuItem value="no">No</MenuItem>
               </TextField>
-              {(q || fEstado || fSemana || fMp) && (
-                <Button size="small" onClick={() => { setQ(''); setFEstado(''); setFSemana(''); setFMp(''); }}>Limpiar</Button>
+              {(q || fEstado.length || fSemana || fMp) && (
+                <Button size="small" onClick={() => { setQ(''); setFEstado([]); setFSemana(''); setFMp(''); }}>Limpiar</Button>
               )}
             </Stack>
 
@@ -381,15 +460,19 @@ const AdminCobranzas = () => {
                     <TableCell>Período</TableCell>
                     <Header id="vencimiento" label="Vence" />
                     <Header id="semana" label="Sem" align="center" />
+                    <TableCell align="center">MP</TableCell>
+                    <TableCell>MP Name</TableCell>
                     <Header id="esperado" label="Esperado" align="right" />
                     <Header id="saldo" label="Saldo" align="right" />
+                    <TableCell align="right">Deuda total</TableCell>
                     <Header id="estado" label="Estado" />
+                    <TableCell>Nota</TableCell>
                     <TableCell />
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {loading && [...Array(6)].map((_, i) => (
-                    <TableRow key={i}><TableCell colSpan={8}><Skeleton height={28} /></TableCell></TableRow>
+                    <TableRow key={i}><TableCell colSpan={12}><Skeleton height={28} /></TableCell></TableRow>
                   ))}
                   {!loading && sorted.map((r, i) => {
                     const chip = ESTADO_CHIP[r.estado] || ESTADO_CHIP.pendiente;
@@ -406,7 +489,7 @@ const AdminCobranzas = () => {
                         </TableCell>
                         <TableCell>{r.periodo}{r.numero_cuota ? ` · cuota ${r.numero_cuota}` : ''}</TableCell>
                         <TableCell>
-                          {fmtDate(r.fecha_vencimiento)}
+                          {r.fecha_vencimiento_str ? fmtFechaPura(r.fecha_vencimiento_str) : fmtDate(r.fecha_vencimiento)}
                           {r.movido && (
                             <Chip
                               label={`pospuesto ${r.meses_movido}m`} size="small" color="info" variant="outlined"
@@ -415,9 +498,36 @@ const AdminCobranzas = () => {
                           )}
                         </TableCell>
                         <TableCell align="center">{r.semana_pago || '—'}</TableCell>
+                        <TableCell align="center">
+                          {r.paga_por_mp ? <Chip label="MP" size="small" color="info" variant="outlined" /> : '—'}
+                        </TableCell>
+                        <TableCell>{r.mp_name || '—'}</TableCell>
                         <TableCell align="right">{fmtMoney(r.importe_esperado, r.moneda)}</TableCell>
                         <TableCell align="right">{fmtMoney(r.saldo, r.moneda)}</TableCell>
+                        <TableCell align="right">
+                          {deuda[r.empresa_id] ? (
+                            <Typography variant="body2" color="error.main">{fmtMoney(deuda[r.empresa_id], r.moneda)}</Typography>
+                          ) : '—'}
+                        </TableCell>
                         <TableCell><Chip label={chip.label} size="small" color={chip.color} variant="outlined" /></TableCell>
+                        <TableCell sx={{ minWidth: 120 }}>
+                          {notaEdit && notaEdit.empresaId === r.empresa_id && notaEdit.periodo === r.periodo ? (
+                            <TextField
+                              size="small" variant="standard" autoFocus fullWidth placeholder="Nota…"
+                              value={notaEdit.texto}
+                              onChange={(e) => setNotaEdit({ ...notaEdit, texto: e.target.value })}
+                              onBlur={guardarNota}
+                              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); guardarNota(); } }}
+                            />
+                          ) : (
+                            <Box
+                              onClick={() => setNotaEdit({ empresaId: r.empresa_id, periodo: r.periodo, texto: r.nota || '' })}
+                              sx={{ cursor: 'pointer', fontSize: 13, color: r.nota ? 'text.primary' : 'text.disabled' }}
+                            >
+                              {r.nota || '＋ nota'}
+                            </Box>
+                          )}
+                        </TableCell>
                         <TableCell align="right">
                           <Stack direction="row" spacing={0.5} justifyContent="flex-end" alignItems="center">
                             <Button
@@ -435,7 +545,7 @@ const AdminCobranzas = () => {
                     );
                   })}
                   {!loading && sorted.length === 0 && (
-                    <TableRow><TableCell colSpan={8} align="center" sx={{ py: 4 }}>
+                    <TableRow><TableCell colSpan={12} align="center" sx={{ py: 4 }}>
                       <Typography color="text.secondary">No hay cobranzas para este filtro.</Typography>
                     </TableCell></TableRow>
                   )}
@@ -489,10 +599,25 @@ const AdminCobranzas = () => {
                   <MenuItem value="mp">Mercado Pago</MenuItem>
                   <MenuItem value="cheque">Cheque</MenuItem>
                 </TextField>
-                {form.medio_pago === 'mp' && round2(form.monto) > 0 && (
-                  <Alert severity="info" sx={{ py: 0 }}>
-                    Costo Mercado Pago ({Math.round(MP_FEE * 100)}%): {fmtMoney(round2(round2(form.monto) * MP_FEE), dialog.row.moneda)} (egreso) · neto en caja {fmtMoney(round2(round2(form.monto) * (1 - MP_FEE)), dialog.row.moneda)}
-                  </Alert>
+                {form.medio_pago === 'mp' && (
+                  <Stack spacing={1}>
+                    <TextField
+                      label="Comisión Mercado Pago (%)" type="number" size="small" fullWidth
+                      value={form.comision_pct}
+                      onChange={(e) => setF('comision_pct', e.target.value)}
+                      InputProps={{ endAdornment: <InputAdornment position="end">%</InputAdornment> }}
+                      helperText={
+                        dialog.row.comision_mp_pct != null
+                          ? 'Comisión propia del cliente. Podés pisarla solo para este cobro.'
+                          : `Comisión general (${round2(comisionGeneral * 100)}%). Podés pisarla solo para este cobro.`
+                      }
+                    />
+                    {round2(form.monto) > 0 && (
+                      <Alert severity="info" sx={{ py: 0 }}>
+                        Comisión: {fmtMoney(round2(round2(form.monto) * (Number(form.comision_pct) || 0) / 100), dialog.row.moneda)} (egreso) · neto en caja {fmtMoney(round2(round2(form.monto) * (1 - (Number(form.comision_pct) || 0) / 100)), dialog.row.moneda)}
+                      </Alert>
+                    )}
+                  </Stack>
                 )}
                 <Stack direction="row" spacing={2} alignItems="center">
                   <FormControlLabel
@@ -504,6 +629,7 @@ const AdminCobranzas = () => {
                       value={form.factura_a_nombre_de} onChange={(e) => setF('factura_a_nombre_de', e.target.value)}>
                       <MenuItem value="facu">Facu</MenuItem>
                       <MenuItem value="fede">Fede</MenuItem>
+                      <MenuItem value="lucha">Lucha</MenuItem>
                     </TextField>
                   )}
                 </Stack>
@@ -537,6 +663,13 @@ const AdminCobranzas = () => {
           <MenuItem onClick={() => toggleOmitir(menuRow, true)}>
             <ListItemIcon><EventBusyIcon fontSize="small" /></ListItemIcon>
             <ListItemText primary="Omitir este mes" secondary="No se cobra este período" />
+          </MenuItem>
+        )}
+        {/* Cerrar el saldo de un parcial → queda como pagada (T11b) */}
+        {menuRow?.estado === 'pago_parcial' && (
+          <MenuItem onClick={() => cerrarParcialAction(menuRow)}>
+            <ListItemIcon><DoneAllIcon fontSize="small" color="success" /></ListItemIcon>
+            <ListItemText primary="Marcar como pagada" secondary="Da por saldado el resto" />
           </MenuItem>
         )}
         {/* Posponer el vencimiento (correr la cuota a futuro) */}

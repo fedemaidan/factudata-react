@@ -636,6 +636,32 @@ const [compactCols, setCompactCols] = useState(true);
 const [anchorColsEl, setAnchorColsEl] = useState(null);
 const [columnasOrden, setColumnasOrden] = useState([]);
 const [openOrdenar, setOpenOrdenar] = useState(false);
+// Anchos de columna ajustables por el usuario (TAR-497 T-ancho). key → px.
+// Se mergean sobre COLS y se persisten en ui_prefs.columnas.anchos.
+const [colWidths, setColWidths] = useState({});
+const resizingRef = useRef(null);
+const effectiveCols = useMemo(() => ({ ...COLS, ...colWidths }), [colWidths]);
+
+// Arranca el drag de resize desde el borde derecho del header de una columna.
+const onColResizeStart = (e, key) => {
+  e.preventDefault();
+  e.stopPropagation();
+  const startW = colWidths[key] ?? COLS[key] ?? 140;
+  resizingRef.current = { key, startX: e.clientX, startW };
+  const onMove = (ev) => {
+    if (!resizingRef.current) return;
+    const delta = ev.clientX - resizingRef.current.startX;
+    const w = Math.max(60, Math.round(resizingRef.current.startW + delta));
+    setColWidths((c) => ({ ...c, [resizingRef.current.key]: w }));
+  };
+  const onUp = () => {
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+    resizingRef.current = null;
+  };
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+};
 
 // --- helpers de scroll horizontal ---
 const scrollRef = useRef(null);      // contenedor principal con overflow
@@ -768,6 +794,7 @@ const handleSaveCols = async () => {
             compact: compactCols,
             visible: visibleCols,
             orden: columnasOrden,
+            anchos: colWidths,
           },
         },
       });
@@ -1371,6 +1398,9 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
         if (Array.isArray(savedCols.orden)) {
           setColumnasOrden(savedCols.orden);
         }
+        if (savedCols.anchos && typeof savedCols.anchos === 'object') {
+          setColWidths(savedCols.anchos);
+        }
       }
       setPrefsHydrated(true);
       await fetchAndHydrateMovimientos(proyectoId);
@@ -1484,10 +1514,10 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
     handleEliminarClick,
     onOpenConfirmarPago: handleOpenConfirmarPago,
     deletingElement,
-    COLS,
+    COLS: effectiveCols,
     cellBase,
     ellipsis,
-  }), [empresa, compactCols, deletingElement, openDetalle, handleOpenConfirmarPago]);
+  }), [empresa, compactCols, deletingElement, openDetalle, handleOpenConfirmarPago, effectiveCols]);
 
   const onSelectCaja = (caja) => {
     applyCajaSelection(caja);
@@ -2827,11 +2857,28 @@ useEffect(() => {
             onChange={toggleSelectAll}
           />
         </TableCell>
-        {columnasFiltradas.map(([key]) => (
-          <TableCell key={key} sx={getHeaderCellSx(key, COLS, cellBase)}>
-            {getHeaderLabel(key, compactCols)}
-          </TableCell>
-        ))}
+        {columnasFiltradas.map(([key]) => {
+          const sticky = key === 'codigo' || key === 'acciones';
+          return (
+            <TableCell
+              key={key}
+              sx={{ ...getHeaderCellSx(key, effectiveCols, cellBase), ...(sticky ? {} : { position: 'relative' }) }}
+            >
+              {getHeaderLabel(key, compactCols)}
+              {!sticky && (
+                <Box
+                  onMouseDown={(e) => onColResizeStart(e, key)}
+                  onClick={(e) => e.stopPropagation()}
+                  sx={{
+                    position: 'absolute', top: 0, right: 0, height: '100%', width: '8px',
+                    cursor: 'col-resize', userSelect: 'none', zIndex: 1,
+                    '&:hover': { bgcolor: 'primary.main', opacity: 0.4 },
+                  }}
+                />
+              )}
+            </TableCell>
+          );
+        })}
 
       </TableRow>
     </TableHead>
