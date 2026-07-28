@@ -15,7 +15,7 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import DatePicker from 'react-datepicker';
 import { subDays, startOfMonth, endOfMonth } from 'date-fns';
 import FiltrosGuardadosService from 'src/services/filtrosGuardadosService';
-import { FILTER_ARRAY_KEYS, FILTER_DATE_KEYS, defaultMovimientosFilters, getCajaMediosPago } from 'src/utils/parseData';
+import { FILTER_ARRAY_KEYS, FILTER_DATE_KEYS, defaultMovimientosFilters } from 'src/utils/parseData';
 
 // El calendario de react-datepicker se renderiza en un portal a <body> para
 // escapar el `overflow: hidden` del contenedor de filtros, y con posición fixed
@@ -50,23 +50,6 @@ const logFilterBar = (label, payload) => {
 
 // defaultFilters importado como defaultMovimientosFilters desde parseData.js
 const defaultFilters = defaultMovimientosFilters;
-
-// Mapeo de campos de caja virtual → nombre del filtro que bloquean
-const CAJA_SCOPE_FILTER_MAP = {
-  moneda:     'moneda',
-  estado:     'estados',
-  type:       'tipo',
-};
-
-// Campos de caja virtual multi-valor → filtro multi-select que bloquean.
-// A diferencia de CAJA_SCOPE_FILTER_MAP, acá el lock viene de un array (puede
-// tener uno o varios valores) y se renderiza como selección fija de esos valores.
-// Los medios de pago también bloquean multi-valor, pero se resuelven aparte con
-// getCajaMediosPago por el fallback al campo legacy `medio_pago`.
-const CAJA_SCOPE_MULTI_FILTER_MAP = {
-  categorias: 'categorias',
-  asignados: 'asignados',
-};
 
 // Sentinel para movimientos con asignado=null (espejo del backend).
 export const SIN_ASIGNAR_SENTINEL = '__sin_asignar__';
@@ -110,7 +93,6 @@ export const FilterBarCajaProyecto = ({
   showCodigoSync = false,
   searchRequiresSubmit = false,
   searchMinLength = 0,
-  cajaScope = null,    // caja virtual activa; bloquea sus dimensiones en el FilterBar
 }) => {
   const [focusField, setFocusField] = useState(null);
 
@@ -125,30 +107,6 @@ export const FilterBarCajaProyecto = ({
   // cuando una limpieza externa (chip, clearAll) sincroniza los drafts hacia abajo.
   const lastCommitRef = useRef({ palabras: filters.palabras || '', observacion: filters.observacion || '', codigoSync: filters.codigoSync || '' });
   const debounceTimerRef = useRef(null);
-
-  // filterName → valor fijo de la caja activa (solo para dimensiones que la caja define)
-  const cajaScopeLocks = useMemo(() => {
-    if (!cajaScope) return {};
-    return Object.entries(CAJA_SCOPE_FILTER_MAP).reduce((acc, [cajaKey, filterKey]) => {
-      if (cajaScope[cajaKey]) acc[filterKey] = cajaScope[cajaKey];
-      return acc;
-    }, {});
-  }, [cajaScope]);
-
-  // Locks multi-valor: la caja fija varios valores del mismo filtro a la vez.
-  // p.ej. caja con categorias=['Materiales','Mano de obra'] → el filtro categorias
-  // queda fijado a esos dos valores y deshabilitado para el usuario.
-  const cajaScopeMultiLocks = useMemo(() => {
-    if (!cajaScope) return {};
-    const locks = Object.entries(CAJA_SCOPE_MULTI_FILTER_MAP).reduce((acc, [cajaKey, filterKey]) => {
-      const vals = cajaScope[cajaKey];
-      if (Array.isArray(vals) && vals.length > 0) acc[filterKey] = vals;
-      return acc;
-    }, {});
-    const mediosPago = getCajaMediosPago(cajaScope);
-    if (mediosPago.length > 0) locks.medioPago = mediosPago;
-    return locks;
-  }, [cajaScope]);
 
   // Sincronizar drafts cuando los filtros cambian externamente (chips, clearAll, cargar filtro guardado).
   useEffect(() => {
@@ -401,23 +359,17 @@ export const FilterBarCajaProyecto = ({
 
       const isSub = filtro.name === 'subcategorias';
       const isSubDisabled = isSub && !(Array.isArray(filters.categorias) && filters.categorias.length > 0);
-      const cajaLockValue = cajaScopeLocks[filtro.name];
-      const cajaMultiLockValues = cajaScopeMultiLocks[filtro.name];
-      const isLockedByCaja = !!cajaLockValue || (Array.isArray(cajaMultiLockValues) && cajaMultiLockValues.length > 0);
-      const isDisabled = isSubDisabled || isLockedByCaja;
-      const tooltipTitle = isLockedByCaja
-        ? `Fijado por la caja "${cajaScope?.nombre}"`
-        : isSubDisabled
-          ? 'Seleccioná una categoría primero para filtrar por subcategoría'
-          : '';
+      // TAR-633: se eliminó el "lock por caja" — la barra queda libre y los filtros
+      // de la caja se muestran como chips read-only (combinan con AND).
+      const isDisabled = isSubDisabled;
+      const tooltipTitle = isSubDisabled
+        ? 'Seleccioná una categoría primero para filtrar por subcategoría'
+        : '';
       let selectOptions = isSub ? subcategoriasDisponibles : (filtro.options || options[filtro.optionsKey] || []);
       if (filtro.includeSinAsignar && !selectOptions.includes(SIN_ASIGNAR_SENTINEL)) {
         selectOptions = [SIN_ASIGNAR_SENTINEL, ...selectOptions];
       }
-      let displayValue;
-      if (cajaMultiLockValues) displayValue = cajaMultiLockValues;
-      else if (cajaLockValue) displayValue = [cajaLockValue];
-      else displayValue = toArrLocal(value);
+      const displayValue = toArrLocal(value);
       const renderOptLabel = (opt) => (opt === SIN_ASIGNAR_SENTINEL ? SIN_ASIGNAR_LABEL : opt);
 
       return (
