@@ -78,13 +78,14 @@ const pdfPlantillaService = {
   },
 
   // Corrector con visión (pasada 2): { code }
-  aiCorrect: async ({ code, empresaId, documentType, previewImageDataUrl }) => {
+  aiCorrect: async ({ code, empresaId, documentType, previewImageDataUrl, lastUserRequest }) => {
     try {
       const res = await api.post('pdf-plantillas/ai-correct', {
         code,
         empresaId,
         documentType,
         previewImageDataUrl,
+        lastUserRequest: lastUserRequest || null,
       });
       return res.status === 200 ? res.data?.code || null : null;
     } catch (e) {
