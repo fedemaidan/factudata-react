@@ -189,9 +189,9 @@ export default function PdfPlantillaChatDialog({
   }, []);
 
   // ── Corrector con visión (se dispara cuando hay imagen renderizada) ────────
-  const runCorrection = useCallback(async (code, imageSrc) => {
+  const runCorrection = useCallback(async (code, imageSrc, userRequest) => {
     setCorrecting(true);
-    const improved = await pdfPlantillaService.aiCorrect({ code, empresaId, documentType, previewImageDataUrl: imageSrc });
+    const improved = await pdfPlantillaService.aiCorrect({ code, empresaId, documentType, previewImageDataUrl: imageSrc, lastUserRequest: userRequest });
     setCorrecting(false);
     if (improved && improved !== code) {
       setCurrentCode(improved);
@@ -201,10 +201,10 @@ export default function PdfPlantillaChatDialog({
 
   const handlePreviewImageReady = useCallback((src) => {
     previewImageRef.current = src;
-    const codeToCorrect = awaitingCorrectionRef.current;
-    if (codeToCorrect) {
+    const pending = awaitingCorrectionRef.current;
+    if (pending) {
       awaitingCorrectionRef.current = null;
-      runCorrection(codeToCorrect, src);
+      runCorrection(pending.code, src, pending.userRequest);
     }
   }, [runCorrection]);
 
@@ -244,7 +244,7 @@ export default function PdfPlantillaChatDialog({
       // La IA puede sugerir el modo de moneda (nominal/cac/usd); movemos el selector.
       if (result.modo && sampleDataModes.includes(result.modo)) setModo(result.modo);
       if (result.code) {
-        awaitingCorrectionRef.current = result.code; // disparará el corrector al renderizar
+        awaitingCorrectionRef.current = { code: result.code, userRequest: text }; // disparará el corrector al renderizar
         setCurrentCode(result.code);
         await handleCompile(result.code);
       }

@@ -38,7 +38,10 @@ import usePresupuestosList from 'src/hooks/presupuestosProfesionales/usePresupue
 import usePlantillasList from 'src/hooks/presupuestosProfesionales/usePlantillasList';
 import usePlantillaImport from 'src/hooks/presupuestosProfesionales/usePlantillaImport';
 import { getM2BaseFromPresupuesto } from 'src/utils/presupuestos/presupuestoM2Base';
-import { validateLogoFileForUpload } from 'src/utils/presupuestos/logoFileValidation';
+import {
+  normalizePresupuestoPdfConfig,
+  aplicarPdfConfigAPresupuesto,
+} from 'src/utils/presupuestos/presupuestoPdfConfig';
 import {
   PresupuestoFormDialog,
   PresupuestoDeleteDialog,
@@ -200,6 +203,8 @@ const PresupuestosProfesionales = () => {
   // ── Datos globales ──
   const [empresaId, setEmpresaId] = useState(null);
   const [empresaNombre, setEmpresaNombre] = useState('');
+  // Formato del PDF configurado en /plantillas-pdf (null = sin configurar)
+  const [empresaPdfConfig, setEmpresaPdfConfig] = useState(null);
 
   // ── Tab principal ──
   const [currentTab, setCurrentTab] = useState(0);
@@ -219,16 +224,10 @@ const PresupuestosProfesionales = () => {
   const [ppForm, setPpForm] = useState(emptyPresupuesto);
   const [ppEditId, setPpEditId] = useState(null);
   const [ppSaving, setPpSaving] = useState(false);
-  const [ppLogoFile, setPpLogoFile] = useState(null);
-  const [ppLogoPreviewUrl, setPpLogoPreviewUrl] = useState('');
   const [ppModoDistribuir, setPpModoDistribuir] = useState(false);
   const [ppTotalObjetivo, setPpTotalObjetivo] = useState('');
-
-  useEffect(() => {
-    return () => {
-      if (ppLogoPreviewUrl) URL.revokeObjectURL(ppLogoPreviewUrl);
-    };
-  }, [ppLogoPreviewUrl]);
+  // Gate TAR-658: sin formato de PDF configurado no se pueden crear presupuestos
+  const [openPdfConfigGate, setOpenPdfConfigGate] = useState(false);
 
   // ── Presupuestos: eliminar ──
   const [openPPDelete, setOpenPPDelete] = useState(false);
@@ -359,6 +358,7 @@ const PresupuestosProfesionales = () => {
         if (empresa) {
           setEmpresaId(empresa.id);
           setEmpresaNombre(empresa.nombre || '');
+          setEmpresaPdfConfig(normalizePresupuestoPdfConfig(empresa.presupuesto_pdf_config));
         }
         setProyectos(proyectosData || []);
       } catch (err) {
@@ -432,6 +432,10 @@ const PresupuestosProfesionales = () => {
   };
 
   const handleOpenPPCreate = () => {
+    if (!empresaPdfConfig) {
+      setOpenPdfConfigGate(true);
+      return;
+    }
     setPpForm({
       ...emptyPresupuesto,
       fecha: hoyIso(),
@@ -441,8 +445,6 @@ const PresupuestosProfesionales = () => {
     });
     setPpIsEdit(false);
     setPpEditId(null);
-    setPpLogoFile(null);
-    setPpLogoPreviewUrl('');
     setPpModoDistribuir(false);
     setPpTotalObjetivo('');
     setOpenPPForm(true);
@@ -517,8 +519,6 @@ const PresupuestosProfesionales = () => {
       });
       setPpIsEdit(true);
       setPpEditId(full._id);
-      setPpLogoFile(null);
-      setPpLogoPreviewUrl('');
       setOpenPPForm(true);
     } catch (err) {
       showAlert('Error al cargar detalle del presupuesto', 'error');
@@ -592,14 +592,25 @@ const PresupuestosProfesionales = () => {
         usd_fuente: (ajuste.moneda === 'USD' || ajuste.indexacion === INDEXACION_VALUES.USD) ? ajuste.usd_fuente : null,
         usd_valor: (ajuste.moneda === 'USD' || ajuste.indexacion === INDEXACION_VALUES.USD) ? ajuste.usd_valor : null,
         cotizacion_snapshot: cotizacionSnapshot,
-        empresa_logo_url: ppForm.empresa_logo_url || null,
-        logo_pdf_escala: (() => {
-          const n = Number(ppForm.logo_pdf_escala);
-          if (!Number.isFinite(n)) return 1;
-          return Math.min(2, Math.max(0.5, Math.round(n * 100) / 100));
-        })(),
-        header_bg_color: ppForm.header_bg_color || '#0a4791',
-        header_text_color: ppForm.header_text_color || '#ffffff',
+        // Branding: se estampa la config de empresa (plantillas-pdf). Sin config
+        // (solo posible al editar docs viejos) se conserva lo guardado en el doc.
+        ...(empresaPdfConfig
+          ? {
+              empresa_logo_url: empresaPdfConfig.logo_url,
+              logo_pdf_escala: empresaPdfConfig.logo_pdf_escala,
+              header_bg_color: empresaPdfConfig.header_bg_color,
+              header_text_color: empresaPdfConfig.header_text_color,
+            }
+          : {
+              empresa_logo_url: ppForm.empresa_logo_url || null,
+              logo_pdf_escala: (() => {
+                const n = Number(ppForm.logo_pdf_escala);
+                if (!Number.isFinite(n)) return 1;
+                return Math.min(2, Math.max(0.5, Math.round(n * 100) / 100));
+              })(),
+              header_bg_color: ppForm.header_bg_color || '#0a4791',
+              header_text_color: ppForm.header_text_color || '#ffffff',
+            }),
         rubros: ppForm.rubros
           .filter((r) => r.nombre?.trim())
           .map((r) => ({
@@ -647,15 +658,13 @@ const PresupuestosProfesionales = () => {
 
 
       if (ppIsEdit) {
-        await PresupuestoProfesionalService.actualizar(ppEditId, payload, ppLogoFile);
+        await PresupuestoProfesionalService.actualizar(ppEditId, payload);
         showAlert('Presupuesto actualizado');
       } else {
-        await PresupuestoProfesionalService.crear(payload, ppLogoFile);
+        await PresupuestoProfesionalService.crear(payload);
         showAlert('Presupuesto creado');
       }
       setOpenPPForm(false);
-      setPpLogoFile(null);
-      setPpLogoPreviewUrl('');
       refreshPresupuestos();
     } catch (err) {
       const msg = err?.response?.data?.error?.message || err?.response?.data?.message || err.message || 'Error al guardar';
@@ -849,11 +858,17 @@ const PresupuestosProfesionales = () => {
           rowFull ||
           ctx.prefetchedFull ||
           (await PresupuestoProfesionalService.obtenerPorId(ctx.row._id));
-        await exportPresupuestoToPdfRenderer(presupuestoConSuperficieParaPdf(full), opts);
+        await exportPresupuestoToPdfRenderer(
+          aplicarPdfConfigAPresupuesto(presupuestoConSuperficieParaPdf(full), empresaPdfConfig),
+          opts
+        );
         showAlert('PDF descargado', 'success');
       } else {
         setDetallePdfExporting(true);
-        await exportPresupuestoToPdfRenderer(presupuestoConSuperficieParaPdf(detalleData), opts);
+        await exportPresupuestoToPdfRenderer(
+          aplicarPdfConfigAPresupuesto(presupuestoConSuperficieParaPdf(detalleData), empresaPdfConfig),
+          opts
+        );
         showAlert('PDF descargado', 'success');
       }
     } catch (err) {
@@ -1150,18 +1165,6 @@ const PresupuestosProfesionales = () => {
     } catch (err) {
       showAlert('Error al cargar notas de plantilla', 'error');
     }
-  };
-
-  const handleUploadLogo = async (file) => {
-    if (!file) return;
-    const check = validateLogoFileForUpload(file);
-    if (!check.ok) {
-      showAlert(check.message, 'warning');
-      return;
-    }
-    if (ppLogoPreviewUrl) URL.revokeObjectURL(ppLogoPreviewUrl);
-    setPpLogoFile(file);
-    setPpLogoPreviewUrl(URL.createObjectURL(file));
   };
 
   /* ================================================================
@@ -1588,6 +1591,10 @@ const PresupuestosProfesionales = () => {
               onImportarArchivo={handleOpenImportDialog}
               onNuevaPlantilla={handleOpenPlCreate}
               onDuplicarSorbyData={() => {
+                if (!empresaPdfConfig) {
+                  setOpenPdfConfigGate(true);
+                  return;
+                }
                 setPpForm({
                   ...emptyPresupuesto,
                   fecha: hoyIso(),
@@ -1604,6 +1611,10 @@ const PresupuestosProfesionales = () => {
               }}
               onEditarPlantilla={handleOpenPlEdit}
               onDuplicarPlantilla={(pl) => {
+                if (!empresaPdfConfig) {
+                  setOpenPdfConfigGate(true);
+                  return;
+                }
                 setPpForm({
                   ...emptyPresupuesto,
                   fecha: hoyIso(),
@@ -1664,15 +1675,7 @@ const PresupuestosProfesionales = () => {
         onUpdateTareaIncidenciaObjetivo={ppUpdateTareaIncidenciaObjetivo}
         moveTarea={ppMoveTarea}
         focusRef={ppFocusRef}
-        logoUploading={ppSaving}
-        logoPreviewUrl={ppLogoPreviewUrl}
-        onUploadLogo={handleUploadLogo}
-        onLogoPickError={(msg) => showAlert(msg, 'warning')}
-        onRemoveLogo={() => {
-          setPpLogoFile(null);
-          setPpLogoPreviewUrl('');
-          setPpForm((prev) => ({ ...prev, empresa_logo_url: '' }));
-        }}
+        pdfConfig={empresaPdfConfig}
         empresaNombre={empresaNombre}
         onPdfPreviewError={(message, severity = 'warning') => showAlert(message, severity)}
       />
@@ -1683,6 +1686,24 @@ const PresupuestosProfesionales = () => {
         presupuesto={ppToDelete}
         onConfirm={handleConfirmDeletePP}
       />
+
+      {/* Gate TAR-658: pide configurar el formato del PDF antes de crear */}
+      <Dialog open={openPdfConfigGate} onClose={() => setOpenPdfConfigGate(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Configurá el formato del PDF</DialogTitle>
+        <DialogContent>
+          <Typography sx={{ pt: 1 }}>
+            Antes de crear un presupuesto profesional, definí el formato del PDF de tu empresa
+            (logo y colores, o dejalo con el estándar). Se hace una sola vez, en la pantalla
+            «Plantillas y logos», y se usa en todos los presupuestos.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setOpenPdfConfigGate(false)}>Ahora no</Button>
+          <Button variant="contained" onClick={() => router.push('/plantillas-pdf')}>
+            Ir a configurar
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog open={pdfExportOpcionesOpen} onClose={handleCancelPdfExportOpciones} fullWidth maxWidth="sm">
         <DialogTitle>Exportar PDF</DialogTitle>

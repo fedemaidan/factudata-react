@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Avatar,
   Box,
   Button,
   Chip,
@@ -15,11 +14,10 @@ import {
   IconButton,
   InputAdornment,
   InputLabel,
-  LinearProgress,
+  Link,
   MenuItem,
   Paper,
   Select,
-  Slider,
   Stack,
   Switch,
   TextField,
@@ -29,7 +27,6 @@ import {
   Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
-import CloudUploadOutlinedIcon from '@mui/icons-material/CloudUploadOutlined';
 import DeleteIcon from '@mui/icons-material/Delete';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
@@ -45,8 +42,8 @@ import {
   parseNumberInput,
   handleNumericKeyDown,
 } from './constants';
-import { validateLogoFileForUpload } from 'src/utils/presupuestos/logoFileValidation';
 import { loadImageAsDataUrl } from 'src/utils/presupuestos/loadLogoForPdf';
+import { aplicarPdfConfigAPresupuesto } from 'src/utils/presupuestos/presupuestoPdfConfig';
 import { calcularCostoM2DataForPdf } from 'src/utils/presupuestos/exportPresupuestoToPdfRenderer';
 import { buildPresupuestoDraftForPdfPreview } from 'src/utils/presupuestos/buildPresupuestoDraftForPdfPreview';
 import PresupuestoPdfFullPreviewDialog from './PresupuestoPdfFullPreviewDialog';
@@ -80,83 +77,6 @@ const isoADateLocal = (iso) => {
 
 const COEF_PATIOS_DEFAULT = 0.5;
 const COEF_VEREDA_DEFAULT = 0.25;
-const HEADER_BG_DEFAULT = '#0a4791';
-const HEADER_TEXT_DEFAULT = '#ffffff';
-
-const isValidHex = (v) => /^#[0-9A-Fa-f]{6}$/.test(v);
-const toHex = (v) => {
-  if (!v || typeof v !== 'string') return null;
-  const s = v.replace(/^#/, '').trim();
-  return /^[0-9A-Fa-f]{6}$/.test(s) ? `#${s.toLowerCase()}` : null;
-};
-
-const ColorInput = ({ label, value, onChange, defaultColor = HEADER_BG_DEFAULT }) => {
-  const hex = value || defaultColor;
-  const valid = isValidHex(hex);
-  const handleHexBlur = (e) => {
-    const result = toHex(e.target.value);
-    if (result) onChange(result);
-    else if (e.target.value.trim()) onChange(defaultColor);
-  };
-  return (
-    <Stack direction="row" spacing={1} alignItems="center">
-      <TextField
-        size="small"
-        label={label}
-        value={hex}
-        onChange={(e) => {
-          const v = e.target.value.replace(/[^0-9A-Fa-f#]/g, '');
-          if (v.startsWith('#')) {
-            if (v.length <= 7) onChange(v || defaultColor);
-          } else if (v.length <= 6) {
-            onChange(v ? `#${v}` : defaultColor);
-          }
-        }}
-        onBlur={handleHexBlur}
-        placeholder={defaultColor}
-        inputProps={{ maxLength: 7 }}
-        sx={{ minWidth: 120 }}
-      />
-      <Box
-        component="input"
-        type="color"
-        value={valid ? hex : defaultColor}
-        onChange={(e) => onChange(e.target.value)}
-        sx={{
-          width: 40,
-          height: 40,
-          p: 0,
-          border: '1px solid',
-          borderColor: 'divider',
-          borderRadius: 1,
-          cursor: 'pointer',
-          bgcolor: 'transparent',
-        }}
-      />
-    </Stack>
-  );
-};
-
-const HeaderColorBlock = ({ form, onFormChange }) => (
-  <Stack spacing={1.5}>
-    <Typography variant="subtitle2" color="text.secondary">
-      Colores de la cabecera del PDF
-    </Typography>
-    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} flexWrap="wrap">
-      <ColorInput
-        label="Fondo"
-        value={form.header_bg_color}
-        onChange={(v) => onFormChange({ ...form, header_bg_color: v })}
-      />
-      <ColorInput
-        label="Texto"
-        value={form.header_text_color}
-        onChange={(v) => onFormChange({ ...form, header_text_color: v })}
-        defaultColor={HEADER_TEXT_DEFAULT}
-      />
-    </Stack>
-  </Stack>
-);
 
 const computeSupPonderada = (supCubierta, supPatios, coefPatios, supVereda, coefVereda) => {
   const a = Number(supCubierta) || 0;
@@ -665,11 +585,7 @@ const PresupuestoFormDialog = ({
   onUpdateTareaIncidenciaObjetivo,
   moveTarea,
   focusRef,
-  logoUploading = false,
-  logoPreviewUrl = '',
-  onUploadLogo,
-  onRemoveLogo,
-       onLogoPickError,
+  pdfConfig = null,
   empresaNombre = '',
   onPdfPreviewError,
 }) => {
@@ -685,25 +601,6 @@ const PresupuestoFormDialog = ({
   const desfaseTotal = totalObjetivoValido ? totalVivo - totalObjetivoNum : 0;
   const desfaseTotalSignificativo =
     modoDistribuir && totalObjetivoValido && Math.abs(desfaseTotal) > 1;
-  const logoInputRef = useRef(null);
-  const logoPdfEscala = (() => {
-    const n = Number(form.logo_pdf_escala);
-    if (!Number.isFinite(n)) return 1;
-    return Math.min(2, Math.max(0.5, Math.round(n * 100) / 100));
-  })();
-  const tieneLogoVisual = Boolean(logoPreviewUrl || form.empresa_logo_url);
-
-  /** Evita setPpForm en cada paso del Slider (regeneraba todo el árbol de la página). */
-  const [logoEscalaLocal, setLogoEscalaLocal] = useState(null);
-  useEffect(() => {
-    setLogoEscalaLocal(null);
-  }, [form.logo_pdf_escala]);
-  useEffect(() => {
-    if (!tieneLogoVisual) setLogoEscalaLocal(null);
-  }, [tieneLogoVisual]);
-
-  const logoPdfEscalaMostrada =
-    logoEscalaLocal !== null && Number.isFinite(logoEscalaLocal) ? logoEscalaLocal : logoPdfEscala;
 
   // Detectar si el formulario tiene cambios sin guardar
   const initialFormRef = useRef(null);
@@ -745,12 +642,15 @@ const PresupuestoFormDialog = ({
     setPdfFullPreviewLoading(true);
     setPdfFullPreviewState(null);
     try {
-      const presupuesto = buildPresupuestoDraftForPdfPreview(form, empresaNombre);
-      if (!presupuesto) {
+      const draft = buildPresupuestoDraftForPdfPreview(form, empresaNombre);
+      if (!draft) {
         throw new Error('Datos incompletos');
       }
+      // El branding sale de la config de empresa (plantillas-pdf); docs viejos
+      // sin config conservan el logo/colores guardados en el propio presupuesto.
+      const presupuesto = aplicarPdfConfigAPresupuesto(draft, pdfConfig);
       let logoDataUrl = null;
-      const logoSrc = logoPreviewUrl || form.empresa_logo_url;
+      const logoSrc = presupuesto.empresa_logo_url;
       if (logoSrc) {
         logoDataUrl = await loadImageAsDataUrl(logoSrc);
       }
@@ -774,18 +674,6 @@ const PresupuestoFormDialog = ({
     } finally {
       setPdfFullPreviewLoading(false);
     }
-  };
-
-  const handleLogoInputChange = async (event) => {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file) return;
-    const check = validateLogoFileForUpload(file);
-    if (!check.ok) {
-      onLogoPickError?.(check.message);
-      return;
-    }
-    await onUploadLogo?.(file);
   };
 
   return (
@@ -1467,119 +1355,25 @@ const PresupuestoFormDialog = ({
             bgcolor: 'background.default',
           }}
         >
-          <Stack spacing={1.5}>
-            <Typography variant="subtitle2" color="text.secondary">
-              Logo de la empresa (opcional)
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ sm: 'center' }} flexWrap="wrap">
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<PictureAsPdfIcon />}
+              onClick={handleOpenPdfFullPreview}
+              disabled={saving}
+            >
+              Ver vista previa del PDF
+            </Button>
+            <Typography variant="caption" color="text.secondary" sx={{ maxWidth: 460 }}>
+              Mismo documento que al descargar el PDF. El logo y los colores se toman de la
+              configuración de la empresa en{' '}
+              <Link href="/plantillas-pdf" target="_blank" rel="noopener" underline="hover">
+                Plantillas y logos
+              </Link>
+              .
             </Typography>
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ xs: 'flex-start', sm: 'center' }}>
-              <Avatar
-                src={logoPreviewUrl || form.empresa_logo_url || ''}
-                alt="Logo empresa"
-                variant="rounded"
-                imgProps={{
-                  onError: (e) => {
-                    e.currentTarget.onerror = null;
-                  },
-                }}
-                sx={{ width: 72, height: 72, bgcolor: 'grey.100', border: 1, borderColor: 'divider' }}
-              />
-              <Stack spacing={0.75} sx={{ flex: 1 }}>
-                <Typography variant="body2" color="text.secondary">
-                  Cargá una imagen clara para que aparezca en el presupuesto y PDF.
-                </Typography>
-                <Typography variant="caption" color="text.disabled" component="div">
-                  Formatos: JPG, PNG, WEBP, GIF, AVIF, BMP, TIFF, ICO, SVG, HEIC/HEIF. Máx. 8&nbsp;MB.
-                  En algunos navegadores el tipo de archivo no se detecta: si la extensión es correcta, se acepta.
-                  HEIC/Fotos de iPhone: la vista previa puede fallar en la PC; al guardar se optimiza el logo.
-                </Typography>
-                <Stack direction="row" spacing={1} flexWrap="wrap">
-                  <Button
-                    variant="contained"
-                    size="small"
-                    startIcon={logoUploading ? <CircularProgress size={14} color="inherit" /> : <CloudUploadOutlinedIcon />}
-                    disabled={logoUploading || saving}
-                    onClick={() => logoInputRef.current?.click()}
-                  >
-                    {form.empresa_logo_url ? 'Cambiar imagen' : 'Agregar imagen'}
-                  </Button>
-                  {form.empresa_logo_url && (
-                    <Button
-                      variant="text"
-                      size="small"
-                      color="inherit"
-                      startIcon={<DeleteIcon />}
-                      disabled={logoUploading || saving}
-                      onClick={onRemoveLogo}
-                    >
-                      Quitar
-                    </Button>
-                  )}
-                </Stack>
-              </Stack>
-            </Stack>
-            <input
-              ref={logoInputRef}
-              type="file"
-              accept="image/*,.jpg,.jpeg,.jfif,.png,.gif,.webp,.avif,.bmp,.tif,.tiff,.heic,.heif,.svg,.ico"
-              style={{ display: 'none' }}
-              onChange={handleLogoInputChange}
-            />
-            {logoUploading && <LinearProgress />}
           </Stack>
-            <Divider sx={{ my: 1 }} />
-            <Stack spacing={1}>
-              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ sm: 'center' }} flexWrap="wrap">
-                <Button
-                  variant="outlined"
-                  size="small"
-                  startIcon={<PictureAsPdfIcon />}
-                  onClick={handleOpenPdfFullPreview}
-                  disabled={saving || logoUploading}
-                >
-                  Ver vista previa del PDF
-                </Button>
-                <Typography variant="caption" color="text.secondary" sx={{ maxWidth: 420 }}>
-                  Mismo documento que al descargar el PDF desde el listado o el detalle.
-                </Typography>
-              </Stack>
-            </Stack>
-            <Stack spacing={0.5} sx={{ mt: 1 }}>
-              <Typography variant="caption" color="text.secondary">
-                Tamaño del logo en el PDF ({Math.round(logoPdfEscalaMostrada * 100)}% del tamaño base)
-              </Typography>
-              <Slider
-                size="small"
-                value={logoPdfEscalaMostrada}
-                min={0.5}
-                max={2}
-                step={0.05}
-                valueLabelDisplay="auto"
-                valueLabelFormat={(v) => `${Math.round(Number(v) * 100)}%`}
-                disabled={!tieneLogoVisual}
-                onChange={(_, v) => {
-                  if (!tieneLogoVisual) return;
-                  setLogoEscalaLocal(v);
-                }}
-                onChangeCommitted={(_, v) => {
-                  if (!tieneLogoVisual) return;
-                  setLogoEscalaLocal(null);
-                  onFormChange((prev) => ({ ...prev, logo_pdf_escala: v }));
-                  setPdfFullPreviewState((prev) => {
-                    if (!prev?.presupuesto) return prev;
-                    return {
-                      ...prev,
-                      presupuesto: { ...prev.presupuesto, logo_pdf_escala: v },
-                    };
-                  });
-                }}
-              />
-              {!tieneLogoVisual ? (
-                <Typography variant="caption" color="text.disabled">
-                  Cargá un logo para activar el control de escala.
-                </Typography>
-              ) : null}
-            </Stack>
-          <HeaderColorBlock form={form} onFormChange={onFormChange} />
         </Paper>
       </Stack>
     </DialogContent>

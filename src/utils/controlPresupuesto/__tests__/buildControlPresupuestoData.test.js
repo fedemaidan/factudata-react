@@ -183,6 +183,67 @@ describe('buildControlPresupuestoData', () => {
     expect(data.saldo).toBe(300000);
   });
 
+  // TAR-640: columnas de equivalencia USD/CAC según los chips activos en la grilla.
+  describe('equivalencias por chip (equivUsd / equivCac)', () => {
+    const movimientos = [
+      mov(100, 300000, 'ARS', { ars: 300000, cac: 600, usd_blue: 250 }),
+      mov(200, 200, 'USD', { ars: 250000, cac: 500, usd_blue: 200 }),
+    ];
+
+    test('sin chips (default) → sin columnas de equivalencia', () => {
+      const data = buildControlPresupuestoData({ movimientos });
+      expect(data.mostrar_equiv_usd).toBe(false);
+      expect(data.mostrar_equiv_cac).toBe(false);
+      expect(data.movimientos[0].equiv_usd).toBe(null);
+      expect(data.movimientos[0].equiv_cac).toBe(null);
+    });
+
+    test('nominal + ambos chips → mismos valores que la grilla', () => {
+      const data = buildControlPresupuestoData({ movimientos, equivUsd: true, equivCac: true });
+      expect(data.mostrar_equiv_usd).toBe(true);
+      expect(data.mostrar_equiv_cac).toBe(true);
+      expect(data.equiv_cac_label).toBe('CAC');
+      // Mov ARS: usd_blue y cac guardados.
+      expect(data.movimientos[0]).toMatchObject({ moneda_mov: 'ARS', equiv_usd: 250, equiv_cac: 600 });
+      // Mov USD: la columna USD muestra el equivalente en pesos (eq.ars), como la grilla.
+      expect(data.movimientos[1]).toMatchObject({ moneda_mov: 'USD', equiv_usd: 250000, equiv_cac: 500 });
+    });
+
+    test("modo 'usd' + chip USD → se omite (el monto ya está en USD)", () => {
+      const data = buildControlPresupuestoData({ movimientos, modo: 'usd', equivUsd: true, equivCac: true });
+      expect(data.mostrar_equiv_usd).toBe(false);
+      expect(data.mostrar_equiv_cac).toBe(true);
+    });
+
+    test("modo 'cac' + chip CAC → se omite (ya hay columna CAC), chip USD se mantiene", () => {
+      const data = buildControlPresupuestoData({
+        movimientos, modo: 'cac', indexacion: 'CAC', cacIndiceActual: 500,
+        equivUsd: true, equivCac: true,
+      });
+      expect(data.mostrar_equiv).toBe(true);
+      expect(data.mostrar_equiv_cac).toBe(false);
+      expect(data.mostrar_equiv_usd).toBe(true);
+    });
+
+    test('respeta cacTipo y cacModo (variantes del shape nuevo)', () => {
+      const data = buildControlPresupuestoData({
+        movimientos: [mov(100, 1000, 'ARS', { ars: 1000, cac_mano_obra: { legacy: 2, estimado: 3 } })],
+        cacTipo: 'mano_obra', cacModo: 'estimado', equivCac: true,
+      });
+      expect(data.equiv_cac_label).toBe('CAC MO');
+      expect(data.movimientos[0].equiv_cac).toBe(3);
+    });
+
+    test('sin equivalencia guardada → null (la celda queda vacía)', () => {
+      const data = buildControlPresupuestoData({
+        movimientos: [mov(100, 1000, 'ARS', { ars: 1000 })],
+        equivUsd: true, equivCac: true,
+      });
+      expect(data.movimientos[0].equiv_usd).toBe(null);
+      expect(data.movimientos[0].equiv_cac).toBe(null);
+    });
+  });
+
   // Bug fix: con fechas de Mongo (Date / ISO) el sort cronológico debe ordenar del
   // más viejo al más nuevo y acumular en ese orden (antes fechaSecs solo entendía el
   // shape de Firestore → no ordenaba y el acumulado salía al revés).

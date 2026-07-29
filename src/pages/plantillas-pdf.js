@@ -16,6 +16,7 @@ import { useAuthContext } from 'src/contexts/auth-context';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import empresaLogoService from 'src/services/empresaLogoService';
 import SeccionPlantillas from 'src/components/plantillasPdf/SeccionPlantillas';
+import SeccionFormatoPresupuesto from 'src/components/plantillasPdf/SeccionFormatoPresupuesto';
 import CONTROL_PRESUPUESTO_SAMPLE_DATA, { buildSampleData as buildControlPresupuestoSampleData } from 'src/utils/controlPresupuesto/sampleData';
 import COMPROBANTE_MOVIMIENTO_SAMPLE_DATA from 'src/utils/comprobanteMovimiento/sampleData';
 
@@ -152,6 +153,18 @@ const PlantillasPdfPage = () => {
                   </Grid>
                 )}
               </Box>
+
+              <Divider />
+
+              {/* ─── Formato del PDF de presupuestos profesionales ─── */}
+              <SeccionFormatoPresupuesto
+                empresa={empresa}
+                logos={logos}
+                onNotify={notify}
+                onConfigSaved={(config) =>
+                  setEmpresa((prev) => (prev ? { ...prev, presupuesto_pdf_config: config } : prev))
+                }
+              />
 
               <Divider />
 

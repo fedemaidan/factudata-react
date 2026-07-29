@@ -2743,6 +2743,9 @@ const PresupuestoDrawer = ({
                           cacIndiceActual: cacActualEfectivo || cacEfectivo,
                           tipoCambioActual: dolarEfectivo,
                           tipo: esIngreso ? 'ingresos' : 'gastos',
+                          cacModo,
+                          equivUsd: equivToggles.usd,
+                          equivCac: equivToggles.cac,
                         });
                       };
                       return (
