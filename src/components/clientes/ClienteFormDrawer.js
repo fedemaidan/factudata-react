@@ -18,7 +18,7 @@ import { XMarkIcon } from '@heroicons/react/24/outline';
 import clienteService from 'src/services/clienteService';
 
 const EMPTY = {
-  nombre: '', razon_social: '', cuit: '', direccion: '', telefono: '', email: '',
+  nombre: '', razon_social: '', alias: '', cuit: '', direccion: '', telefono: '', email: '',
   condicion_iva: '', descuento_default: '', tipo_fiscal: '', notas_pricing: '',
   grupo_id: '', notas: '', ocasional: false,
 };
@@ -36,6 +36,8 @@ export default function ClienteFormDrawer({ open, onClose, empresaId, cliente, g
       setForm({
         nombre: cliente.nombre || '',
         razon_social: cliente.razon_social || '',
+        // alias se guarda como lista en el modelo; en el form es texto coma-separado.
+        alias: Array.isArray(cliente.alias) ? cliente.alias.join(', ') : (cliente.alias || ''),
         cuit: cliente.cuit || '',
         direccion: cliente.direccion || '',
         telefono: cliente.telefono || '',
@@ -61,6 +63,9 @@ export default function ClienteFormDrawer({ open, onClose, empresaId, cliente, g
     try {
       const payload = {
         ...form,
+        // El bot usa los alias para reconocer al cliente en remitos/facturas (OCR): texto
+        // coma-separado → lista de nombres alternativos, sin vacíos ni duplicados.
+        alias: [...new Set(String(form.alias || '').split(',').map((s) => s.trim()).filter(Boolean))],
         descuento_default: form.descuento_default === '' ? null : Number(form.descuento_default),
         condicion_iva: form.condicion_iva || null,
         tipo_fiscal: form.tipo_fiscal || null,
@@ -96,6 +101,12 @@ export default function ClienteFormDrawer({ open, onClose, empresaId, cliente, g
 
             <TextField size="small" label="Nombre *" value={form.nombre} onChange={(e) => set({ nombre: e.target.value })} autoFocus />
             <TextField size="small" label="Razón social" value={form.razon_social} onChange={(e) => set({ razon_social: e.target.value })} />
+            <TextField
+              size="small" label="Alias / otros nombres"
+              placeholder='Ej: "AER Freire, Freire 2165, Air Freire"'
+              helperText="Cómo figura el cliente en remitos y facturas. El bot los usa para reconocerlo al cargar por foto. Separá con comas."
+              value={form.alias} onChange={(e) => set({ alias: e.target.value })}
+            />
             <div className="grid grid-cols-2 gap-3">
               <TextField size="small" label="CUIT" value={form.cuit} onChange={(e) => set({ cuit: e.target.value })} />
               <TextField size="small" select label="Condición IVA" value={form.condicion_iva} onChange={(e) => set({ condicion_iva: e.target.value })}>

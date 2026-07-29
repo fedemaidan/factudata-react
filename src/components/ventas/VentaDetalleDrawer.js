@@ -377,6 +377,21 @@ export default function VentaDetalleDrawer({ open, onClose, empresaId, ventaId, 
                 />
               </div>
 
+              {/* Comprobante de entrega (remito firmado subido desde el bot tras entregar) */}
+              {venta.tipo !== 'acopio' && venta.entrega?.comprobante && (
+                <div className="flex items-center justify-between rounded-xl border border-divider bg-white px-3 py-2 shadow-sm">
+                  <span className="text-[11px] text-neutral-500">Remito de entrega firmado</span>
+                  <a
+                    href={venta.entrega.comprobante}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 rounded-lg border border-neutral-300 px-3 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-50"
+                  >
+                    Ver comprobante <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" />
+                  </a>
+                </div>
+              )}
+
               {/* Productos */}
               {Array.isArray(venta.materiales) && venta.materiales.length > 0 && (
                 <div className="rounded-xl border border-divider bg-white shadow-sm">
