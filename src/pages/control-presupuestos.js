@@ -2549,6 +2549,8 @@ const ControlPresupuestosPage = () => {
                   presupuestadoNativo: presupuestado,
                   tipo: movDrawer.tipo === 'ingreso' ? 'ingresos' : 'gastos',
                   cacModo,
+                  equivUsd: movDrawerEquiv.usd,
+                  equivCac: movDrawerEquiv.cac,
                 });
               };
               return (

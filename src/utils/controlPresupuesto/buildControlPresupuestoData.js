@@ -62,6 +62,8 @@ const MODO_LABEL = { nominal: 'Nominal', cac: 'CAC a hoy', usd: 'USD' };
  * @param {number} [opts.montoIngresado]     Pesos originales (fallback para nominal/derivados).
  * @param {number} [opts.cacIndiceActual]    Índice CAC de hoy (según cacTipo).
  * @param {number} [opts.tipoCambioActual]   Dólar de hoy.
+ * @param {boolean} [opts.equivUsd]          Chip USD activo en la grilla → columna equivalencia USD.
+ * @param {boolean} [opts.equivCac]          Chip CAC activo en la grilla → columna equivalencia CAC.
  */
 export function buildControlPresupuestoData({
   movimientos = [],
@@ -84,6 +86,8 @@ export function buildControlPresupuestoData({
   cacIndiceActual = null,
   tipoCambioActual = null,
   cacModo = 'legacy',
+  equivUsd = false,
+  equivCac = false,
 } = {}) {
   const orden = [...movimientos].sort((a, b) => fechaSecs(a) - fechaSecs(b));
   const campo = baseCalculo === 'subtotal' ? 'subtotal' : 'total';
@@ -129,6 +133,12 @@ export function buildControlPresupuestoData({
     };
   }
 
+  // Columnas de equivalencia por chip (espejan la grilla). Se omiten cuando el modo
+  // ya expresa esa unidad (en 'usd' el monto YA es USD; en 'cac' ya hay columna CAC).
+  const modoCacActivo = modo === 'cac' && indexacion === 'CAC' && cotizCac > 0;
+  const incluirEquivUsd = !!equivUsd && modo !== 'usd';
+  const incluirEquivCac = !!equivCac && !modoCacActivo;
+
   let acumPrimary = 0;
   let acumEquiv = 0;
   const movs = orden.map((m, i) => {
@@ -136,16 +146,27 @@ export function buildControlPresupuestoData({
     const montoEquiv = equivOf ? equivOf(m) : null;
     acumPrimary += monto;
     if (equivOf) acumEquiv += montoEquiv;
+    const eq = eqOf(m);
+    const monedaMov = m.moneda || 'ARS';
     return {
       numero: i + 1,
       fecha: fechaStr(m),
       detalle: m.nombre_proveedor || m.categoria || m.observacion || 'Movimiento',
       proveedor: m.nombre_proveedor || '',
       categoria: m.categoria || '',
+      moneda_mov: monedaMov,
       monto,
       acumulado: acumPrimary,
       monto_equiv: equivOf ? montoEquiv : null,
       acumulado_equiv: equivOf ? acumEquiv : null,
+      // Mismos valores que las celdas de los chips: para movs en USD la columna USD
+      // muestra el equivalente en pesos (eq.ars); para el resto, el usd_blue guardado.
+      equiv_usd: incluirEquivUsd
+        ? (monedaMov === 'USD' ? num(eq.ars) : (eq.usd_blue != null ? num(eq.usd_blue) : null))
+        : null,
+      equiv_cac: incluirEquivCac
+        ? (() => { const v = equivalenciaCac(eq, cacTipo, cacModo); return v != null ? num(v) : null; })()
+        : null,
     };
   });
 
@@ -196,6 +217,9 @@ export function buildControlPresupuestoData({
     indexacion: modo === 'cac' ? indexacion : null,
     mostrar_equiv: !!equivOf,
     equiv_label: equivLabel,
+    mostrar_equiv_usd: incluirEquivUsd,
+    mostrar_equiv_cac: incluirEquivCac,
+    equiv_cac_label: cacLabel(cacTipo),
     presupuestado: presupuestadoPrimary,
     ejecutado,
     saldo,
