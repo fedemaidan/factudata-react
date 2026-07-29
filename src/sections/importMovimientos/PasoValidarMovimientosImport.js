@@ -683,7 +683,10 @@ const PasoValidarMovimientosImport = forwardRef(
                       <Typography variant="body2" noWrap sx={{ maxWidth: 120 }}>
                         {(() => {
                           const p = perfiles.find((pp) => pp.phone === d.user_phone);
-                          if (p) return `${p.firstName || ''} ${p.lastName || ''}`.trim() || p.phone;
+                          if (p) {
+                            const nombre = `${p.firstName || ''} ${p.lastName || ''}`.trim() || p.phone;
+                            return p.id === user?.id ? `${nombre} (vos)` : nombre;
+                          }
                           return d.user_phone || '—';
                         })()}
                       </Typography>
