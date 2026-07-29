@@ -220,6 +220,16 @@ const GastosRecurrentes = () => {
   const pendientes = aCargar.filter((r) => !REALIZADOS.includes(r.estado));
   const realizadosFilas = aCargar.filter((r) => REALIZADOS.includes(r.estado));
 
+  // Monto que representa una fila (el registrado si ya se cargó, si no el estándar).
+  const montoFila = (r) => (REALIZADOS.includes(r.estado) && r.importe_registrado != null ? r.importe_registrado : r.importe_estandar);
+  // Total de un grupo agrupado por moneda (puede haber ARS y USD mezclados).
+  const totalPorMoneda = (rows) => rows.reduce((acc, r) => {
+    const m = r.moneda || 'ARS';
+    acc[m] = (acc[m] || 0) + (Number(montoFila(r)) || 0);
+    return acc;
+  }, {});
+  const fmtTotales = (rows) => Object.entries(totalPorMoneda(rows)).map(([m, v]) => fmtMoney(v, m)).join(' + ');
+
   // Pendientes en baldes. El mes actual se parte en dos: los ya vencidos y los
   // que hay que pagar este mes pero todavía no vencieron (estado proximo/pendiente).
   const enMesActual = (r) => mesIdx(r) === idxActual;
@@ -243,6 +253,7 @@ const GastosRecurrentes = () => {
     const key = `${r.gasto_id}|${r.periodo}`;
     const chip = ESTADO[r.estado] || ESTADO.pendiente;
     const realizado = REALIZADOS.includes(r.estado);
+    const caja = r.proyecto_id ? nombreProyecto(r.proyecto_id) : null;
     return (
       <TableRow key={key} hover sx={realizado ? { opacity: 0.7 } : undefined}>
         <TableCell padding="checkbox">
@@ -250,7 +261,7 @@ const GastosRecurrentes = () => {
         </TableCell>
         <TableCell sx={{ cursor: 'pointer' }} onClick={() => abrirDetalleGasto(r.gasto_id)}>
           <Typography variant="body2" sx={{ '&:hover': { textDecoration: 'underline' } }}>{r.concepto}</Typography>
-          <Typography variant="caption" color="text.secondary" display="block">{r.proveedor || ''}{r.periodo ? ` · ${r.periodo}` : ''}</Typography>
+          <Typography variant="caption" color="text.secondary" display="block">{r.proveedor || ''}{r.periodo ? ` · ${r.periodo}` : ''}{caja && caja !== '—' ? ` · Caja: ${caja}` : ''}</Typography>
         </TableCell>
         <TableCell>{fmtDate(realizado && r.fecha_registrado ? r.fecha_registrado : r.fecha_vencimiento)}</TableCell>
         <TableCell align="right">{fmtMoney(realizado && r.importe_registrado != null ? r.importe_registrado : r.importe_estandar, r.moneda)}</TableCell>
@@ -267,10 +278,15 @@ const GastosRecurrentes = () => {
       </TableRow>
     );
   };
-  const filaGrupo = (label) => (
+  const filaGrupo = (label, rows) => (
     <TableRow key={`g-${label}`}>
       <TableCell colSpan={6} sx={{ bgcolor: 'action.hover', py: 0.75 }}>
-        <Typography variant="caption" sx={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }} color="text.secondary">{label}</Typography>
+        <Stack direction="row" justifyContent="space-between" alignItems="baseline" gap={2}>
+          <Typography variant="caption" sx={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }} color="text.secondary">{label}</Typography>
+          {rows && rows.length > 0 && (
+            <Typography variant="caption" sx={{ fontWeight: 600 }} color="text.secondary">Total: {fmtTotales(rows)}</Typography>
+          )}
+        </Stack>
       </TableCell>
     </TableRow>
   );
@@ -317,8 +333,8 @@ const GastosRecurrentes = () => {
                   </TableHead>
                   <TableBody>
                     {loading && [...Array(4)].map((_, i) => <TableRow key={i}><TableCell colSpan={6}><Skeleton height={26} /></TableCell></TableRow>)}
-                    {!loading && gruposPendientes.map((g) => [filaGrupo(g.label), ...g.rows.map(filaGasto)])}
-                    {!loading && verRealizados && gruposRealizados.map((g) => [filaGrupo(`Realizados · ${g.label}`), ...g.rows.map(filaGasto)])}
+                    {!loading && gruposPendientes.map((g) => [filaGrupo(g.label, g.rows), ...g.rows.map(filaGasto)])}
+                    {!loading && verRealizados && gruposRealizados.map((g) => [filaGrupo(`Realizados · ${g.label}`, g.rows), ...g.rows.map(filaGasto)])}
                     {!loading && !aCargar.length && <TableRow><TableCell colSpan={6} align="center" sx={{ py: 4 }}><Typography color="text.secondary">Nada por cargar.</Typography></TableCell></TableRow>}
                   </TableBody>
                 </Table>

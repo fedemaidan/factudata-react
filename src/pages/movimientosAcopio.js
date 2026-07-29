@@ -763,7 +763,9 @@ const MovimientosAcopioPage = () => {
       const exito = await AcopioService.eliminarRemito(acopioId, remitoId);
       if (exito) {
         setAlert({ open: true, message: 'Remito eliminado con éxito', severity: 'success' });
-        await fetchRemitos();
+        // Refrescamos también el acopio: el backend recalcula el saldo (valor_desacopio) al
+        // borrar, y sin esto el header quedaba con el número viejo hasta un F5.
+        await Promise.all([fetchRemitos(), fetchAcopio()]);
       } else {
         setAlert({ open: true, message: 'No se pudo eliminar el remito', severity: 'error' });
       }
