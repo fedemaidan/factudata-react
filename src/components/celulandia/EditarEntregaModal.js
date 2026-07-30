@@ -239,70 +239,47 @@ const EditarEntregaModal = ({ open, onClose, data, onSaved, clientes = [], tipoD
         // Si hay error en la construcción de la fecha, no bloquear el guardado del resto
       }
 
-      if (didChangeDescuento) {
-        datosParaGuardar.descuentoAplicado = factorDescuento;
-      }
-
+      let payloadFinal;
       if (cambiosAfectanTotales) {
-        const {
-          subTotal,
-          montoTotal,
-          tipoDeCambioEfectivo: tcEfectivo,
-        } = calcularMovimientoV2({
-          montoEnviado: formData.montoEnviado,
-          monedaDePago: formData.monedaDePago,
-          cuentaCorriente: formData.CC,
-          tipoDeCambioManual: tipoDeCambioManualParaCalculo,
-          tipoDeCambio,
-          aplicarDescuento: toNumber(descuentoPorcentaje) > 0,
-          descuentoPercent: descuentoPorcentaje,
-          signo: -1,
-        });
-        const tipoDeCambioAGuardar =
-          tipoDeCambioManual !== null && toNumber(tipoDeCambioManual) > 0
-            ? toNumber(tipoDeCambioManual)
-            : toNumber(tipoDeCambioGuardado) > 0
-            ? toNumber(tipoDeCambioGuardado)
-            : toNumber(tcEfectivo);
-
-        datosParaGuardar = {
+        // Set crudo completo: el backend recalcula los vectores server-side,
+        // manteniendo el TC guardado salvo TC manual nuevo o cambio de
+        // categoría del par (homogéneo ↔ cruzado).
+        payloadFinal = {
           ...datosParaGuardar,
-          subTotal,
-          montoTotal,
-          tipoDeCambio: tipoDeCambioAGuardar,
+          montoEnviado: monto,
+          descuentoAplicado: factorDescuento,
+          tipoDeCambioManual: didChangeTipoDeCambio,
+          ...(didChangeTipoDeCambio ? { tipoDeCambio: tcManualNum } : {}),
         };
-      }
+      } else {
+        // Solo campos sueltos: diff contra la data original, sin recálculo
+        const camposModificados = {};
+        Object.keys(datosParaGuardar).forEach((key) => {
+          if (key === "cliente") {
+            const clienteOriginal = data.cliente?._id || data.cliente || null;
+            if (clienteOriginal !== datosParaGuardar[key]) {
+              camposModificados[key] = datosParaGuardar[key];
+            }
+          } else if (key === "cc") {
+            if (datosParaGuardar[key] !== (data.CC ?? data.cc)) {
+              camposModificados[key] = datosParaGuardar[key];
+            }
+          } else {
+            if (datosParaGuardar[key] !== data[key]) {
+              camposModificados[key] = datosParaGuardar[key];
+            }
+          }
+        });
 
-      // Detectar cambios reales vs data original
-      const camposModificados = {};
-      Object.keys(datosParaGuardar).forEach((key) => {
-        if (key === "subTotal" || key === "montoTotal") {
-          if (JSON.stringify(datosParaGuardar[key]) !== JSON.stringify(data[key])) {
-            camposModificados[key] = datosParaGuardar[key];
-          }
-        } else if (key === "cliente") {
-          const clienteOriginal = data.cliente?._id || data.cliente || null;
-          if (clienteOriginal !== datosParaGuardar[key]) {
-            camposModificados[key] = datosParaGuardar[key];
-          }
-        } else if (key === "cc") {
-          if (datosParaGuardar[key] !== (data.CC ?? data.cc)) {
-            camposModificados[key] = datosParaGuardar[key];
-          }
-        } else {
-          if (datosParaGuardar[key] !== data[key]) {
-            camposModificados[key] = datosParaGuardar[key];
-          }
+        if (Object.keys(camposModificados).length === 0) {
+          alert("No hay cambios para guardar");
+          onClose();
+          return;
         }
-      });
-
-      if (Object.keys(camposModificados).length === 0) {
-        alert("No hay cambios para guardar");
-        onClose();
-        return;
+        payloadFinal = camposModificados;
       }
 
-      const result = await cuentasPendientesService.update(data._id, camposModificados, getUser());
+      const result = await cuentasPendientesService.update(data._id, payloadFinal, getUser());
       if (result.success) {
         onSaved && onSaved(result.data);
         onClose();

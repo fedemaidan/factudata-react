@@ -47,7 +47,6 @@ const ChequesCelulandiaPage = () => {
     ultimaActualizacion: "",
     oficial: null,
     blue: null,
-    current: 1,
   });
   const [cajas, setCajas] = useState([]);
   const [filtroFecha, setFiltroFecha] = useState("todos");
@@ -154,10 +153,7 @@ const ChequesCelulandiaPage = () => {
         : clientesResponse?.data || [];
       setClientes(clientesArray);
 
-      setTipoDeCambio({
-        ...tipoDeCambioResponse,
-        current: tipoDeCambioResponse?.current || 1,
-      });
+      setTipoDeCambio(tipoDeCambioResponse);
 
       setCajas(cajasResponse.data);
 

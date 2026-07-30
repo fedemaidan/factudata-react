@@ -52,7 +52,7 @@ const EditarPagoModal = ({ open, onClose, data, onSave, cajas }) => {
         tipoFactura: "transferencia",
         caja: cajaId,
         nombreUsuario: getUser(),
-        tipoDeCambio: 1,
+        tipoDeCambioManual: false,
         concepto: formData.concepto || data?.concepto || "",
         // Convertir monto a negativo para backend (como en EditarEntregaModal)
         total: {

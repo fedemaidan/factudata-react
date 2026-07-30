@@ -72,7 +72,7 @@ const AgregarCompraVentaUsd = ({ open, onClose, onSave, cajas = [] }) => {
         tipoFactura: "efectivo",
         caja: cajaEfectivo?._id,
         nombreUsuario: getUser(),
-        tipoDeCambio: 1,
+        tipoDeCambioManual: false,
         estado: "CONFIRMADO",
         empresaId: "celulandia",
         concepto: descripcionFinal,
@@ -90,7 +90,9 @@ const AgregarCompraVentaUsd = ({ open, onClose, onSave, cajas = [] }) => {
         tipoFactura: "efectivo",
         caja: cajaEfectivo?._id,
         nombreUsuario: getUser(),
+        // TC negociado de la operación: genuinamente manual
         tipoDeCambio: tc,
+        tipoDeCambioManual: true,
         estado: "CONFIRMADO",
         empresaId: "celulandia",
         concepto: descripcionFinal,

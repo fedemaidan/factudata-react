@@ -112,64 +112,6 @@ const AgregarDevolucionModal = ({ open, onClose, onSaved, clientes = [], tipoDeC
 
     setIsSaving(true);
     try {
-      const tcOficial = tipoDeCambio?.oficial?.venta || tipoDeCambio?.oficial || 1;
-      const tcBlue = tipoDeCambio?.blue?.venta || tipoDeCambio?.blue || 1;
-
-      // Para devoluciones: todos los montos POSITIVOS
-      let subTotal = { ars: 0, usdOficial: 0, usdBlue: 0 };
-      if (formData.CC === "ARS") {
-        subTotal = {
-          ars: formData.monedaDePago === "ARS" ? formData.montoEnviado : subtotalEntrega,
-          usdOficial:
-            formData.monedaDePago === "USD"
-              ? formData.montoEnviado
-              : Math.round(subtotalEntrega / tcOficial),
-          usdBlue:
-            formData.monedaDePago === "USD"
-              ? formData.montoEnviado
-              : Math.round(subtotalEntrega / tcBlue),
-        };
-      } else if (formData.CC === "USD OFICIAL") {
-        subTotal = {
-          ars:
-            formData.monedaDePago === "ARS"
-              ? formData.montoEnviado
-              : Math.round(subtotalEntrega * tcOficial),
-          usdOficial: formData.monedaDePago === "USD" ? formData.montoEnviado : subtotalEntrega,
-          usdBlue: formData.monedaDePago === "USD" ? formData.montoEnviado : subtotalEntrega,
-        };
-      } else if (formData.CC === "USD BLUE") {
-        subTotal = {
-          ars:
-            formData.monedaDePago === "ARS"
-              ? formData.montoEnviado
-              : Math.round(subtotalEntrega * tcBlue),
-          usdOficial: formData.monedaDePago === "USD" ? formData.montoEnviado : subtotalEntrega,
-          usdBlue: formData.monedaDePago === "USD" ? formData.montoEnviado : subtotalEntrega,
-        };
-      }
-
-      let montoTotal = { ars: 0, usdOficial: 0, usdBlue: 0 };
-      if (formData.CC === "ARS") {
-        montoTotal = {
-          ars: totalEntrega,
-          usdOficial: Math.round(totalEntrega / tcOficial),
-          usdBlue: totalEntrega,
-        };
-      } else if (formData.CC === "USD OFICIAL") {
-        montoTotal = {
-          ars: Math.round(totalEntrega * tcOficial),
-          usdOficial: totalEntrega,
-          usdBlue: totalEntrega,
-        };
-      } else if (formData.CC === "USD BLUE") {
-        montoTotal = {
-          ars: Math.round(totalEntrega * tcBlue),
-          usdOficial: totalEntrega,
-          usdBlue: totalEntrega,
-        };
-      }
-
       let fechaCuentaCompleta = new Date();
       if (fechaEntrega) {
         const [year, month, day] = fechaEntrega.split("-");
@@ -197,23 +139,23 @@ const AgregarDevolucionModal = ({ open, onClose, onSaved, clientes = [], tipoDeC
           (o) => o.label.trim().toUpperCase() === formData.cliente.trim().toUpperCase()
         )?.id || null;
 
+      // Payload crudo: el backend resuelve el TC (salvo manual) y calcula
+      // subTotal/montoTotal con su propia cotización. Devoluciones: signo +1, sin descuento.
+      const esManual = tipoDeCambioManual !== null;
       const payload = {
+        montoEnviado: Math.abs(parseFloat(formData.montoEnviado) || 0),
+        moneda: formData.monedaDePago,
+        cc: formData.CC,
+        descuentoAplicado: 1,
+        signo: 1,
+        tipoDeCambioManual: esManual,
+        ...(esManual ? { tipoDeCambio: tipoDeCambioManual } : {}),
         descripcion: formData.concepto,
         proveedorOCliente: formData.cliente,
         fechaCuenta: fechaCuentaCompleta,
-        descuentoAplicado: 1, // SIEMPRE 1 para devoluciones
-        subTotal,
-        montoTotal,
         empresaId: "celulandia",
-        moneda: formData.monedaDePago,
-        cc: formData.CC,
-        estado: "CONFIRMADO",
         cliente: clienteId,
-        tipoDeCambio: getTipoDeCambio(formData.monedaDePago, formData.CC),
         usuario: getUser(),
-        camposBusqueda: `${formData.cliente} ${formData.CC} ${formData.monedaDePago} ${
-          formData.montoEnviado
-        } CONFIRMADO ${getUser()} ${getTipoDeCambio(formData.monedaDePago, formData.CC)}`,
       };
 
       const result = await cuentasPendientesService.create(payload);

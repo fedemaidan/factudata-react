@@ -39,7 +39,11 @@ const EntregasCelulandiaPage = () => {
   const [isDeleting, setIsDeleting] = useState(false);
 
   const [clientes, setClientes] = useState([]);
-  const [tipoDeCambio, setTipoDeCambio] = useState({});
+  const [tipoDeCambio, setTipoDeCambio] = useState({
+    ultimaActualizacion: "",
+    oficial: null,
+    blue: null,
+  });
 
   const [paginaActual, setPaginaActual] = useState(1);
   const [totalEntregas, setTotalEntregas] = useState(0);
