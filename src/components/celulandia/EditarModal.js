@@ -120,12 +120,13 @@ const EditarModal = ({ open, onClose, data, onSave, clientes, tipoDeCambio, caja
       }
 
       const cajaId = cajas.find((caja) => caja.nombre === formData.cuentaDestino)?._id;
-      const tipoDeCambioCalculado =
-        tipoDeCambioManual !== null
-          ? parseFloat(tipoDeCambioManual)
-          : toNumber(tipoDeCambioGuardado) > 0
-          ? toNumber(tipoDeCambioGuardado)
-          : getTipoDeCambio(formData.monedaDePago, formData.CC);
+      // El TC solo viaja cuando el usuario lo cambió a mano; si no, el backend
+      // conserva el TC guardado del movimiento
+      const tcManualNum = tipoDeCambioManual !== null ? parseFloat(tipoDeCambioManual) : null;
+      const tcCambiadoManualmente =
+        tcManualNum !== null &&
+        tcManualNum > 0 &&
+        Math.abs(tcManualNum - toNumber(tipoDeCambioGuardado)) > 1e-6;
 
       const datosParaGuardar = {
         clienteId: clienteId || null,
@@ -135,7 +136,6 @@ const EditarModal = ({ open, onClose, data, onSave, clientes, tipoDeCambio, caja
         tipoFactura: "transferencia",
         caja: cajaId,
         nombreUsuario: getUser(),
-        tipoDeCambio: tipoDeCambioCalculado,
         estado: formData.estado,
         descripcion: (formData.descripcion || "").trim(),
         montoEnviado: parseFloat(formData.montoEnviado) || 0,
@@ -180,22 +180,6 @@ const EditarModal = ({ open, onClose, data, onSave, clientes, tipoDeCambio, caja
 
           if (montoNuevo !== montoOriginal) {
             camposModificados.montoEnviado = montoNuevo;
-
-            // Si cambió el monto, también enviar el tipo de cambio recalculado
-            const tipoDeCambioOriginal = data.tipoDeCambio || 1;
-            const tipoDeCambioNuevo = datosParaGuardar.tipoDeCambio;
-
-            if (tipoDeCambioNuevo !== tipoDeCambioOriginal) {
-              camposModificados.tipoDeCambio = tipoDeCambioNuevo;
-            }
-          }
-        } else if (key === "tipoDeCambio") {
-          // Detectar cambios en tipo de cambio independientemente del monto
-          const tipoDeCambioOriginal = data.tipoDeCambio || 1;
-          const tipoDeCambioNuevo = datosParaGuardar[key];
-
-          if (tipoDeCambioNuevo !== tipoDeCambioOriginal) {
-            camposModificados.tipoDeCambio = tipoDeCambioNuevo;
           }
         } else {
           if (datosParaGuardar[key] !== data[key]) {
@@ -203,6 +187,14 @@ const EditarModal = ({ open, onClose, data, onSave, clientes, tipoDeCambio, caja
           }
         }
       });
+
+      if (tcCambiadoManualmente) {
+        camposModificados.tipoDeCambio = tcManualNum;
+        camposModificados.tipoDeCambioManual = true;
+      } else if (Object.keys(camposModificados).length > 0) {
+        // Explícito: que el backend conserve el TC guardado (no el del browser)
+        camposModificados.tipoDeCambioManual = false;
+      }
 
       // Solo hacer la llamada si hay campos modificados
       if (Object.keys(camposModificados).length === 0) {

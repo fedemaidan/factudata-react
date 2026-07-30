@@ -75,7 +75,13 @@ const EditarChequeModal = ({ open, onClose, data, onSave, clientes, tipoDeCambio
       }
 
       const cajaId = cajas.find((caja) => caja.nombre === formData.cuentaDestino)?._id;
-      const tipoDeCambioCalculado = getTipoDeCambio(formData.monedaDePago, formData.CC);
+      // El TC solo viaja cuando el usuario lo cambió a mano; si no, el backend
+      // conserva el TC guardado del movimiento
+      const tcManualNum = tipoDeCambioManual !== null ? parseFloat(tipoDeCambioManual) : null;
+      const tcCambiadoManualmente =
+        tcManualNum !== null &&
+        tcManualNum > 0 &&
+        Math.abs(tcManualNum - Number(data?.tipoDeCambio || 0)) > 1e-6;
 
       const datosParaGuardar = {
         cliente: clienteData,
@@ -84,7 +90,6 @@ const EditarChequeModal = ({ open, onClose, data, onSave, clientes, tipoDeCambio
         tipoFactura: "cheque",
         caja: cajaId,
         nombreUsuario: getUser(),
-        tipoDeCambio: tipoDeCambioCalculado,
         estado: formData.estado,
         montoEnviado: parseFloat(formData.montoEnviado) || 0,
         montoCC: parseFloat(formData.montoCC) || 0,
@@ -110,7 +115,7 @@ const EditarChequeModal = ({ open, onClose, data, onSave, clientes, tipoDeCambio
           if ((fechaCobro || "") !== original) {
             camposModificados[key] = datosParaGuardar[key];
           }
-        } else if (key === "montoEnviado" || key === "montoCC" || key === "tipoDeCambio") {
+        } else if (key === "montoEnviado" || key === "montoCC") {
           const nuevo = Number(datosParaGuardar[key] ?? 0);
           const original = Number(data?.[key] ?? 0);
           if (nuevo !== original) {
@@ -122,6 +127,14 @@ const EditarChequeModal = ({ open, onClose, data, onSave, clientes, tipoDeCambio
           }
         }
       });
+
+      if (tcCambiadoManualmente) {
+        camposModificados.tipoDeCambio = tcManualNum;
+        camposModificados.tipoDeCambioManual = true;
+      } else if (Object.keys(camposModificados).length > 0) {
+        // Explícito: que el backend conserve el TC guardado (no el del browser)
+        camposModificados.tipoDeCambioManual = false;
+      }
 
       if (Object.keys(camposModificados).length === 0) {
         alert("No hay cambios para guardar");

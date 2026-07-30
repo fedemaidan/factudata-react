@@ -75,7 +75,9 @@ const AgregarModal = ({ open, onClose, onSave, clientes, tipoDeCambio, cajas }) 
       }
 
       const cajaId = cajas.find((caja) => caja.nombre === formData.cuentaDestino)?._id;
-      const tipoDeCambioCalculado = getTipoDeCambio(formData.monedaDePago, formData.CC);
+      // TC solo cuando es manual: con el flag en false el backend lo resuelve
+      // con su propia cotización al momento de crear
+      const esManual = tipoDeCambioManual !== null;
 
       const result = await movimientosService.createMovimiento({
         movimiento: {
@@ -90,7 +92,8 @@ const AgregarModal = ({ open, onClose, onSave, clientes, tipoDeCambio, cajas }) 
               : "transferencia",
           caja: cajaId,
           nombreUsuario: getUser(),
-          tipoDeCambio: tipoDeCambioCalculado,
+          tipoDeCambioManual: esManual,
+          ...(esManual ? { tipoDeCambio: tipoDeCambioManual } : {}),
           estado: "CONFIRMADO",
           fechaCobro:
             formData.cuentaDestino === "CHEQUE" || formData.cuentaDestino === "ECHEQ"

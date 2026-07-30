@@ -28,7 +28,6 @@ export const useMovimientoForm = (initialData = null, externalData = null) => {
     ultimaActualizacion: "",
     oficial: null,
     blue: null,
-    current: 1,
   });
   const [tipoDeCambioManual, setTipoDeCambioManual] = useState(null);
   const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
@@ -112,10 +111,7 @@ export const useMovimientoForm = (initialData = null, externalData = null) => {
 
   useEffect(() => {
     if (externalTipoDeCambio) {
-      setTipoDeCambio({
-        ...externalTipoDeCambio,
-        current: externalTipoDeCambio?.current || 1,
-      });
+      setTipoDeCambio(externalTipoDeCambio);
     }
   }, [externalTipoDeCambio]);
 
@@ -201,10 +197,9 @@ export const useMovimientoForm = (initialData = null, externalData = null) => {
   };
 
   const handleTipoDeCambioChange = (value) => {
-    if (value > 0) {
-      const tipoDeCambioManual = parseFloat(value);
-      setTipoDeCambioManual(tipoDeCambioManual);
-    }
+    const n = parseFloat(value);
+    // Si el usuario borra o invalida el campo, vuelve al TC automático
+    setTipoDeCambioManual(n > 0 ? n : null);
   };
 
   const handleMontoEnviado = (value) => {
