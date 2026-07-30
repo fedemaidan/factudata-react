@@ -79,7 +79,9 @@ function buildCorralonGroups({ user, empresa, permisosUsuario, esAdmin }) {
   const cajaItems = [];
   if (esAdmin) {
     cajaItems.push({ title: "Todos los movimientos", path: `/cajas?empresaId=${empId}&vista=todos`, icon: icon(AccountBalanceWallet) });
-    cajaItems.push({ title: "Revisión de facturas", path: `/revisionFacturas?empresaId=${empId}`, icon: icon(Checklist) });
+    if (permisosUsuario.includes("VER_REVISION_FACTURAS")) {
+      cajaItems.push({ title: "Revisión de facturas", path: `/revisionFacturas?empresaId=${empId}`, icon: icon(Checklist) });
+    }
   }
   cajaItems.push({ title: "Reportes", path: "/reportes", icon: icon(AssessmentIcon) });
   groups.push({ id: "caja", label: "Caja y reportes", items: cajaItems });
@@ -256,7 +258,7 @@ async function buildDefaultGroups({ user, empresa, permisosUsuario }) {
 
   // ——— REVISIÓN ———
   const revisionItems = [];
-  if (esAdmin) {
+  if (esAdmin && permisosUsuario.includes("VER_REVISION_FACTURAS")) {
     revisionItems.push({ title: "Revisión de facturas", path: `/revisionFacturas?empresaId=${empId}`, icon: icon(DashboardIcon) });
   }
   if (permisosUsuario.includes("VER_VALIDACION_BORRADORES")) {
