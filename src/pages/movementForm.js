@@ -316,23 +316,40 @@ const MovementFormPage = () => {
   const soloLectura = isEditMode && recorteObra.editar;
 
   // Reserva de Obra del proyecto: habilita marcar el egreso como gasto de la reserva.
-  const [reservaProyecto, setReservaProyecto] = useState(null);
+  // Una obra puede tener VARIAS reservas, así que se listan todas y el gasto se
+  // imputa a la elegida (nunca a "la primera").
+  const [reservasProyecto, setReservasProyecto] = useState([]);
+  const ridDe = (r) => String(r?._id || r?.id || '');
+  // Reserva objetivo: la que viene por query (botón "Registrar gasto" de una reserva)
+  // o, editando, la que ya tiene imputado el movimiento.
+  const reservaIdObjetivo = reservaId || (isEditMode ? movimiento?.reserva_id : null) || null;
   useEffect(() => {
     if (!empresa?.id || !effectiveProyectoId) {
-      setReservaProyecto(null);
+      setReservasProyecto([]);
       return undefined;
     }
     let cancelado = false;
     reservaObraService.obtenerPorProyecto(empresa.id, effectiveProyectoId)
-      .then((data) => {
-        if (!cancelado) setReservaProyecto(data?.reservas?.length ? data.reservas[0] : null);
+      .then(async (data) => {
+        let reservas = data?.reservas || [];
+        // Las ocultas de la caja (activa === false) no vienen en el listado: si el
+        // gasto apunta a una de esas, se trae puntualmente para no perder la imputación.
+        if (reservaIdObjetivo && !reservas.some((r) => ridDe(r) === String(reservaIdObjetivo))) {
+          try {
+            const suelta = await reservaObraService.obtener(reservaIdObjetivo);
+            if (suelta) reservas = [...reservas, suelta];
+          } catch (error) {
+            console.error('[MovementForm] Error cargando la reserva objetivo:', error);
+          }
+        }
+        if (!cancelado) setReservasProyecto(reservas);
       })
       .catch((error) => {
         console.error('[MovementForm] Error cargando reserva del proyecto:', error);
-        if (!cancelado) setReservaProyecto(null);
+        if (!cancelado) setReservasProyecto([]);
       });
     return () => { cancelado = true; };
-  }, [empresa?.id, effectiveProyectoId]);
+  }, [empresa?.id, effectiveProyectoId, reservaIdObjetivo]);
 
   // Control de Obra del proyecto: habilita imputar el egreso a una obra y sus sub-rubros.
   const [obrasProyecto, setObrasProyecto] = useState([]);
@@ -346,17 +363,17 @@ const MovementFormPage = () => {
   }, [empresa?.id, effectiveProyectoId]);
 
   // Si se llega con ?reservaId (ej. desde "Registrar gasto" de una reserva),
-  // marcar el egreso como gasto de esa reserva una vez cargada.
+  // marcar el egreso como gasto de ESA reserva (no de otra de la misma obra).
   useEffect(() => {
-    if (isEditMode || !reservaId || !reservaProyecto) return;
-    const rid = reservaProyecto._id || reservaProyecto.id;
-    if (rid && !formik.values.reserva_id) {
-      formik.setFieldValue('reserva_id', rid);
+    if (isEditMode || !reservaId || !reservasProyecto.length) return;
+    const target = reservasProyecto.find((r) => ridDe(r) === String(reservaId));
+    if (target && !formik.values.reserva_id) {
+      formik.setFieldValue('reserva_id', ridDe(target));
       formik.setFieldValue('reserva_decidida', true); // viene explícito desde la reserva
       if (formik.values.type !== 'egreso') formik.setFieldValue('type', 'egreso');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reservaId, reservaProyecto, isEditMode]);
+  }, [reservaId, reservasProyecto, isEditMode]);
 
   // Setear breadcrumbs
   useEffect(() => {
@@ -866,7 +883,7 @@ const createdAtStr = (() => {
       if (fieldName === 'reserva') {
         // reserva_id null es una respuesta válida ("No"); se exige que el usuario haya
         // decidido explícitamente, solo cuando la obra tiene reserva y es un egreso nuevo.
-        const aplica = !isEditMode && values?.type === 'egreso' && !!reservaProyecto;
+        const aplica = !isEditMode && values?.type === 'egreso' && reservasProyecto.length > 0;
         if (aplica && !values?.reserva_decidida) {
           errors.reserva = 'Indicá si el gasto sale de la reserva';
         }
@@ -2122,21 +2139,31 @@ const createdAtStr = (() => {
                   </StitchBlock>
                   <StitchBlock step={2} title="Clasificación">
                     <MovementFields {...sharedFieldProps} block="classification" />
-                    {reservaProyecto && formik.values.type === 'egreso' && (
-                      requiredFieldNames.includes('reserva') && !isEditMode ? (
-                        // Obligatorio: pregunta Sí/No sin opción por defecto (bloquea el submit).
+                    {reservasProyecto.length > 0 && formik.values.type === 'egreso' && (() => {
+                      const nombreDe = (r) => r.nombre || `Reserva de Obra · ${r.proyecto_nombre || 'la obra'}`;
+                      // Con varias reservas en la obra hay que elegir a CUÁL se imputa:
+                      // el default (la del query o la primera) solo aplica al tildar el check.
+                      const ridDefault = ridDe(
+                        reservasProyecto.find((r) => ridDe(r) === String(reservaIdObjetivo)) || reservasProyecto[0],
+                      );
+                      const opciones = reservasProyecto.map((r) => ({
+                        key: ridDe(r),
+                        label: reservasProyecto.length > 1 ? nombreDe(r) : 'Sí, de la reserva',
+                        rid: ridDe(r),
+                      }));
+                      return requiredFieldNames.includes('reserva') && !isEditMode ? (
+                        // Obligatorio: pregunta sin opción por defecto (bloquea el submit).
                         <div className="mt-2 rounded-lg border border-warning-main/40 bg-warning-main/5 px-2.5 py-2">
-                          <span className="block text-xs font-medium text-neutral-800">¿Este gasto sale de la Reserva de Obra?</span>
+                          <span className="block text-xs font-medium text-neutral-800">¿Este gasto sale de una Reserva de Obra?</span>
                           <span className="mb-1.5 block text-[11px] text-neutral-500">
-                            Reserva interna de {reservaProyecto.proyecto_nombre || 'la obra'}. Elegí una opción para continuar.
+                            Reserva interna de {reservasProyecto[0].proyecto_nombre || 'la obra'}. Elegí una opción para continuar.
                           </span>
-                          <div className="flex gap-2">
-                            {[
-                              { key: 'si', label: 'Sí, de la reserva', rid: (reservaProyecto._id || reservaProyecto.id) },
-                              { key: 'no', label: 'No, saldo general', rid: null },
-                            ].map((opt) => {
+                          <div className="flex flex-wrap gap-2">
+                            {[...opciones, { key: 'no', label: 'No, saldo general', rid: null }].map((opt) => {
                               const selected = formik.values.reserva_decidida
-                                && (opt.key === 'si' ? !!formik.values.reserva_id : !formik.values.reserva_id);
+                                && (opt.rid
+                                  ? String(formik.values.reserva_id) === opt.rid
+                                  : !formik.values.reserva_id);
                               return (
                                 <button
                                   type="button"
@@ -2146,7 +2173,7 @@ const createdAtStr = (() => {
                                     formik.setFieldValue('reserva_decidida', true);
                                     formik.setFieldTouched('reserva', true, false);
                                   }}
-                                  className={`flex-1 rounded-md border px-2 py-1.5 text-xs font-medium transition ${selected ? 'border-warning-main bg-warning-main/20 text-neutral-900' : 'border-neutral-300 bg-white text-neutral-600 hover:border-warning-main/60'}`}
+                                  className={`min-w-[120px] flex-1 rounded-md border px-2 py-1.5 text-xs font-medium transition ${selected ? 'border-warning-main bg-warning-main/20 text-neutral-900' : 'border-neutral-300 bg-white text-neutral-600 hover:border-warning-main/60'}`}
                                 >
                                   {opt.label}
                                 </button>
@@ -2163,19 +2190,30 @@ const createdAtStr = (() => {
                             <span className="min-w-0">
                               <span className="block text-xs font-medium text-neutral-800">Gasto de Reserva de Obra</span>
                               <span className="block text-[11px] text-neutral-500">
-                                Consume la reserva interna de {reservaProyecto.proyecto_nombre || 'la obra'} (es un egreso real de la obra)
+                                Consume la reserva interna de {reservasProyecto[0].proyecto_nombre || 'la obra'} (es un egreso real de la obra)
                               </span>
                             </span>
                             <input
                               type="checkbox"
                               className="h-4 w-4 shrink-0 accent-warning-main"
                               checked={!!formik.values.reserva_id}
-                              onChange={(e) => formik.setFieldValue('reserva_id', e.target.checked ? (reservaProyecto._id || reservaProyecto.id) : null)}
+                              onChange={(e) => formik.setFieldValue('reserva_id', e.target.checked ? ridDefault : null)}
                             />
                           </label>
+                          {!!formik.values.reserva_id && reservasProyecto.length > 1 && (
+                            <select
+                              className="mt-2 w-full rounded border border-divider px-2 py-1 text-xs"
+                              value={String(formik.values.reserva_id)}
+                              onChange={(e) => formik.setFieldValue('reserva_id', e.target.value)}
+                            >
+                              {reservasProyecto.map((r) => (
+                                <option key={ridDe(r)} value={ridDe(r)}>{nombreDe(r)}</option>
+                              ))}
+                            </select>
+                          )}
                         </div>
-                      )
-                    )}
+                      );
+                    })()}
                     {obrasProyecto.length > 0 && formik.values.type === 'egreso' && (() => {
                       const obraSel = obrasProyecto.find((o) => o._id === formik.values.control_obra_id) || null;
                       const subs = obraSel ? (obraSel.rubros || []).flatMap((r) => (r.subrubros || []).map((s) => ({ uid: s.uid, nombre: `${r.nombre} · ${s.nombre}` }))) : [];
