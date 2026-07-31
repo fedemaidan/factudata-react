@@ -1760,17 +1760,15 @@ const handleOrdenColumnasChange = async (nuevoOrden) => {
       setBackendOptions(null);
 
       const empresa = await getEmpresaDetailsFromUser(userRef.current);
-      const [proyectosUsuario, proyectosEmpresa] = await Promise.all([
-        getProyectosFromUser(userRef.current),
-        getProyectosByEmpresa(empresa),
-      ]);
-      const proyectosEmpresaMap = new Map();
-      [...(proyectosUsuario || []), ...(proyectosEmpresa || [])]
-        .filter((item) => item && item.id && item.eliminado !== true)
-        .forEach((item) => {
-          proyectosEmpresaMap.set(item.id, item);
-        });
-      const proyectosCargados = Array.from(proyectosEmpresaMap.values());
+      // Proyectos visibles: solo los asignados al usuario, no eliminados y activos.
+      // Admins (sin lista personal) caen al listado completo de la empresa, también filtrado.
+      const tieneAsignaciones = Array.isArray(userRef.current?.proyectos) && userRef.current.proyectos.length > 0;
+      const proyectosBase = tieneAsignaciones
+        ? await getProyectosFromUser(userRef.current)
+        : await getProyectosByEmpresa(empresa);
+      const proyectosCargados = (proyectosBase || []).filter(
+        (item) => item && item.id && item.eliminado !== true && item.activo !== false
+      );
       const proyectosIdsDisponibles = proyectosCargados.map((item) => item.id).filter(Boolean);
       const { proyectoId: initPid, proyectoIds: initPids } = routerRef.current.query || {};
       const requestedIds = [...new Set([
