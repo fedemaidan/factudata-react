@@ -44,6 +44,12 @@ import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import { usePlanCobro } from 'src/hooks/usePlanCobro';
 import { formatCurrency, formatNumberInput, parseNumberInput } from 'src/utils/formatters';
 import planCobroService from 'src/services/planCobroService';
+import CobroCuotaDialog from 'src/components/planCobro/CobroCuotaDialog';
+import {
+  diferenciaAceptadaDeCuota,
+  mensajeCobroRegistrado,
+  montoCalculadoDeCuota,
+} from 'src/utils/planCobro/cobroCuota';
 
 const ESTADO_COLOR = { borrador: 'default', activo: 'primary', completado: 'success' };
 const ESTADO_LABEL = { borrador: 'Borrador', activo: 'Activo', completado: 'Completado' };
@@ -59,13 +65,6 @@ const DetallePlanPage = () => {
   const [confirmCobrar, setConfirmCobrar] = useState(null); // cuota object or null
   const [cobrandoId, setCobrandoId] = useState(null);
   const [reverting, setReverting] = useState(null);
-  const [tipoCobro, setTipoCobro] = useState('total'); // 'total' | 'parcial'
-  const [montoParcial, setMontoParcial] = useState('');
-  const [modoCobro, setModoCobro] = useState('nuevo'); // 'nuevo' | 'vincular' | 'solo_estado'
-  // Fecha efectiva de cobro (TAR-442): default hoy, editable para registrar cobros históricos.
-  const [fechaCobro, setFechaCobro] = useState(new Date().toISOString().split('T')[0]);
-  const [movVinculables, setMovVinculables] = useState([]);
-  const [movSel, setMovSel] = useState(null);
 
   // Edit cuota dialog
   const [editCuota, setEditCuota] = useState(null); // cuota object or null
@@ -145,16 +144,7 @@ const DetallePlanPage = () => {
   }, [plan?.indexacion, plan?.cac_tipo, plan?.usd_fuente, plan?.cotizacion_snapshot?.dolar_fuente]);
 
   // Para planes CAC con monto ajustable: valor actual en ARS = monto_cac × cac_actual
-  const getMontoCuota = (cuota) => {
-    if (!cuota) return 0;
-    if (plan?.indexacion === 'CAC' && cuota.monto_cac && cacActual) {
-      return Math.round(cuota.monto_cac * cacActual * 100) / 100;
-    }
-    if (plan?.indexacion === 'USD' && cuota.monto_usd && usdActual) {
-      return Math.round(cuota.monto_usd * usdActual * 100) / 100;
-    }
-    return cuota.monto || 0;
-  };
+  const getMontoCuota = (cuota) => montoCalculadoDeCuota({ cuota, plan, cacActual, usdActual });
 
   // A3 (TAR-466 pt.2): para cuotas ya cobradas mostramos el monto REAL cobrado,
   // no el valor ajustado al índice de hoy (que confunde: parece cobrado de más).
@@ -169,44 +159,17 @@ const DetallePlanPage = () => {
   const handleCobrarClick = (cuotaId) => {
     const cuota = (plan.cuotas || []).find((c) => c._id === cuotaId);
     setConfirmCobrar(cuota || { _id: cuotaId });
-    setTipoCobro('total');
-    setMontoParcial('');
-    setModoCobro('nuevo');
-    setMovSel(null);
-    setFechaCobro(new Date().toISOString().split('T')[0]);
-    // Precargar movimientos vinculables (por si el usuario elige "vincular")
-    planCobroService.listarMovimientosVinculables(empresaId, plan?.proyecto_id)
-      .then((res) => setMovVinculables(res?.data?.data || []))
-      .catch(() => setMovVinculables([]));
   };
 
-  const handleCobrarConfirm = async () => {
+  const handleCobrarConfirm = async (payload) => {
     if (!confirmCobrar) return;
     const cuotaId = confirmCobrar._id;
-    const parcial = tipoCobro === 'parcial' ? parseNumberInput(montoParcial) : null;
-    if (tipoCobro === 'parcial' && (!parcial || Number(parcial) <= 0)) return;
-    if (modoCobro === 'vincular' && !movSel) {
-      setAlert({ open: true, message: 'Elegí un movimiento para vincular', severity: 'warning' });
-      return;
-    }
     setConfirmCobrar(null);
     setCobrandoId(cuotaId);
     try {
-      await marcarCobrada(cuotaId, {
-        fecha_cobrado: fechaCobro || new Date().toISOString().split('T')[0],
-        monto_parcial: parcial ? Number(parcial) : undefined,
-        modo: modoCobro,
-        movimiento_id: modoCobro === 'vincular' ? movSel?._id : undefined,
-      });
+      await marcarCobrada(cuotaId, payload);
       await refresh();
-      const msg = modoCobro === 'vincular'
-        ? 'Cuota cobrada vinculando el movimiento existente.'
-        : modoCobro === 'solo_estado'
-          ? 'Cuota marcada como cobrada (sin movimiento de caja).'
-          : tipoCobro === 'parcial'
-            ? 'Pago parcial registrado.'
-            : 'Cuota cobrada. Movimiento de caja registrado.';
-      setAlert({ open: true, message: msg, severity: 'success' });
+      setAlert({ open: true, message: mensajeCobroRegistrado(payload), severity: 'success' });
     } catch (err) {
       setAlert({ open: true, message: err?.response?.data?.error || err.message || 'Error al marcar cuota', severity: 'error' });
     } finally {
@@ -1147,6 +1110,18 @@ const DetallePlanPage = () => {
                               </Tooltip>
                             ) : montoTxt;
                           })()}
+                          {(() => {
+                            // Cuota saldada manualmente con un importe distinto al calculado.
+                            const diferencia = diferenciaAceptadaDeCuota(cuota);
+                            if (diferencia == null) return null;
+                            return (
+                              <Tooltip title={`Monto calculado al día del cobro: ${formatCurrency(cuota.monto_calculado_snapshot, monedaDisplay)}`}>
+                                <Typography variant="caption" color="text.secondary">
+                                  Diferencia aceptada: {formatCurrency(Math.abs(diferencia), monedaDisplay)} {diferencia > 0 ? 'de menos' : 'de más'}
+                                </Typography>
+                              </Tooltip>
+                            );
+                          })()}
                           {plan.estado === 'activo' && (
                             <Stack direction="row" spacing={1} flexWrap="wrap" justifyContent={{ sm: 'flex-end' }}>
                               {esCobrada || esParcial ? (
@@ -1191,151 +1166,16 @@ const DetallePlanPage = () => {
         </Container>
       </Box>
 
-      {/* Diálogo confirmar cobrar (total o parcial) */}
-      <Dialog open={!!confirmCobrar} onClose={() => setConfirmCobrar(null)} maxWidth="xs" fullWidth>
-        <DialogTitle>Registrar cobro</DialogTitle>
-        <DialogContent>
-          {(() => {
-            const montoActual = getMontoCuota(confirmCobrar);
-            const montoRestante = montoActual - (confirmCobrar?.monto_cobrado || 0);
-            const yaParcial = confirmCobrar?.estado === 'cobrada_parcial';
-            return (
-              <>
-                <DialogContentText sx={{ mb: 2 }}>
-                  Cuota #{confirmCobrar?.numero} — Monto: <strong>{formatCurrency(montoActual, monedaDisplay)}</strong>
-                  {confirmCobrar?.fecha_vencimiento && (
-                    <> (Vto: {new Date(confirmCobrar.fecha_vencimiento).toLocaleDateString('es-AR')})</>
-                  )}
-                  {yaParcial && (
-                    <>
-                      <br />
-                      Ya cobrado: <strong>{formatCurrency(confirmCobrar?.monto_cobrado || 0, monedaDisplay)}</strong>
-                      {' '}— Restante: <strong>{formatCurrency(montoRestante, monedaDisplay)}</strong>
-                    </>
-                  )}
-                </DialogContentText>
-
-                <ToggleButtonGroup
-                  value={tipoCobro}
-                  exclusive
-                  onChange={(_, val) => {
-                    if (val) { setTipoCobro(val); setMontoParcial(''); }
-                  }}
-                  size="small"
-                  sx={{ mb: 2 }}
-                >
-                  <ToggleButton value="total">{yaParcial ? 'Cobrar todo el resto' : 'Cobro total'}</ToggleButton>
-                  <ToggleButton value="parcial">Pago parcial</ToggleButton>
-                </ToggleButtonGroup>
-
-                {tipoCobro === 'parcial' && (
-                  <TextField
-                    label="Monto a cobrar"
-                    value={formatNumberInput(montoParcial)}
-                    onChange={(e) => setMontoParcial(parseNumberInput(e.target.value))}
-                    fullWidth
-                    size="small"
-                    sx={{ mt: 1 }}
-                    inputProps={{ inputMode: 'decimal' }}
-                    InputProps={{
-                      startAdornment: <InputAdornment position="start">$</InputAdornment>,
-                    }}
-                    helperText={
-                      montoParcial && montoRestante
-                        ? `Resto después de este pago: ${formatCurrency(Math.max(0, montoRestante - (Number(montoParcial) || 0)), monedaDisplay)}`
-                        : ''
-                    }
-                  />
-                )}
-
-                {/* Fecha efectiva de cobro (TAR-442): editable para registrar cobros históricos.
-                    En modo "vincular" la fecha la define el movimiento ya cargado. */}
-                {modoCobro !== 'vincular' && (
-                  <TextField
-                    label="Fecha efectiva de cobro"
-                    type="date"
-                    value={fechaCobro}
-                    onChange={(e) => setFechaCobro(e.target.value)}
-                    fullWidth
-                    size="small"
-                    sx={{ mt: 2 }}
-                    InputLabelProps={{ shrink: true }}
-                    inputProps={{ max: new Date().toISOString().split('T')[0] }}
-                    helperText="El ingreso en caja se registra con esta fecha. Podés indicar una fecha pasada."
-                  />
-                )}
-
-                {/* Modo: crear ingreso, vincular uno existente, o solo estado */}
-                <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 2 }}>
-                  ¿Cómo lo registramos?
-                </Typography>
-                <ToggleButtonGroup
-                  value={modoCobro}
-                  exclusive
-                  onChange={(_, val) => { if (val) { setModoCobro(val); setMovSel(null); } }}
-                  size="small"
-                  sx={{ mt: 0.5, flexWrap: 'wrap' }}
-                >
-                  <ToggleButton value="nuevo">Nuevo ingreso</ToggleButton>
-                  <ToggleButton value="vincular">Vincular pago existente</ToggleButton>
-                  <ToggleButton value="solo_estado">Solo marcar</ToggleButton>
-                </ToggleButtonGroup>
-
-                {modoCobro === 'vincular' && (
-                  <Box sx={{ mt: 1.5, maxHeight: 200, overflowY: 'auto', border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
-                    {movVinculables.length === 0 ? (
-                      <Typography variant="body2" color="text.secondary" sx={{ p: 1.5 }}>
-                        No hay ingresos sin vincular.
-                      </Typography>
-                    ) : movVinculables.map((m) => (
-                      <Stack
-                        key={m._id}
-                        direction="row"
-                        justifyContent="space-between"
-                        alignItems="center"
-                        onClick={() => setMovSel(m)}
-                        sx={{ px: 1.5, py: 1, cursor: 'pointer', bgcolor: movSel?._id === m._id ? 'primary.50' : 'transparent', borderBottom: '1px solid', borderColor: 'divider' }}
-                      >
-                        <Box>
-                          <Typography variant="body2" fontWeight={movSel?._id === m._id ? 700 : 500}>
-                            {m.codigo_operacion ? `#${m.codigo_operacion} · ` : ''}{formatCurrency(m.monto || 0, m.moneda || monedaDisplay)}
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            {m.fecha ? new Date(m.fecha).toLocaleDateString('es-AR') : 's/f'}{m.detalle ? ` · ${m.detalle}` : ''}
-                          </Typography>
-                        </Box>
-                        {movSel?._id === m._id && <CheckCircleIcon color="primary" fontSize="small" />}
-                      </Stack>
-                    ))}
-                  </Box>
-                )}
-
-                <Typography variant="body2" color="text.secondary" mt={2}>
-                  {modoCobro === 'nuevo'
-                    ? 'Se registrará un movimiento de caja automáticamente.'
-                    : modoCobro === 'vincular'
-                      ? 'Se vinculará el pago ya cargado, sin duplicar el ingreso.'
-                      : 'Se marcará como cobrada sin generar movimiento de caja.'}
-                </Typography>
-              </>
-            );
-          })()}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setConfirmCobrar(null)}>Cancelar</Button>
-          <Button
-            color="success"
-            variant="contained"
-            onClick={handleCobrarConfirm}
-            disabled={
-              (tipoCobro === 'parcial' && (!montoParcial || Number(montoParcial) <= 0)) ||
-              (modoCobro === 'vincular' && !movSel)
-            }
-          >
-            {modoCobro === 'solo_estado' ? 'Marcar cobrada' : tipoCobro === 'parcial' ? 'Cobrar parcial' : 'Confirmar cobro'}
-          </Button>
-        </DialogActions>
-      </Dialog>
+      {/* Diálogo de cobro compartido con la pantalla de cobranzas de control de obra */}
+      <CobroCuotaDialog
+        open={!!confirmCobrar}
+        cuota={confirmCobrar}
+        plan={plan}
+        montoCalculado={getMontoCuota(confirmCobrar)}
+        empresaId={empresaId}
+        onClose={() => setConfirmCobrar(null)}
+        onConfirm={handleCobrarConfirm}
+      />
 
       <Dialog open={showAdelantarCuota} onClose={() => setShowAdelantarCuota(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Adelantar cuota</DialogTitle>

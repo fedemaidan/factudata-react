@@ -106,7 +106,10 @@ const ControlObraService = {
     return Array.isArray(res.data?.items) ? res.data.items : [];
   },
 
-  cobrarCuota: async (obraId, cuotaId, empresa_id) => unwrap(await api.post(`${BASE}/${obraId}/cuotas/${cuotaId}/cobrar`, { empresa_id })),
+  // `cobro` acepta lo que arma el diálogo de cobro: monto_parcial, fecha_cobrado,
+  // modo, movimiento_id y cobro_total_confirmado (cuota totalmente pagada).
+  cobrarCuota: async (obraId, cuotaId, empresa_id, cobro = {}) =>
+    unwrap(await api.post(`${BASE}/${obraId}/cuotas/${cuotaId}/cobrar`, { empresa_id, ...cobro })),
 
   /* ---------- Costo y margen (Fase 2) ---------- */
   ejecucion: async (obraId, empresa_id) => {
