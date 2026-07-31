@@ -462,6 +462,10 @@ const DetallePlanPage = () => {
   const usdFuenteLabel = (plan.usd_fuente || plan.cotizacion_snapshot?.dolar_fuente) === 'oficial' ? 'Oficial' : 'Blue';
   const indexacionLabel = plan.indexacion === 'CAC' ? `CAC ${cacTipoLabel}` : plan.indexacion === 'USD' ? `Dólar ${usdFuenteLabel}` : '';
   const allCuotas = plan.cuotas || [];
+  // Lo que se pliega bajo "Ver detalle" del total: de dónde sale el número
+  // (base vs. adicionales) y qué anexos lo movieron.
+  const anexos = plan.anexos || [];
+  const hayComposicion = !!resumen.tiene_adicionales || anexos.length > 0;
   const totalCuotas = allCuotas.length;
   const cuotasCobradas = allCuotas.filter((c) => c.estado === 'cobrada').length;
   const proximaCuota = allCuotas.find((c) => c.estado === 'pendiente' || c.estado === 'cobrada_parcial' || c.estado_ui === 'vencida' || c.estado_ui === 'cobrada_parcial_vencida');
@@ -646,7 +650,7 @@ const DetallePlanPage = () => {
                   ? `${Math.round((resumen.total || 0) / cacIndiceBase).toLocaleString('es-AR')} CAC al crear`
                   : null,
                 // Sin anexos no hay nada que descomponer: base sería el total entero.
-                expandable: resumen.tiene_adicionales,
+                expandable: hayComposicion,
                 expanded: showComposicion,
                 onToggle: () => setShowComposicion((v) => !v),
                 detailColor: 'primary.main',
@@ -716,7 +720,7 @@ const DetallePlanPage = () => {
               números los calcula el backend (mismo resumen que consume el PDF),
               así que pantalla y PDF no pueden divergir. Va plegado dentro de la
               card del total: es el desglose de ese número, no una sección aparte. */}
-          <Collapse in={showComposicion && !!resumen.tiene_adicionales} unmountOnExit>
+          <Collapse in={showComposicion && hayComposicion} unmountOnExit>
             <Paper variant="outlined" sx={{ p: 2, mb: 3, borderRadius: 2 }}>
               <Typography variant="subtitle2" fontWeight={700} mb={0.5}>Composición del plan</Typography>
               <Typography variant="caption" color="text.secondary" display="block" mb={1.5}>
@@ -755,7 +759,32 @@ const DetallePlanPage = () => {
                   </TableBody>
                 </Table>
               </Box>
-              <Typography variant="caption" color="text.secondary" display="block" mt={1}>
+              {/* Qué anexos componen la fila de adicionales. */}
+              {anexos.length > 0 && (
+                <Box mt={2}>
+                  <Typography variant="caption" color="text.secondary" fontWeight={700} display="block" mb={0.5}>
+                    ANEXOS
+                  </Typography>
+                  <Stack spacing={0.5}>
+                    {anexos.map((a) => (
+                      <Stack key={a.id} direction="row" justifyContent="space-between" alignItems="center"
+                        sx={{ py: 0.5, borderBottom: '1px solid', borderColor: 'divider' }}>
+                        <Box>
+                          <Typography variant="body2">{a.motivo || 'Anexo'}</Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {a.fecha ? new Date(a.fecha).toLocaleDateString('es-AR') : ''} · {a.modo === 'nueva_cuota' ? 'cuota nueva' : 'prorrateado'}
+                            {a.monto_cac ? ` · ${Math.round(a.monto_cac * 100) / 100} CAC${a.cac_indice_ref ? ` @ ${a.cac_indice_ref.toLocaleString('es-AR')}` : ''}` : ''}
+                          </Typography>
+                        </Box>
+                        <Typography variant="body2" fontWeight={700} color={a.monto >= 0 ? 'success.main' : 'error.main'}>
+                          {a.monto >= 0 ? '+' : ''}{formatCurrency(a.monto, monedaDisplay)}
+                        </Typography>
+                      </Stack>
+                    ))}
+                  </Stack>
+                </Box>
+              )}
+              <Typography variant="caption" color="text.secondary" display="block" mt={1.5}>
                 Nominal pactado: {formatCurrency(resumen.nominal_pactado, monedaDisplay)}.
                 {' '}Los anexos cargados como cuota nueva se atribuyen exacto; los prorrateados, proporcional a cada cuota.
               </Typography>
@@ -875,30 +904,6 @@ const DetallePlanPage = () => {
                     Achicar plan al distribuido
                   </Button>
                 </Stack>
-              </Stack>
-            </Paper>
-          )}
-
-          {/* Historial de anexos */}
-          {(plan.anexos || []).length > 0 && (
-            <Paper variant="outlined" sx={{ p: 2, mb: 3, borderRadius: 2 }}>
-              <Typography variant="subtitle2" fontWeight={700} mb={1}>Anexos</Typography>
-              <Stack spacing={0.5}>
-                {(plan.anexos || []).map((a) => (
-                  <Stack key={a.id} direction="row" justifyContent="space-between" alignItems="center"
-                    sx={{ py: 0.5, borderBottom: '1px solid', borderColor: 'divider' }}>
-                    <Box>
-                      <Typography variant="body2">{a.motivo || 'Anexo'}</Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {a.fecha ? new Date(a.fecha).toLocaleDateString('es-AR') : ''} · {a.modo === 'nueva_cuota' ? 'cuota nueva' : 'prorrateado'}
-                        {a.monto_cac ? ` · ${Math.round(a.monto_cac * 100) / 100} CAC${a.cac_indice_ref ? ` @ ${a.cac_indice_ref.toLocaleString('es-AR')}` : ''}` : ''}
-                      </Typography>
-                    </Box>
-                    <Typography variant="body2" fontWeight={700} color={a.monto >= 0 ? 'success.main' : 'error.main'}>
-                      {a.monto >= 0 ? '+' : ''}{formatCurrency(a.monto, monedaDisplay)}
-                    </Typography>
-                  </Stack>
-                ))}
               </Stack>
             </Paper>
           )}
