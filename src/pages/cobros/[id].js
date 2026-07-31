@@ -91,6 +91,7 @@ const DetallePlanPage = () => {
   const [usdActual, setUsdActual] = useState(null);
   // A2 (TAR-466 pt.1): desplegar el detalle de cuotas que componen el total cobrado
   const [showCobradoDetail, setShowCobradoDetail] = useState(false);
+  const [showComposicion, setShowComposicion] = useState(false);
   // Fase 4 — edición de total y saldo sin asignar
   const [showEditTotal, setShowEditTotal] = useState(false);
   const [editTotalValue, setEditTotalValue] = useState('');
@@ -644,6 +645,11 @@ const DetallePlanPage = () => {
                 subtitle: showCAC && cacIndiceBase
                   ? `${Math.round((resumen.total || 0) / cacIndiceBase).toLocaleString('es-AR')} CAC al crear`
                   : null,
+                // Sin anexos no hay nada que descomponer: base sería el total entero.
+                expandable: resumen.tiene_adicionales,
+                expanded: showComposicion,
+                onToggle: () => setShowComposicion((v) => !v),
+                detailColor: 'primary.main',
               },
               {
                 label: 'COBRADO',
@@ -651,6 +657,9 @@ const DetallePlanPage = () => {
                 borderColor: '#2E7D32',
                 subtitle: `${cuotasCobradas} de ${totalCuotas} cuotas`,
                 expandable: cuotasCobradas > 0,
+                expanded: showCobradoDetail,
+                onToggle: () => setShowCobradoDetail((v) => !v),
+                detailColor: 'success.main',
               },
               {
                 label: 'PENDIENTE',
@@ -662,7 +671,7 @@ const DetallePlanPage = () => {
               <Grid item xs={12} sm={4} key={m.label}>
                 <Paper
                   variant="outlined"
-                  onClick={m.expandable ? () => setShowCobradoDetail((v) => !v) : undefined}
+                  onClick={m.expandable ? m.onToggle : undefined}
                   sx={{
                     p: 2,
                     textAlign: 'center',
@@ -684,15 +693,15 @@ const DetallePlanPage = () => {
                   )}
                   {m.expandable && (
                     <Stack direction="row" spacing={0.5} justifyContent="center" alignItems="center" mt={0.5}>
-                      <Typography variant="caption" color="success.main" fontWeight={600}>
-                        {showCobradoDetail ? 'Ocultar detalle' : 'Ver detalle'}
+                      <Typography variant="caption" color={m.detailColor} fontWeight={600}>
+                        {m.expanded ? 'Ocultar detalle' : 'Ver detalle'}
                       </Typography>
                       <KeyboardArrowDownIcon
                         sx={{
                           fontSize: 16,
-                          color: 'success.main',
+                          color: m.detailColor,
                           transition: 'transform 0.2s',
-                          transform: showCobradoDetail ? 'rotate(180deg)' : 'none',
+                          transform: m.expanded ? 'rotate(180deg)' : 'none',
                         }}
                       />
                     </Stack>
@@ -701,6 +710,57 @@ const DetallePlanPage = () => {
               </Grid>
             ))}
           </Grid>
+
+          {/* Composición del plan: cuánto era el presupuesto firmado y cuánto es
+              alcance agregado. Los "adicionales" son los anexos del plan. Los
+              números los calcula el backend (mismo resumen que consume el PDF),
+              así que pantalla y PDF no pueden divergir. Va plegado dentro de la
+              card del total: es el desglose de ese número, no una sección aparte. */}
+          <Collapse in={showComposicion && !!resumen.tiene_adicionales} unmountOnExit>
+            <Paper variant="outlined" sx={{ p: 2, mb: 3, borderRadius: 2 }}>
+              <Typography variant="subtitle2" fontWeight={700} mb={0.5}>Composición del plan</Typography>
+              <Typography variant="caption" color="text.secondary" display="block" mb={1.5}>
+                Valuado al {new Date(`${resumen.fecha_valuacion}T12:00:00`).toLocaleDateString('es-AR')}
+                {resumen.indice_usado?.valor ? ` · ${resumen.indice_usado.tipo} = ${Number(resumen.indice_usado.valor).toLocaleString('es-AR')}` : ''}
+              </Typography>
+              <Box sx={{ overflowX: 'auto' }}>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Concepto</TableCell>
+                      <TableCell align="right">Total</TableCell>
+                      <TableCell align="right">Cobrado</TableCell>
+                      <TableCell align="right">Resta cobrar</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    <TableRow>
+                      <TableCell>Presupuesto base</TableCell>
+                      <TableCell align="right">{formatCurrency(resumen.base, monedaDisplay)}</TableCell>
+                      <TableCell align="right" sx={{ color: 'success.main' }}>{formatCurrency(resumen.cobrado_base, monedaDisplay)}</TableCell>
+                      <TableCell align="right">{formatCurrency(resumen.pendiente_base, monedaDisplay)}</TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell>Adicionales ({(plan.anexos || []).length} anexo{(plan.anexos || []).length === 1 ? '' : 's'})</TableCell>
+                      <TableCell align="right">{formatCurrency(resumen.adicionales, monedaDisplay)}</TableCell>
+                      <TableCell align="right" sx={{ color: 'success.main' }}>{formatCurrency(resumen.cobrado_adicionales, monedaDisplay)}</TableCell>
+                      <TableCell align="right">{formatCurrency(resumen.pendiente_adicionales, monedaDisplay)}</TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell sx={{ fontWeight: 700 }}>Total del plan</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700 }}>{formatCurrency(resumen.total_a_hoy, monedaDisplay)}</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700, color: 'success.main' }}>{formatCurrency(resumen.cobrado_a_hoy, monedaDisplay)}</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700 }}>{formatCurrency(resumen.pendiente_a_hoy, monedaDisplay)}</TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </Box>
+              <Typography variant="caption" color="text.secondary" display="block" mt={1}>
+                Nominal pactado: {formatCurrency(resumen.nominal_pactado, monedaDisplay)}.
+                {' '}Los anexos cargados como cuota nueva se atribuyen exacto; los prorrateados, proporcional a cada cuota.
+              </Typography>
+            </Paper>
+          </Collapse>
 
           {/* A2: detalle de cuotas cobradas que componen el total */}
           <Collapse in={showCobradoDetail} unmountOnExit>
@@ -816,56 +876,6 @@ const DetallePlanPage = () => {
                   </Button>
                 </Stack>
               </Stack>
-            </Paper>
-          )}
-
-          {/* Composición del plan: cuánto era el presupuesto firmado y cuánto es
-              alcance agregado. Los "adicionales" son los anexos del plan. Los
-              números los calcula el backend (mismo resumen que consume el PDF),
-              así que pantalla y PDF no pueden divergir. */}
-          {resumen.tiene_adicionales && (
-            <Paper variant="outlined" sx={{ p: 2, mb: 3, borderRadius: 2 }}>
-              <Typography variant="subtitle2" fontWeight={700} mb={0.5}>Composición del plan</Typography>
-              <Typography variant="caption" color="text.secondary" display="block" mb={1.5}>
-                Valuado al {new Date(`${resumen.fecha_valuacion}T12:00:00`).toLocaleDateString('es-AR')}
-                {resumen.indice_usado?.valor ? ` · ${resumen.indice_usado.tipo} = ${Number(resumen.indice_usado.valor).toLocaleString('es-AR')}` : ''}
-              </Typography>
-              <Box sx={{ overflowX: 'auto' }}>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Concepto</TableCell>
-                      <TableCell align="right">Total</TableCell>
-                      <TableCell align="right">Cobrado</TableCell>
-                      <TableCell align="right">Resta cobrar</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    <TableRow>
-                      <TableCell>Presupuesto base</TableCell>
-                      <TableCell align="right">{formatCurrency(resumen.base, monedaDisplay)}</TableCell>
-                      <TableCell align="right" sx={{ color: 'success.main' }}>{formatCurrency(resumen.cobrado_base, monedaDisplay)}</TableCell>
-                      <TableCell align="right">{formatCurrency(resumen.pendiente_base, monedaDisplay)}</TableCell>
-                    </TableRow>
-                    <TableRow>
-                      <TableCell>Adicionales ({(plan.anexos || []).length} anexo{(plan.anexos || []).length === 1 ? '' : 's'})</TableCell>
-                      <TableCell align="right">{formatCurrency(resumen.adicionales, monedaDisplay)}</TableCell>
-                      <TableCell align="right" sx={{ color: 'success.main' }}>{formatCurrency(resumen.cobrado_adicionales, monedaDisplay)}</TableCell>
-                      <TableCell align="right">{formatCurrency(resumen.pendiente_adicionales, monedaDisplay)}</TableCell>
-                    </TableRow>
-                    <TableRow>
-                      <TableCell sx={{ fontWeight: 700 }}>Total del plan</TableCell>
-                      <TableCell align="right" sx={{ fontWeight: 700 }}>{formatCurrency(resumen.total_a_hoy, monedaDisplay)}</TableCell>
-                      <TableCell align="right" sx={{ fontWeight: 700, color: 'success.main' }}>{formatCurrency(resumen.cobrado_a_hoy, monedaDisplay)}</TableCell>
-                      <TableCell align="right" sx={{ fontWeight: 700 }}>{formatCurrency(resumen.pendiente_a_hoy, monedaDisplay)}</TableCell>
-                    </TableRow>
-                  </TableBody>
-                </Table>
-              </Box>
-              <Typography variant="caption" color="text.secondary" display="block" mt={1}>
-                Nominal pactado: {formatCurrency(resumen.nominal_pactado, monedaDisplay)}.
-                {' '}Los anexos cargados como cuota nueva se atribuyen exacto; los prorrateados, proporcional a cada cuota.
-              </Typography>
             </Paper>
           )}
 
