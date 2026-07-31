@@ -2,13 +2,16 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Box, Button, Card, CardContent, Chip, Container, LinearProgress, Stack,
+  Alert, Box, Button, Card, CardContent, Chip, Container, LinearProgress, Snackbar, Stack,
   Table, TableBody, TableCell, TableHead, TableRow, TableSortLabel, TextField, MenuItem, Typography,
 } from '@mui/material';
 import { Layout as DashboardLayout } from 'src/layouts/dashboard/layout';
 import { useAuthContext } from 'src/contexts/auth-context';
 import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import ControlObraService from 'src/services/controlObra/controlObraService';
+import planCobroService from 'src/services/planCobroService';
+import CobroCuotaDialog from 'src/components/planCobro/CobroCuotaDialog';
+import { mensajeCobroRegistrado } from 'src/utils/planCobro/cobroCuota';
 import CarteraNav from 'src/components/controlObra/CarteraNav';
 import SinPermisoControlObra, { puedeVerControlObra } from 'src/components/controlObra/AccesoControlObra';
 import { KpiCard, fmt } from 'src/components/controlObra/ui';
@@ -35,6 +38,9 @@ function CobranzasPage() {
   const [hasta, setHasta] = useState('');
   const [orderBy, setOrderBy] = useState('fecha_vencimiento');
   const [order, setOrder] = useState('asc');
+  // Cobro de cuota de plan: { item, plan, cuota } con el plan ya cargado.
+  const [cobroSel, setCobroSel] = useState(null);
+  const [snack, setSnack] = useState({ open: false, message: '', severity: 'success' });
 
   useEffect(() => {
     if (!user) return;
@@ -47,7 +53,40 @@ function CobranzasPage() {
     enabled: !!empresaId,
   });
   const refresh = () => qc.invalidateQueries({ queryKey: ['control-obra'] });
-  const accion = useMutation({ mutationFn: ({ fn }) => fn(), onSuccess: refresh });
+  const accion = useMutation({
+    mutationFn: ({ fn }) => fn(),
+    onSuccess: (_data, vars) => {
+      refresh();
+      if (vars?.mensajeExito) setSnack({ open: true, message: vars.mensajeExito, severity: 'success' });
+    },
+    onError: (err) => setSnack({
+      open: true,
+      message: err?.response?.data?.error || err?.message || 'No se pudo registrar el cobro',
+      severity: 'error',
+    }),
+  });
+
+  // El cobro de cuotas abre el mismo diálogo que el detalle del plan, así que
+  // necesita el plan (moneda e indexación definen el monto calculado del día).
+  const abrirCobroCuota = async (item) => {
+    try {
+      const res = await planCobroService.getPlan(item.plan_id, empresaId);
+      const plan = res?.data?.data;
+      const cuota = (plan?.cuotas || []).find((c) => String(c._id) === String(item.cuota_id));
+      setCobroSel({ item, plan, cuota: cuota || { _id: item.cuota_id, monto: item.monto, monto_cobrado: item.monto_cobrado, estado: item.estado, fecha_vencimiento: item.fecha_vencimiento } });
+    } catch (err) {
+      setSnack({ open: true, message: 'No se pudo cargar el plan de la cuota', severity: 'error' });
+    }
+  };
+
+  const confirmarCobroCuota = async (payload) => {
+    const { item } = cobroSel;
+    setCobroSel(null);
+    accion.mutate({
+      fn: () => ControlObraService.cobrarCuota(item.obra_id, item.cuota_id, empresaId, payload),
+      mensajeExito: mensajeCobroRegistrado(payload),
+    });
+  };
 
   const rows = q.data || [];
   const obras = useMemo(() => obrasDeItems(rows), [rows]);
@@ -120,9 +159,18 @@ function CobranzasPage() {
                       <TableCell align="right">{fmt(i.pendiente)}</TableCell>
                       <TableCell align="right">
                         <Stack direction="row" spacing={1} justifyContent="flex-end">
-                          <Button size="small" variant="contained" onClick={() => accion.mutate({ fn: () => (i.tipo === 'certificado'
-                            ? ControlObraService.cobrarCertificado(i.certificado_id, empresaId)
-                            : ControlObraService.cobrarCuota(i.obra_id, i.cuota_id, empresaId)) })}>Cobrar</Button>
+                          <Button
+                            size="small"
+                            variant="contained"
+                            onClick={() => (i.tipo === 'certificado'
+                              ? accion.mutate({
+                                fn: () => ControlObraService.cobrarCertificado(i.certificado_id, empresaId),
+                                mensajeExito: 'Certificado cobrado.',
+                              })
+                              : abrirCobroCuota(i))}
+                          >
+                            Cobrar
+                          </Button>
                           <Button size="small" onClick={() => router.push(`/control-obra/${i.obra_id}`)}>Ver obra</Button>
                         </Stack>
                       </TableCell>
@@ -136,6 +184,26 @@ function CobranzasPage() {
             </Box>
           </CardContent>
         </Card>
+
+        <CobroCuotaDialog
+          open={!!cobroSel}
+          cuota={cobroSel?.cuota}
+          plan={cobroSel?.plan}
+          empresaId={empresaId}
+          onClose={() => setCobroSel(null)}
+          onConfirm={confirmarCobroCuota}
+        />
+
+        <Snackbar
+          open={snack.open}
+          autoHideDuration={4000}
+          onClose={() => setSnack((s) => ({ ...s, open: false }))}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        >
+          <Alert severity={snack.severity} onClose={() => setSnack((s) => ({ ...s, open: false }))} variant="filled">
+            {snack.message}
+          </Alert>
+        </Snackbar>
       </Container>
     </DashboardLayout>
   );
