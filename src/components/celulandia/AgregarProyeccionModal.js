@@ -199,6 +199,14 @@ const AgregarProyeccionModal = ({ open, onClose, onCreated, onError }) => {
       });
       return;
     }
+    if (dayjs(fechaFin).isAfter(dayjs(), "day")) {
+      setAlert({
+        open: true,
+        message: "La fecha de fin no puede ser futura.",
+        severity: "error",
+      });
+      return;
+    }
     if (!canSubmit) return;
     try {
       const payload = await mutateAsync({
@@ -244,6 +252,7 @@ const AgregarProyeccionModal = ({ open, onClose, onCreated, onError }) => {
                 value={fechaInicio}
                 onChange={handleFechaInicioChange}
                 format="DD/MM/YYYY"
+                disableFuture
                 slotProps={{
                   textField: {
                     required: true,
@@ -258,6 +267,7 @@ const AgregarProyeccionModal = ({ open, onClose, onCreated, onError }) => {
                 value={fechaFin}
                 onChange={handleFechaFinChange}
                 format="DD/MM/YYYY"
+                disableFuture
                 slotProps={{
                   textField: {
                     required: true,
