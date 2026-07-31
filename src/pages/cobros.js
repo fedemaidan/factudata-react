@@ -137,7 +137,7 @@ const CobrosList = () => {
   const [cfVista, setCfVista] = useState('tabla'); // 'grafico' | 'tabla'
   const [cfHistorico, setCfHistorico] = useState(false);
   const [cfTrack, setCfTrack] = useState('ARS'); // 'ARS' | 'USD' — track visible (sólo se ofrece si hay USD)
-  const [cfCelda, setCfCelda] = useState(null); // celda expandida: `${bucket_key}|${tipo}` (una a la vez)
+  const [cfCelda, setCfCelda] = useState(null); // período expandido: su `bucket_key` (uno a la vez)
   const [detalle, setDetalle] = useState([]); // lista accionable por cuota (Cash Flow + Gestión)
   const [cobroSel, setCobroSel] = useState(null); // { fila, plan, cuota } con el plan ya cargado
   const [recargas, setRecargas] = useState(0); // bump tras cobrar: recarga agregado y desglose
@@ -248,9 +248,10 @@ const CobrosList = () => {
     }
     if (busqueda.trim()) {
       const q = busqueda.toLowerCase();
-      result = result.filter(
-        (p) => (p.nombre || '').toLowerCase().includes(q) || (p.codigo || '').toLowerCase().includes(q)
-      );
+      // `String(...)`: el código de un plan puede venir numérico y sin esto la
+      // búsqueda revienta apenas se escribe la primera letra.
+      const contiene = (v) => String(v ?? '').toLowerCase().includes(q);
+      result = result.filter((p) => contiene(p.nombre) || contiene(p.codigo));
     }
     return sortPlanes(result, sortBy);
   }, [planes, filtroProyecto, busqueda, sortBy]);
@@ -332,41 +333,42 @@ const CobrosList = () => {
             const realizadoAnterior = pickTrack(cashflow.realizado_anterior, track);
             const periodoLabel = cfGranularidad === 'semana' ? 'semana' : cfGranularidad === 'adaptativo' ? 'período' : 'mes';
 
-            // ── Desglose por celda ──
-            // El backend etiquetó cada cuota con el mismo bucket que usó para el
+            // ── Desglose del período ──
+            // Un solo desglose por fila, con lo esperado y lo cobrado uno debajo del
+            // otro. El backend etiquetó cada cuota con el mismo bucket que usó para el
             // agregado, así que acá sólo se filtra: la suma cierra por construcción.
-            const celdaKey = (bucket, tipo) => `${bucket}|${tipo}`;
-            const toggleCelda = (bucket, tipo) => setCfCelda((k) => (k === celdaKey(bucket, tipo) ? null : celdaKey(bucket, tipo)));
+            const toggleFila = (bucket) => setCfCelda((k) => (k === bucket ? null : bucket));
 
-            // Celda clickeable del agregado: abre/cierra las cuotas que la componen.
-            const celdaExpandible = (bucket, tipo, valor, sx) => (
-              <TableCell
-                align="right"
-                onClick={valor ? () => toggleCelda(bucket, tipo) : undefined}
-                sx={{ ...sx, cursor: valor ? 'pointer' : 'default', '&:hover': valor ? { bgcolor: 'action.hover' } : undefined }}
-              >
-                <Stack direction="row" spacing={0.5} alignItems="center" justifyContent="flex-end">
-                  <span>{money(valor)}</span>
-                  {!!valor && (cfCelda === celdaKey(bucket, tipo)
-                    ? <ExpandMoreIcon fontSize="small" color="action" />
-                    : <ChevronRightIcon fontSize="small" color="disabled" />)}
-                </Stack>
-              </TableCell>
-            );
-
-            const filaDesglose = (bucket, tipo) => (
-              <TableRow>
-                <TableCell colSpan={5} sx={{ p: 0, bgcolor: 'action.hover', borderBottom: '2px solid', borderColor: 'divider' }}>
-                  <DesgloseCuotas
-                    filas={filasDeCelda(detalle, { bucketKey: bucket, track, tipo })}
-                    tipo={tipo}
-                    track={track}
-                    titulo={`${tipo === 'esperado' ? 'Cuotas a cobrar' : 'Cobros registrados'} en ${etiquetaPeriodo(bucket)}`}
-                    onCobrar={abrirCobro}
-                  />
-                </TableCell>
-              </TableRow>
-            );
+            const filaDesglose = (bucket) => {
+              const esperadas = filasDeCelda(detalle, { bucketKey: bucket, track, tipo: 'esperado' });
+              const cobradas = filasDeCelda(detalle, { bucketKey: bucket, track, tipo: 'cobrado' });
+              return (
+                <TableRow>
+                  <TableCell colSpan={5} sx={{ p: 0, bgcolor: 'action.hover', borderBottom: '2px solid', borderColor: 'divider' }}>
+                    {esperadas.length > 0 && (
+                      <DesgloseCuotas
+                        filas={esperadas}
+                        tipo="esperado"
+                        track={track}
+                        titulo={`Cuotas a cobrar en ${etiquetaPeriodo(bucket)}`}
+                        onCobrar={abrirCobro}
+                      />
+                    )}
+                    {/* Lo ya cobrado va sin `onCobrar`: no queda nada que cobrar ahí. */}
+                    {cobradas.length > 0 && (
+                      <Box sx={esperadas.length > 0 ? { borderTop: '1px dashed', borderColor: 'divider' } : undefined}>
+                        <DesgloseCuotas
+                          filas={cobradas}
+                          tipo="cobrado"
+                          track={track}
+                          titulo={`Cobros registrados en ${etiquetaPeriodo(bucket)}`}
+                        />
+                      </Box>
+                    )}
+                  </TableCell>
+                </TableRow>
+              );
+            };
             return (
             <Box sx={{ mb: 3 }}>
               <Stack direction="row" spacing={2} mb={2} flexWrap="wrap" alignItems="center" useFlexGap>
@@ -453,7 +455,7 @@ const CobrosList = () => {
                   ) : (
                     <Box sx={{ overflowX: 'auto' }}>
                       <Typography variant="caption" color="text.secondary" display="block" mb={1}>
-                        Tocá un importe de Esperado o Cobrado para ver qué cuotas lo componen.
+                        Tocá un período para ver las cuotas que lo componen.
                       </Typography>
                       <Table size="small">
                         <TableHead>
@@ -469,17 +471,29 @@ const CobrosList = () => {
                           {cashflow.meses.map((m, i) => {
                             const esp = esperado[i] || 0;
                             const cob = cobrado[i] || 0;
+                            const abierta = cfCelda === m;
+                            const tieneDesglose = !!esp || !!cob;
                             return (
                               <Fragment key={m}>
-                                <TableRow>
-                                  <TableCell>{etiquetaPeriodo(m)}</TableCell>
-                                  {celdaExpandible(m, 'esperado', esp)}
-                                  {celdaExpandible(m, 'cobrado', cob, { color: 'success.main' })}
+                                <TableRow
+                                  hover={tieneDesglose}
+                                  onClick={tieneDesglose ? () => toggleFila(m) : undefined}
+                                  sx={{ cursor: tieneDesglose ? 'pointer' : 'default' }}
+                                >
+                                  <TableCell>
+                                    <Stack direction="row" spacing={0.5} alignItems="center">
+                                      {tieneDesglose && (abierta
+                                        ? <ExpandMoreIcon fontSize="small" color="action" />
+                                        : <ChevronRightIcon fontSize="small" color="disabled" />)}
+                                      <span>{etiquetaPeriodo(m)}</span>
+                                    </Stack>
+                                  </TableCell>
+                                  <TableCell align="right">{money(esp)}</TableCell>
+                                  <TableCell align="right" sx={{ color: 'success.main' }}>{money(cob)}</TableCell>
                                   <TableCell align="right" sx={{ fontWeight: 700 }}>{money(esp + cob)}</TableCell>
                                   <TableCell align="right" sx={{ color: 'primary.main' }}>{money(acumulado[i])}</TableCell>
                                 </TableRow>
-                                {cfCelda === celdaKey(m, 'esperado') && filaDesglose(m, 'esperado')}
-                                {cfCelda === celdaKey(m, 'cobrado') && filaDesglose(m, 'cobrado')}
+                                {abierta && filaDesglose(m)}
                               </Fragment>
                             );
                           })}
