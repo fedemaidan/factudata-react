@@ -21,6 +21,11 @@ import {
   Snackbar,
   Alert,
   Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
   TextField,
   ToggleButton,
   ToggleButtonGroup,
@@ -496,13 +501,18 @@ const DetallePlanPage = () => {
       (plan.indexacion !== 'USD' && !!cacActual)
     );
   // Pendiente = lo que resta cobrar de cuotas no saldadas, a valor actualizado.
-  const pendienteAjustado = hasIndiceActual
+  // El backend ya lo calcula en el resumen (y el PDF dibuja ESE mismo número);
+  // el cálculo local queda como fallback contra un backend viejo.
+  const pendienteLocal = hasIndiceActual
     ? allCuotas
         .filter((c) => c.estado !== 'cobrada')
         .reduce((acc, c) => acc + Math.max(0, getMontoCuota(c) - (c.monto_cobrado || 0)), 0)
     : null;
+  const pendienteAjustado = resumen.pendiente_a_hoy != null ? resumen.pendiente_a_hoy : pendienteLocal;
   // Total = cobrado REAL + pendiente actualizado (no reajusta lo ya cobrado a valor de hoy).
-  const totalAjustado = hasIndiceActual ? (resumen.cobrado || 0) + pendienteAjustado : null;
+  const totalAjustado = resumen.total_a_hoy != null
+    ? resumen.total_a_hoy
+    : (hasIndiceActual ? (resumen.cobrado || 0) + pendienteLocal : null);
 
   return (
     <>
@@ -806,6 +816,56 @@ const DetallePlanPage = () => {
                   </Button>
                 </Stack>
               </Stack>
+            </Paper>
+          )}
+
+          {/* Composición del plan: cuánto era el presupuesto firmado y cuánto es
+              alcance agregado. Los "adicionales" son los anexos del plan. Los
+              números los calcula el backend (mismo resumen que consume el PDF),
+              así que pantalla y PDF no pueden divergir. */}
+          {resumen.tiene_adicionales && (
+            <Paper variant="outlined" sx={{ p: 2, mb: 3, borderRadius: 2 }}>
+              <Typography variant="subtitle2" fontWeight={700} mb={0.5}>Composición del plan</Typography>
+              <Typography variant="caption" color="text.secondary" display="block" mb={1.5}>
+                Valuado al {new Date(`${resumen.fecha_valuacion}T12:00:00`).toLocaleDateString('es-AR')}
+                {resumen.indice_usado?.valor ? ` · ${resumen.indice_usado.tipo} = ${Number(resumen.indice_usado.valor).toLocaleString('es-AR')}` : ''}
+              </Typography>
+              <Box sx={{ overflowX: 'auto' }}>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Concepto</TableCell>
+                      <TableCell align="right">Total</TableCell>
+                      <TableCell align="right">Cobrado</TableCell>
+                      <TableCell align="right">Resta cobrar</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    <TableRow>
+                      <TableCell>Presupuesto base</TableCell>
+                      <TableCell align="right">{formatCurrency(resumen.base, monedaDisplay)}</TableCell>
+                      <TableCell align="right" sx={{ color: 'success.main' }}>{formatCurrency(resumen.cobrado_base, monedaDisplay)}</TableCell>
+                      <TableCell align="right">{formatCurrency(resumen.pendiente_base, monedaDisplay)}</TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell>Adicionales ({(plan.anexos || []).length} anexo{(plan.anexos || []).length === 1 ? '' : 's'})</TableCell>
+                      <TableCell align="right">{formatCurrency(resumen.adicionales, monedaDisplay)}</TableCell>
+                      <TableCell align="right" sx={{ color: 'success.main' }}>{formatCurrency(resumen.cobrado_adicionales, monedaDisplay)}</TableCell>
+                      <TableCell align="right">{formatCurrency(resumen.pendiente_adicionales, monedaDisplay)}</TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell sx={{ fontWeight: 700 }}>Total del plan</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700 }}>{formatCurrency(resumen.total_a_hoy, monedaDisplay)}</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700, color: 'success.main' }}>{formatCurrency(resumen.cobrado_a_hoy, monedaDisplay)}</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700 }}>{formatCurrency(resumen.pendiente_a_hoy, monedaDisplay)}</TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </Box>
+              <Typography variant="caption" color="text.secondary" display="block" mt={1}>
+                Nominal pactado: {formatCurrency(resumen.nominal_pactado, monedaDisplay)}.
+                {' '}Los anexos cargados como cuota nueva se atribuyen exacto; los prorrateados, proporcional a cada cuota.
+              </Typography>
             </Paper>
           )}
 

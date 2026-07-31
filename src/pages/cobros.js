@@ -47,7 +47,14 @@ import { getEmpresaDetailsFromUser } from 'src/services/empresaService';
 import { getProyectosFromUser } from 'src/services/proyectosService';
 import { usePlanesCobroList } from 'src/hooks/usePlanCobro';
 import PlanCobroCard from 'src/components/planCobro/PlanCobroCard';
+import CobroCuotaDialog from 'src/components/planCobro/CobroCuotaDialog';
 import planCobroService from 'src/services/planCobroService';
+import DesgloseCuotas from 'src/components/planCobro/DesgloseCuotas';
+import { mensajeCobroRegistrado } from 'src/utils/planCobro/cobroCuota';
+import { filasDeCelda, filasDeGestion, filasRealizadoAnterior, totalPorTrack, claveDeFila } from 'src/utils/planCobro/cashflowDetalle';
+
+// Clave de "celda expandida" para el bloque de realizado anterior, que no es un período.
+const REALIZADO_ANTERIOR = 'realizado-anterior';
 
 const SORT_OPTIONS = [
   { value: 'reciente', label: 'Más recientes' },
@@ -90,6 +97,15 @@ const rangoSemanaISO = (year, week) => {
   sunday.setUTCDate(monday.getUTCDate() + 6);
   return [monday, sunday];
 };
+// 'YYYY-MM-DD' → '3 ago 26'. Sin `new Date()`: el string ya viene normalizado del
+// backend y parsearlo como UTC retrocedería un día en AR.
+const fechaCorta = (s) => { if (!s) return '—'; const [y, m, d] = s.split('-'); return `${Number(d)} ${MESES_CORTOS[Number(m) - 1]} ${y.slice(2)}`; };
+
+const estadoChip = (e) => (e === 'vencida' ? <Chip size="small" label="Vencida" color="error" />
+  : e === 'cobrada' ? <Chip size="small" label="Cobrada" color="success" />
+    : e === 'cobrada_parcial' ? <Chip size="small" label="Parcial" color="warning" />
+      : <Chip size="small" label="Pendiente" variant="outlined" />);
+
 const etiquetaPeriodo = (key) => {
   const mes = String(key || '').match(/^(\d{4})-(\d{2})$/);
   if (mes) return `${MESES_CORTOS[Number(mes[2]) - 1]} ${mes[1].slice(2)}`;
@@ -116,10 +132,15 @@ const CobrosList = () => {
   const [seccion, setSeccion] = useState('planes'); // 'planes' | 'cashflow' | 'gestion'
   const [cashflow, setCashflow] = useState({ meses: [], esperado: [], cobrado: [], acumulado: [], kpis: {}, vencido: { ARS: 0, USD: 0, cuotas: 0 }, realizado_anterior: { ARS: 0, USD: 0 } });
   const [cfGranularidad, setCfGranularidad] = useState('adaptativo'); // 'mes' | 'semana' | 'adaptativo'
-  const [cfVista, setCfVista] = useState('grafico'); // 'grafico' | 'tabla'
+  // Abre en tabla: el desglose por período vive en la tabla, así que es la vista
+  // desde la que se puede accionar sin tener que cambiar de modo primero.
+  const [cfVista, setCfVista] = useState('tabla'); // 'grafico' | 'tabla'
   const [cfHistorico, setCfHistorico] = useState(false);
   const [cfTrack, setCfTrack] = useState('ARS'); // 'ARS' | 'USD' — track visible (sólo se ofrece si hay USD)
-  const [gestion, setGestion] = useState([]); // A2: lista accionable por cuota (detalle)
+  const [cfCelda, setCfCelda] = useState(null); // celda expandida: `${bucket_key}|${tipo}` (una a la vez)
+  const [detalle, setDetalle] = useState([]); // lista accionable por cuota (Cash Flow + Gestión)
+  const [cobroSel, setCobroSel] = useState(null); // { fila, plan, cuota } con el plan ya cargado
+  const [recargas, setRecargas] = useState(0); // bump tras cobrar: recarga agregado y desglose
   const [gestionMes, setGestionMes] = useState(() => new Date().toISOString().slice(0, 7)); // filtro por mes (default: mes actual)
   const [gestionPorObra, setGestionPorObra] = useState(true); // toggle "por obra ↔ todo junto" (default: por obra)
   const [gestionColapsadas, setGestionColapsadas] = useState(() => new Set()); // obras colapsadas (accordion)
@@ -142,19 +163,29 @@ const CobrosList = () => {
     planCobroService.getCashflow(empresaId, filtroProyecto || null, cfGranularidad, { incluirHistorico: cfHistorico })
       .then((res) => setCashflow(res?.data?.data || {}))
       .catch(() => setCashflow({ meses: [], esperado: [], cobrado: [] }));
-  }, [empresaId, filtroProyecto, cfGranularidad, cfHistorico]);
+  }, [empresaId, filtroProyecto, cfGranularidad, cfHistorico, recargas]);
 
-  // Vista de gestión (A2): lista accionable por cuota. Se pide sólo al entrar a la pestaña.
-  // El detalle son las cuotas pendientes/vencidas (no depende de la ventana), así que no pasamos histórico.
+  // Lista accionable por cuota. La consumen el desglose del Cash Flow (que filtra
+  // por `bucket_key`) y la vista de Gestión. En Cash Flow se pide con la MISMA
+  // granularidad y ventana que el gráfico: si no, los buckets no se corresponden.
   useEffect(() => {
-    if (!empresaId || seccion !== 'gestion') return;
-    planCobroService.getCashflow(empresaId, filtroProyecto || null, 'mes', { detalle: true })
-      .then((res) => setGestion(res?.data?.data?.detalle || []))
-      .catch(() => setGestion([]));
-  }, [empresaId, filtroProyecto, seccion]);
+    if (!empresaId || (seccion !== 'gestion' && seccion !== 'cashflow')) return;
+    const enCashflow = seccion === 'cashflow';
+    planCobroService.getCashflow(
+      empresaId,
+      filtroProyecto || null,
+      enCashflow ? cfGranularidad : 'mes',
+      { detalle: true, ...(enCashflow ? { incluirHistorico: cfHistorico } : {}) },
+    )
+      .then((res) => setDetalle(res?.data?.data?.detalle || []))
+      .catch(() => setDetalle([]));
+  }, [empresaId, filtroProyecto, seccion, cfGranularidad, cfHistorico, recargas]);
+
+  // Una celda expandida deja de tener sentido si cambian los buckets debajo.
+  useEffect(() => { setCfCelda(null); }, [cfGranularidad, cfHistorico, filtroProyecto, cfTrack]);
 
   // Reset de paginación al cambiar filtro/modo/datos de la vista de gestión.
-  useEffect(() => { setGestionPage(0); }, [gestionMes, gestionPorObra, gestion]);
+  useEffect(() => { setGestionPage(0); }, [gestionMes, gestionPorObra, detalle]);
 
   const filterParams = filtroEstado ? { estado: filtroEstado } : {};
   const { planes, loading, error, refresh } = usePlanesCobroList(empresaId, filterParams);
@@ -177,6 +208,38 @@ const CobrosList = () => {
   useEffect(() => {
     if (error) setAlert({ open: true, message: 'Error al cargar planes de cobro', severity: 'error' });
   }, [error]);
+
+  // ── Cobrar una cuota sin salir de esta pantalla ──
+  // Las filas del detalle no traen el plan completo, y el diálogo lo necesita para
+  // resolver el monto al índice del día. Se carga igual que en cobranzas de obra.
+  const abrirCobro = async (fila) => {
+    try {
+      const res = await planCobroService.getPlan(fila.plan_id, empresaId);
+      const plan = res?.data?.data;
+      const cuota = (plan?.cuotas || []).find((c) => String(c._id) === String(fila.cuota_id));
+      if (!cuota) throw new Error('La cuota ya no existe en el plan');
+      setCobroSel({ fila, plan, cuota });
+    } catch (err) {
+      setAlert({ open: true, message: err.message || 'No se pudo cargar el plan de la cuota', severity: 'error' });
+    }
+  };
+
+  // Sin actualización optimista: en planes indexados el monto que se registra lo
+  // resuelve el backend con el índice del día del cobro, y un optimista mostraría
+  // un número distinto al persistido. Se recargan agregado y desglose.
+  const confirmarCobro = async (payload) => {
+    const { fila } = cobroSel;
+    setCobroSel(null);
+    try {
+      const res = await planCobroService.marcarCuotaCobrada(fila.plan_id, fila.cuota_id, { empresa_id: empresaId, ...payload });
+      if (!res?.data?.ok) throw new Error(res?.data?.error || 'No se pudo registrar el cobro');
+      setAlert({ open: true, message: mensajeCobroRegistrado(payload), severity: 'success' });
+      setRecargas((n) => n + 1);
+      refresh();
+    } catch (err) {
+      setAlert({ open: true, message: err?.response?.data?.error || err.message || 'No se pudo registrar el cobro', severity: 'error' });
+    }
+  };
 
   const planesFiltrados = useMemo(() => {
     let result = planes;
@@ -268,6 +331,42 @@ const CobrosList = () => {
             const acumulado = (cashflow.acumulado || []).map((x) => pickTrack(x, track));
             const realizadoAnterior = pickTrack(cashflow.realizado_anterior, track);
             const periodoLabel = cfGranularidad === 'semana' ? 'semana' : cfGranularidad === 'adaptativo' ? 'período' : 'mes';
+
+            // ── Desglose por celda ──
+            // El backend etiquetó cada cuota con el mismo bucket que usó para el
+            // agregado, así que acá sólo se filtra: la suma cierra por construcción.
+            const celdaKey = (bucket, tipo) => `${bucket}|${tipo}`;
+            const toggleCelda = (bucket, tipo) => setCfCelda((k) => (k === celdaKey(bucket, tipo) ? null : celdaKey(bucket, tipo)));
+
+            // Celda clickeable del agregado: abre/cierra las cuotas que la componen.
+            const celdaExpandible = (bucket, tipo, valor, sx) => (
+              <TableCell
+                align="right"
+                onClick={valor ? () => toggleCelda(bucket, tipo) : undefined}
+                sx={{ ...sx, cursor: valor ? 'pointer' : 'default', '&:hover': valor ? { bgcolor: 'action.hover' } : undefined }}
+              >
+                <Stack direction="row" spacing={0.5} alignItems="center" justifyContent="flex-end">
+                  <span>{money(valor)}</span>
+                  {!!valor && (cfCelda === celdaKey(bucket, tipo)
+                    ? <ExpandMoreIcon fontSize="small" color="action" />
+                    : <ChevronRightIcon fontSize="small" color="disabled" />)}
+                </Stack>
+              </TableCell>
+            );
+
+            const filaDesglose = (bucket, tipo) => (
+              <TableRow>
+                <TableCell colSpan={5} sx={{ p: 0, bgcolor: 'action.hover', borderBottom: '2px solid', borderColor: 'divider' }}>
+                  <DesgloseCuotas
+                    filas={filasDeCelda(detalle, { bucketKey: bucket, track, tipo })}
+                    tipo={tipo}
+                    track={track}
+                    titulo={`${tipo === 'esperado' ? 'Cuotas a cobrar' : 'Cobros registrados'} en ${etiquetaPeriodo(bucket)}`}
+                    onCobrar={abrirCobro}
+                  />
+                </TableCell>
+              </TableRow>
+            );
             return (
             <Box sx={{ mb: 3 }}>
               <Stack direction="row" spacing={2} mb={2} flexWrap="wrap" alignItems="center" useFlexGap>
@@ -308,10 +407,30 @@ const CobrosList = () => {
                       Mostrando {track === 'USD' ? 'planes en dólares (US$)' : 'planes en pesos (indexados valuados a hoy)'}.
                     </Typography>
                   )}
+                  {/* Los cobros previos a la ventana no tienen fila propia: el agregado
+                      los colapsa acá. Se pueden abrir para entender de qué se trata. */}
                   {!cfHistorico && realizadoAnterior > 0 && (
-                    <Typography variant="caption" color="text.secondary" display="block" mb={1}>
-                      Realizado antes de la ventana: {money(realizadoAnterior)} (colapsado)
-                    </Typography>
+                    <Box mb={1}>
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        onClick={() => setCfCelda((k) => (k === REALIZADO_ANTERIOR ? null : REALIZADO_ANTERIOR))}
+                        sx={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}
+                      >
+                        Realizado antes de la ventana: {money(realizadoAnterior)} (colapsado)
+                        {cfCelda === REALIZADO_ANTERIOR ? <ExpandMoreIcon fontSize="small" /> : <ChevronRightIcon fontSize="small" />}
+                      </Typography>
+                      {cfCelda === REALIZADO_ANTERIOR && (
+                        <Box sx={{ bgcolor: 'action.hover', borderRadius: 1, mt: 0.5 }}>
+                          <DesgloseCuotas
+                            filas={filasRealizadoAnterior(detalle, track)}
+                            tipo="cobrado"
+                            track={track}
+                            titulo="Cobros anteriores a la ventana"
+                          />
+                        </Box>
+                      )}
+                    </Box>
                   )}
                   {cfVista === 'grafico' ? (
                     <Box sx={{ overflowX: 'auto' }}>
@@ -333,6 +452,9 @@ const CobrosList = () => {
                     </Box>
                   ) : (
                     <Box sx={{ overflowX: 'auto' }}>
+                      <Typography variant="caption" color="text.secondary" display="block" mb={1}>
+                        Tocá un importe de Esperado o Cobrado para ver qué cuotas lo componen.
+                      </Typography>
                       <Table size="small">
                         <TableHead>
                           <TableRow>
@@ -348,13 +470,17 @@ const CobrosList = () => {
                             const esp = esperado[i] || 0;
                             const cob = cobrado[i] || 0;
                             return (
-                              <TableRow key={m}>
-                                <TableCell>{etiquetaPeriodo(m)}</TableCell>
-                                <TableCell align="right">{money(esp)}</TableCell>
-                                <TableCell align="right" sx={{ color: 'success.main' }}>{money(cob)}</TableCell>
-                                <TableCell align="right" sx={{ fontWeight: 700 }}>{money(esp + cob)}</TableCell>
-                                <TableCell align="right" sx={{ color: 'primary.main' }}>{money(acumulado[i])}</TableCell>
-                              </TableRow>
+                              <Fragment key={m}>
+                                <TableRow>
+                                  <TableCell>{etiquetaPeriodo(m)}</TableCell>
+                                  {celdaExpandible(m, 'esperado', esp)}
+                                  {celdaExpandible(m, 'cobrado', cob, { color: 'success.main' })}
+                                  <TableCell align="right" sx={{ fontWeight: 700 }}>{money(esp + cob)}</TableCell>
+                                  <TableCell align="right" sx={{ color: 'primary.main' }}>{money(acumulado[i])}</TableCell>
+                                </TableRow>
+                                {cfCelda === celdaKey(m, 'esperado') && filaDesglose(m, 'esperado')}
+                                {cfCelda === celdaKey(m, 'cobrado') && filaDesglose(m, 'cobrado')}
+                              </Fragment>
                             );
                           })}
                           <TableRow>
@@ -376,23 +502,23 @@ const CobrosList = () => {
           {seccion === 'gestion' && (() => {
             // A2: "a quién reclamar". Lista accionable por cuota, vencidos arriba,
             // filtrable por mes y agrupable por obra.
-            const fechaCorta = (s) => { if (!s) return '—'; const [y, m, d] = s.split('-'); return `${Number(d)} ${MESES_CORTOS[Number(m) - 1]} ${y.slice(2)}`; };
-            const estadoChip = (e) => e === 'vencida'
-              ? <Chip size="small" label="Vencida" color="error" />
-              : e === 'cobrada_parcial'
-                ? <Chip size="small" label="Parcial" color="warning" />
-                : <Chip size="small" label="Pendiente" variant="outlined" />;
             // El mes actual siempre figura como opción (aunque no tenga cuotas), porque es el filtro por default.
             const mesActual = new Date().toISOString().slice(0, 7);
-            const mesesDisp = [...new Set([...(gestion || []).map((r) => (r.fecha_vencimiento || '').slice(0, 7)).filter(Boolean), mesActual])].sort();
-            const filtradas = (gestion || []).filter((r) => gestionMes === 'todos' || (r.fecha_vencimiento || '').slice(0, 7) === gestionMes);
+            // Sólo lo que hay que reclamar: las filas de cobrado del detalle son
+            // historial y viven en el desglose del Cash Flow.
+            const gestion = filasDeGestion(detalle);
+            const mesesDisp = [...new Set([...gestion.map((r) => (r.fecha_vencimiento || '').slice(0, 7)).filter(Boolean), mesActual])].sort();
+            const filtradas = gestion.filter((r) => gestionMes === 'todos' || (r.fecha_vencimiento || '').slice(0, 7) === gestionMes);
             // Vencidas primero, luego por vencimiento ascendente.
             const ordenadas = [...filtradas].sort((a, b) => {
               const va = a.estado === 'vencida' ? 0 : 1, vb = b.estado === 'vencida' ? 0 : 1;
               if (va !== vb) return va - vb;
               return (a.fecha_vencimiento || '9999').localeCompare(b.fecha_vencimiento || '9999');
             });
-            const subtotal = (rows, track) => rows.reduce((a, r) => a + (r.track === track ? (r.saldo_a_hoy || 0) : 0), 0);
+            const subtotal = (rows, track) => rows.reduce((a, r) => a + (r.track === track ? (r.monto || 0) : 0), 0);
+            // Total del mes filtrado: sobre TODAS las cuotas del filtro, antes de
+            // paginar, para que el número no dependa de dónde esté el paginador.
+            const totalMes = totalPorTrack(filtradas);
             const grupos = gestionPorObra
               ? [...ordenadas.reduce((map, r) => { const k = r.proyecto_nombre || 'Sin obra'; if (!map.has(k)) map.set(k, []); map.get(k).push(r); return map; }, new Map())]
               : [['', ordenadas]];
@@ -410,13 +536,16 @@ const CobrosList = () => {
             const todasColapsadas = gestionPorObra && todasObras.length > 0 && todasObras.every((o) => gestionColapsadas.has(o));
 
             const filaCuota = (r) => (
-              <TableRow key={r.cuota_id} sx={{ bgcolor: r.estado === 'vencida' ? '#FFF5F5' : 'inherit' }}>
+              <TableRow key={claveDeFila(r)} sx={{ bgcolor: r.estado === 'vencida' ? '#FFF5F5' : 'inherit' }}>
                 <TableCell>{r.cliente_nombre || '—'}</TableCell>
                 {!gestionPorObra && <TableCell>{r.proyecto_nombre || '—'}</TableCell>}
                 <TableCell>{r.plan_nombre ? `${r.plan_nombre} · ` : ''}Cuota {r.numero}</TableCell>
                 <TableCell>{fechaCorta(r.fecha_vencimiento)}</TableCell>
-                <TableCell align="right" sx={{ fontWeight: 700 }}>{fmtMoney(r.saldo_a_hoy, r.track)}</TableCell>
+                <TableCell align="right" sx={{ fontWeight: 700 }}>{fmtMoney(r.monto, r.track)}</TableCell>
                 <TableCell>{estadoChip(r.estado)}</TableCell>
+                <TableCell align="right">
+                  <Button size="small" variant="contained" onClick={() => abrirCobro(r)}>Cobrar</Button>
+                </TableCell>
               </TableRow>
             );
             return (
@@ -455,6 +584,7 @@ const CobrosList = () => {
                         <TableCell>Vence</TableCell>
                         <TableCell align="right">A cobrar (a hoy)</TableCell>
                         <TableCell>Estado</TableCell>
+                        <TableCell align="right">Acciones</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -475,7 +605,7 @@ const CobrosList = () => {
                                 <TableCell align="right" sx={{ fontWeight: 700 }}>
                                   {subARS ? fmtMoney(subARS, 'ARS') : ''}{subARS && subUSD ? ' · ' : ''}{subUSD ? fmtMoney(subUSD, 'USD') : ''}
                                 </TableCell>
-                                <TableCell />
+                                <TableCell colSpan={2} />
                               </TableRow>
                             )}
                             {!colapsada && rows.map(filaCuota)}
@@ -485,6 +615,33 @@ const CobrosList = () => {
                     </TableBody>
                   </Table>
                   </Box>
+
+                  {/* Total del mes filtrado: fijo sobre el paginador, así que sigue
+                      visible al cambiar de página o colapsar obras. Pesos y dólares
+                      en líneas separadas: son tracks distintos, no se suman. */}
+                  <Box sx={{
+                    position: 'sticky', bottom: 0, zIndex: 2,
+                    px: 2, py: 1.25, bgcolor: 'background.paper',
+                    borderTop: '2px solid', borderColor: 'divider',
+                  }}>
+                    <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={2}>
+                      <Box>
+                        <Typography variant="overline" color="text.secondary" display="block" lineHeight={1.4}>
+                          Total {gestionMes === 'todos' ? 'del filtro' : etiquetaPeriodo(gestionMes)}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {totalMes.cuotas} cuota{totalMes.cuotas === 1 ? '' : 's'} a cobrar
+                        </Typography>
+                      </Box>
+                      <Stack alignItems="flex-end">
+                        <Typography variant="h6" fontWeight={700} lineHeight={1.3}>{fmtMoney(totalMes.ARS, 'ARS')}</Typography>
+                        {totalMes.USD !== 0 && (
+                          <Typography variant="h6" fontWeight={700} lineHeight={1.3}>{fmtMoney(totalMes.USD, 'USD')}</Typography>
+                        )}
+                      </Stack>
+                    </Stack>
+                  </Box>
+
                   <TablePagination
                     component="div"
                     count={total}
@@ -694,6 +851,17 @@ const CobrosList = () => {
           {alert.message}
         </Alert>
       </Snackbar>
+
+      {/* Mismo diálogo de cobro que el detalle del plan y cobranzas de control de
+          obra: no hay flujo nuevo, sólo se monta en una pantalla más. */}
+      <CobroCuotaDialog
+        open={!!cobroSel}
+        cuota={cobroSel?.cuota}
+        plan={cobroSel?.plan}
+        empresaId={empresaId}
+        onClose={() => setCobroSel(null)}
+        onConfirm={confirmarCobro}
+      />
 
       {/* Diálogo confirmar eliminación */}
       <Dialog open={!!confirmEliminar} onClose={() => setConfirmEliminar(null)}>
