@@ -21,6 +21,11 @@ import {
   Snackbar,
   Alert,
   Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
   TextField,
   ToggleButton,
   ToggleButtonGroup,
@@ -86,6 +91,7 @@ const DetallePlanPage = () => {
   const [usdActual, setUsdActual] = useState(null);
   // A2 (TAR-466 pt.1): desplegar el detalle de cuotas que componen el total cobrado
   const [showCobradoDetail, setShowCobradoDetail] = useState(false);
+  const [showComposicion, setShowComposicion] = useState(false);
   // Fase 4 — edición de total y saldo sin asignar
   const [showEditTotal, setShowEditTotal] = useState(false);
   const [editTotalValue, setEditTotalValue] = useState('');
@@ -456,6 +462,10 @@ const DetallePlanPage = () => {
   const usdFuenteLabel = (plan.usd_fuente || plan.cotizacion_snapshot?.dolar_fuente) === 'oficial' ? 'Oficial' : 'Blue';
   const indexacionLabel = plan.indexacion === 'CAC' ? `CAC ${cacTipoLabel}` : plan.indexacion === 'USD' ? `Dólar ${usdFuenteLabel}` : '';
   const allCuotas = plan.cuotas || [];
+  // Lo que se pliega bajo "Ver detalle" del total: de dónde sale el número
+  // (base vs. adicionales) y qué anexos lo movieron.
+  const anexos = plan.anexos || [];
+  const hayComposicion = !!resumen.tiene_adicionales || anexos.length > 0;
   const totalCuotas = allCuotas.length;
   const cuotasCobradas = allCuotas.filter((c) => c.estado === 'cobrada').length;
   const proximaCuota = allCuotas.find((c) => c.estado === 'pendiente' || c.estado === 'cobrada_parcial' || c.estado_ui === 'vencida' || c.estado_ui === 'cobrada_parcial_vencida');
@@ -496,13 +506,18 @@ const DetallePlanPage = () => {
       (plan.indexacion !== 'USD' && !!cacActual)
     );
   // Pendiente = lo que resta cobrar de cuotas no saldadas, a valor actualizado.
-  const pendienteAjustado = hasIndiceActual
+  // El backend ya lo calcula en el resumen (y el PDF dibuja ESE mismo número);
+  // el cálculo local queda como fallback contra un backend viejo.
+  const pendienteLocal = hasIndiceActual
     ? allCuotas
         .filter((c) => c.estado !== 'cobrada')
         .reduce((acc, c) => acc + Math.max(0, getMontoCuota(c) - (c.monto_cobrado || 0)), 0)
     : null;
+  const pendienteAjustado = resumen.pendiente_a_hoy != null ? resumen.pendiente_a_hoy : pendienteLocal;
   // Total = cobrado REAL + pendiente actualizado (no reajusta lo ya cobrado a valor de hoy).
-  const totalAjustado = hasIndiceActual ? (resumen.cobrado || 0) + pendienteAjustado : null;
+  const totalAjustado = resumen.total_a_hoy != null
+    ? resumen.total_a_hoy
+    : (hasIndiceActual ? (resumen.cobrado || 0) + pendienteLocal : null);
 
   return (
     <>
@@ -634,6 +649,11 @@ const DetallePlanPage = () => {
                 subtitle: showCAC && cacIndiceBase
                   ? `${Math.round((resumen.total || 0) / cacIndiceBase).toLocaleString('es-AR')} CAC al crear`
                   : null,
+                // Sin anexos no hay nada que descomponer: base sería el total entero.
+                expandable: hayComposicion,
+                expanded: showComposicion,
+                onToggle: () => setShowComposicion((v) => !v),
+                detailColor: 'primary.main',
               },
               {
                 label: 'COBRADO',
@@ -641,6 +661,9 @@ const DetallePlanPage = () => {
                 borderColor: '#2E7D32',
                 subtitle: `${cuotasCobradas} de ${totalCuotas} cuotas`,
                 expandable: cuotasCobradas > 0,
+                expanded: showCobradoDetail,
+                onToggle: () => setShowCobradoDetail((v) => !v),
+                detailColor: 'success.main',
               },
               {
                 label: 'PENDIENTE',
@@ -652,7 +675,7 @@ const DetallePlanPage = () => {
               <Grid item xs={12} sm={4} key={m.label}>
                 <Paper
                   variant="outlined"
-                  onClick={m.expandable ? () => setShowCobradoDetail((v) => !v) : undefined}
+                  onClick={m.expandable ? m.onToggle : undefined}
                   sx={{
                     p: 2,
                     textAlign: 'center',
@@ -674,15 +697,15 @@ const DetallePlanPage = () => {
                   )}
                   {m.expandable && (
                     <Stack direction="row" spacing={0.5} justifyContent="center" alignItems="center" mt={0.5}>
-                      <Typography variant="caption" color="success.main" fontWeight={600}>
-                        {showCobradoDetail ? 'Ocultar detalle' : 'Ver detalle'}
+                      <Typography variant="caption" color={m.detailColor} fontWeight={600}>
+                        {m.expanded ? 'Ocultar detalle' : 'Ver detalle'}
                       </Typography>
                       <KeyboardArrowDownIcon
                         sx={{
                           fontSize: 16,
-                          color: 'success.main',
+                          color: m.detailColor,
                           transition: 'transform 0.2s',
-                          transform: showCobradoDetail ? 'rotate(180deg)' : 'none',
+                          transform: m.expanded ? 'rotate(180deg)' : 'none',
                         }}
                       />
                     </Stack>
@@ -691,6 +714,82 @@ const DetallePlanPage = () => {
               </Grid>
             ))}
           </Grid>
+
+          {/* Composición del plan: cuánto era el presupuesto firmado y cuánto es
+              alcance agregado. Los "adicionales" son los anexos del plan. Los
+              números los calcula el backend (mismo resumen que consume el PDF),
+              así que pantalla y PDF no pueden divergir. Va plegado dentro de la
+              card del total: es el desglose de ese número, no una sección aparte. */}
+          <Collapse in={showComposicion && hayComposicion} unmountOnExit>
+            <Paper variant="outlined" sx={{ p: 2, mb: 3, borderRadius: 2 }}>
+              <Typography variant="subtitle2" fontWeight={700} mb={0.5}>Composición del plan</Typography>
+              <Typography variant="caption" color="text.secondary" display="block" mb={1.5}>
+                Valuado al {new Date(`${resumen.fecha_valuacion}T12:00:00`).toLocaleDateString('es-AR')}
+                {resumen.indice_usado?.valor ? ` · ${resumen.indice_usado.tipo} = ${Number(resumen.indice_usado.valor).toLocaleString('es-AR')}` : ''}
+              </Typography>
+              <Box sx={{ overflowX: 'auto' }}>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Concepto</TableCell>
+                      <TableCell align="right">Total</TableCell>
+                      <TableCell align="right">Cobrado</TableCell>
+                      <TableCell align="right">Resta cobrar</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    <TableRow>
+                      <TableCell>Presupuesto base</TableCell>
+                      <TableCell align="right">{formatCurrency(resumen.base, monedaDisplay)}</TableCell>
+                      <TableCell align="right" sx={{ color: 'success.main' }}>{formatCurrency(resumen.cobrado_base, monedaDisplay)}</TableCell>
+                      <TableCell align="right">{formatCurrency(resumen.pendiente_base, monedaDisplay)}</TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell>Adicionales ({(plan.anexos || []).length} anexo{(plan.anexos || []).length === 1 ? '' : 's'})</TableCell>
+                      <TableCell align="right">{formatCurrency(resumen.adicionales, monedaDisplay)}</TableCell>
+                      <TableCell align="right" sx={{ color: 'success.main' }}>{formatCurrency(resumen.cobrado_adicionales, monedaDisplay)}</TableCell>
+                      <TableCell align="right">{formatCurrency(resumen.pendiente_adicionales, monedaDisplay)}</TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell sx={{ fontWeight: 700 }}>Total del plan</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700 }}>{formatCurrency(resumen.total_a_hoy, monedaDisplay)}</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700, color: 'success.main' }}>{formatCurrency(resumen.cobrado_a_hoy, monedaDisplay)}</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700 }}>{formatCurrency(resumen.pendiente_a_hoy, monedaDisplay)}</TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </Box>
+              {/* Qué anexos componen la fila de adicionales. */}
+              {anexos.length > 0 && (
+                <Box mt={2}>
+                  <Typography variant="caption" color="text.secondary" fontWeight={700} display="block" mb={0.5}>
+                    ANEXOS
+                  </Typography>
+                  <Stack spacing={0.5}>
+                    {anexos.map((a) => (
+                      <Stack key={a.id} direction="row" justifyContent="space-between" alignItems="center"
+                        sx={{ py: 0.5, borderBottom: '1px solid', borderColor: 'divider' }}>
+                        <Box>
+                          <Typography variant="body2">{a.motivo || 'Anexo'}</Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {a.fecha ? new Date(a.fecha).toLocaleDateString('es-AR') : ''} · {a.modo === 'nueva_cuota' ? 'cuota nueva' : 'prorrateado'}
+                            {a.monto_cac ? ` · ${Math.round(a.monto_cac * 100) / 100} CAC${a.cac_indice_ref ? ` @ ${a.cac_indice_ref.toLocaleString('es-AR')}` : ''}` : ''}
+                          </Typography>
+                        </Box>
+                        <Typography variant="body2" fontWeight={700} color={a.monto >= 0 ? 'success.main' : 'error.main'}>
+                          {a.monto >= 0 ? '+' : ''}{formatCurrency(a.monto, monedaDisplay)}
+                        </Typography>
+                      </Stack>
+                    ))}
+                  </Stack>
+                </Box>
+              )}
+              <Typography variant="caption" color="text.secondary" display="block" mt={1.5}>
+                Nominal pactado: {formatCurrency(resumen.nominal_pactado, monedaDisplay)}.
+                {' '}Los anexos cargados como cuota nueva se atribuyen exacto; los prorrateados, proporcional a cada cuota.
+              </Typography>
+            </Paper>
+          </Collapse>
 
           {/* A2: detalle de cuotas cobradas que componen el total */}
           <Collapse in={showCobradoDetail} unmountOnExit>
@@ -805,30 +904,6 @@ const DetallePlanPage = () => {
                     Achicar plan al distribuido
                   </Button>
                 </Stack>
-              </Stack>
-            </Paper>
-          )}
-
-          {/* Historial de anexos */}
-          {(plan.anexos || []).length > 0 && (
-            <Paper variant="outlined" sx={{ p: 2, mb: 3, borderRadius: 2 }}>
-              <Typography variant="subtitle2" fontWeight={700} mb={1}>Anexos</Typography>
-              <Stack spacing={0.5}>
-                {(plan.anexos || []).map((a) => (
-                  <Stack key={a.id} direction="row" justifyContent="space-between" alignItems="center"
-                    sx={{ py: 0.5, borderBottom: '1px solid', borderColor: 'divider' }}>
-                    <Box>
-                      <Typography variant="body2">{a.motivo || 'Anexo'}</Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {a.fecha ? new Date(a.fecha).toLocaleDateString('es-AR') : ''} · {a.modo === 'nueva_cuota' ? 'cuota nueva' : 'prorrateado'}
-                        {a.monto_cac ? ` · ${Math.round(a.monto_cac * 100) / 100} CAC${a.cac_indice_ref ? ` @ ${a.cac_indice_ref.toLocaleString('es-AR')}` : ''}` : ''}
-                      </Typography>
-                    </Box>
-                    <Typography variant="body2" fontWeight={700} color={a.monto >= 0 ? 'success.main' : 'error.main'}>
-                      {a.monto >= 0 ? '+' : ''}{formatCurrency(a.monto, monedaDisplay)}
-                    </Typography>
-                  </Stack>
-                ))}
               </Stack>
             </Paper>
           )}
