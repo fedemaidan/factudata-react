@@ -394,7 +394,9 @@ function AgentMessageBase({
   );
 }
 
-export function AgentTypingIndicator() {
+// `label` opcional: texto que acompaña a los puntos (ej. "Estoy buscando…" cuando la
+// respuesta demora). Sin label, es el indicador de tipeo de siempre.
+export function AgentTypingIndicator({ label }) {
   const theme = useTheme();
   return (
     <Box
@@ -440,6 +442,24 @@ export function AgentTypingIndicator() {
             }}
           />
         ))}
+        {label ? (
+          <Typography
+            variant="body2"
+            sx={{
+              ml: 0.5,
+              color: 'text.secondary',
+              fontSize: '0.9375rem',
+              lineHeight: 1.55,
+              animation: 'agentSearchingIn 220ms cubic-bezier(0.22, 0.61, 0.36, 1)',
+              '@keyframes agentSearchingIn': {
+                from: { opacity: 0, transform: 'translateY(4px)' },
+                to: { opacity: 1, transform: 'translateY(0)' },
+              },
+            }}
+          >
+            {label}
+          </Typography>
+        ) : null}
       </Box>
     </Box>
   );

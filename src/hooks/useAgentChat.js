@@ -105,7 +105,7 @@ function extractErrorMessage(err) {
     return backendMsg || 'No tenés acceso al asistente.';
   }
   if (status === 401) {
-    return 'Sesión expirada. Volvé a ingresar.';
+    return backendMsg || 'Sesión expirada. Volvé a ingresar.';
   }
   if (backendMsg) return backendMsg;
   return 'Ocurrió un error. Probá de nuevo.';

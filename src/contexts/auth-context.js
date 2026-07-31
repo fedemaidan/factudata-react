@@ -82,7 +82,12 @@ const handlers = {
       originalUser,
     };
     window.localStorage.setItem('MY_APP_STATE', JSON.stringify(newState));
-    window.localStorage.setItem('authToken', user.token);
+    // El token de auth es SIEMPRE el del usuario original (Firebase). Al espiar,
+    // el payload del espiado no trae token: no pisar el guardado con undefined.
+    const tokenOriginal = originalUser?.token || user?.token;
+    if (typeof tokenOriginal === 'string' && tokenOriginal) {
+      window.localStorage.setItem('authToken', tokenOriginal);
+    }
 
     return newState;
   },

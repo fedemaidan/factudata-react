@@ -33,6 +33,10 @@ import { useAgenteSpecialists } from 'src/hooks/useAgenteSpecialists';
 import { pickQuickActions, pickExamplePrompts } from 'src/components/agent/agentQuickActions';
 import { useAuthContext } from 'src/contexts/auth-context';
 
+// Demora antes de mostrar "Estoy buscando…" durante un envío: las respuestas rápidas
+// no llegan a verlo (sin parpadeo) y las lentas avisan que el asistente sigue trabajando.
+const SEARCHING_HINT_DELAY_MS = 2000;
+
 const AgentChatPage = () => {
   const theme = useTheme();
   const router = useRouter();
@@ -68,6 +72,18 @@ const AgentChatPage = () => {
   const isAdmin = !!originalUser?.admin;
   const isDesktop = useMediaQuery((t) => t.breakpoints.up('md'));
   const [mobilePreviewOpen, setMobilePreviewOpen] = useState(false);
+  // "Estoy buscando…" solo mientras hay un envío en vuelo que demoró más de ~2s.
+  // Depender de isSending garantiza que no aparezca en carga de historial ni reset,
+  // y que el timer se limpie al resolver/fallar el envío o desmontar la página.
+  const [showSearchingHint, setShowSearchingHint] = useState(false);
+  useEffect(() => {
+    if (!isSending) {
+      setShowSearchingHint(false);
+      return undefined;
+    }
+    const timer = setTimeout(() => setShowSearchingHint(true), SEARCHING_HINT_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [isSending]);
 
   // reportDraft solo lo emite el agente de reportes; el hook ya lo limpia si el turno
   // pasó a otro specialist, así que basta con su presencia para mostrar la preview.
@@ -396,7 +412,9 @@ const AgentChatPage = () => {
                     onAction={handleMessageAction}
                   />
                 ))}
-                {isSending ? <AgentTypingIndicator /> : null}
+                {isSending ? (
+                  <AgentTypingIndicator label={showSearchingHint ? 'Estoy buscando…' : null} />
+                ) : null}
               </>
             )}
           </Container>
